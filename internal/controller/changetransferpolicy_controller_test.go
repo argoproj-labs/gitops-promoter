@@ -1537,6 +1537,68 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note; leaving the previous reconcile's drySha (%q) lets PromotionStrategy compute targetDrySha from a stale note and merge production ahead of dev/staging", firstDrySha)
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			// SCM push webhooks fire when the hydrated branch moves; they do not fire
+			// when the hydrator later pushes refs/notes/hydrator.metadata. The CTP
+			// therefore often reconciles the new tip while the previous reconcile's
+			// Proposed.Note.DrySha is still in status and the new tip has no note yet.
+			// Keeping that old drySha makes getEffectiveHydratedDrySha report the
+			// previous dry as the env's "effective" hydrated dry.
+			It("must not keep Status.Proposed.Note from a previous dry SHA after a webhook advances the proposed branch ahead of the git note", func() {
+				By("Hydrating the proposed branch with a git note so proposed.note.drySha is populated")
+				firstDrySha, err := makeDryCommit(ctx, gitPath, "first dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, firstDrySha, "hydrate dev for first dry sha")).To(Succeed())
+
+				By("Waiting for the controller to record the populated proposed.note.drySha")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctp.Status.Proposed.Note.DrySha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Pushing a new hydrated commit and firing the branch webhook before any git note exists for that commit")
+				secondDrySha, err := makeDryCommit(ctx, gitPath, "second dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(secondDrySha).NotTo(Equal(firstDrySha))
+				beforeSha, secondHydratedSha, err := pushHydratedBranch(ctx, gitPath, testBranchDevelopmentNext, secondDrySha, "hydrate dev for second dry sha")
+				Expect(err).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, testBranchDevelopmentNext)
+
+				By("Waiting for Proposed.Dry to advance, and requiring Proposed.Note not to still carry the previous dry SHA")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
+						"controller should have advanced Proposed.Dry.Sha from hydrator.metadata on the new tip")
+					g.Expect(ctp.Status.Proposed.Hydrated.Sha).To(Equal(secondHydratedSha))
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must not retain drySha %q after the webhook for hydrated commit %s; the new tip has no git note yet", firstDrySha, secondHydratedSha)
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Holding the race window: Proposed.Note must stay cleared until the matching note is pushed")
+				Consistently(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must stay nil while the new hydrated commit has no git note; got drySha from a previous reconcile")
+				}, 3*time.Second, 200*time.Millisecond).Should(Succeed())
+
+				By("Pushing the matching git note with no webhook (SCMs do not notify on notes pushes)")
+				Expect(pushGitNote(ctx, gitPath, secondHydratedSha, secondDrySha)).To(Succeed())
+				enqueueCTP(ctpKey.Namespace, ctpKey.Name)
+
+				By("Waiting for Proposed.Note to adopt the new dry SHA, not the previous one")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctp.Status.Proposed.Note.DrySha).To(Equal(secondDrySha),
+						"once the git note lands, Proposed.Note.DrySha must be the new dry SHA, not the stale %q", firstDrySha)
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 
 		// Regression test for the "stale PullRequest.spec.mergeSha after auto-resolved conflict" bug.

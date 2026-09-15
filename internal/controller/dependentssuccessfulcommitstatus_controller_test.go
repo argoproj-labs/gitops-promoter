@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -104,6 +105,28 @@ func dagEnvStatusWithNote(branch, activeDry, proposedDry, noteDry string, health
 		envStatus.Proposed.Note = &promoterv1alpha1.HydratorMetadata{DrySha: noteDry}
 	}
 	return envStatus
+}
+
+// hydratorWaitReason is the expected CommitStatus / gate description when an upstream
+// environment's hydrator has not processed the target dry SHA. Short SHAs match
+// CommitBranchState.DryShaShort (first 7 characters). An empty current SHA is shown as "none".
+func hydratorWaitReason(branch, targetDrySha, currentHydratedDrySha string) string {
+	return fmt.Sprintf(`Waiting for hydrator on %q to process dry %s (currently %s)`,
+		branch, shortDrySha(targetDrySha), currentlyHydratedDrySha(currentHydratedDrySha))
+}
+
+func shortDrySha(sha string) string {
+	if len(sha) < 7 {
+		return sha
+	}
+	return sha[:7]
+}
+
+func currentlyHydratedDrySha(sha string) string {
+	if sha == "" {
+		return "none"
+	}
+	return shortDrySha(sha)
 }
 
 var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
@@ -790,13 +813,72 @@ var _ = Describe("DAG graph logic", func() {
 		})
 
 		// Case 1 (not hydrated): stg's hydrator is still on oldDry (Proposed.Dry = oldDry), so it
-		// has not even produced the target dry yet.
+		// has not even produced the target dry yet. The reason must name the stuck upstream and
+		// the expected vs current dry SHAs so operators can tell which hydrator to inspect.
 		It("holds pending when the upstream's hydrator has not yet processed the target dry", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", oldDry, oldDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, oldDry)))
+		})
+
+		It("hydrator reason: shortens git-length SHAs to 7 characters", func() {
+			target := "abcdef1234567890abcdef1234567890abcdef12"
+			current := "0123456789abcdef0123456789abcdef01234567"
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", current, current, true, old),
+			}
+			snapshots := buildUpstreamSnapshots(linear(), "prd", target, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPending(snapshots, linear().dependsOn["prd"])
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("stg", target, current)))
+			Expect(reason).To(ContainSubstring("abcdef1"))
+			Expect(reason).To(ContainSubstring("0123456"))
+			Expect(reason).NotTo(ContainSubstring(target))
+			Expect(reason).NotTo(ContainSubstring(current))
+		})
+
+		It("hydrator reason: uses the git note as the current hydrated SHA when present", func() {
+			// Proposed.Dry has already advanced to newDry, but the note still points at oldDry.
+			// getEffectiveHydratedDrySha prefers the note, so the wait is on that stale SHA.
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatusWithNote("stg", oldDry, newDry, oldDry, true, old),
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, oldDry)))
+		})
+
+		It("hydrator reason: says currently none when the upstream has no hydrated dry SHA", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", oldDry, "", true, old),
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, "")))
+			Expect(reason).To(ContainSubstring("(currently none)"))
+		})
+
+		It("hydrator reason: names the deeper ancestor after recursing through a no-op", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
+				"dev": dagEnvStatus("dev", oldDry, oldDry, true, old),
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("dev", newDry, oldDry)))
+		})
+
+		It("fan-in: hydrator reason names the unhydrated upstream", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
+				"perf": dagEnvStatus("perf", oldDry, oldDry, true, old),
+			}
+			pending, reason := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(hydratorWaitReason("perf", newDry, oldDry)))
 		})
 
 		It("holds pending when upstream status is missing from statusByBranch", func() {
