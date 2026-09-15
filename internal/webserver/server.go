@@ -1,14 +1,19 @@
 package webserver
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,8 +42,9 @@ const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Event  *Event
+	Scheme     *runtime.Scheme
+	Event      *Event
+	PluginsDir string
 }
 
 // Event represents a server-sent event that can be broadcast to clients.
@@ -184,6 +190,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 
 	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 	router.GET("/list", ws.httpList)
+	router.GET("/plugins.js", ws.httpPlugins)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -240,7 +247,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 
 		// Skip if it's an API or static asset
 		if section == "watch" || section == "list" || section == "healthz" ||
-			section == "assets" {
+			section == "assets" || section == "plugins.js" {
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -294,6 +301,61 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	logger.Info("web server exited properly")
 
 	return nil
+}
+
+// httpPlugins concatenates every external plugin bundle in ws.PluginsDir into a single
+// script response. Each file is wrapped in its own try/catch so one broken plugin doesn't
+// take down the others, mirroring ArgoCD's /extensions.js handler. Unlike ArgoCD, the
+// response is buffered so a content-based ETag can be computed and checked against
+// If-None-Match before anything is written, giving operators real cache revalidation
+// instead of ArgoCD's no-cache-headers-at-all behavior.
+func (ws *WebServer) httpPlugins(c *gin.Context) {
+	var body bytes.Buffer
+
+	entries, err := os.ReadDir(ws.PluginsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			c.String(http.StatusInternalServerError, "failed to read plugins directory: %v", err)
+			return
+		}
+		entries = nil
+	}
+
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), "plugin") || !strings.HasSuffix(entry.Name(), ".js") {
+			continue
+		}
+
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+
+		filePath := filepath.Join(ws.PluginsDir, entry.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "failed to read plugin file: %v", err)
+			return
+		}
+
+		fmt.Fprintf(&body, "// source: %s\n", filePath)
+		body.WriteString("try {\n")
+		body.Write(content)
+		fmt.Fprintf(&body, "\n} catch(e) { console.error('Plugin %s failed to load:', e); }\n", entry.Name())
+	}
+
+	sum := sha256.Sum256(body.Bytes())
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+
+	c.Header("Content-Type", "application/javascript")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	c.Data(http.StatusOK, "application/javascript", body.Bytes())
 }
 
 func (ws *WebServer) httpList(c *gin.Context) {
