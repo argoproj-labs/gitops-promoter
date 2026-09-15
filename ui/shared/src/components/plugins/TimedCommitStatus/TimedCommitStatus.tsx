@@ -7,12 +7,16 @@ import './TimedCommitStatus.scss';
 
 function remainingFromCommitTime(
   environment: NonNullable<ReturnType<typeof findEnvironment>>,
-): number {
+): number | null {
+  const requiredDurationMs = parseGoDuration(environment.requiredDuration);
+  if (requiredDurationMs === null) {
+    return null;
+  }
   const commitTimeMs = new Date(environment.commitTime).getTime();
   if (Number.isNaN(commitTimeMs)) {
     return 0;
   }
-  return parseGoDuration(environment.requiredDuration) - (Date.now() - commitTimeMs);
+  return requiredDurationMs - (Date.now() - commitTimeMs);
 }
 
 const renderFallback = (name: string, url?: string) =>
@@ -36,7 +40,7 @@ function useTimedCommitStatusProgress(
   check: CommitStatusContext['check'],
   environment: ReturnType<typeof findEnvironment>,
 ) {
-  const initialRemaining = environment ? remainingFromCommitTime(environment) : 0;
+  const initialRemaining = environment ? (remainingFromCommitTime(environment) ?? 0) : 0;
   const [remaining, setRemaining] = useState<number>(initialRemaining);
 
   useEffect(() => {
@@ -45,7 +49,7 @@ function useTimedCommitStatusProgress(
     }
 
     const tick = () => {
-      setRemaining(remainingFromCommitTime(environment));
+      setRemaining(remainingFromCommitTime(environment) ?? 0);
     };
 
     tick();
@@ -55,18 +59,23 @@ function useTimedCommitStatusProgress(
 
   const requiredDurationMs = environment ? parseGoDuration(environment.requiredDuration) : 0;
   const clampedRemaining = Math.max(remaining, 0);
-  const elapsedMs = requiredDurationMs - clampedRemaining;
+  const elapsedMs = (requiredDurationMs ?? 0) - clampedRemaining;
   const ratio =
-    requiredDurationMs > 0 ? Math.min(Math.max(elapsedMs / requiredDurationMs, 0), 1) : 0;
+    requiredDurationMs !== null && requiredDurationMs > 0
+      ? Math.min(Math.max(elapsedMs / requiredDurationMs, 0), 1)
+      : 0;
 
-  return { clampedRemaining, ratio };
+  return { clampedRemaining, ratio, durationParsed: requiredDurationMs !== null };
 }
 
 const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager }) => {
   const environment = findEnvironment(check, manager);
-  const { clampedRemaining, ratio } = useTimedCommitStatusProgress(check, environment);
+  const { clampedRemaining, ratio, durationParsed } = useTimedCommitStatusProgress(
+    check,
+    environment,
+  );
 
-  if (!environment || check.status !== 'pending') {
+  if (!environment || check.status !== 'pending' || !durationParsed) {
     return renderFallback(check.name, check.url);
   }
 

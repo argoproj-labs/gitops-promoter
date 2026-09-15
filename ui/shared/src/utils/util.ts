@@ -40,11 +40,26 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-export function parseGoDuration(duration: string): number {
+export function parseGoDuration(duration: string): number | null {
+  const trimmed = duration.trim();
+  if (trimmed === '0' || trimmed === '+0' || trimmed === '-0') {
+    return 0;
+  }
+  if (!/^[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:ns|us|µs|ms|h|m|s)[+-]?)+$/.test(trimmed)) {
+    return null;
+  }
+  if (/[+-]$/.test(trimmed)) {
+    return null;
+  }
+  const units = trimmed.match(/ns|us|µs|ms|h|m|s/g) ?? [];
+  if (new Set(units).size !== units.length) {
+    return null;
+  }
+
   let totalMs = 0;
-  const negated = duration.trimStart().startsWith('-');
-  const body = negated ? duration.replace('-', '') : duration;
-  const re = /([+-]?)(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
+  const negated = trimmed.startsWith('-');
+  const body = negated ? trimmed.replace('-', '') : trimmed;
+  const re = /([+-]?)(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|ms|h|m|s)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) !== null) {
     const value = (m[1] === '-' ? -1 : 1) * parseFloat(m[2]);
@@ -70,7 +85,8 @@ export function parseGoDuration(duration: string): number {
         break;
     }
   }
-  return negated ? -totalMs : totalMs;
+  const result = negated ? -totalMs : totalMs;
+  return result === 0 ? 0 : result;
 }
 
 // Get the commit url from the repo url and sha

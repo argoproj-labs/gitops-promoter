@@ -70,10 +70,6 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('\t-1h')).toBe(-3_600_000);
   });
 
-  it('does not negate the whole expression when the sign follows other leading characters', () => {
-    expect(parseGoDuration('x-5m')).toBe(-300_000);
-  });
-
   it.each([
     ['0', 0],
     ['0s', 0],
@@ -83,10 +79,16 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration(input)).toBe(expected);
   });
 
-  it('returns 0 for empty and whitespace-only input', () => {
-    expect(parseGoDuration('')).toBe(0);
-    expect(parseGoDuration('   ')).toBe(0);
-    expect(parseGoDuration('\n\t ')).toBe(0);
+  it('accepts a bare "0" as the only unitless form', () => {
+    expect(parseGoDuration('0')).toBe(0);
+    expect(parseGoDuration('00')).toBe(null);
+    expect(parseGoDuration('1')).toBe(null);
+  });
+
+  it('normalizes a negative zero result to positive zero', () => {
+    expect(Object.is(parseGoDuration('-0s'), 0)).toBe(true);
+    expect(Object.is(parseGoDuration('-0s'), -0)).toBe(false);
+    expect(Object.is(parseGoDuration('-0h0m0s'), 0)).toBe(true);
   });
 
   it('handles large values without losing whole-millisecond accuracy', () => {
@@ -95,35 +97,56 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('100000h')).toBe(360_000_000_000);
   });
 
-  it('returns 0 for input containing no recognizable unit', () => {
-    expect(parseGoDuration('abc')).toBe(0);
-    expect(parseGoDuration('xyz')).toBe(0);
-    expect(parseGoDuration('100')).toBe(0);
+  it.each(['', '   ', '\n\t '])(
+    'returns null for the empty or whitespace-only input %j',
+    (input) => {
+      expect(parseGoDuration(input)).toBe(null);
+    },
+  );
+
+  it.each(['abc', 'xyz', '100'])('returns null for %s, which contains no valid term', (input) => {
+    expect(parseGoDuration(input)).toBe(null);
   });
 
-  it('ignores unsupported Go-adjacent units like days and weeks', () => {
-    expect(parseGoDuration('5d')).toBe(0);
-    expect(parseGoDuration('2w')).toBe(0);
-    expect(parseGoDuration('3y')).toBe(0);
+  it.each(['5d', '2w', '3y'])(
+    'returns null for the unsupported Go-adjacent unit in %s',
+    (input) => {
+      expect(parseGoDuration(input)).toBe(null);
+    },
+  );
+
+  it.each(['1H', '1M', '1S'])('returns null for the uppercase unit in %s', (input) => {
+    expect(parseGoDuration(input)).toBe(null);
   });
 
-  it('is case-sensitive and ignores uppercase unit suffixes', () => {
-    expect(parseGoDuration('1H')).toBe(0);
-    expect(parseGoDuration('1M')).toBe(0);
-    expect(parseGoDuration('1S')).toBe(0);
+  it.each(['1 h', '1h 30m', '30 s'])(
+    'returns null when whitespace separates a value from its unit in %j',
+    (input) => {
+      expect(parseGoDuration(input)).toBe(null);
+    },
+  );
+
+  it.each(['1h!!30m', 'abc1h', 'garbage 2s garbage', 'x-5m', '1h30m!'])(
+    'returns null for junk in %j',
+    (input) => {
+      expect(parseGoDuration(input)).toBe(null);
+    },
+  );
+
+  it.each(['1h1h', '30s30s', '2h-30m+15m', '1ms1ms'])(
+    'returns null for the repeated unit in %s',
+    (input) => {
+      expect(parseGoDuration(input)).toBe(null);
+    },
+  );
+
+  it.each(['5m-', '5m+', '-', '+'])('returns null for the dangling sign in %j', (input) => {
+    expect(parseGoDuration(input)).toBe(null);
   });
 
-  it('requires the unit to immediately follow the number', () => {
-    expect(parseGoDuration('1 h')).toBe(0);
-  });
-
-  // Pins current behavior: the global scan skips junk between matches instead of rejecting the
-  // input, so malformed strings silently parse as if the junk were absent.
-  it('skips embedded junk rather than rejecting the input', () => {
-    expect(parseGoDuration('1h!!30m')).toBe(5_400_000);
-    expect(parseGoDuration('abc1h')).toBe(3_600_000);
-    expect(parseGoDuration('1h 30m')).toBe(5_400_000);
-    expect(parseGoDuration('garbage 2s garbage')).toBe(2_000);
+  it('treats "m" and "ms" as distinct units rather than a repeat', () => {
+    expect(parseGoDuration('1m1ms')).toBe(60_001);
+    expect(parseGoDuration('1s1ms')).toBe(1_001);
   });
 
   it('subtracts a term introduced by a mid-string minus sign', () => {
@@ -139,7 +162,7 @@ describe('parseGoDuration', () => {
   it('applies each mid-string sign to the term that follows it', () => {
     expect(parseGoDuration('1h-30m-15s')).toBe(1_785_000);
     expect(parseGoDuration('1h+30m-15s')).toBe(5_385_000);
-    expect(parseGoDuration('2h-30m+15m')).toBe(6_300_000);
+    expect(parseGoDuration('2h-30m+15s')).toBe(5_415_000);
   });
 
   it('negates the whole signed expression when a leading minus precedes mid-string signs', () => {
@@ -155,40 +178,29 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('  -5m')).toBe(-300_000);
   });
 
-  // Pins current behavior: a trailing sign has no term to apply to and is simply skipped.
-  it('skips a trailing sign with no following term', () => {
-    expect(parseGoDuration('5m-')).toBe(300_000);
-    expect(parseGoDuration('5m+')).toBe(300_000);
-  });
-
-  // Pins current behavior: repeated units are summed rather than rejected as invalid.
-  it('sums repeated units instead of rejecting them', () => {
-    expect(parseGoDuration('1h1h')).toBe(7_200_000);
-    expect(parseGoDuration('30s30s')).toBe(60_000);
-  });
-
   it('parses a leading plus sign as positive', () => {
     expect(parseGoDuration('+5m')).toBe(300_000);
     expect(parseGoDuration('+1h30m')).toBe(5_400_000);
   });
 
-  // Pins current behavior: exponent notation is not supported, so "1e3s" matches only the "3s"
-  // tail and yields 3s instead of 1000s.
-  it('misparses exponent notation', () => {
-    expect(parseGoDuration('1e3s')).toBe(3_000);
+  it('rejects exponent notation, which Go does not accept', () => {
+    expect(parseGoDuration('1e3s')).toBe(null);
+    expect(parseGoDuration('1E3s')).toBe(null);
   });
 
-  // Pins current behavior: the regex requires a leading digit, so ".5s" matches only "5s" and
-  // yields 5000ms instead of 500ms.
-  it('misparses a value with no digit before the decimal point', () => {
-    expect(parseGoDuration('.5s')).toBe(5_000);
+  it('parses a value with no digit before the decimal point', () => {
+    expect(parseGoDuration('.5s')).toBe(500);
+    expect(parseGoDuration('-.5s')).toBe(-500);
+    expect(parseGoDuration('.5h')).toBe(1_800_000);
   });
 
-  // Pins current behavior: a lone '-' with no numeric match produces negative zero.
-  it('returns negative zero for a sign with no value', () => {
-    expect(parseGoDuration('-')).toBe(-0);
-    expect(Object.is(parseGoDuration('-'), -0)).toBe(true);
-    expect(Object.is(parseGoDuration('-0s'), -0)).toBe(true);
+  it('parses a value with a trailing decimal point', () => {
+    expect(parseGoDuration('1.s')).toBe(1_000);
+  });
+
+  it('returns null for a lone decimal point with no digits', () => {
+    expect(parseGoDuration('.s')).toBe(null);
+    expect(parseGoDuration('.')).toBe(null);
   });
 
   it('is stateless across calls despite the module-level style global regex', () => {

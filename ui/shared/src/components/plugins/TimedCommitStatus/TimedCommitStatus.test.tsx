@@ -180,6 +180,28 @@ describe('TimedCommitStatus', () => {
     expect(fill.style.width).toBe('100%');
   });
 
+  it.each(['5d', '1 h', 'abc', '1h1h', '', '5m-'])(
+    'renders the plain fallback when requiredDuration %j is unparsable',
+    async (requiredDuration) => {
+      const manager = makeManager({ requiredDuration });
+      await render(makeCheck(), manager);
+
+      expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
+      expect(container.querySelector('.timed-commit-status-track')).toBeNull();
+      expect(container.textContent).toBe('timer');
+    },
+  );
+
+  it('renders the unparsable-duration fallback as a link when a url is set', async () => {
+    const manager = makeManager({ requiredDuration: '2w' });
+    await render(makeCheck({ url: 'https://example.com/status' }), manager);
+
+    expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
+    const link = container.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://example.com/status');
+    expect(link?.textContent).toBe('timer');
+  });
+
   it('parses a negative requiredDuration as negative, leaving the bar empty', async () => {
     const manager = makeManager({ requiredDuration: '-30s', commitTime: new Date().toISOString() });
     await render(makeCheck(), manager);
