@@ -4,9 +4,7 @@ controller-specific fields.
 
 ## SCM API call logs
 
-For each SCM REST API request that GitOps Promoter records for metrics (the same calls that increment `scm_calls_total` in the [metrics reference](metrics.md)), the controller emits a structured log line with the message **`SCM API call`**. These lines are emitted at **verbosity level 6** (`V(6)` in code), the wire-level tier, not at the default level.
-
-**How to enable:** set `--zap-log-level` to **`6`**. See [Log verbosity](#log-verbosity) for deployment examples.
+For each SCM REST API request that GitOps Promoter records for metrics (the same calls that increment `scm_calls_total` in the [metrics reference](metrics.md)), the controller emits a structured log line with the message **`SCM API call`**. These lines are emitted at **verbosity level 2** (`V(2)` in code), so they are visible at the default level: each line pairs with a metrics increment and is the canonical record of the controller's SCM traffic.
 
 **Fields** (all keys are stable for filtering and parsing):
 
@@ -21,7 +19,7 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 
-**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit`, `GitLab rate limits`, per-request response statuses, and `ls-remote called` are also emitted at verbosity level 6, so `--zap-log-level=6` surfaces the full per-request SCM and git traffic picture.
+**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit`, `GitLab rate limits`, per-request response statuses, and `ls-remote called` are emitted at verbosity level 6, so `--zap-log-level=6` surfaces the full per-request SCM and git traffic picture beyond the summary `SCM API call` lines.
 
 ## Log Verbosity
 
@@ -66,11 +64,11 @@ Levels follow the Kubernetes convention. Each level includes everything below it
 |-------|-----------------|
 | `0` (`info`) | Always visible: actionable warnings and anomalies — missing or deleted secrets, saturation (full enqueue channels, webhook retry capacity exhausted), programmer errors, controller shutdown triggers. |
 | `1` | Notable one-off events: server and manager lifecycle, repository clones, GitHub App installation listing, status-apply fallback recoveries, unexpected-but-recovered SCM states (for example a 404 on a check run update). |
-| `2` (**default**) | Significant state changes and side effects: pull requests created/updated/merged/closed, promotions and branch merges, merge conflicts detected and resolved, gates transitioning to success, commit statuses pushed for a phase change, orphaned and legacy resource cleanup, finalizer holds that block deletion. |
+| `2` (**default**) | Significant state changes and side effects: pull requests created/updated/merged/closed, promotions and branch merges, merge conflicts detected and resolved, gates transitioning to success, commit statuses pushed for a phase change, orphaned and legacy resource cleanup, finalizer holds that block deletion, and the [`SCM API call`](#scm-api-call-logs) telemetry line for each SCM REST request. |
 | `3` | Extended reconcile flow: reconcile start/end (with duration), per-environment processing results, cross-resource reconcile triggers and enqueues, finalizer removal steps, promotion history notes written. |
 | `4` | Debug — the logic behind decisions: gate evaluations (for example `Proposed commit status is not success`, DAG gate results), promotion-needed checks, finalizer wait reasons, requeue and rate-limit decisions, best-effort fallback failures. |
 | `5` | Trace — plumbing detail: git command internals (fetches, notes, trailers, cat-file), expression evaluation results, rendered templates, HTTP client auth setup, provider-level operation logs, routine skip reasons. |
-| `6` | Wire — per-request traffic: `SCM API call` telemetry, SCM HTTP response statuses, rate-limit headers, `ls-remote` calls, webhook/metrics/dashboard HTTP access logs, per-message stream filtering. |
+| `6` | Wire — per-request traffic: SCM HTTP response statuses, rate-limit headers, `ls-remote` calls, webhook/metrics/dashboard HTTP access logs, per-message stream filtering. |
 
 Any positive integer can be used as a log level; higher values produce more output.
 
