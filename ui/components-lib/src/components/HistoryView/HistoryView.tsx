@@ -168,8 +168,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   }, []);
 
   const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
-    const value =
-      typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
+    const value = typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
     dispatch({ type: 'setEnvFilter', envFilter: value });
   }, []);
 

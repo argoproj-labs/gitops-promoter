@@ -99,9 +99,7 @@ describe('readHistoryViewState', () => {
 
   it('round-trips a branch name containing a comma', () => {
     const params = new URLSearchParams('envs=env%2Fus%2Ceu');
-    expect(readHistoryViewState(params, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual([
-      'env/us,eu',
-    ]);
+    expect(readHistoryViewState(params, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual(['env/us,eu']);
   });
 });
 

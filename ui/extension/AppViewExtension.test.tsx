@@ -60,7 +60,12 @@ const makeCTP = (branch: string, status: Record<string, unknown>) => ({
   kind: 'ChangeTransferPolicy',
   apiVersion: 'promoter.argoproj.io/v1alpha1',
   metadata: { name: branch, namespace: 'default' },
-  spec: { activeBranch: branch, activeCommitStatuses: [], proposedBranch: branch, proposedCommitStatuses: [] },
+  spec: {
+    activeBranch: branch,
+    activeCommitStatuses: [],
+    proposedBranch: branch,
+    proposedCommitStatuses: [],
+  },
   status,
 });
 

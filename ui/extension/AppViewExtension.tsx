@@ -126,7 +126,7 @@ const setViewInUrl = (view: ViewMode) => {
     params.delete(VIEW_PARAM);
     const cleared = writeSelection(params, EXTENSION_SELECTION_PARAMS, null);
     commitParams(
-      writeHistoryViewState(cleared, EXTENSION_HISTORY_PARAMS, DEFAULT_HISTORY_VIEW_STATE)
+      writeHistoryViewState(cleared, EXTENSION_HISTORY_PARAMS, DEFAULT_HISTORY_VIEW_STATE),
     );
   }
 };
