@@ -1,4 +1,10 @@
-import type { Commit, CommitStatus, PullRequest, ReferenceCommit } from '@shared/types/promotion';
+import type {
+  Commit,
+  CommitStatus,
+  EnrichedBranchCommitStatus,
+  PullRequest,
+  ReferenceCommit,
+} from '@shared/types/promotion';
 
 export { FILTER_IDS, SORT_IDS } from '@shared/types/historyView';
 export type { FilterId, SortId } from '@shared/types/historyView';
@@ -22,7 +28,7 @@ export interface CellState {
   hydrated?: Commit;
   /** Upstream code commits registered on the dry commit (`dry.references[].commit`). */
   references?: ReferenceCommit[];
-  commitStatuses: CommitStatus[];
+  commitStatuses: EnrichedBranchCommitStatus[];
   health: HealthKey;
   pullRequest?: PullRequest;
   isProposed?: boolean;

@@ -4,6 +4,7 @@
     "./**/*.ts",
     "./**/*.tsx",
     "../shared/src/**/*.ts",
+    "../shared/src/**/*.tsx",
     "../components-lib/src/**/*.ts"
   ],
   "exclude": ["dist", "node_modules", "../shared/src/types/generated", "iconStyles.generated.ts"]

@@ -115,6 +115,7 @@ type CommitBranchState struct {
 	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=100
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
@@ -139,6 +140,7 @@ type HydratorMetadata struct {
 	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch.
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -162,6 +164,7 @@ type CommitShaState struct {
 	// Body is the body of the commit message without the subject line
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -196,9 +199,10 @@ type ChangeTransferPolicyStatus struct {
 
 	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
 	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// The history length is at most 5 entries.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
+	// +kubebuilder:validation:MaxItems=5
 	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -217,6 +221,18 @@ type ChangeTransferPolicyStatus struct {
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
 	InstanceID *string `json:"instanceID,omitempty"`
 }
+
+const (
+	// MaxPromotionHistory is the maximum number of promotion history entries stored on
+	// ChangeTransferPolicy.status.history and PromotionStrategy.status.environments[].history.
+	MaxPromotionHistory = 5
+	// MaxEnvironments is the maximum number of environments on a PromotionStrategy spec and status.
+	MaxEnvironments = 500
+	// MaxCommitStatuses is the maximum number of commit statuses stored on a branch state.
+	MaxCommitStatuses = 100
+	// MaxRevisionReferences is the maximum number of related-commit references on a hydrated or dry commit.
+	MaxRevisionReferences = 100
+)
 
 // History describes a particular change that was promoted by the ChangeTransferPolicy.
 type History struct {
@@ -250,6 +266,7 @@ type CommitBranchStateHistoryProposed struct {
 	// This contains the state frozen at the moment the PR was merged. When the entry's
 	// mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
 	// revision the promoter last saw, which is not necessarily the revision that merged.
+	// +kubebuilder:validation:MaxItems=100
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 

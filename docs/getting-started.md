@@ -23,7 +23,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.39.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -35,7 +35,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.39.0/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -46,7 +46,7 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-without-ui.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.39.0/install-without-ui.yaml
 ```
 
 ///
@@ -489,13 +489,11 @@ spec:
 
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
 
-Promotion ordering is **not** injected automatically. For the common linear
-dev → staging → production pipeline, create a
+Every PromotionStrategy requires `spec.orderCommitStatusRef`, naming a
 [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
-and declare its `key` on the PromotionStrategy (globally or per environment — see
-[gating docs](gating-promotions/built-in-gates/dependents-successful-commit-status.md#wiring-the-gate-into-the-promotionstrategy)).
-Without a matching gate CR, the PromotionStrategy controller fails its reconcile so environments cannot promote out of
-order by accident. Upgrading from releases before 0.38? See [Upgrading](upgrading.md#038-promotion-ordering-gate).
+(or another ordering-gate CR). The controller injects that gate's `spec.key` onto every `ChangeTransferPolicy`.
+For the common linear dev → staging → production pipeline with DSCS, omit `dependsOn` on every environment.
+Upgrading from 0.38? See [Upgrading](upgrading.md#039-promotion-order-on-promotionstrategy).
 
 Here is a minimal example:
 
@@ -505,8 +503,10 @@ kind: PromotionStrategy
 metadata:
   name: demo
 spec:
-  proposedCommitStatuses:
-  - key: dependents-successful # must match DependentsSuccessfulCommitStatus.spec.key
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo
   environments:
   - autoMerge: false
     branch: environment/development
@@ -536,9 +536,9 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
-> For non-linear promotion graphs, set `spec.environments` with explicit `dependsOn` edges on the
-> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph).
-> Omit `spec.environments` to infer the linear default from the PromotionStrategy's environment order.
+> For non-linear promotion graphs, set `dependsOn` on `PromotionStrategy.spec.environments[]` (see
+> [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph)).
+> Omit `dependsOn` on every environment to infer the linear default from list order.
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting
@@ -574,7 +574,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.39.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -585,7 +585,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.39.0/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the

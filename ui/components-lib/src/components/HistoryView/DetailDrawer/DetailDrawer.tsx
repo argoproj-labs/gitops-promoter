@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import {
   timeAgo,
   formatDate,
@@ -9,10 +10,93 @@ import {
   extractNameOnly,
   extractBodyPreTrailer,
 } from '@shared/utils/util';
+import { getChecks } from '@shared/utils/PSData';
+import { commitStatusPlugins } from '@shared/components/plugins';
+import type { Check } from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
+import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS } from '../presentation';
 import { isEmptyCellKind } from '../helpers';
 import Tooltip from '../Tooltip/Tooltip';
+import { StatusIcon, StatusType } from '../../StatusIcon';
+
+const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
+
+  return (
+    <ul className="hp-drawer__checks">
+      {checks.map((check) => {
+        const Plugin = check.kind ? commitStatusPlugins[check.kind] : undefined;
+        const manager = Plugin ? check.manager : undefined;
+        const RowContent = manager ? Plugin?.rowContent : undefined;
+        const isExpanded = !!expanded[check.name];
+        const panelId = `hp-drawer-check-panel-${check.name}`;
+        const phase: StatusType = HEALTH_LABELS[check.status as HealthKey]
+          ? (check.status as StatusType)
+          : 'unknown';
+
+        return (
+          <li key={check.name} className="hp-drawer__check-item">
+            <div className={`hp-drawer__check hp-drawer__check--${check.status}`}>
+              <span className="hp-drawer__check-icon" aria-hidden="true">
+                <StatusIcon phase={phase} type="status" />
+              </span>
+              {RowContent && (
+                <button
+                  type="button"
+                  className="hp-drawer__check-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={panelId}
+                  onClick={() =>
+                    setExpanded((prev) => ({ ...prev, [check.name]: !prev[check.name] }))
+                  }
+                >
+                  <span className="hp-sr-only">
+                    {isExpanded ? 'Hide details for ' : 'Show details for '}
+                    {check.name}
+                  </span>
+                  {isExpanded ? (
+                    <FiChevronUp aria-hidden="true" />
+                  ) : (
+                    <FiChevronDown aria-hidden="true" />
+                  )}
+                </button>
+              )}
+              {Plugin && manager ? (
+                <Plugin.rowHeader check={check} manager={manager} />
+              ) : (
+                <>
+                  <span className="hp-sr-only">
+                    {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
+                  </span>
+                  <span className="hp-drawer__check-key">{check.name}</span>
+                  {check.description && (
+                    <span className="hp-drawer__check-desc">{check.description}</span>
+                  )}
+                  {check.url && (
+                    <a
+                      href={check.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hp-drawer__check-link"
+                      aria-label={`View details for ${check.name}, opens in new tab`}
+                    >
+                      View details
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+            {RowContent && manager && (
+              <div id={panelId} className="hp-drawer__check-panel" hidden={!isExpanded}>
+                <RowContent check={check} manager={manager} />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 const DetailDrawer: React.FC<{
   row: CommitRow | null;
@@ -58,6 +142,7 @@ const DetailDrawer: React.FC<{
   const failingChecks = cell.commitStatuses.filter((s) => s.phase === 'failure');
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
+  const checks = getChecks([...failingChecks, ...pendingChecks, ...passingChecks], branch);
 
   const checksLabel = cell.isProposed ? 'Proposed' : 'Active';
 
@@ -265,31 +350,7 @@ const DetailDrawer: React.FC<{
           <div className="hp-drawer__section">
             <h3>Checks</h3>
             <p className="hp-drawer__checks-group-label">{checksLabel}</p>
-            <ul className="hp-drawer__checks">
-              {[...failingChecks, ...pendingChecks, ...passingChecks].map((c) => (
-                <li key={c.key} className={`hp-drawer__check hp-drawer__check--${c.phase}`}>
-                  <span className="hp-drawer__check-icon" aria-hidden="true">
-                    {healthIcon[c.phase as HealthKey] ?? healthIcon.unknown}
-                  </span>
-                  <span className="hp-sr-only">
-                    {HEALTH_LABELS[c.phase as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
-                  </span>
-                  <span className="hp-drawer__check-key">{c.key}</span>
-                  {c.description && <span className="hp-drawer__check-desc">{c.description}</span>}
-                  {c.url && (
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hp-drawer__check-link"
-                      aria-label={`View details for ${c.key}, opens in new tab`}
-                    >
-                      View details
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <DrawerChecks checks={checks} />
           </div>
         )}
 

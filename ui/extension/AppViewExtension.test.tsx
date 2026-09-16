@@ -7,8 +7,8 @@ import { createRoot } from 'react-dom/client';
 
 const makeStrategy = (name: string, namespace = 'default') =>
   JSON.stringify({
-    kind: 'PromotionStrategy',
-    apiVersion: 'promoter.argoproj.io/v1alpha1',
+    kind: 'PromotionStrategyDetails',
+    apiVersion: 'view.promoter.argoproj.io/v1alpha1',
     metadata: {
       name,
       namespace,
@@ -17,8 +17,21 @@ const makeStrategy = (name: string, namespace = 'default') =>
       generation: 1,
       creationTimestamp: '',
     },
-    spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
-    status: { environments: [] },
+    promotionStrategy: {
+      kind: 'PromotionStrategy',
+      apiVersion: 'promoter.argoproj.io/v1alpha1',
+      metadata: {
+        name,
+        namespace,
+        uid: 'uid-' + name,
+        resourceVersion: '1',
+        generation: 1,
+        creationTimestamp: '',
+      },
+      spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
+      status: { environments: [] },
+    },
+    changeTransferPolicies: [],
   });
 
 const DEV_BRANCH = 'environments/dev';
@@ -43,10 +56,18 @@ const OLDER_COMMIT = makeCommit(
   '2026-05-22T14:00:00Z',
 );
 
+const makeCTP = (branch: string, status: Record<string, unknown>) => ({
+  kind: 'ChangeTransferPolicy',
+  apiVersion: 'promoter.argoproj.io/v1alpha1',
+  metadata: { name: branch, namespace: 'default' },
+  spec: { activeBranch: branch, activeCommitStatuses: [], proposedBranch: branch, proposedCommitStatuses: [] },
+  status,
+});
+
 const makeStrategyWithHistory = (name: string, namespace = 'default') =>
   JSON.stringify({
-    kind: 'PromotionStrategy',
-    apiVersion: 'promoter.argoproj.io/v1alpha1',
+    kind: 'PromotionStrategyDetails',
+    apiVersion: 'view.promoter.argoproj.io/v1alpha1',
     metadata: {
       name,
       namespace,
@@ -55,66 +76,73 @@ const makeStrategyWithHistory = (name: string, namespace = 'default') =>
       generation: 1,
       creationTimestamp: '',
     },
-    spec: {
-      gitRepositoryRef: { name: 'my-repo' },
-      environments: [{ branch: DEV_BRANCH }, { branch: PRD_BRANCH }],
+    promotionStrategy: {
+      kind: 'PromotionStrategy',
+      apiVersion: 'promoter.argoproj.io/v1alpha1',
+      metadata: {
+        name,
+        namespace,
+        uid: 'uid-' + name,
+        resourceVersion: '1',
+        generation: 1,
+        creationTimestamp: '',
+      },
+      spec: {
+        gitRepositoryRef: { name: 'my-repo' },
+        environments: [{ branch: DEV_BRANCH }, { branch: PRD_BRANCH }],
+      },
+      status: { environments: [] },
     },
-    status: {
-      environments: [
-        {
-          branch: DEV_BRANCH,
-          active: {
-            dry: NEWER_COMMIT,
-            hydrated: {},
-            commitStatuses: [{ key: 'ci', phase: 'success' }],
-          },
-          proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
-          history: [
-            {
-              active: {
-                dry: NEWER_COMMIT,
-                hydrated: {},
-                commitStatuses: [{ key: 'ci', phase: 'success' }],
-              },
-            },
-            {
-              active: {
-                dry: OLDER_COMMIT,
-                hydrated: {},
-                commitStatuses: [{ key: 'ci', phase: 'failure' }],
-              },
-            },
-          ],
-          lastHealthyDryShas: [],
+    changeTransferPolicies: [
+      makeCTP(DEV_BRANCH, {
+        active: {
+          dry: NEWER_COMMIT,
+          hydrated: {},
+          commitStatuses: [{ key: 'ci', phase: 'success' }],
         },
-        {
-          branch: PRD_BRANCH,
-          active: {
-            dry: OLDER_COMMIT,
-            hydrated: {},
-            commitStatuses: [{ key: 'ci', phase: 'success' }],
-          },
-          proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
-          history: [
-            {
-              active: {
-                dry: OLDER_COMMIT,
-                hydrated: {},
-                commitStatuses: [{ key: 'ci', phase: 'success' }],
-              },
+        proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+        history: [
+          {
+            active: {
+              dry: NEWER_COMMIT,
+              hydrated: {},
+              commitStatuses: [{ key: 'ci', phase: 'success' }],
             },
-          ],
-          lastHealthyDryShas: [],
+          },
+          {
+            active: {
+              dry: OLDER_COMMIT,
+              hydrated: {},
+              commitStatuses: [{ key: 'ci', phase: 'failure' }],
+            },
+          },
+        ],
+      }),
+      makeCTP(PRD_BRANCH, {
+        active: {
+          dry: OLDER_COMMIT,
+          hydrated: {},
+          commitStatuses: [{ key: 'ci', phase: 'success' }],
         },
-      ],
-    },
+        proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+        history: [
+          {
+            active: {
+              dry: OLDER_COMMIT,
+              hydrated: {},
+              commitStatuses: [{ key: 'ci', phase: 'success' }],
+            },
+          },
+        ],
+      }),
+    ],
   });
 
 const makeTreeNode = (name: string, namespace = 'default', version = 'v1alpha1') => ({
-  kind: 'PromotionStrategy',
+  kind: 'PromotionStrategyDetails',
   name,
   namespace,
-  group: 'promoter.argoproj.io',
+  group: 'view.promoter.argoproj.io',
   version,
 });
 
