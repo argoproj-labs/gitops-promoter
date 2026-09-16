@@ -10,7 +10,7 @@ export function resolveNamespace(
     return persistedNamespace;
   }
   if (namespaces.length && !namespaces.includes(urlNamespace)) {
-    return persistedNamespace;
+    return namespaces.includes(persistedNamespace) ? persistedNamespace : '';
   }
   return urlNamespace;
 }

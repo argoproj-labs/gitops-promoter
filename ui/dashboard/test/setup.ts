@@ -1,4 +1,8 @@
+import { beforeEach } from 'vitest';
+
 const store = new Map<string, string>();
+
+beforeEach(() => store.clear());
 
 Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,

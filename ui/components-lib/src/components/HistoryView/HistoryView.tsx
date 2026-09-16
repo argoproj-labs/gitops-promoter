@@ -222,8 +222,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     if (!selectionIsStale) return;
     if (selectionFromLinkRef.current) setStaleLink(true);
     selectionFromLinkRef.current = false;
-    dispatch({ type: 'setSelection', selection: null });
-  }, [selectionIsStale]);
+    dispatchAndNotify({ type: 'setSelection', selection: null });
+  }, [selectionIsStale, dispatchAndNotify]);
 
   const counts = useMemo(() => {
     return {

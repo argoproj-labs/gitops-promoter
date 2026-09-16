@@ -18,7 +18,7 @@ const currentParams = (): URLSearchParams => new URLSearchParams(window.location
 const commitParams = (params: URLSearchParams) => {
   const url = new URL(window.location.href);
   url.search = params.toString();
-  window.history.replaceState(null, '', url.toString());
+  window.history.replaceState(window.history.state, '', url.toString());
 };
 
 const HistoryPage: React.FC = () => {
