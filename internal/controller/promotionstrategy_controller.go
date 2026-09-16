@@ -48,58 +48,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// ctpDisagreement identifies one distinct effective-dry-SHA gap for a CTP:
-// its own observed value versus the newest effective dry SHA among sibling CTPs.
-// Reconcile refetches git; if the gap is unchanged afterward, git had nothing new
-// for that snapshot, so re-enqueueing the same disagreement is bounded.
-type ctpDisagreement struct {
-	// ctpEffectiveProposedDrySha is this CTP's effective proposed dry SHA
-	// (Note.DrySha if set, else Proposed.Dry.Sha).
-	ctpEffectiveProposedDrySha string
-	// newestEffectiveProposedDrySha is the effective proposed dry SHA from the
-	// sibling CTP with the newest hydrated commit — the batch convergence target.
-	newestEffectiveProposedDrySha string
-}
-
-// ctpEnqueueState tracks rate limiting and retry state for enqueuing out-of-sync CTPs.
+// ctpEnqueueState tracks rate limiting for enqueuing out-of-sync CTPs.
 type ctpEnqueueState struct {
 	// lastEnqueueTime is when this CTP was last enqueued. It bounds enqueue spacing to
-	// the threshold, so a fresh disagreement arriving right after a nudge cannot bypass
-	// the rate limit.
+	// the threshold so a hot PromotionStrategy Owns loop cannot re-nudge the same CTP
+	// every few milliseconds. Further retries come from a short PromotionStrategy
+	// RequeueAfter while the disagreement lasts.
 	lastEnqueueTime time.Time
-	// lastSeenTime is when the enqueue decision last considered this CTP, including
-	// retries-exhausted skips. The hourly cleanup sweeps on this rather than
-	// lastEnqueueTime: a CTP with an exhausted disagreement is deliberately not
-	// enqueued anymore, so its lastEnqueueTime goes stale while it is still live —
-	// sweeping on that would evict its retry memory every hour and restart the
-	// retries. A deleted CTP stops being considered and is swept within the hour
-	// either way.
-	lastSeenTime time.Time
-	// lastDisagreement is the disagreement this CTP is currently armed for — the value a
-	// retry chain was started with. It is the single source of truth for two things:
-	//   - Chain liveness: a chain re-nudges only while lastDisagreement still equals the
-	//     value it was armed with. A changed disagreement overwrites it (starting a new
-	//     chain and stranding the old one); convergence clears it to the zero value. In
-	//     both cases the stranded chain sees a mismatch on its next tick and stops — no
-	//     per-chain flag or generation counter is needed.
-	//   - Enqueue suppression: while lastDisagreement still matches, handleRateLimitedEnqueue
-	//     treats the disagreement as already handled and does nothing. This holds even after
-	//     the retry budget is exhausted and no chain is running: the CTP is deliberately not
-	//     re-enqueued until the disagreement changes or the periodic CTP requeue fires. So a
-	//     set lastDisagreement means "armed for this disagreement" (pending retries OR
-	//     exhausted budget), not necessarily "a chain is still ticking".
-	lastDisagreement ctpDisagreement
 }
 
 const (
-	// defaultEnqueueThreshold is the minimum spacing between enqueues of the same CTP,
-	// and the spacing between chained retries.
+	// defaultEnqueueThreshold is the minimum spacing between EnqueueCTP calls for the
+	// same lagging CTP, and the RequeueAfter used while any CTP still disagrees with
+	// the batch target. Git notes have no SCM webhook, so a CTP fetch that finds
+	// nothing usually does not change status and will not wake PromotionStrategy via
+	// Owns; the short requeue is what looks again.
 	defaultEnqueueThreshold = 15 * time.Second
-	// maxEnqueueRetriesPerDisagreement is the number of delayed retries allowed per
-	// distinct disagreement, after the one immediate enqueue. Bounds re-nudging of an
-	// unchanged disagreement (e.g. an environment that structurally cannot match the
-	// target) so it does not re-enqueue on a fixed interval forever.
-	maxEnqueueRetriesPerDisagreement = 3
 )
 
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
@@ -214,9 +178,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// SCM's do not send webhooks when git notes are pushed, so we need to
 	// trigger CTP reconciliation when we detect stale NoteDrySha values.
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
-	// When CTPs reconcile and update their status, the .Owns() watch will automatically
-	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ctps)
+	// Only lagging CTPs are enqueued. If any still disagree, RequeueAfter is shortened
+	// so we look again even when the CTP status did not change (Owns would not fire).
+	hasDisagreement := r.enqueueOutOfSyncCTPs(ctx, ctps)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -224,7 +188,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	return ctrl.Result{
-		RequeueAfter: requeueDuration,
+		RequeueAfter: r.requeueAfterForDisagreement(requeueDuration, hasDisagreement),
 	}, nil
 }
 
@@ -467,18 +431,12 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // moves the target too, so environments whose notes lag behind a sibling's are the ones
 // nudged, and a batch where every note already agrees is left alone.
 //
-// Retry control: a triggered reconcile refetches the branch and its git notes; if the
-// disagreement is unchanged afterwards, git held nothing the status hadn't already seen
-// at that moment. The note the disagreement is waiting on may still land shortly after
-// (note pushes have no webhooks), so the same disagreement gets one immediate enqueue
-// plus a chained series of threshold-spaced delayed retries — and then nothing until
-// CTP requeue (changeTransferPolicy.workQueue.requeueDuration), which is the designed
-// convergence mechanism. This keeps a persistent no-op disagreement from re-enqueueing
-// forever. A changed disagreement (a fetched note, a new target) resets the budget and
-// is nudged promptly again.
-func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+// A lagging CTP is EnqueueCTP'd at most once per threshold. The return value is
+// whether any CTP still disagrees with the batch target; Reconcile uses that to
+// RequeueAfter at the threshold until the notes converge.
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
 	if len(ctps) == 0 {
-		return
+		return false
 	}
 
 	// Initialize state map lazily
@@ -519,29 +477,45 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	}
 
 	if newestEffectiveProposedDrySha == "" {
-		return
+		return false
 	}
 
-	// Consider enqueuing reconcile for CTPs whose effective proposed dry SHA differs
-	// from the batch target. Rate limiting in handleRateLimitedEnqueue bounds retries
-	// per distinct disagreement.
+	hasDisagreement := false
 	for _, ctp := range ctps {
 		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
 		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha {
-			r.markConverged(client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name})
 			continue
 		}
 
-		// Add SHA information to context for logging
+		hasDisagreement = true
 		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
 			"ctpEffectiveProposedDrySha", ctpEffectiveProposedDrySha,
 			"newestEffectiveProposedDrySha", newestEffectiveProposedDrySha,
 		))
-		r.handleRateLimitedEnqueue(ctxWithLog, ctp, ctpDisagreement{
-			ctpEffectiveProposedDrySha:    ctpEffectiveProposedDrySha,
-			newestEffectiveProposedDrySha: newestEffectiveProposedDrySha,
-		})
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp)
 	}
+	return hasDisagreement
+}
+
+// requeueAfterForDisagreement keeps PromotionStrategy on the enqueue threshold while
+// any CTP still disagrees, so retries continue without an in-process AfterFunc chain.
+// A configured workQueue.requeueDuration shorter than the threshold is left as-is.
+func (r *PromotionStrategyReconciler) requeueAfterForDisagreement(configured time.Duration, hasDisagreement bool) time.Duration {
+	if !hasDisagreement {
+		return configured
+	}
+	threshold := r.enqueueThresholdOrDefault()
+	if configured > 0 && configured < threshold {
+		return configured
+	}
+	return threshold
+}
+
+func (r *PromotionStrategyReconciler) enqueueThresholdOrDefault() time.Duration {
+	if r.enqueueThreshold > 0 {
+		return r.enqueueThreshold
+	}
+	return defaultEnqueueThreshold
 }
 
 // startCleanupTimer starts a self-rescheduling background timer to remove stale entries
@@ -552,18 +526,14 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	//       * Struct: 32 bytes (2 string headers, 16 bytes each)
 	//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
 	//   - *ctpEnqueueState pointer: 8 bytes
-	//   - ctpEnqueueState struct: ~80 bytes
-	//       * 2x time.Time: 48 bytes
-	//       * ctpDisagreement (2 string headers): 32 bytes
-	//   - ctpDisagreement string content: 2 SHAs at 40-64 chars = ~80-128 bytes
+	//   - ctpEnqueueState struct: ~24 bytes (time.Time)
 	//   - Map overhead: ~8 bytes per entry
-	//   Total: ~300 bytes per CTP. The disagreement is a single value overwritten on
-	//   each enqueue, never an accumulating set, so entries do not grow over time.
+	//   Total: ~140 bytes per CTP.
 	//
 	// Memory bounds (assuming 32-char namespace and name):
-	//   - 100 stale entries = ~30 KB
-	//   - 1,000 stale entries = ~300 KB
-	//   - 10,000 stale entries = ~3 MB
+	//   - 100 stale entries = ~14 KB
+	//   - 1,000 stale entries = ~140 KB
+	//   - 10,000 stale entries = ~1.4 MB
 	//
 	// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
 	var scheduleCleanup func()
@@ -571,15 +541,7 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 		time.AfterFunc(1*time.Hour, func() {
 			r.enqueueStateMutex.Lock()
 			for key, state := range r.enqueueStates {
-				// Sweep on lastSeenTime, not lastEnqueueTime: CTPs with exhausted
-				// retries are deliberately not enqueued anymore, but they are still
-				// considered on every PromotionStrategy reconcile, which keeps
-				// lastSeenTime fresh. Entries go stale here only when the enqueue
-				// decision stops considering the CTP — it was deleted, its
-				// PromotionStrategy is gone, or it converged with the target
-				// (harmless to sweep: a future disagreement re-arms from a fresh
-				// entry anyway).
-				if time.Since(state.lastSeenTime) > 1*time.Hour {
+				if time.Since(state.lastEnqueueTime) > 1*time.Hour {
 					delete(r.enqueueStates, key)
 				}
 			}
@@ -590,60 +552,29 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	scheduleCleanup()
 }
 
-// handleRateLimitedEnqueue nudges a CTP to reconcile for the given disagreement, rate
-// limited so the same CTP is not enqueued more than once per threshold (15s by default).
-//
-// A disagreement that differs from the one the CTP is currently armed for (a brand-new
-// gap, a fetched note, a new target) starts a fresh bounded retry chain and enqueues
-// right away — unless the CTP was enqueued within the threshold, in which case the
-// immediate nudge is skipped and the chain delivers it on its first tick. That tick is a
-// full threshold after the chain starts (not just the time remaining in the rate-limit
-// window), so a deferred first nudge can land up to nearly two thresholds after the
-// previous enqueue; this is acceptable because the note being waited on typically lands
-// within that window anyway. A disagreement identical to the one already armed is left to
-// the existing chain (or, if its budget is exhausted, to the periodic CTP requeue), so it
-// is ignored here. The chain (see startRetryChain) owns all subsequent re-nudging and its
-// own termination; this function never schedules directly.
+// handleRateLimitedEnqueue nudges a lagging CTP to reconcile, at most once per
+// threshold (15s by default). Repeats after the window come from the next
+// PromotionStrategy reconcile (short RequeueAfter while disagreement lasts).
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
-	disagreement ctpDisagreement,
 ) {
-	enqueueThreshold := r.enqueueThreshold
-	if enqueueThreshold <= 0 {
-		enqueueThreshold = defaultEnqueueThreshold
-	}
+	enqueueThreshold := r.enqueueThresholdOrDefault()
 
 	logger := log.FromContext(ctx)
-	now := time.Now()
 	key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
 
 	r.enqueueStateMutex.Lock()
 	state := r.getOrCreateState(key)
-	state.lastSeenTime = now
-	if state.lastDisagreement == disagreement {
-		// Already armed for this exact disagreement: either a retry chain is still ticking,
-		// or its budget is exhausted and we are deliberately waiting for the periodic CTP
-		// requeue. Either way there is nothing to do here until the disagreement changes.
-		r.enqueueStateMutex.Unlock()
-		logger.V(4).Info("Enqueue skipped, already armed for this disagreement (active retries or exhausted budget)", "ctp", ctp.Name)
-		return
-	}
-	state.lastDisagreement = disagreement
-	rateLimited := now.Sub(state.lastEnqueueTime) < enqueueThreshold
+	rateLimited := time.Since(state.lastEnqueueTime) < enqueueThreshold
 	r.enqueueStateMutex.Unlock()
 
-	// Start a fresh chain for the new disagreement, then enqueue immediately unless the
-	// CTP was nudged within the rate-limit window — in which case the chain's first tick
-	// delivers the nudge once the window elapses. Either way the chain provides up to
-	// maxEnqueueRetriesPerDisagreement threshold-spaced nudges and then stops.
 	if rateLimited {
-		logger.V(4).Info("Rate limited, deferring enqueue to retry chain", "ctp", ctp.Name)
-	} else {
-		logger.V(4).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
-		r.enqueue(key)
+		logger.V(4).Info("Enqueue skipped, within threshold", "ctp", ctp.Name)
+		return
 	}
-	r.startRetryChain(ctx, key, disagreement, maxEnqueueRetriesPerDisagreement)
+	logger.V(4).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
+	r.enqueue(key)
 }
 
 // getOrCreateState returns the enqueue state for key, creating it if absent. Callers must
@@ -667,68 +598,4 @@ func (r *PromotionStrategyReconciler) enqueue(key client.ObjectKey) {
 	if r.EnqueueCTP != nil {
 		r.EnqueueCTP(key.Namespace, key.Name)
 	}
-}
-
-// startRetryChain re-nudges a CTP every threshold for a bounded number of attempts, then
-// stops. It exists because SCMs send no webhook for git-note pushes: the note a
-// disagreement is waiting on may land in the seconds after a reconcile, and at a long CTP
-// requeue interval that would otherwise be the only retry. Each tick re-nudges only while
-// lastDisagreement still equals the disagreement the chain was armed with; a changed
-// disagreement (new chain) or convergence (cleared) makes the tick a no-op and ends the
-// chain — so a CTP that structurally cannot match the target stops after the budget
-// rather than re-enqueueing forever. attemptsLeft is carried in the closure, so no
-// per-chain state lives in the map.
-func (r *PromotionStrategyReconciler) startRetryChain(
-	ctx context.Context,
-	key client.ObjectKey,
-	disagreement ctpDisagreement,
-	attemptsLeft int,
-) {
-	if attemptsLeft <= 0 {
-		return
-	}
-
-	enqueueThreshold := r.enqueueThreshold
-	if enqueueThreshold <= 0 {
-		enqueueThreshold = defaultEnqueueThreshold
-	}
-	logger := log.FromContext(ctx)
-
-	time.AfterFunc(enqueueThreshold, func() {
-		r.enqueueStateMutex.Lock()
-		state := r.enqueueStates[key]
-		stale := state == nil || state.lastDisagreement != disagreement
-		if !stale {
-			state.lastSeenTime = time.Now()
-		}
-		r.enqueueStateMutex.Unlock()
-
-		if stale {
-			// The disagreement changed or the CTP converged; a newer chain, if any, owns it.
-			return
-		}
-
-		logger.V(4).Info("Retrying enqueue for unchanged disagreement",
-			"ctp", key.Name,
-			"attemptsLeft", attemptsLeft)
-		r.enqueue(key)
-		r.startRetryChain(ctx, key, disagreement, attemptsLeft-1)
-	})
-}
-
-// markConverged clears the retry chain for a CTP whose effective dry SHA now matches the
-// batch target. Zeroing lastDisagreement makes the running chain's next tick a no-op
-// (see startRetryChain); lastSeenTime is refreshed so the cleanup sweep does not evict a
-// still-live entry.
-func (r *PromotionStrategyReconciler) markConverged(key client.ObjectKey) {
-	r.enqueueStateMutex.Lock()
-	defer r.enqueueStateMutex.Unlock()
-
-	state := r.enqueueStates[key]
-	if state == nil {
-		return
-	}
-
-	state.lastSeenTime = time.Now()
-	state.lastDisagreement = ctpDisagreement{}
 }

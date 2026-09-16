@@ -5913,25 +5913,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
-	// Note: Each test creates its own reconciler and state instead of using shared BeforeEach setup.
-	// This ensures complete test isolation because enqueueOutOfSyncCTPs schedules background
-	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
-	// background timers from one test cannot contaminate another test's assertions.
-	//
-	// Mutex locking pattern: After each call to enqueueOutOfSyncCTPs, tests acquire the lock,
-	// read enqueuedCTPs, then immediately release the lock before calling enqueueOutOfSyncCTPs
-	// again. This fine-grained locking is required because background timer goroutines need to
-	// acquire the lock to append to enqueuedCTPs while the test waits (Eventually/Consistently
-	// polling). Using defer to hold the lock for an entire test would cause deadlock: the test
-	// would wait for timers to fire, but timers would block waiting for the lock that won't
-	// release until the test completes.
+	// Each test creates its own reconciler so enqueue state is not shared across specs.
 	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
-		// enqueued when its own effective proposed dry SHA disagrees with that target — one
-		// immediate enqueue plus at most 3 chained delayed retries per distinct disagreement (a
-		// retried nudge covers a git note landing shortly after the previous one), after
-		// which the periodic CTP requeue is the retry path until the disagreement changes.
+		// EnqueueCTP'd when its own effective proposed dry SHA disagrees with that target,
+		// at most once per threshold. enqueueOutOfSyncCTPs reports whether any CTP still
+		// disagrees so Reconcile can RequeueAfter at the threshold until notes converge.
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				Name:      name,
@@ -5962,15 +5950,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			return makeCTPWithShas(name, "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, metav1.NewTime(time.Now().Add(-time.Minute)))
 		}
 
-		// Helper to create reconciler with enqueue tracking
 		makeReconciler := func() (*PromotionStrategyReconciler, *[]client.ObjectKey, *sync.Mutex) {
 			enqueuedCTPs := &[]client.ObjectKey{}
 			mutex := &sync.Mutex{}
 
 			reconciler := &PromotionStrategyReconciler{
-				// Shrink the rate-limit window from the 15s production default so
-				// delayed-retry behavior can be exercised without real 15s waits;
-				// the semantics under test are all threshold-relative.
 				enqueueThreshold: 500 * time.Millisecond,
 				EnqueueCTP: func(namespace, name string) {
 					mutex.Lock()
@@ -5998,65 +5982,49 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			// A lone environment's own effective dry SHA is the target by definition, even
 			// when its note disagrees with its hydrator.metadata file (a no-op hydration).
-			// There is no sibling to catch up with and nothing a refetch could change.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			hasDisagreement := reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeLaggingCTP("lonely-ctp"),
 			})
 
+			Expect(hasDisagreement).To(BeFalse())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
 		})
 
 		It("should stay silent when every environment's note already agrees", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			// The terminal no-op hydration batch: the hydrator updated every environment's
-			// git note to newnote456 without new commits, so every file still reads abc123.
-			// All effective dry SHAs agree, so the batch is converged — this exact state
-			// used to re-enqueue every CTP forever because the target was file-derived.
 			note := func() *promoterv1alpha1.HydratorMetadata {
 				return &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}
 			}
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			hasDisagreement := reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("dev-ctp", "abc123", note(), metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("prod-ctp", "abc123", note(), metav1.Now()),
 			})
 
+			Expect(hasDisagreement).To(BeFalse())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
 		})
 
 		It("should enqueue the environment whose note lags a sibling's", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			// The newest environment's note moved to newnote456 (a no-op hydration); the
-			// lagging environment still reports abc123. The laggard is the environment
-			// with something to fetch — it must be the one selected, not the sibling that
-			// already has the note.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			hasDisagreement := reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("lagging-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now()),
 			})
 
+			Expect(hasDisagreement).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"lagging-ctp"}))
 		})
 
-		It("should fall back to the file SHA for environments without notes", func() {
+		It("should fall back to the file SHA when a note is not loaded yet", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			// Mixed fleet: the newest environment's hydrator writes notes (target moves to
-			// its note newnote456); the other environment's hydrator does not, so it can
-			// never represent newnote456 and a refetch cannot help it. It gets one prompt
-			// nudge for the disagreement; repeats defer to a bounded number of delayed
-			// retries — not a fixed-rate live-lock loop.
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
-
-			// Repeated owner-watch loops with the identical disagreement do not enqueue
-			// again immediately (they defer to the single scheduled retry).
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			hasDisagreement := reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			Expect(hasDisagreement).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
 		})
 
@@ -6068,7 +6036,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			hasDisagreement := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(hasDisagreement).To(BeTrue())
 
 			enqueueMutex.Lock()
 			Expect(*enqueuedCTPs).To(HaveLen(1))
@@ -6077,7 +6046,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			enqueueMutex.Unlock()
 		})
 
-		It("should retry an unchanged disagreement at most 3 times", func() {
+		It("should not enqueue the same CTP again within the threshold", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -6085,91 +6054,43 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			// One call enqueues immediately and auto-chains threshold-spaced delayed
-			// retries until the disagreement budget is exhausted. Repeats within the
-			// rate-limit window do not enqueue again or arm duplicate chains.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
 			for range 3 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
 			}
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
-
-			// The chained retries cover a git note landing shortly after each nudge (note
-			// pushes have no webhooks). The budget allows 3 delayed retries after the
-			// immediate enqueue — 4 total — without further reconcile calls.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"chained delayed retries should exhaust the disagreement budget")
-
-			// The budget is exhausted: further owner-watch loops neither enqueue nor
-			// schedule retries. Under the previous fixed-interval semantics another
-			// enqueue would land inside every window — forever. The periodic CTP requeue
-			// is the retry path from here on.
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an unchanged disagreement must stop retrying once its budget is exhausted")
-
-			// Even outside the rate-limit window, the exhausted budget blocks enqueues.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 		})
 
-		It("should re-arm when the disagreement changes and auto-chain retries for the new disagreement", func() {
+		It("should enqueue again after the threshold elapses", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeLaggingCTP("test-ctp"),
+				makeTargetCTP(),
+			}
+
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
+
+			time.Sleep(reconciler.enqueueThreshold + 50*time.Millisecond)
+
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp", "test-ctp"}))
+		})
+
+		It("should stop enqueueing after the CTP converges with the target", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
-			// First call enqueues for disagreement (old123 vs abc123) and arms a retry chain.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
-			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
-			// within the rate-limit window replaces the old retry chain with a fresh one and
-			// defers its first nudge to the chain (no immediate enqueue while rate limited),
-			// no matter how many owner-watch loops repeat it.
-			lagging.Status.Proposed.Note.DrySha = "older999"
-			for range 5 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			}
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
-				"changed disagreement within the threshold must defer, not enqueue immediately")
-
-			// The new chain delivers its budget of threshold-spaced nudges:
-			// 1 (old, immediate) + maxEnqueueRetriesPerDisagreement (new chain) = 4 total.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"new disagreement should get a fresh chained retry budget")
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"no additional enqueue may fire without a new disagreement")
-		})
-
-		It("should cancel pending retries when the CTP converges with the target", func() {
-			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
-
-			lagging := makeLaggingCTP("test-ctp")
-			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
-
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
-
-			// The lagging environment's note catches up to the batch target.
+			time.Sleep(reconciler.enqueueThreshold + 50*time.Millisecond)
 			lagging.Status.Proposed.Note.DrySha = "abc123"
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-
-			// Without cancellation the auto-chain would reach 4 enqueues within a few seconds.
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 3*time.Second, 100*time.Millisecond).Should(Equal([]string{"test-ctp"}),
-				"convergence must cancel pending retry timers")
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeFalse())
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 		})
 
 		It("should track disagreements per CTP independently", func() {
@@ -6181,14 +6102,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			// First call - both lagging CTPs should enqueue
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 
-			// Second call immediately - both disagreements are unchanged and within the
-			// rate-limit window, so neither enqueues immediately (each defers to a single
-			// scheduled delayed retry instead, tracked independently per CTP).
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
 
@@ -6198,17 +6115,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			ctp1 := makeLaggingCTP("ctp-1")
 			ctp2 := makeLaggingCTP("ctp-2")
 
-			// First call - enqueue ctp-1 only
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1"}))
 
-			// Immediately call again with both CTPs: ctp-1 is inside its rate-limit
-			// window, so it does not enqueue immediately (it defers to a scheduled
-			// delayed retry); ctp-2 has never been enqueued and goes through right away.
-			time.Sleep(100 * time.Millisecond)
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
-
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})).To(BeTrue())
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
+		})
+
+		It("should requeue at the enqueue threshold while disagreement lasts", func() {
+			reconciler := &PromotionStrategyReconciler{}
+			configured := 5 * time.Minute
+
+			Expect(reconciler.requeueAfterForDisagreement(configured, true)).To(Equal(defaultEnqueueThreshold))
+			Expect(reconciler.requeueAfterForDisagreement(configured, false)).To(Equal(configured))
+			Expect(reconciler.requeueAfterForDisagreement(5*time.Second, true)).To(Equal(5 * time.Second))
 		})
 	})
 })
