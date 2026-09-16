@@ -224,7 +224,7 @@ export type components = {
             active?: components["schemas"]["CommitBranchState"];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
+            /** @description History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
             history?: components["schemas"]["History"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
@@ -428,6 +428,95 @@ export type components = {
             /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
             timezone?: string;
         };
+        /** @description DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API */
+        DependentsSuccessfulCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["DependentsSuccessfulCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["DependentsSuccessfulCommitStatusStatus"];
+        };
+        /** @description DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch. */
+        DependentsSuccessfulCommitStatusEnvironmentStatus: {
+            /** @description ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses. */
+            activeCommitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target. */
+            upstreams?: components["schemas"]["DependentsSuccessfulCommitStatusUpstreamStatus"][];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
+        /** @description DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusSpec: {
+            /**
+             * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Environments reports observed gate and upstream state per dependency-graph branch. */
+            environments?: components["schemas"]["DependentsSuccessfulCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch is satisfied for this environment's promotion target. */
+        DependentsSuccessfulCommitStatusUpstreamStatus: {
+            /**
+             * @description Branch is the upstream environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Reason explains why the upstream is not satisfied. Omitted when satisfied is true. */
+            reason?: string;
+            /**
+             * @description Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.
+             * @default false
+             */
+            satisfied: boolean;
+        };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
         /** @description Environment defines a single environment in the promotion sequence. */
@@ -447,6 +536,8 @@ export type components = {
              * @default
              */
             branch: string;
+            /** @description DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers a linear chain from spec.environments order. Each item must not start with '-', contain ':', or contain '..'. */
+            dependsOn?: string[];
             /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.
              *
@@ -466,7 +557,7 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
+            /** @description History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
             history?: components["schemas"]["History"][];
             /** @description LastHealthyDryShas is a list of dry commits that were observed to be healthy in the environment. */
             lastHealthyDryShas: components["schemas"]["HealthyDryShas"][];
@@ -1121,6 +1212,24 @@ export type components = {
              */
             uid?: string;
         };
+        /** @description OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering. */
+        OrderCommitStatusRef: {
+            /**
+             * @description Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io; out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
+             * @default
+             */
+            group: string;
+            /**
+             * @description Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+             * @default
+             */
+            kind: string;
+            /**
+             * @description Name is the name of the resource being referenced.
+             * @default
+             */
+            name: string;
+        };
         /** @description OutputSpec holds an expression that returns a map/object to persist (e.g. TriggerOutput or ResponseOutput). */
         OutputSpec: {
             /**
@@ -1190,6 +1299,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
+            dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */
             gitCommitStatuses?: components["schemas"]["GitCommitStatus"][];
             /** @description GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable. */
@@ -1242,9 +1353,16 @@ export type components = {
              */
             gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /**
+             * @description OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+             * @default {}
+             */
+            orderCommitStatusRef: components["schemas"]["OrderCommitStatusRef"];
+            /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.
              *
              *     The commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.
+             *
+             *     The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and does not need to be declared here.
              */
             proposedCommitStatuses?: components["schemas"]["CommitStatusSelector"][];
             /** @description PullRequest configures SCM pull request behavior for all environments in this strategy. */
@@ -1255,7 +1373,7 @@ export type components = {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment in the promotion sequence. */
-            environments: components["schemas"]["EnvironmentStatus"][];
+            environments?: components["schemas"]["EnvironmentStatus"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
             /**
@@ -1742,23 +1860,9 @@ export type components = {
              */
             options?: string[];
             /**
-             * @description Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape is available to escape url query parameters. The template can be configured with options to control the behavior during execution if a variable is not present.
+             * @description Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.
              *
-             *     Example:
-             *
-             *       {{- $baseURL := "https://dev.argocd.local" -}}
-             *       {{- if eq .Environment "environment/development" -}}
-             *       {{- $baseURL = "https://dev.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/staging" -}}
-             *       {{- $baseURL = "https://staging.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/production" -}}
-             *       {{- $baseURL = "https://prod.argocd.local" -}}
-             *       {{- end -}}
-             *       {{- $labels := "" -}}
-             *       {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-             *       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-             *       {{- end -}}
-             *       {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+             *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.
              */
             template?: string;
         };

@@ -66,20 +66,18 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
 
 	bundle := &viewv1alpha1.PromotionStrategyDetails{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              name,
-			Namespace:         namespace,
-			UID:               detailsUID(ps.UID),
-			ResourceVersion:   resourceVersion,
-			CreationTimestamp: ps.CreationTimestamp,
-			Labels:            ps.Labels,
-			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
-				Kind:       "PromotionStrategy",
-				Name:       ps.Name,
-				UID:        ps.UID,
-			}},
-		},
+		Name:              name,
+		Namespace:         namespace,
+		UID:               detailsUID(ps.UID),
+		ResourceVersion:   resourceVersion,
+		CreationTimestamp: ps.CreationTimestamp,
+		Labels:            ps.Labels,
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "PromotionStrategy",
+			Name:       ps.Name,
+			UID:        ps.UID,
+		}},
 		PromotionStrategy: *ps,
 	}
 
@@ -128,6 +126,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		return nil, fmt.Errorf("failed to list WebRequestCommitStatuses: %w", err)
 	}
 	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
+
+	dagCSList := &promoterv1alpha1.DependentsSuccessfulCommitStatusList{}
+	if err := reader.List(ctx, dagCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses: %w", err)
+	}
+	bundle.DependentsSuccessfulCommitStatuses = nilIfEmpty(dagCSList.Items)
 
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {

@@ -94,10 +94,10 @@ describe('Extension Page Load Tests', () => {
         tree: {
           nodes: [
             {
-              kind: 'PromotionStrategy',
+              kind: 'PromotionStrategyDetails',
               name: 'my-strategy',
               namespace: 'default',
-              group: 'promoter.argoproj.io',
+              group: 'view.promoter.argoproj.io',
               version: 'v1alpha1',
             },
           ],
@@ -125,17 +125,17 @@ describe('Extension Page Load Tests', () => {
         tree: {
           nodes: [
             {
-              kind: 'PromotionStrategy',
+              kind: 'PromotionStrategyDetails',
               name: 'strategy-1',
               namespace: 'default',
-              group: 'promoter.argoproj.io',
+              group: 'view.promoter.argoproj.io',
               version: 'v1alpha1',
             },
             {
-              kind: 'PromotionStrategy',
+              kind: 'PromotionStrategyDetails',
               name: 'strategy-2',
               namespace: 'default',
-              group: 'promoter.argoproj.io',
+              group: 'view.promoter.argoproj.io',
               version: 'v1alpha1',
             },
           ],

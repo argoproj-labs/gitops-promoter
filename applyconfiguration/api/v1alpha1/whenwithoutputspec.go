@@ -29,6 +29,7 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
 	// - trigger.when.variables result → {{ index .TriggerVariables "key" }}
 	// - success.when.variables result → {{ index .SuccessVariables "key" }}
+	//
 	Variables *OutputSpecApplyConfiguration `json:"variables,omitempty"`
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
@@ -53,13 +54,14 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// - "true"
 	//
 	// # Only trigger when SHA changes from what we last tracked
-	// - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? ”)"
+	// - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')"
 	//
 	// # Only trigger when a particular commit status is success (e.g. argocd-health)
 	// - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
 	//
 	// # Only retry if the previous response indicated we should
 	// - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
+	//
 	Expression *string `json:"expression,omitempty"`
 	// Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
 	// The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
@@ -81,6 +83,7 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	//
 	// # Increment attempt counter (eventually-consistent; may briefly under-count under cache lag)
 	// - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
+	//
 	Output *OutputSpecApplyConfiguration `json:"output,omitempty"`
 }
 

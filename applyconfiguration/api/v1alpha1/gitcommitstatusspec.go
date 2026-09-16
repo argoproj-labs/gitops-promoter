@@ -49,6 +49,7 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// Examples:
 	// target: "active" - "Don't promote if a revert commit is detected"
 	// target: "proposed" - "Don't promote unless new commit follows naming convention"
+	//
 	Target *string `json:"target,omitempty"`
 	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
 	// for environments in the referenced PromotionStrategy.
@@ -77,6 +78,7 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// - Commit.Body (string): the commit message body (everything after the subject line)
 	// - Commit.Author (string): commit author email address
 	// - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+	//
 	Expression *string `json:"expression,omitempty"`
 }
 

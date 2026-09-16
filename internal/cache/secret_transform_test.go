@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("secretDataTransform", func() {
@@ -15,7 +14,7 @@ var _ = Describe("secretDataTransform", func() {
 
 	It("retains only promoter credential keys", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "scm-creds"},
+			Name: "scm-creds",
 			Data: map[string][]byte{
 				httpauth.TokenKey:             []byte("pat"),
 				"unrelated-config":            []byte("large-payload"),
@@ -41,7 +40,7 @@ var _ = Describe("secretDataTransform", func() {
 
 	It("stores metadata only when no credential keys are present", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "app-config", Namespace: "default"},
+			Name: "app-config", Namespace: "default",
 			Data: map[string][]byte{
 				"database-url": []byte("postgres://..."),
 				"api-key":      []byte("secret"),
@@ -58,7 +57,7 @@ var _ = Describe("secretDataTransform", func() {
 	})
 
 	It("passes through non-Secret objects unchanged", func() {
-		cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "cfg"}}
+		cm := &corev1.ConfigMap{Name: "cfg"}
 		out, err := transform(cm)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(BeIdenticalTo(cm))

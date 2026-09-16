@@ -8,6 +8,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: promoter-testing
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: dependentssuccessfulcommitstatus-sample
   activeCommitStatuses:
     - key: healthy
     - key: healthy-load

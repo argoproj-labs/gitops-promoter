@@ -40,6 +40,55 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+export function parseGoDuration(duration: string): number | null {
+  const trimmed = duration.trim();
+  if (trimmed === '0' || trimmed === '+0' || trimmed === '-0') {
+    return 0;
+  }
+  if (!/^[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:ns|us|µs|ms|h|m|s)[+-]?)+$/.test(trimmed)) {
+    return null;
+  }
+  if (/[+-]$/.test(trimmed)) {
+    return null;
+  }
+  const units = trimmed.match(/ns|us|µs|ms|h|m|s/g) ?? [];
+  if (new Set(units).size !== units.length) {
+    return null;
+  }
+
+  let totalMs = 0;
+  const negated = trimmed.startsWith('-');
+  const body = negated ? trimmed.replace('-', '') : trimmed;
+  const re = /([+-]?)(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|ms|h|m|s)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const value = (m[1] === '-' ? -1 : 1) * parseFloat(m[2]);
+    switch (m[3]) {
+      case 'h':
+        totalMs += value * 3_600_000;
+        break;
+      case 'm':
+        totalMs += value * 60_000;
+        break;
+      case 's':
+        totalMs += value * 1_000;
+        break;
+      case 'ms':
+        totalMs += value;
+        break;
+      case 'us':
+      case 'µs':
+        totalMs += value / 1_000;
+        break;
+      case 'ns':
+        totalMs += value / 1_000_000;
+        break;
+    }
+  }
+  const result = negated ? -totalMs : totalMs;
+  return result === 0 ? 0 : result;
+}
+
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
@@ -89,7 +138,7 @@ export function formatDate(date?: Rfc3339DateTime): string {
 // Get the last commit time from a PromotionStrategy
 export function getLastCommitTime(ps: PromotionStrategy): Date | null {
   const commitTimes = (
-    ps.status?.environments.flatMap((env) => [
+    ps.status?.environments?.flatMap((env) => [
       env.active.dry?.commitTime,
       env.active.hydrated?.commitTime,
       env.proposed.dry?.commitTime,

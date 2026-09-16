@@ -61,6 +61,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: webservice-tier-1
   activeCommitStatuses:
     - key: timer
   environments:
@@ -85,6 +89,10 @@ metadata:
   name: webservice-tier-1
 spec:
   gitRepositoryRef:
+    name: webservice-tier-1
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
     name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health

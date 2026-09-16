@@ -36,18 +36,6 @@ $radius-sm: 4px;
 $radius-md: 6px;
 $radius-lg: 8px;
 
-.fa-spin {
-  animation: fa-spin 2s infinite linear;
-}
-@keyframes fa-spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
 /* Visible keyboard focus for the page's custom controls (buttons styled as
    cards/chips, SHA/PR links). Uses :focus-visible so it only shows for
    keyboard/AT navigation, not mouse clicks. WCAG 2.4.7. */
@@ -59,8 +47,8 @@ $radius-lg: 8px;
   }
 }
 
-/* Respect the user's reduced-motion preference: stop the infinite spinner and
-   the pulsing filter dot, and neutralize transitions. WCAG 2.3.3. */
+/* Respect the user's reduced-motion preference: stop the pulsing filter dot
+   and neutralize transitions. WCAG 2.3.3. */
 @media (prefers-reduced-motion: reduce) {
   .hp {
     *,

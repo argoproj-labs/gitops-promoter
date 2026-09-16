@@ -69,21 +69,20 @@ func newFakeReader(objs ...client.Object) client.Reader {
 // resources, including a Secret that must NEVER end up in the bundle.
 func seedObjects() []client.Object {
 	ps := &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPSName,
-			Namespace: testNamespace,
-			UID:       testPSUID,
-			ManagedFields: []metav1.ManagedFieldsEntry{
-				{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
-			},
-			Annotations: map[string]string{
-				lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
-				"keep-me":             "yes",
-			},
+		Name:      testPSName,
+		Namespace: testNamespace,
+		UID:       testPSUID,
+		ManagedFields: []metav1.ManagedFieldsEntry{
+			{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
+		},
+		Annotations: map[string]string{
+			lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
+			"keep-me":             "yes",
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
-			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-			Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+			RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+			OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+			Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 		},
 		Status: promoterv1alpha1.PromotionStrategyStatus{
 			Environments: []promoterv1alpha1.EnvironmentStatus{
@@ -240,10 +239,11 @@ var _ = Describe("BuildBundle", func() {
 	It("resolves a ClusterScmProvider when the GitRepository references one", func() {
 		objs := []client.Object{
 			&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace},
+				Name: testPSName, Namespace: testNamespace,
 				Spec: promoterv1alpha1.PromotionStrategySpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-					Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 				},
 			},
 			&promoterv1alpha1.GitRepository{
@@ -252,7 +252,7 @@ var _ = Describe("BuildBundle", func() {
 					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "cluster-scm"},
 				},
 			},
-			&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}},
+			&promoterv1alpha1.ClusterScmProvider{Name: "cluster-scm"},
 		}
 		reader := newFakeReader(objs...)
 

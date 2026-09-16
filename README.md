@@ -39,6 +39,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: example-promotion-strategy
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
@@ -52,6 +56,15 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: example-promotion-strategy
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: example-promotion-strategy
 ```
 
 ## Getting Started

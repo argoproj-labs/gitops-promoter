@@ -37,12 +37,13 @@ import (
 
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *v1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		ctx                              context.Context
+		name                             string
+		scmSecret                        *v1.Secret
+		scmProvider                      *promoterv1alpha1.ScmProvider
+		gitRepo                          *promoterv1alpha1.GitRepository
+		promotionStrategy                *promoterv1alpha1.PromotionStrategy
+		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
 	)
 
 	BeforeAll(func() {
@@ -62,10 +63,28 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		// The DependentsSuccessfulCommitStatus produces the ordering gate CommitStatus declared above.
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: name,
+				},
+				Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 	})
 
 	AfterAll(func() {
 		By("Cleaning up test resources")
+		if dependentsSuccessfulCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dependentsSuccessfulCommitStatus)
+		}
 		if promotionStrategy != nil {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
@@ -86,10 +105,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with 1 hour requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-pending",
-					Namespace: "default",
-				},
+				Name:      name + "-pending",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -153,10 +170,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with very short duration requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-time-met",
-					Namespace: "default",
-				},
+				Name:      name + "-time-met",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -257,10 +272,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with very long duration requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-time-not-met",
-					Namespace: "default",
-				},
+				Name:      name + "-time-not-met",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -379,10 +392,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 			By("Creating a TimedCommitStatus resource with duration starting long then shortening to 10s")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-touch-ps",
-					Namespace: "default",
-				},
+				Name:      name + "-touch-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -474,10 +485,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource tracking all three environments")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -613,13 +622,13 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(keyPS)
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(keyCtx, keyPS)
 
 			tcs := &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      keyName + "-custom-key",
-					Namespace: "default",
-				},
+				Name:      keyName + "-custom-key",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					Key: customKey,
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -668,10 +677,8 @@ var _ = Describe("TimedCommitStatus Controller - Missing PromotionStrategy", fun
 		BeforeEach(func() {
 			By("Creating only a TimedCommitStatus resource without PromotionStrategy")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",

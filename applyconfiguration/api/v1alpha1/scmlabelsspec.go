@@ -32,6 +32,7 @@ type ScmLabelsSpecApplyConfiguration struct {
 	//
 	// Each returned label name must satisfy the same validation as PullRequest.spec.labels
 	// (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+	//
 	Expression *string `json:"expression,omitempty"`
 }
 

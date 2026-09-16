@@ -93,6 +93,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
 		return &apiv1alpha1.CronWindowApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusConfiguration"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusSpec"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusUpstreamStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):
@@ -109,6 +121,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ForgejoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ForgejoRepo"):
 		return &apiv1alpha1.ForgejoRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GateEnvironmentCommitStatus"):
+		return &apiv1alpha1.GateEnvironmentCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitStatus"):
 		return &apiv1alpha1.GitCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitStatusConfiguration"):
@@ -153,6 +167,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OrderCommitStatusRef"):
+		return &apiv1alpha1.OrderCommitStatusRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OutputSpec"):
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):

@@ -9,8 +9,9 @@ import (
 )
 
 // emitCommitStatusPhaseChangedEvent emits a CommitStatusPhaseChanged event on a commit status gate
-// resource (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) when the
-// phase it computed for an environment differs from the phase recorded by the previous reconcile.
+// resource (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus,
+// DependentsSuccessfulCommitStatus) when the phase it computed for an environment differs from the
+// phase recorded by the previous reconcile.
 // It is a no-op when the phase is unchanged, keeping the event transition-only. A failure phase is
 // emitted as a Warning so it stands out in `kubectl get events`.
 func emitCommitStatusPhaseChangedEvent(recorder events.EventRecorder, obj client.Object, key, branch, previousPhase, phase string) {

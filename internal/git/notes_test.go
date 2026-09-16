@@ -8,8 +8,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
@@ -70,7 +68,7 @@ var _ = Describe("Promotion history notes", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 		}
 	})
 

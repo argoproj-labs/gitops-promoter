@@ -60,6 +60,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
+	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -140,6 +143,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 // If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.WebRequestCommitStatus = value
+	return b
+}
+
+// WithDependentsSuccessfulCommitStatus sets the DependentsSuccessfulCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DependentsSuccessfulCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessfulCommitStatus(value *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.DependentsSuccessfulCommitStatus = value
 	return b
 }
 

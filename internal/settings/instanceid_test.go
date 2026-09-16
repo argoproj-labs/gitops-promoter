@@ -6,7 +6,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -75,10 +74,8 @@ var _ = Describe("EnsureInstanceIDStable", func() {
 	It("returns nil when cached and live instance IDs match", func() {
 		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		cc := &promoterv1alpha1.ControllerConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      settings.ControllerConfigurationName,
-				Namespace: "default",
-			},
+			Name:      settings.ControllerConfigurationName,
+			Namespace: "default",
 			Spec: promoterv1alpha1.ControllerConfigurationSpec{
 				InstanceID: new("wave-0"),
 			},
@@ -94,10 +91,8 @@ var _ = Describe("EnsureInstanceIDStable", func() {
 	It("returns an error when live instance ID drifts from cached", func() {
 		settings.SetControllerInstanceIDForTest(nil)
 		cc := &promoterv1alpha1.ControllerConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      settings.ControllerConfigurationName,
-				Namespace: "default",
-			},
+			Name:      settings.ControllerConfigurationName,
+			Namespace: "default",
 			Spec: promoterv1alpha1.ControllerConfigurationSpec{
 				InstanceID: new("wave-0"),
 			},

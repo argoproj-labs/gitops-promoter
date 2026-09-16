@@ -69,6 +69,7 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	//
 	// When "active": Polls forever, even after success (active state can change).
 	// Use "active" for checks that monitor the change after it's released, for example a metrics monitoring service.
+	//
 	ReportOn *string `json:"reportOn,omitempty"`
 	// HTTPRequest configures the outbound HTTP call. See HTTPRequestSpec.
 	HTTPRequest *HTTPRequestSpecApplyConfiguration `json:"httpRequest,omitempty"`

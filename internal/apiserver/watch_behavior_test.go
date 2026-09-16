@@ -53,7 +53,7 @@ const watchTestNamespace = "watch-test-ns"
 // reference, so buildBundle resolves no git config) with the given labels.
 func makePS(name string, lbls map[string]string) *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: watchTestNamespace, Labels: lbls},
+		Name: name, Namespace: watchTestNamespace, Labels: lbls,
 	}
 }
 

@@ -27,16 +27,14 @@ import (
 var _ = Describe("cacheTransform", func() {
 	It("strips managedFields and the last-applied annotation", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-ps",
-				Namespace: "test-ns",
-				ManagedFields: []metav1.ManagedFieldsEntry{
-					{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
-				},
-				Annotations: map[string]string{
-					lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
-					"keep-me":             "yes",
-				},
+			Name:      "my-ps",
+			Namespace: "test-ns",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
+			},
+			Annotations: map[string]string{
+				lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
+				"keep-me":             "yes",
 			},
 		}
 

@@ -515,6 +515,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
+    - name: dependentsSuccessfulCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
     - name: gitCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitCommitStatusConfiguration
@@ -568,6 +571,111 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: activeCommitStatuses
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeRequestPolicyCommitStatusPhase
+          elementRelationship: associative
+          keys:
+          - key
+    - name: branch
+      type:
+        scalar: string
+    - name: description
+      type:
+        scalar: string
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: reportedSha
+      type:
+        scalar: string
+    - name: upstreams
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: reason
+      type:
+        scalar: string
+    - name: satisfied
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Environment
   map:
     fields:
@@ -589,6 +697,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
+    - name: dependsOn
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
     - name: proposedCommitStatuses
       type:
         list:
@@ -1010,6 +1124,20 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
+  map:
+    fields:
+    - name: group
+      type:
+        scalar: string
+      default: promoter.argoproj.io
+    - name: kind
+      type:
+        scalar: string
+      default: DependentsSuccessfulCommitStatus
+    - name: name
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
   map:
     fields:
@@ -1072,6 +1200,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gitRepositoryRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: orderCommitStatusRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
     - name: proposedCommitStatuses
       type:
         list:

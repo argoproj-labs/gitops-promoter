@@ -5,6 +5,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: example-dag
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
@@ -12,8 +16,12 @@ spec:
   environments:
     - branch: environment/dev
     - branch: environment/test
+      dependsOn:
+        - environment/dev
     - branch: environment/prod
       autoMerge: false
+      dependsOn:
+        - environment/test
       activeCommitStatuses:
       - key: performance-test
       proposedCommitStatuses:
@@ -32,7 +40,7 @@ status:
     - type: Ready
       lastTransitionTime: 2023-10-01T00:00:00Z
       message: Reconciliation succeeded
-      reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, ChangeTransferPolicyNotReady, or PreviousEnvironmentCommitStatusNotReady
+      reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, or ChangeTransferPolicyNotReady
       status: "True" # "True," "False," or "Unknown"
       observedGeneration: 123
   environments:

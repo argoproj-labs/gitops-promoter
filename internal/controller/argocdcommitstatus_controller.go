@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -493,10 +492,8 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
 					return []mcreconcile.Request{{
-						Request: reconcile.Request{
-							NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
-						},
-						ClusterName: clusterName,
+						NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+						ClusterName:    clusterName,
 					}}
 				}
 			}

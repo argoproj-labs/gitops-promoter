@@ -101,6 +101,33 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.WebRequestCommitStatusList](ctx, c, ps)
 			},
 		),
+		Entry("ScheduledCommitStatus",
+			&promoterv1alpha1.ScheduledCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: gateName, Namespace: ns},
+				Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
+			},
+			func(c client.Client) []reconcile.Request {
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.ScheduledCommitStatusList](ctx, c, ps)
+			},
+		),
+		Entry("ArgoCDCommitStatus",
+			&promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: gateName, Namespace: ns},
+				Spec:       promoterv1alpha1.ArgoCDCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
+			},
+			func(c client.Client) []reconcile.Request {
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.ArgoCDCommitStatusList](ctx, c, ps)
+			},
+		),
+		Entry("DependentsSuccessfulCommitStatus",
+			&promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: gateName, Namespace: ns},
+				Spec:       promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
+			},
+			func(c client.Client) []reconcile.Request {
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.DependentsSuccessfulCommitStatusList](ctx, c, ps)
+			},
+		),
 	)
 
 	It("returns nil when no gates match the PromotionStrategy ref", func() {

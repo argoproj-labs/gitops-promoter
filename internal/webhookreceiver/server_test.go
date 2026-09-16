@@ -16,7 +16,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -137,10 +136,8 @@ func githubPushPayload(beforeSha string) []byte {
 
 func newCTP(name string) *promoterv1alpha1.ChangeTransferPolicy {
 	return &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
+		Name:      name,
+		Namespace: testNamespace,
 		Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 			Proposed: promoterv1alpha1.CommitBranchState{
 				Hydrated: promoterv1alpha1.CommitShaState{Sha: testShaA},

@@ -156,25 +156,13 @@ spec:
                     type: array
                   template:
                     description: |-
-                      Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
-                      is available to escape url query parameters. The template can be configured with options to control the behavior
-                      during execution if a variable is not present.
+                      Template is a Go text template used to generate the CommitStatus URL. A function called
+                      urlQueryEscape is available to escape URL query parameters. The template can be configured
+                      with options (url.options) to control behavior when a variable is not present.
 
-                      Example:
-
-                        {{- $baseURL := "https://dev.argocd.local" -}}
-                        {{- if eq .Environment "environment/development" -}}
-                        {{- $baseURL = "https://dev.argocd.local" -}}
-                        {{- else if eq .Environment "environment/staging" -}}
-                        {{- $baseURL = "https://staging.argocd.local" -}}
-                        {{- else if eq .Environment "environment/production" -}}
-                        {{- $baseURL = "https://prod.argocd.local" -}}
-                        {{- end -}}
-                        {{- $labels := "" -}}
-                        {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-                        {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-                        {{- end -}}
-                        {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+                      Available template variables depend on the parent resource that embeds URLConfig
+                      (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
+                      corresponding gate documentation for the variable set and examples.
                     type: string
                 type: object
             required:
@@ -552,6 +540,7 @@ spec:
                       - key
                       - phase
                       type: object
+                    maxItems: 100
                     type: array
                     x-kubernetes-list-map-keys:
                     - key
@@ -617,6 +606,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -697,6 +687,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -786,6 +777,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -862,7 +854,7 @@ spec:
                 description: |-
                   History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
                   it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-                  The history length is hard-coded to be at most 5 entries. This may change in the future.
+                  The history length is at most 5 entries.
                   History is constructed on a best-effort basis and should be used for informational purposes only.
                   History is in reverse chronological order (newest is first).
                 items:
@@ -911,6 +903,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -978,6 +971,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1061,6 +1055,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1153,6 +1148,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1215,6 +1211,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                         hydrated:
                           description: |-
@@ -1281,6 +1278,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1362,6 +1360,7 @@ spec:
                             rule: self == '' || isURL(self)
                       type: object
                   type: object
+                maxItems: 5
                 type: array
               instanceID:
                 description: |-
@@ -1418,6 +1417,7 @@ spec:
                       - key
                       - phase
                       type: object
+                    maxItems: 100
                     type: array
                     x-kubernetes-list-map-keys:
                     - key
@@ -1483,6 +1483,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -1563,6 +1564,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -1652,6 +1654,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -2698,6 +2701,215 @@ spec:
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the CommitStatus controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
+              dependentsSuccessfulCommitStatus:
+                description: |-
+                  DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
                       This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
                     properties:
                       maxConcurrentReconciles:
@@ -4189,6 +4401,7 @@ spec:
             - argocdCommitStatus
             - changeTransferPolicy
             - commitStatus
+            - dependentsSuccessfulCommitStatus
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
@@ -4279,6 +4492,316 @@ spec:
                 format: int64
                 type: integer
             type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: dependentssuccessfulcommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: DependentsSuccessfulCommitStatus
+    listKind: DependentsSuccessfulCommitStatusList
+    plural: dependentssuccessfulcommitstatuses
+    singular: dependentssuccessfulcommitstatus
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses
+          API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentssuccessfulcommitstatus
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of DependentsSuccessfulCommitStatus
+            properties:
+              key:
+                description: |-
+                  Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
+                  The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses.
+                  Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
+                  applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
+                  environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              url:
+                description: |-
+                  URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
+                  example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
+                  Optional; when empty, no URL is set on the child CommitStatus. The template receives
+                  .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+                  (see controller docs).
+                properties:
+                  options:
+                    description: "Options sets options for the template. Options are
+                      described by\nstrings, either a simple string or \"key=value\".
+                      There can be at\nmost one equals sign in an option string. If
+                      the option string\nis unrecognized or otherwise invalid, Option
+                      panics.\n\nKnown options:\n\nmissingkey: Control the behavior
+                      during execution if a map is\nindexed with a key that is not
+                      present in the map.\n\n\t\"missingkey=default\" or \"missingkey=invalid\"\n\t\tThe
+                      default behavior: Do nothing and continue execution.\n\t\tIf
+                      printed, the result of the index operation is the string\n\t\t\"<no
+                      value>\".\n\t\"missingkey=zero\"\n\t\tThe operation returns
+                      the zero value for the map type's element.\n\t\"missingkey=error\"\n\t\tExecution
+                      stops immediately with an error."
+                    items:
+                      type: string
+                    type: array
+                  template:
+                    description: |-
+                      Template is a Go text template used to generate the CommitStatus URL. A function called
+                      urlQueryEscape is available to escape URL query parameters. The template can be configured
+                      with options (url.options) to control behavior when a variable is not present.
+
+                      Available template variables depend on the parent resource that embeds URLConfig
+                      (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
+                      corresponding gate documentation for the variable set and examples.
+                    type: string
+                type: object
+            required:
+            - key
+            - promotionStrategyRef
+            type: object
+          status:
+            description: status defines the observed state of DependentsSuccessfulCommitStatus
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Environments reports observed gate and upstream state
+                  per dependency-graph branch.
+                items:
+                  description: DependentsSuccessfulCommitStatusEnvironmentStatus defines
+                    observed state for one environment branch.
+                  properties:
+                    activeCommitStatuses:
+                      description: ActiveCommitStatuses is a verbatim copy of the
+                        PromotionStrategy environment's active commit statuses.
+                      items:
+                        description: ChangeRequestPolicyCommitStatusPhase defines
+                          the phase of a commit status in a ChangeTransferPolicy.
+                        properties:
+                          description:
+                            description: Description is the description of the commit
+                              status
+                            type: string
+                          key:
+                            description: Key staging hydrated branch
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                            type: string
+                          phase:
+                            description: Phase what phase is the status in
+                            enum:
+                            - pending
+                            - success
+                            - failure
+                            type: string
+                          url:
+                            description: Url is the URL of the commit status
+                            pattern: ^(https?://.*)?$
+                            type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid URL
+                              rule: self == '' || isURL(self)
+                        required:
+                        - key
+                        - phase
+                        type: object
+                      maxItems: 100
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
+                    branch:
+                      description: Branch is the environment branch name.
+                      minLength: 1
+                      type: string
+                    description:
+                      description: Description mirrors child CommitStatus.spec.description.
+                      type: string
+                    phase:
+                      description: Phase mirrors child CommitStatus.spec.phase.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      - ""
+                      type: string
+                    reportedSha:
+                      description: |-
+                        ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+                        Semantics depend on the parent gate (proposed vs active hydrated SHA).
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                    upstreams:
+                      description: Upstreams lists all transitive ancestor branches
+                        and whether each is satisfied for this environment's promotion
+                        target.
+                      items:
+                        description: |-
+                          DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch
+                          is satisfied for this environment's promotion target.
+                        properties:
+                          branch:
+                            description: Branch is the upstream environment branch
+                              name.
+                            minLength: 1
+                            type: string
+                          reason:
+                            description: Reason explains why the upstream is not satisfied.
+                              Omitted when satisfied is true.
+                            type: string
+                          satisfied:
+                            description: Satisfied is true when the upstream has promoted
+                              and is healthy for this environment's target dry SHA.
+                            type: boolean
+                        required:
+                        - branch
+                        - satisfied
+                        type: object
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    url:
+                      description: Url mirrors child CommitStatus.spec.url.
+                      pattern: ^(https?://.*)?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid URL
+                        rule: self == '' || isURL(self)
+                  required:
+                  - branch
+                  type: object
+                maxItems: 500
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -5045,6 +5568,27 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: branch must not contain '..'
                         rule: '!self.contains(''..'')'
+                    dependsOn:
+                      description: |-
+                        DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
+                        for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment
+                        a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers
+                        a linear chain from spec.environments order.
+                        Each item must not start with '-', contain ':', or contain '..'.
+                      items:
+                        maxLength: 100
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: branch must not start with '-'
+                          rule: '!self.startsWith(''-'')'
+                        - message: branch must not contain ':'
+                          rule: '!self.contains('':'')'
+                        - message: branch must not contain '..'
+                          rule: '!self.contains(''..'')'
+                      maxItems: 100
+                      type: array
+                      x-kubernetes-list-type: set
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -5072,7 +5616,10 @@ spec:
                   required:
                   - branch
                   type: object
-                maxItems: 1000
+                  x-kubernetes-validations:
+                  - message: branch cannot depend on itself
+                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
+                maxItems: 500
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
@@ -5091,6 +5638,40 @@ spec:
                 required:
                 - name
                 type: object
+              orderCommitStatusRef:
+                description: |-
+                  OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
+                  environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+                properties:
+                  group:
+                    default: promoter.argoproj.io
+                    description: |-
+                      Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
+                      out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  kind:
+                    default: DependentsSuccessfulCommitStatus
+                    description: |-
+                      Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
+                      ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: kind must name a CommitStatus gate CR
+                      rule: self.endsWith('CommitStatus')
+                  name:
+                    description: Name is the name of the resource being referenced.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - group
+                - kind
+                - name
+                type: object
               proposedCommitStatuses:
                 description: |-
                   ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -5099,6 +5680,9 @@ spec:
 
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
+
+                  The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
+                  does not need to be declared here.
                 items:
                   description: CommitStatusSelector is used to select commit statuses
                     by their key.
@@ -5145,6 +5729,7 @@ spec:
             required:
             - environments
             - gitRepositoryRef
+            - orderCommitStatusRef
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
@@ -5256,6 +5841,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -5323,6 +5909,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -5406,6 +5993,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -5498,6 +6086,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -5518,7 +6107,7 @@ spec:
                       description: |-
                         History defines the history of promoted changes done by the PromotionStrategy for each environment.
                         You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-                        manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+                        manually merged. The history length is at most 5 entries.
                         History is constructed on a best-effort basis and should be used for informational purposes only.
                         History is in reverse chronological order (newest is first).
                       items:
@@ -5568,6 +6157,7 @@ spec:
                                   - key
                                   - phase
                                   type: object
+                                maxItems: 100
                                 type: array
                                 x-kubernetes-list-map-keys:
                                 - key
@@ -5640,6 +6230,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -5729,6 +6320,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -5826,6 +6418,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -5889,6 +6482,7 @@ spec:
                                   - key
                                   - phase
                                   type: object
+                                maxItems: 100
                                 type: array
                               hydrated:
                                 description: |-
@@ -5960,6 +6554,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -6041,6 +6636,7 @@ spec:
                                   rule: self == '' || isURL(self)
                             type: object
                         type: object
+                      maxItems: 5
                       type: array
                     lastHealthyDryShas:
                       description: LastHealthyDryShas is a list of dry commits that
@@ -6105,6 +6701,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -6172,6 +6769,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6255,6 +6853,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6347,6 +6946,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6421,6 +7021,7 @@ spec:
                   - branch
                   - proposed
                   type: object
+                maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
@@ -6442,8 +7043,6 @@ spec:
                   status writes: compare status.observedGeneration with metadata.generation.
                 format: int64
                 type: integer
-            required:
-            - environments
             type: object
         required:
         - spec
@@ -8745,6 +9344,7 @@ rules:
   - timedcommitstatuses
   - webrequestcommitstatuses
   - scheduledcommitstatuses
+  - dependentssuccessfulcommitstatuses
   - gitrepositories
   - scmproviders
   - clusterscmproviders
@@ -8959,6 +9559,77 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+  name: promoter-dependentssuccessfulcommitstatus-admin-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses
+  verbs:
+  - '*'
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-dependentssuccessfulcommitstatus-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-dependentssuccessfulcommitstatus-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - dependentssuccessfulcommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
   name: promoter-gitcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9066,6 +9737,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
+  - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
   - revertcommits
@@ -9082,6 +9754,7 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
+  - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
@@ -9099,6 +9772,7 @@ rules:
   - changetransferpolicies/status
   - clusterscmproviders/status
   - commitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
   - promotionstrategies/status
@@ -9115,6 +9789,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies
+  - commitstatuses
   - pullrequests
   verbs:
   - create
@@ -9134,17 +9809,6 @@ rules:
   - get
   - list
   - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - commitstatuses
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
   - watch
 - apiGroups:
   - promoter.argoproj.io
@@ -9869,6 +10533,19 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   commitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  dependentsSuccessfulCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
