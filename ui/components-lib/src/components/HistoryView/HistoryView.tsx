@@ -13,7 +13,7 @@ import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import { initialUrlState, sameUrlState, urlStateReducer } from './urlState';
-import type { CellSelection, HistoryUrlState } from './urlState';
+import type { CellSelection, HistoryUrlState, UrlStateAction } from './urlState';
 import './index.scss';
 
 const scrollRowIntoView = (rowId: string) => {
@@ -89,6 +89,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const { selection: selected, viewState } = urlState;
   const { filter, sort, envFilter } = viewState;
   const selectionFromLinkRef = useRef(initialSelection !== null);
+  const pendingScrollRowIdRef = useRef<string | null>(null);
+
+  const onUrlStateChangeRef = useRef(onUrlStateChange);
+  onUrlStateChangeRef.current = onUrlStateChange;
+
+  const urlStateRef = useRef(urlState);
+  urlStateRef.current = urlState;
 
   const initialUrlStateRef = useRef(urlState);
   useEffect(() => {
@@ -97,45 +104,69 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       initialUrlStateRef.current = next;
       selectionFromLinkRef.current = next.selection !== null;
       dispatch({ type: 'reset', state: next });
+      if (next.selection) {
+        if (rows.length > 0) scrollRowIntoView(next.selection.rowId);
+        else pendingScrollRowIdRef.current = next.selection.rowId;
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSelection, initialViewState]);
 
-  const onUrlStateChangeRef = useRef(onUrlStateChange);
-  onUrlStateChangeRef.current = onUrlStateChange;
-
-  const urlStateRef = useRef(urlState);
-  urlStateRef.current = urlState;
-
   useEffect(() => {
-    if (urlState !== initialUrlStateRef.current) {
-      onUrlStateChangeRef.current?.(urlState);
-    }
-  }, [urlState]);
+    if (rows.length === 0 || !pendingScrollRowIdRef.current) return;
+    scrollRowIntoView(pendingScrollRowIdRef.current);
+    pendingScrollRowIdRef.current = null;
+  }, [rows.length]);
 
-  const setFilter = useCallback((next: FilterId) => {
-    dispatch({ type: 'setFilter', filter: next });
+  const dispatchAndNotify = useCallback((action: UrlStateAction) => {
+    const next = urlStateReducer(urlStateRef.current, action);
+    dispatch(action);
+    urlStateRef.current = next;
+    if (action.type !== 'reset') onUrlStateChangeRef.current?.(next);
   }, []);
 
-  const setSort = useCallback((next: SortId) => {
-    dispatch({ type: 'setSort', sort: next });
-  }, []);
+  const setFilter = useCallback(
+    (next: FilterId) => {
+      dispatchAndNotify({ type: 'setFilter', filter: next });
+    },
+    [dispatchAndNotify],
+  );
 
-  const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
-    const value = typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
-    dispatch({ type: 'setEnvFilter', envFilter: value });
-  }, []);
+  const setSort = useCallback(
+    (next: SortId) => {
+      dispatchAndNotify({ type: 'setSort', sort: next });
+    },
+    [dispatchAndNotify],
+  );
+
+  const setEnvFilter = useCallback(
+    (next: string[] | ((_prev: string[]) => string[])) => {
+      const value =
+        typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
+      dispatchAndNotify({ type: 'setEnvFilter', envFilter: value });
+    },
+    [dispatchAndNotify],
+  );
 
   const [staleLink, setStaleLink] = useState(false);
 
-  const selectCell = useCallback((next: CellSelection | null) => {
-    selectionFromLinkRef.current = false;
-    setStaleLink(false);
-    dispatch({ type: 'setSelection', selection: next });
-  }, []);
+  const selectCell = useCallback(
+    (next: CellSelection | null) => {
+      selectionFromLinkRef.current = false;
+      setStaleLink(false);
+      dispatchAndNotify({ type: 'setSelection', selection: next });
+    },
+    [dispatchAndNotify],
+  );
 
   const drawer = useDrawerWidth();
 
   const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
+
+  const effectiveEnvFilter = useMemo(
+    () => pruneEnvFilter(envFilter, validBranches) ?? envFilter,
+    [envFilter, validBranches],
+  );
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -145,10 +176,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const envScopedRows = useMemo(
     () =>
-      envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
+      effectiveEnvFilter.length
+        ? rows.filter((r) => effectiveEnvFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
         : rows,
-    [rows, envFilter],
+    [rows, effectiveEnvFilter],
   );
 
   const filteredRows = useMemo(() => {
@@ -173,33 +204,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.id)), [filteredRows]);
 
-  useEffect(() => {
-    if (!selected || !strategy) return;
+  const selectionIsStale = useMemo(() => {
+    if (!selected || !strategy) return false;
     const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
-    if (
+    return (
       !validBranches.has(selected.branch) ||
       !selectedCell ||
       isEmptyCellKind(selectedCell.kind) ||
-      (envFilter.length > 0 && !envFilter.includes(selected.branch)) ||
+      (effectiveEnvFilter.length > 0 && !effectiveEnvFilter.includes(selected.branch)) ||
       !filteredRowIds.has(selected.rowId)
-    ) {
-      if (selectionFromLinkRef.current) setStaleLink(true);
-      selectionFromLinkRef.current = false;
-      dispatch({ type: 'setSelection', selection: null });
-    }
-  }, [selected, strategy, rowsById, validBranches, envFilter, filteredRowIds]);
+    );
+  }, [selected, strategy, rowsById, validBranches, effectiveEnvFilter, filteredRowIds]);
+
+  const effectiveSelected = selectionIsStale ? null : selected;
 
   useEffect(() => {
-    if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;
+    if (!selectionIsStale) return;
+    if (selectionFromLinkRef.current) setStaleLink(true);
     selectionFromLinkRef.current = false;
-    scrollRowIntoView(selected.rowId);
-  }, [selected, rows.length]);
-
-  useEffect(() => {
-    if (envs.length === 0) return;
-    const pruned = pruneEnvFilter(urlStateRef.current.viewState.envFilter, validBranches);
-    if (pruned) setEnvFilter(pruned);
-  }, [envs.length, validBranches, setEnvFilter]);
+    dispatch({ type: 'setSelection', selection: null });
+  }, [selectionIsStale]);
 
   const counts = useMemo(() => {
     return {
@@ -244,11 +268,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     );
   }
 
-  const selectedRow = selected ? (rowsById.get(selected.rowId) ?? null) : null;
-  const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
+  const selectedRow = effectiveSelected ? (rowsById.get(effectiveSelected.rowId) ?? null) : null;
+  const selectedCell =
+    selectedRow && effectiveSelected ? selectedRow.cells[effectiveSelected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
 
-  const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
+  const visibleEnvs = effectiveEnvFilter.length
+    ? envs.filter((e) => effectiveEnvFilter.includes(e.branch))
+    : envs;
 
   // Trailing 1fr spacer track (no cell placed in it) soaks up leftover width as
   // empty gap; when columns overflow it collapses to 0 and the matrix scrolls.
@@ -296,21 +323,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             <Dropdown
               icon={<FaLayerGroup />}
               label="Environment"
-              active={envFilter.length > 0}
+              active={effectiveEnvFilter.length > 0}
               value={
-                envFilter.length === 0 ? (
+                effectiveEnvFilter.length === 0 ? (
                   'All environments'
-                ) : envFilter.length === 1 ? (
+                ) : effectiveEnvFilter.length === 1 ? (
                   <>
                     <span
                       className="hp-chip__dot"
-                      style={{ background: envs.find((e) => e.branch === envFilter[0])?.color }}
+                      style={{
+                        background: envs.find((e) => e.branch === effectiveEnvFilter[0])?.color,
+                      }}
                       aria-hidden="true"
                     />
-                    {envFilter[0]}
+                    {effectiveEnvFilter[0]}
                   </>
                 ) : (
-                  `${envFilter.length} environments`
+                  `${effectiveEnvFilter.length} environments`
                 )
               }
             >
@@ -318,7 +347,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 <>
                   <DropdownItem
                     multi
-                    selected={envFilter.length === 0}
+                    selected={effectiveEnvFilter.length === 0}
                     onSelect={() => setEnvFilter([])}
                   >
                     <span className="hp-dd__item-label">All environments</span>
@@ -331,7 +360,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                       <DropdownItem
                         key={env.branch}
                         multi
-                        selected={envFilter.includes(env.branch)}
+                        selected={effectiveEnvFilter.includes(env.branch)}
                         onSelect={() => handleToggleEnvFilter(env.branch)}
                       >
                         <span
@@ -395,7 +424,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   </button>
                 </div>
               )}
-              {envFilter.length > 0 && visibleEnvs.length < envs.length && (
+              {effectiveEnvFilter.length > 0 && visibleEnvs.length < envs.length && (
                 <div className="hp-env-banner">
                   <span className="hp-env-banner__text">
                     Showing {visibleEnvs.length} of {envs.length} environments
@@ -439,7 +468,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 <div
                   key={row.id}
                   id={`row-${row.id}`}
-                  className={`hp-row ${selected?.rowId === row.id ? 'hp-row--selected' : ''}`}
+                  className={`hp-row ${effectiveSelected?.rowId === row.id ? 'hp-row--selected' : ''}`}
                   style={{ gridTemplateColumns: gridTemplate }}
                 >
                   <div className="hp-row__commit">
@@ -504,7 +533,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     </div>
                   </div>
                   {visibleEnvs.map((env) => {
-                    const isFocusedEnv = envFilter.includes(env.branch);
+                    const isFocusedEnv = effectiveEnvFilter.includes(env.branch);
                     return (
                       <div
                         key={env.branch}
@@ -518,7 +547,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                         <FlowCell
                           cell={row.cells[env.branch]}
                           branch={env.branch}
-                          isSelected={selected?.rowId === row.id && selected?.branch === env.branch}
+                          isSelected={
+                            effectiveSelected?.rowId === row.id &&
+                            effectiveSelected?.branch === env.branch
+                          }
                           onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
                           rowsById={rowsById}
                           onJumpToRow={handleJumpToRow}
@@ -535,7 +567,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         <DetailDrawer
           row={selectedRow}
           cell={selectedCell}
-          branch={selected?.branch ?? null}
+          branch={effectiveSelected?.branch ?? null}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}
@@ -545,7 +577,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onResizeTo={drawer.onResizeTo}
           onClose={() => selectCell(null)}
           onJumpToRow={handleJumpToRow}
-          onSelectCell={(branch) => selected && selectCell({ rowId: selected.rowId, branch })}
+          onSelectCell={(branch) =>
+            effectiveSelected && selectCell({ rowId: effectiveSelected.rowId, branch })
+          }
         />
       </div>
     </div>
