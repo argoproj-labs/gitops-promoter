@@ -160,6 +160,33 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(Equal(map[string][]string{"Pull-request-id": {"1"}}))
 	})
 
+	It("LoadHistoryNotes batch-loads notes for multiple commits", func() {
+		g := newEnvOps("default/batch-load")
+		Expect(g.FetchBranch(GinkgoT().Context(), defaultBranch)).To(Succeed())
+		Expect(g.SetHistoryNote(GinkgoT().Context(), shaOne, map[string][]string{"Pull-request-id": {"batch-one"}})).To(Succeed())
+		Expect(g.SetHistoryNote(GinkgoT().Context(), shaTwo, map[string][]string{"Pull-request-id": {"batch-two"}})).To(Succeed())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+
+		Expect(g.LoadHistoryNotes(GinkgoT().Context(), shaOne, shaTwo)).To(Succeed())
+		gotOne, err := g.GetHistoryNote(GinkgoT().Context(), shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gotOne).To(Equal(map[string][]string{"Pull-request-id": {"batch-one"}}))
+		gotTwo, err := g.GetHistoryNote(GinkgoT().Context(), shaTwo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gotTwo).To(Equal(map[string][]string{"Pull-request-id": {"batch-two"}}))
+	})
+
+	It("LoadHistoryNotes caches missing notes without per-SHA show calls", func() {
+		g := newEnvOps("default/batch-missing")
+		Expect(g.FetchBranch(GinkgoT().Context(), defaultBranch)).To(Succeed())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+
+		Expect(g.LoadHistoryNotes(GinkgoT().Context(), shaOne)).To(Succeed())
+		got, err := g.GetHistoryNote(GinkgoT().Context(), shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeNil())
+	})
+
 	It("GetHistoryNote returns nil for missing notes and malformed JSON", func() {
 		g := newEnvOps("default/get-nil")
 		Expect(g.FetchBranch(GinkgoT().Context(), defaultBranch)).To(Succeed())
