@@ -10,7 +10,13 @@ import {
   extractBodyPreTrailer,
 } from '@shared/utils/util';
 import { getChecks } from '@shared/utils/PSData';
-import type { Check } from '@shared/types/promotion';
+import type {
+  Check,
+  ClusterScmProvider,
+  GitRepository,
+  PromotionStrategy,
+  ScmProvider,
+} from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn } from '../types';
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH } from '../presentation';
 import { isEmptyCellKind } from '../helpers';
@@ -40,6 +46,10 @@ const DetailDrawer: React.FC<{
   row: CommitRow | null;
   cell: CellState | null;
   branch: string | null;
+  promotionStrategy?: PromotionStrategy;
+  gitRepository?: GitRepository;
+  scmProvider?: ScmProvider;
+  clusterScmProvider?: ClusterScmProvider;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
   width: number;
@@ -54,6 +64,10 @@ const DetailDrawer: React.FC<{
   row,
   cell,
   branch,
+  promotionStrategy,
+  gitRepository,
+  scmProvider,
+  clusterScmProvider,
   envs,
   rowsById,
   width,
@@ -80,7 +94,12 @@ const DetailDrawer: React.FC<{
   const failingChecks = cell.commitStatuses.filter((s) => s.phase === 'failure');
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
-  const checks = getChecks([...failingChecks, ...pendingChecks, ...passingChecks], branch);
+  const checks = getChecks([...failingChecks, ...pendingChecks, ...passingChecks], branch, {
+    promotionStrategy,
+    gitRepository,
+    scmProvider,
+    clusterScmProvider,
+  });
 
   const checksLabel = cell.isProposed ? 'Proposed' : 'Active';
 

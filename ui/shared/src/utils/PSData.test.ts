@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mergeCommitStatusManagers } from './PSData';
+import { mergeCommitStatusManagers, getChecks, enrichFromCRD, enrichFromEnvironments } from './PSData';
 import type { CommitStatusManagerBundle } from './PSData';
 import type {
   Environment,
   EnrichedBranchCommitStatus,
+  GitRepository,
   PromotionStrategy,
 } from '../types/promotion';
 
@@ -273,5 +274,56 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     const original = environment.active.commitStatuses?.[0] as EnrichedBranchCommitStatus;
     expect(original.kind).toBeUndefined();
     expect(original.manager).toBeUndefined();
+  });
+});
+
+describe('getChecks - widened context', () => {
+  const statuses: EnrichedBranchCommitStatus[] = [{ key: 'gate', phase: 'success' }];
+
+  it('leaves the new context fields undefined when no context is given', () => {
+    const [check] = getChecks(statuses, BRANCH);
+
+    expect(check.promotionStrategy).toBeUndefined();
+    expect(check.environment).toBeUndefined();
+    expect(check.gitRepository).toBeUndefined();
+    expect(check.scmProvider).toBeUndefined();
+    expect(check.clusterScmProvider).toBeUndefined();
+  });
+
+  it('stamps every check with the supplied context', () => {
+    const ps = { metadata: { name: 'my-strategy' } } as unknown as PromotionStrategy;
+    const gitRepository = { metadata: { name: 'my-repo' } } as unknown as GitRepository;
+
+    const [check] = getChecks(statuses, BRANCH, { promotionStrategy: ps, gitRepository });
+
+    expect(check.promotionStrategy).toBe(ps);
+    expect(check.gitRepository).toBe(gitRepository);
+    expect(check.scmProvider).toBeUndefined();
+  });
+});
+
+describe('enrichFromCRD / enrichFromEnvironments - widened context', () => {
+  it('enrichFromCRD stamps checks with the promotion strategy and any bundle-level extras', () => {
+    const environment = envWithKeys(BRANCH, ['gate']);
+    const ps = {
+      metadata: { name: 'my-strategy' },
+      status: { environments: [environment] },
+    } as unknown as PromotionStrategy;
+    const gitRepository = { metadata: { name: 'my-repo' } } as unknown as GitRepository;
+
+    const [details] = enrichFromCRD(ps, 0, { gitRepository });
+
+    expect(details.activeChecks[0].promotionStrategy).toBe(ps);
+    expect(details.activeChecks[0].gitRepository).toBe(gitRepository);
+    expect(details.activeChecks[0].environment).toBe(environment);
+  });
+
+  it('enrichFromEnvironments has no promotionStrategy to supply and leaves it undefined', () => {
+    const environment = envWithKeys(BRANCH, ['gate']);
+
+    const [details] = enrichFromEnvironments([environment]);
+
+    expect(details.activeChecks[0].promotionStrategy).toBeUndefined();
+    expect(details.activeChecks[0].environment).toBe(environment);
   });
 });

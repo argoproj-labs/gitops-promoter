@@ -2,7 +2,12 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'react-icons/fa';
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
-import type { PromotionStrategy } from '@shared/types/promotion';
+import type {
+  ClusterScmProvider,
+  GitRepository,
+  PromotionStrategy,
+  ScmProvider,
+} from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
 import { isEmptyCellKind } from './helpers';
@@ -20,6 +25,9 @@ export interface CellSelection {
 
 export interface HistoryViewProps {
   strategy?: PromotionStrategy;
+  gitRepository?: GitRepository;
+  scmProvider?: ScmProvider;
+  clusterScmProvider?: ClusterScmProvider;
   name?: string;
   namespace?: string;
   onBack?: () => void;
@@ -34,6 +42,9 @@ export interface HistoryViewProps {
 
 const HistoryView: React.FC<HistoryViewProps> = ({
   strategy,
+  gitRepository,
+  scmProvider,
+  clusterScmProvider,
   name: nameProp,
   namespace: namespaceProp,
   onBack,
@@ -456,6 +467,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           row={selectedRow}
           cell={selectedCell}
           branch={selected?.branch ?? null}
+          promotionStrategy={strategy}
+          gitRepository={gitRepository}
+          scmProvider={scmProvider}
+          clusterScmProvider={clusterScmProvider}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}

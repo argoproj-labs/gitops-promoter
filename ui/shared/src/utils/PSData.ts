@@ -18,7 +18,22 @@ import type {
   PromotionPhase,
   ReferenceCommit,
   RelativeTimeAgo,
+  GitRepository,
+  ScmProvider,
+  ClusterScmProvider,
 } from '../types/promotion';
+
+export interface CheckContext {
+  promotionStrategy?: PromotionStrategy;
+  environment?: Environment;
+  activeDrySha?: string;
+  activeHydratedSha?: string;
+  proposedDrySha?: string;
+  proposedHydratedSha?: string;
+  gitRepository?: GitRepository;
+  scmProvider?: ScmProvider;
+  clusterScmProvider?: ClusterScmProvider;
+}
 
 export interface CommitStatusManagerBundle {
   timedCommitStatuses?: components['schemas']['TimedCommitStatus'][];
@@ -92,7 +107,11 @@ function findManager(
   return undefined;
 }
 
-export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
+export function getChecks(
+  commitStatuses: EnrichedBranchCommitStatus[],
+  branch: string,
+  context?: CheckContext,
+): Check[] {
   return commitStatuses.map((cs: EnrichedBranchCommitStatus) => ({
     name: cs.key,
     status: cs.phase,
@@ -102,6 +121,7 @@ export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: 
     kind: cs.kind,
     apiVersion: cs.apiVersion,
     manager: cs.manager,
+    ...context,
   }));
 }
 
@@ -214,7 +234,11 @@ function deriveActivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | n
   return derivePrTooltip(pr);
 }
 
-function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
+function getEnvDetails(
+  environment: Environment,
+  index: number = 0,
+  extra?: Omit<CheckContext, 'environment' | 'activeDrySha' | 'activeHydratedSha' | 'proposedDrySha' | 'proposedHydratedSha'>,
+): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
   const branch = environment.branch || '';
 
@@ -222,19 +246,30 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const activeHistory = history[index]?.active || active;
   const activeCommitInfo = activeHistory.dry || {};
 
+  // PROPOSED DATA - use historical proposed when viewing history
+  const proposedSource = index > 0 ? history[index]?.proposed : proposed;
+  const proposedDry = index > 0 ? proposedSource?.hydrated || {} : proposed.dry || {};
+
+  const checkContext: CheckContext = {
+    ...extra,
+    environment,
+    activeDrySha: activeCommitInfo.sha,
+    activeHydratedSha: activeHistory.hydrated?.sha,
+    proposedDrySha: index > 0 ? undefined : proposed.dry?.sha,
+    proposedHydratedSha: proposedDry.sha,
+  };
+
   // Use active field for current view, history field for history view
   const activeChecks = getChecks(
     index > 0 ? history[index]?.active?.commitStatuses || [] : active.commitStatuses || [],
     branch,
+    checkContext,
   );
 
   const activeChecksSummary = calculateHealthSummary(activeChecks);
   const activeReferenceData = extractReferenceCommitData(activeCommitInfo);
 
-  // PROPOSED DATA - use historical proposed when viewing history
-  const proposedSource = index > 0 ? history[index]?.proposed : proposed;
-  const proposedDry = index > 0 ? proposedSource?.hydrated || {} : proposed.dry || {};
-  const proposedChecks = getChecks(proposedSource?.commitStatuses || [], branch);
+  const proposedChecks = getChecks(proposedSource?.commitStatuses || [], branch, checkContext);
   const proposedChecksSummary = calculateHealthSummary(proposedChecks);
   const proposedReferenceData = extractReferenceCommitData(proposedDry);
 
@@ -340,17 +375,24 @@ export function getProcessingEnvs(environments: Environment[]): Set<string> {
   );
 }
 
+export interface EnrichExtra {
+  gitRepository?: GitRepository;
+  scmProvider?: ScmProvider;
+  clusterScmProvider?: ClusterScmProvider;
+}
+
 // Takes the PS objects (for dashboard)
 export function enrichFromCRD(
   ps: PromotionStrategy,
   historyIndex: number = 0,
+  extra?: EnrichExtra,
 ): EnrichedEnvDetails[] {
   if (!ps.status?.environments) {
     return [];
   }
 
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment, historyIndex),
+    getEnvDetails(environment, historyIndex, { ...extra, promotionStrategy: ps }),
   );
 }
 
@@ -358,8 +400,11 @@ export function enrichFromCRD(
 export function enrichFromEnvironments(
   environments: Environment[],
   historyIndex: number = 0,
+  extra?: EnrichExtra & { promotionStrategy?: PromotionStrategy },
 ): EnrichedEnvDetails[] {
-  return environments.map((environment: Environment) => getEnvDetails(environment, historyIndex));
+  return environments.map((environment: Environment) =>
+    getEnvDetails(environment, historyIndex, extra),
+  );
 }
 
 // Get overall promotion status and counts
