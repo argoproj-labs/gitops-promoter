@@ -246,26 +246,29 @@ describe('HistoryView', () => {
       expect(onUrlStateChange).not.toHaveBeenCalled();
     });
 
-    it('treats a changed envFilter order as a distinct state and resets to it', async () => {
+    it('treats a changed envFilter order as a distinct state and resets the selection', async () => {
       const onUrlStateChange = vi.fn();
       await render({
+        initialSelection: { rowId: NEWER_ROW_ID, branch: DEV_BRANCH },
         initialViewState: { envFilter: [DEV_BRANCH, PRD_BRANCH] },
         onUrlStateChange,
       });
 
+      expect(container.querySelector('.hp-row--selected')).not.toBeNull();
+
       root.render(
         React.createElement(HistoryView, {
           strategy: makeStrategy(),
+          initialSelection: null,
           initialViewState: { envFilter: [PRD_BRANCH, DEV_BRANCH] },
           onUrlStateChange,
         } as React.ComponentProps<typeof HistoryView>),
       );
       await wait();
 
-      // Environment dropdown reflects the newly-applied (reset) filter, not the stale one.
-      expect(trigger('Environment').querySelector('.hp-dd__value')?.textContent).toContain(
-        '2 environments',
-      );
+      // A distinct reset state (per sameUrlState, order-sensitive) clears the prior selection.
+      expect(container.querySelector('.hp-row--selected')).toBeNull();
+      expect(onUrlStateChange).not.toHaveBeenCalled();
     });
   });
 });
