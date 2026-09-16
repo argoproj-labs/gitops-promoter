@@ -4841,7 +4841,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// The previous environment commit status should exist and be pending
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
@@ -4994,7 +4996,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Eventually(func(g Gomega) {
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
@@ -5460,7 +5464,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when not hydrated",
 				"OLD", "OLD", "OLD", // prev: hasn't hydrated (note=OLD, target=ABC)
 				"OLD", "ABC", "ABC", // curr: target SHA is ABC
-				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+				true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 
 			// Case 2: Hydrated, NOT no-op, NOT merged → BLOCK "waiting for promotion"
 			Entry("blocks when hydrated but not merged (has real changes)",
@@ -5554,7 +5558,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 				Entry("blocks when not hydrated",
 					"OLD", "OLD", "OLD", "ABC",
-					true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+					true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 				Entry("blocks when hydrated but not merged",
 					"OLD", "ABC", "OLD", "ABC",
 					true, `Waiting for "linear-env-0" to be promoted`),
@@ -5597,7 +5601,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
+				Expect(reason).To(Equal(`Waiting for hydrator on "env1" to process dry ABC (currently OLD)`))
 			})
 
 			It("blocks on unmerged env after recursing through no-ops", func() {
@@ -5929,9 +5933,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
-		// immediate enqueue plus at most 3 chained delayed retries per distinct disagreement (a
-		// retried nudge covers a git note landing shortly after the previous one), after
-		// which the periodic CTP requeue is the retry path until the disagreement changes.
+		// immediate enqueue plus chained delayed retries on the threshold until the
+		// disagreement changes or the CTP converges (a retried nudge covers a git note
+		// landing shortly after the previous one).
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				Name:      name,
@@ -6045,8 +6049,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// Mixed fleet: the newest environment's hydrator writes notes (target moves to
 			// its note newnote456); the other environment's hydrator does not, so it can
 			// never represent newnote456 and a refetch cannot help it. It gets one prompt
-			// nudge for the disagreement; repeats defer to a bounded number of delayed
-			// retries — not a fixed-rate live-lock loop.
+			// nudge for the disagreement; repeats defer to the running delayed-retry chain
+			// rather than a live-lock of immediate re-enqueues.
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
@@ -6077,17 +6081,18 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			enqueueMutex.Unlock()
 		})
 
-		It("should retry an unchanged disagreement at most 3 times", func() {
+		It("should keep retrying an unchanged disagreement until it converges", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
+			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeLaggingCTP("test-ctp"),
+				lagging,
 				makeTargetCTP(),
 			}
 
 			// One call enqueues immediately and auto-chains threshold-spaced delayed
-			// retries until the disagreement budget is exhausted. Repeats within the
-			// rate-limit window do not enqueue again or arm duplicate chains.
+			// retries. Repeats within the rate-limit window do not enqueue again or
+			// arm duplicate chains.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			for range 3 {
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -6095,28 +6100,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
 			// The chained retries cover a git note landing shortly after each nudge (note
-			// pushes have no webhooks). The budget allows 3 delayed retries after the
-			// immediate enqueue — 4 total — without further reconcile calls.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"chained delayed retries should exhaust the disagreement budget")
+			// pushes have no webhooks). With no retry max, the chain continues past the
+			// former budget of 3 delayed retries (4 total including the immediate enqueue).
+			Eventually(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 5*time.Second, 20*time.Millisecond).Should(BeNumerically(">=", 5),
+				"chained delayed retries should continue past the former retry max")
 
-			// The budget is exhausted: further owner-watch loops neither enqueue nor
-			// schedule retries. Under the previous fixed-interval semantics another
-			// enqueue would land inside every window — forever. The periodic CTP requeue
-			// is the retry path from here on.
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an unchanged disagreement must stop retrying once its budget is exhausted")
-
-			// Even outside the rate-limit window, the exhausted budget blocks enqueues.
+			// Convergence stops the chain. A tick already in flight may still fire once;
+			// after that, lastDisagreement is cleared and further ticks are no-ops.
+			lagging.Status.Proposed.Note.DrySha = "abc123"
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
+			time.Sleep(reconciler.enqueueThreshold)
+			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			Consistently(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 2*time.Second, 100*time.Millisecond).Should(Equal(stoppedAt),
+				"convergence must stop further retries")
 		})
 
 		It("should re-arm when the disagreement changes and auto-chain retries for the new disagreement", func() {
@@ -6140,16 +6140,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// The new chain delivers its budget of threshold-spaced nudges:
-			// 1 (old, immediate) + maxEnqueueRetriesPerDisagreement (new chain) = 4 total.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"new disagreement should get a fresh chained retry budget")
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"no additional enqueue may fire without a new disagreement")
+			// The new chain delivers threshold-spaced nudges (at least two delayed retries
+			// beyond the original immediate enqueue).
+			Eventually(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 5*time.Second, 20*time.Millisecond).Should(BeNumerically(">=", 3),
+				"new disagreement should get a fresh chained retry")
+
+			// Convergence stops the replacement chain. A tick already in flight may still
+			// fire once; after that, further ticks are no-ops.
+			lagging.Status.Proposed.Note.DrySha = "abc123"
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			time.Sleep(reconciler.enqueueThreshold)
+			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			Consistently(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 2*time.Second, 100*time.Millisecond).Should(Equal(stoppedAt),
+				"convergence must stop retries for the re-armed disagreement")
 		})
 
 		It("should cancel pending retries when the CTP converges with the target", func() {
@@ -6165,7 +6172,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			lagging.Status.Proposed.Note.DrySha = "abc123"
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 
-			// Without cancellation the auto-chain would reach 4 enqueues within a few seconds.
+			// Without cancellation the auto-chain would keep enqueueing on the threshold.
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
 			}, 3*time.Second, 100*time.Millisecond).Should(Equal([]string{"test-ctp"}),

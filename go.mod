@@ -15,7 +15,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
-	github.com/google/go-github/v91 v91.0.0
+	github.com/google/go-github/v92 v92.0.0
 	github.com/google/uuid v1.6.0
 	github.com/ktrysmt/go-bitbucket v0.10.0
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
@@ -42,7 +42,7 @@ require (
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
-	sigs.k8s.io/controller-runtime v0.25.0
+	sigs.k8s.io/controller-runtime v0.25.1
 	sigs.k8s.io/multicluster-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 	sigs.k8s.io/yaml v1.6.0
