@@ -21,4 +21,8 @@ describe('resolveNamespace', () => {
   it('returns empty when neither source has a namespace', () => {
     expect(resolveNamespace(null, '', [])).toBe('');
   });
+
+  it('clears a persisted namespace that is no longer in the loaded list', () => {
+    expect(resolveNamespace(null, 'gone', ['other'])).toBe('');
+  });
 });

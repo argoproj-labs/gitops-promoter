@@ -81,7 +81,8 @@ const sameUrlState = (a: HistoryUrlState, b: HistoryUrlState): boolean =>
   a.selection?.branch === b.selection?.branch &&
   a.viewState.filter === b.viewState.filter &&
   a.viewState.sort === b.viewState.sort &&
-  a.viewState.envFilter.join(',') === b.viewState.envFilter.join(',');
+  a.viewState.envFilter.length === b.viewState.envFilter.length &&
+  a.viewState.envFilter.every((branch, index) => branch === b.viewState.envFilter[index]);
 
 type UrlStateAction =
   | { type: 'setFilter'; filter: FilterId }
@@ -221,19 +222,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.id)), [filteredRows]);
 
   useEffect(() => {
-    if (!selected || rows.length === 0) return;
+    if (!selected || !strategy) return;
     const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
     if (
       !validBranches.has(selected.branch) ||
       !selectedCell ||
       isEmptyCellKind(selectedCell.kind) ||
+      (envFilter.length > 0 && !envFilter.includes(selected.branch)) ||
       !filteredRowIds.has(selected.rowId)
     ) {
       if (selectionFromLinkRef.current) setStaleLink(true);
       selectionFromLinkRef.current = false;
       dispatch({ type: 'setSelection', selection: null });
     }
-  }, [selected, rows.length, rowsById, validBranches, filteredRowIds]);
+  }, [selected, strategy, rowsById, validBranches, envFilter, filteredRowIds]);
 
   useEffect(() => {
     if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;

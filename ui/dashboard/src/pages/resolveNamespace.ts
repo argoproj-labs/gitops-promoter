@@ -4,6 +4,9 @@ export function resolveNamespace(
   namespaces: string[],
 ): string {
   if (!urlNamespace) {
+    if (namespaces.length && !namespaces.includes(persistedNamespace)) {
+      return '';
+    }
     return persistedNamespace;
   }
   if (namespaces.length && !namespaces.includes(urlNamespace)) {
