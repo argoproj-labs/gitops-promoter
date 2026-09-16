@@ -96,8 +96,8 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
+	gap          scms.GitOperationsProvider
+	gitRepo      *v1alpha1.GitRepository
 	blobs        map[string]blobObject
 	commits      map[string]commitObject
 	historyNotes map[string]historyNoteEntry
@@ -144,9 +144,9 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
+		gap:          gap,
+		gitRepo:      gitRepo,
+		identity:     identity,
 		blobs:        make(map[string]blobObject),
 		commits:      make(map[string]commitObject),
 		historyNotes: make(map[string]historyNoteEntry),

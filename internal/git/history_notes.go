@@ -57,27 +57,29 @@ func (g *EnvironmentOperations) LoadHistoryNotes(ctx context.Context, shas ...st
 		blobToCommit[noteBlob] = commitSHA
 	}
 
-	if len(blobSHAs) > 0 {
-		if err := g.fetchBlobs(ctx, blobSHAs...); err != nil {
-			return err
-		}
-		for blobSHA, commitSHA := range blobToCommit {
-			entry := historyNoteEntry{missing: true}
-			blob, ok := g.blobs[blobSHA]
-			if ok && !blob.Missing && len(blob.Data) > 0 {
-				var trailers map[string][]string
-				if err := json.Unmarshal(blob.Data, &trailers); err != nil {
-					log.FromContext(ctx).V(4).Info("Failed to parse history note as JSON, ignoring", "sha", commitSHA, "error", err)
-				} else {
-					entry.trailers = trailers
-					entry.missing = false
-				}
-			}
-			g.historyNotes[commitSHA] = entry
-		}
+	if len(blobSHAs) == 0 {
+		return nil
 	}
-
+	if err := g.fetchBlobs(ctx, blobSHAs...); err != nil {
+		return err
+	}
+	for blobSHA, commitSHA := range blobToCommit {
+		g.historyNotes[commitSHA] = g.historyNoteFromBlob(ctx, blobSHA, commitSHA)
+	}
 	return nil
+}
+
+func (g *EnvironmentOperations) historyNoteFromBlob(ctx context.Context, blobSHA, commitSHA string) historyNoteEntry {
+	blob, ok := g.blobs[blobSHA]
+	if !ok || blob.Missing || len(blob.Data) == 0 {
+		return historyNoteEntry{missing: true}
+	}
+	var trailers map[string][]string
+	if err := json.Unmarshal(blob.Data, &trailers); err != nil {
+		log.FromContext(ctx).V(4).Info("Failed to parse history note as JSON, ignoring", "sha", commitSHA, "error", err)
+		return historyNoteEntry{missing: true}
+	}
+	return historyNoteEntry{trailers: trailers}
 }
 
 func (g *EnvironmentOperations) listPromotionHistoryNoteBlobs(ctx context.Context) (map[string]string, error) {
