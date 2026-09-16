@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"path"
@@ -711,7 +712,7 @@ func (r *PromotionStrategyReconciler) startRetryChain(
 // gitNoteRetryPolicy returns spec.promotionStrategy.gitNoteRetry from ControllerConfiguration.
 func (r *PromotionStrategyReconciler) gitNoteRetryPolicy(ctx context.Context) (promoterv1alpha1.GitNoteRetry, error) {
 	if r.SettingsMgr == nil {
-		return promoterv1alpha1.GitNoteRetry{}, fmt.Errorf("SettingsMgr is required to load gitNoteRetry")
+		return promoterv1alpha1.GitNoteRetry{}, errors.New("SettingsMgr is required to load gitNoteRetry")
 	}
 	policy, err := r.SettingsMgr.GetGitNoteRetry(ctx)
 	if err != nil {

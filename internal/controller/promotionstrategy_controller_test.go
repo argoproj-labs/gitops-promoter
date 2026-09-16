@@ -6427,12 +6427,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 })
 
 var _ = Describe("gitNoteRetryDelay", func() {
-	policy := func(base, max time.Duration) promoterv1alpha1.GitNoteRetry {
+	policy := func(base, maxDelay time.Duration) promoterv1alpha1.GitNoteRetry {
 		return promoterv1alpha1.GitNoteRetry{
 			MaxAttempts: 8,
 			ExponentialFailure: promoterv1alpha1.ExponentialFailure{
 				BaseDelay: metav1.Duration{Duration: base},
-				MaxDelay:  metav1.Duration{Duration: max},
+				MaxDelay:  metav1.Duration{Duration: maxDelay},
 			},
 		}
 	}
