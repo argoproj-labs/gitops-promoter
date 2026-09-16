@@ -12,6 +12,8 @@ import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
+import { initialUrlState, sameUrlState, urlStateReducer } from './urlState';
+import type { CellSelection, HistoryUrlState } from './urlState';
 import './index.scss';
 
 const scrollRowIntoView = (rowId: string) => {
@@ -43,15 +45,7 @@ const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
   label: SORT_LABELS[id],
 }));
 
-export interface CellSelection {
-  rowId: string;
-  branch: string;
-}
-
-export interface HistoryUrlState {
-  selection: CellSelection | null;
-  viewState: HistoryViewState;
-}
+export type { CellSelection, HistoryUrlState };
 
 export interface HistoryViewProps {
   strategy?: PromotionStrategy;
@@ -63,48 +57,6 @@ export interface HistoryViewProps {
   onUrlStateChange?: (_state: HistoryUrlState) => void;
   fillViewport?: boolean;
 }
-
-const initialUrlState = (
-  selection: CellSelection | null,
-  viewState: Partial<HistoryViewState> | undefined,
-): HistoryUrlState => ({
-  selection,
-  viewState: {
-    filter: viewState?.filter ?? 'all',
-    sort: viewState?.sort ?? 'newest',
-    envFilter: viewState?.envFilter ?? [],
-  },
-});
-
-const sameUrlState = (a: HistoryUrlState, b: HistoryUrlState): boolean =>
-  a.selection?.rowId === b.selection?.rowId &&
-  a.selection?.branch === b.selection?.branch &&
-  a.viewState.filter === b.viewState.filter &&
-  a.viewState.sort === b.viewState.sort &&
-  a.viewState.envFilter.length === b.viewState.envFilter.length &&
-  a.viewState.envFilter.every((branch, index) => branch === b.viewState.envFilter[index]);
-
-type UrlStateAction =
-  | { type: 'setFilter'; filter: FilterId }
-  | { type: 'setSort'; sort: SortId }
-  | { type: 'setEnvFilter'; envFilter: string[] }
-  | { type: 'setSelection'; selection: CellSelection | null }
-  | { type: 'reset'; state: HistoryUrlState };
-
-const urlStateReducer = (state: HistoryUrlState, action: UrlStateAction): HistoryUrlState => {
-  switch (action.type) {
-    case 'setFilter':
-      return { ...state, viewState: { ...state.viewState, filter: action.filter } };
-    case 'setSort':
-      return { ...state, viewState: { ...state.viewState, sort: action.sort } };
-    case 'setEnvFilter':
-      return { ...state, viewState: { ...state.viewState, envFilter: action.envFilter } };
-    case 'setSelection':
-      return { ...state, selection: action.selection };
-    case 'reset':
-      return action.state;
-  }
-};
 
 const HistoryView: React.FC<HistoryViewProps> = ({
   strategy,
