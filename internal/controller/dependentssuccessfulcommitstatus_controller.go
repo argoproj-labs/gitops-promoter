@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -611,7 +610,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx contex
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.DependentsSuccessfulCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDependentsSuccessfulCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.DependentsSuccessfulCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("dependentssuccessfulcommitstatus").
 		Complete(r)
@@ -619,35 +618,6 @@ func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx contex
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-// enqueueDependentsSuccessfulCommitStatusForPromotionStrategy returns a handler that enqueues all
-// DependentsSuccessfulCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
-func (r *DependentsSuccessfulCommitStatusReconciler) enqueueDependentsSuccessfulCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
-		if err := r.List(ctx, &dcsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			logf.FromContext(ctx).Error(err, "failed to list DependentsSuccessfulCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(dcsList.Items))
-		for i := range dcsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&dcsList.Items[i]),
-			})
-		}
-
-		return requests
-	})
 }
 
 // dag is the in-memory dependency graph built from a DependentsSuccessfulCommitStatus's environments.

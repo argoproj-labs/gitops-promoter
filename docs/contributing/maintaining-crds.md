@@ -76,7 +76,7 @@ When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRe
    - [`internal/controller/suite_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/suite_test.go) — main envtest suite
    - [`internal/controller/test_manager_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/test_manager_test.go) (`startPartitionedManager`) — instance-id migration / partitioned-manager tests  
    Omitting the last site is a common miss: migration tests will time out waiting for child `CommitStatus` objects that never get created.
-3. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
+3. In `SetupWithManager`, watch `PromotionStrategy` with `controller.CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.MyCommitStatusList](r.Client)`. See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
 
 Skip this step for types that do not reference a `PromotionStrategy` or never use field selectors on the cache client.
 
