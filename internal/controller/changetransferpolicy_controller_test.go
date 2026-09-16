@@ -945,12 +945,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Adding a pending commit and waiting for open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(prName),
-						Namespace: "default",
-					}, &createdPR)
+					err := k8sClient.Get(ctx, prKey, &createdPR)
 					g.Expect(err).To(Succeed())
 					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
@@ -958,7 +960,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(changeTransferPolicy.Status.Proposed.Dry.Sha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				fake.ResetFindOpenCallCount()
+				fake.ResetPullRequestCallCounts(createdPR.UID)
 
 				By("Simulating external merge on SCM (merges proposed into active and sends webhook)")
 				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
@@ -968,10 +970,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("Verifying PR is deleted promptly without relying on periodic requeue")
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
+					err := k8sClient.Get(ctx, prKey, &createdPR)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, 10*time.Second).Should(Succeed())
 
@@ -982,7 +981,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.MergedTargetSha).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 1))
+				Expect(fake.FindOpenCallCount(createdPR.UID)).To(BeNumerically(">=", 1))
 			})
 		})
 
@@ -1285,7 +1284,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, stableGeneration := waitForOpenPRWithID()
 
-				fake.ResetPullRequestSCMCallCounts()
+				fake.ResetPullRequestCallCounts(pr.UID)
 
 				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
 				for poke := range 3 {
@@ -1302,13 +1301,22 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.Url).To(Equal(fmt.Sprintf("https://fake.example/pr/%s?poke=2", pr.Status.ID)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
+				By("Polling SCM for an unrelated PullRequest, which must not count against this one")
+				// Specs share the fake provider's counters, and a PullRequest left behind by an
+				// earlier spec keeps polling FindOpen every requeue interval for the rest of the
+				// suite. Prove those calls land on their own UID's counters.
+				foreignPR := *pr.DeepCopy()
+				foreignPR.UID = "unrelated-uid"
+				_, err := fake.NewFakePullRequestProvider(k8sClient).FindOpen(ctx, foreignPR)
+				Expect(err).NotTo(HaveOccurred())
+
 				By("Verifying status churn does not drive SCM polling in a tight loop")
 				// With the fix, three status-only pokes produce 0 SCM calls after reset.
 				// Without it, the loop reaches 1+ FindOpen/Update pairs within ~0.5s.
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeZero())
-					g.Expect(fake.UpdateCallCount()).To(BeZero())
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+					g.Expect(fake.FindOpenCallCount(pr.UID)).To(BeZero())
+					g.Expect(fake.UpdateCallCount(pr.UID)).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount(pr.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				var afterPR promoterv1alpha1.PullRequest
@@ -1321,10 +1329,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
 
-				fake.ResetPullRequestSCMCallCounts()
-				baselineFindOpen := fake.FindOpenCallCount()
+				fake.ResetPullRequestCallCounts(pr.UID)
+				baselineFindOpen := fake.FindOpenCallCount(pr.UID)
 
-				baselineUpdate := fake.UpdateCallCount()
+				baselineUpdate := fake.UpdateCallCount(pr.UID)
 
 				By("Changing PR spec so the PR controller must sync to SCM")
 				Eventually(func(g Gomega) {
@@ -1334,8 +1342,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">", baselineFindOpen))
-					g.Expect(fake.UpdateCallCount()).To(BeNumerically(">", baselineUpdate))
+					g.Expect(fake.FindOpenCallCount(pr.UID)).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount(pr.UID)).To(BeNumerically(">", baselineUpdate))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1643,11 +1651,26 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Attaching a hydrator git note to the proposed hydrated commit (ours-merge will leave the tip without a note)")
 				Expect(pushGitNote(ctx, gitPath, strings.TrimSpace(hydratedSha), proposedDrySha)).To(Succeed())
 
-				By("Resetting the fake SCM's merge-sha-mismatch counter")
-				fake.ResetMergeShaMismatchCount()
+				prKey := types.NamespacedName{
+					Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
+						gitRepo.Spec.Fake.Owner,
+						gitRepo.Spec.Fake.Name,
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Spec.ActiveBranch,
+					)),
+					Namespace: "default",
+				}
 
 				By("Creating the CTP so its very first reconcile sees the pre-existing conflict")
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				var prUID types.UID
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.UID).NotTo(BeEmpty())
+					prUID = pr.UID
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Waiting for the conflict-resolved PR to merge into active")
 				Eventually(func(g Gomega) {
@@ -1662,7 +1685,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Asserting the SCM was never asked to merge with a stale mergeSha")
-				Expect(fake.MergeShaMismatchCount()).To(BeNumerically("==", 0),
+				Expect(fake.MergeShaMismatchCount(prUID)).To(BeNumerically("==", 0),
 					"PR.Spec.MergeSha must not lag origin/<proposedBranch> after gitMergeStrategyOurs "+
 						"rewrites the proposed branch tip; otherwise the PullRequest controller asks "+
 						"the SCM to merge a sha origin no longer has on the source branch")
