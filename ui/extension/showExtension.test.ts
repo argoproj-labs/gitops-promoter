@@ -32,7 +32,7 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(true);
     });
 
-    it('returns true when label is present even with multiple PromotionStrategyDetails resources', () => {
+    it('returns true when label is present even with multiple PromotionStrategy resources', () => {
       const app = makeApp({
         metadata: {
           name: 'my-app',
@@ -42,15 +42,15 @@ describe('showExtension', () => {
         status: {
           resources: [
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps1',
               namespace: 'ns1',
               status: 'Synced',
             },
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps2',
               namespace: 'ns2',
               status: 'Synced',
@@ -83,8 +83,8 @@ describe('showExtension', () => {
         status: {
           resources: [
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps1',
               namespace: 'ns1',
               status: 'Synced',
@@ -97,13 +97,13 @@ describe('showExtension', () => {
   });
 
   describe('tree-based fallback (no label)', () => {
-    it('returns true when exactly one PromotionStrategyDetails resource is in the tree', () => {
+    it('returns true when exactly one PromotionStrategy resource is in the tree', () => {
       const app = makeApp({
         status: {
           resources: [
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps1',
               namespace: 'ns1',
               status: 'Synced',
@@ -114,20 +114,20 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(true);
     });
 
-    it('returns true when there are multiple PromotionStrategyDetails resources', () => {
+    it('returns true when there are multiple PromotionStrategy resources', () => {
       const app = makeApp({
         status: {
           resources: [
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps1',
               namespace: 'ns1',
               status: 'Synced',
             },
             {
-              kind: 'PromotionStrategyDetails',
-              group: 'view.promoter.argoproj.io',
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
               name: 'ps2',
               namespace: 'ns2',
               status: 'Synced',
@@ -148,7 +148,7 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(false);
     });
 
-    it('returns false when there are no PromotionStrategyDetails resources (only other kinds)', () => {
+    it('returns false when there are no PromotionStrategy resources (only other kinds)', () => {
       const app = makeApp({
         status: {
           resources: [
@@ -165,12 +165,12 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(false);
     });
 
-    it('returns false when PromotionStrategyDetails has wrong group', () => {
+    it('returns false when PromotionStrategy has wrong group', () => {
       const app = makeApp({
         status: {
           resources: [
             {
-              kind: 'PromotionStrategyDetails',
+              kind: 'PromotionStrategy',
               group: 'other.io',
               name: 'ps1',
               namespace: 'ns1',
@@ -182,13 +182,13 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(false);
     });
 
-    it('returns false when only the raw PromotionStrategy CRD is in the tree', () => {
+    it('returns false when only the PromotionStrategyDetails view resource is in the tree', () => {
       const app = makeApp({
         status: {
           resources: [
             {
-              kind: 'PromotionStrategy',
-              group: 'promoter.argoproj.io',
+              kind: 'PromotionStrategyDetails',
+              group: 'view.promoter.argoproj.io',
               name: 'ps1',
               namespace: 'ns1',
               status: 'Synced',

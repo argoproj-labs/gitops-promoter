@@ -2,8 +2,8 @@ import type { Application } from '@shared/types/extension';
 
 export const LABEL = 'promoter.argoproj.io/has-promotionstrategy';
 
-const GROUP = 'view.promoter.argoproj.io';
-const KIND = 'PromotionStrategyDetails';
+const GROUP = 'promoter.argoproj.io';
+const KIND = 'PromotionStrategy';
 
 export const showExtension = (application: Application): boolean => {
   if (application.metadata.labels?.[LABEL]) return application.metadata.labels[LABEL] === 'true';
