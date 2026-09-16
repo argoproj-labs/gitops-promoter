@@ -148,6 +148,16 @@ spec:
                         the field blank
                       rule: self != "gitlab.com"
                 type: object
+              inboundWebhookVerification:
+                default: NoVerification
+                description: |-
+                  InboundWebhookVerification controls signature verification for inbound SCM webhooks
+                  delivered to the promoter webhook receiver for GitRepositories using this provider.
+                  RequireVerification needs ScmProviderSecretKeyWebhookSecret on the Provider secret referenced by secretRef.
+                enum:
+                - NoVerification
+                - RequireVerification
+                type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to
                   a specific provider

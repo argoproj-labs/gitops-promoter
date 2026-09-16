@@ -1090,6 +1090,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: subject
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.InboundWebhookVerificationMode
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ModeSpec
   map:
     fields:
@@ -1103,6 +1105,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: trigger
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TriggerModeSpec
+    - name: webhook
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebhookModeSpec
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OAuth2Auth
   map:
     fields:
@@ -1651,6 +1656,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gitlab
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitLab
+    - name: inboundWebhookVerification
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.InboundWebhookVerificationMode
+      default: NoVerification
     - name: secretRef
       type:
         namedType: io.k8s.api.core.v1.LocalObjectReference
@@ -2025,6 +2034,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyContext
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebhookFilterSpec
+  map:
+    fields:
+    - name: expression
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebhookModeSpec
+  map:
+    fields:
+    - name: filter
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebhookFilterSpec
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WhenWithOutputSpec
   map:
     fields:

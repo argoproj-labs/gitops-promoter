@@ -5,6 +5,7 @@ import (
 	toolscache "k8s.io/client-go/tools/cache"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
 )
@@ -17,16 +18,18 @@ const githubAppPrivateKeySecretKey = "githubAppPrivateKey"
 // Secrets that share the instance-id label partition.
 func promoterSecretDataKeys() map[string]struct{} {
 	return map[string]struct{}{
-		httpauth.UsernameKey:          {},
-		httpauth.PasswordKey:          {},
-		httpauth.TokenKey:             {},
-		httpauth.ClientIDKey:          {},
-		httpauth.ClientSecretKey:      {},
-		httpauth.TLSCertKey:           {},
-		httpauth.TLSKeyKey:            {},
-		httpauth.TLSCAKey:             {},
-		constants.KubeconfigSecretKey: {},
-		githubAppPrivateKeySecretKey:  {},
+		httpauth.UsernameKey:                               {},
+		httpauth.PasswordKey:                               {},
+		httpauth.TokenKey:                                  {},
+		httpauth.ClientIDKey:                               {},
+		httpauth.ClientSecretKey:                           {},
+		httpauth.TLSCertKey:                                {},
+		httpauth.TLSKeyKey:                                 {},
+		httpauth.TLSCAKey:                                  {},
+		constants.KubeconfigSecretKey:                      {},
+		githubAppPrivateKeySecretKey:                       {},
+		promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: {},
+		promoterv1alpha1.ScmProviderSecretKeyWebhookSignatureHeader: {},
 	}
 }
 
