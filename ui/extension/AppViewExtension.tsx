@@ -38,7 +38,7 @@ function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
   const environments = environmentsFromBundle(
     ps.spec,
     bundle.changeTransferPolicies ?? [],
-    bundle.promotionStrategyHistories ?? [],
+    bundle.changeTransferPolicyHistories ?? [],
   );
   const promotionStrategy = {
     ...ps,

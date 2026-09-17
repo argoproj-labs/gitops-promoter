@@ -20,7 +20,7 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-  promotionStrategyHistory:
+  changeTransferPolicyHistory:
     workQueue:
       maxConcurrentReconciles: 5
       requeueDuration: "5m"

@@ -32,7 +32,7 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 //
 // The following configuration types satisfy this constraint:
 //   - PromotionStrategyConfiguration
-//   - PromotionStrategyHistoryConfiguration
+//   - ChangeTransferPolicyHistoryConfiguration
 //   - ChangeTransferPolicyConfiguration
 //   - PullRequestConfiguration
 //   - CommitStatusConfiguration
@@ -44,7 +44,7 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 //   - ScheduledCommitStatusConfiguration
 type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
-		promoterv1alpha1.PromotionStrategyHistoryConfiguration |
+		promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration |
 		promoterv1alpha1.ChangeTransferPolicyConfiguration |
 		promoterv1alpha1.PullRequestConfiguration |
 		promoterv1alpha1.CommitStatusConfiguration |
@@ -286,8 +286,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 	switch cfg := any(controllerConfig).(type) {
 	case promoterv1alpha1.PromotionStrategyConfiguration:
 		return config.Spec.PromotionStrategy.WorkQueue, nil
-	case promoterv1alpha1.PromotionStrategyHistoryConfiguration:
-		return config.Spec.PromotionStrategyHistory.WorkQueue, nil
+	case promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration:
+		return config.Spec.ChangeTransferPolicyHistory.WorkQueue, nil
 	case promoterv1alpha1.ChangeTransferPolicyConfiguration:
 		return config.Spec.ChangeTransferPolicy.WorkQueue, nil
 	case promoterv1alpha1.PullRequestConfiguration:

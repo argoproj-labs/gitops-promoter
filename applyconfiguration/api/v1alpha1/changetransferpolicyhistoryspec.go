@@ -17,11 +17,11 @@ limitations under the License.
 
 package v1alpha1
 
-// PromotionStrategyHistorySpecApplyConfiguration represents a declarative configuration of the PromotionStrategyHistorySpec type for use
+// ChangeTransferPolicyHistorySpecApplyConfiguration represents a declarative configuration of the ChangeTransferPolicyHistorySpec type for use
 // with apply.
 //
-// PromotionStrategyHistorySpec defines the desired state of PromotionStrategyHistory.
-type PromotionStrategyHistorySpecApplyConfiguration struct {
+// ChangeTransferPolicyHistorySpec defines the desired state of ChangeTransferPolicyHistory.
+type ChangeTransferPolicyHistorySpecApplyConfiguration struct {
 	// RepositoryReference is the repository whose active branch is inspected to reconstruct
 	// the promotion history.
 	RepositoryReference *ObjectReferenceApplyConfiguration `json:"gitRepositoryRef,omitempty"`
@@ -33,16 +33,16 @@ type PromotionStrategyHistorySpecApplyConfiguration struct {
 	ActivePath *string `json:"activePath,omitempty"`
 }
 
-// PromotionStrategyHistorySpecApplyConfiguration constructs a declarative configuration of the PromotionStrategyHistorySpec type for use with
+// ChangeTransferPolicyHistorySpecApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicyHistorySpec type for use with
 // apply.
-func PromotionStrategyHistorySpec() *PromotionStrategyHistorySpecApplyConfiguration {
-	return &PromotionStrategyHistorySpecApplyConfiguration{}
+func ChangeTransferPolicyHistorySpec() *ChangeTransferPolicyHistorySpecApplyConfiguration {
+	return &ChangeTransferPolicyHistorySpecApplyConfiguration{}
 }
 
 // WithRepositoryReference sets the RepositoryReference field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the RepositoryReference field is set to the value of the last call.
-func (b *PromotionStrategyHistorySpecApplyConfiguration) WithRepositoryReference(value *ObjectReferenceApplyConfiguration) *PromotionStrategyHistorySpecApplyConfiguration {
+func (b *ChangeTransferPolicyHistorySpecApplyConfiguration) WithRepositoryReference(value *ObjectReferenceApplyConfiguration) *ChangeTransferPolicyHistorySpecApplyConfiguration {
 	b.RepositoryReference = value
 	return b
 }
@@ -50,7 +50,7 @@ func (b *PromotionStrategyHistorySpecApplyConfiguration) WithRepositoryReference
 // WithActiveBranch sets the ActiveBranch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ActiveBranch field is set to the value of the last call.
-func (b *PromotionStrategyHistorySpecApplyConfiguration) WithActiveBranch(value string) *PromotionStrategyHistorySpecApplyConfiguration {
+func (b *ChangeTransferPolicyHistorySpecApplyConfiguration) WithActiveBranch(value string) *ChangeTransferPolicyHistorySpecApplyConfiguration {
 	b.ActiveBranch = &value
 	return b
 }
@@ -58,7 +58,7 @@ func (b *PromotionStrategyHistorySpecApplyConfiguration) WithActiveBranch(value 
 // WithActivePath sets the ActivePath field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ActivePath field is set to the value of the last call.
-func (b *PromotionStrategyHistorySpecApplyConfiguration) WithActivePath(value string) *PromotionStrategyHistorySpecApplyConfiguration {
+func (b *ChangeTransferPolicyHistorySpecApplyConfiguration) WithActivePath(value string) *ChangeTransferPolicyHistorySpecApplyConfiguration {
 	b.ActivePath = &value
 	return b
 }

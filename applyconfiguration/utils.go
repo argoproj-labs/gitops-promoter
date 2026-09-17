@@ -59,6 +59,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyConfiguration"):
 		return &apiv1alpha1.ChangeTransferPolicyConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistory"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryConfiguration"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistorySpec"):
+		return &apiv1alpha1.ChangeTransferPolicyHistorySpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryStatus"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicySpec"):
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):
@@ -177,14 +185,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):
 		return &apiv1alpha1.PromotionStrategyConfigurationApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyHistory"):
-		return &apiv1alpha1.PromotionStrategyHistoryApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyHistoryConfiguration"):
-		return &apiv1alpha1.PromotionStrategyHistoryConfigurationApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyHistorySpec"):
-		return &apiv1alpha1.PromotionStrategyHistorySpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyHistoryStatus"):
-		return &apiv1alpha1.PromotionStrategyHistoryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategySpec"):
 		return &apiv1alpha1.PromotionStrategySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyStatus"):

@@ -52,6 +52,6 @@ resources:
 - scheduledcommitstatus_admin_role.yaml
 - scheduledcommitstatus_editor_role.yaml
 - scheduledcommitstatus_viewer_role.yaml
-- promotionstrategyhistory_admin_role.yaml
-- promotionstrategyhistory_editor_role.yaml
-- promotionstrategyhistory_viewer_role.yaml
+- changetransferpolicyhistory_admin_role.yaml
+- changetransferpolicyhistory_editor_role.yaml
+- changetransferpolicyhistory_viewer_role.yaml

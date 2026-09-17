@@ -79,10 +79,10 @@ type ChangeTransferPolicyReconciler struct {
 	// EnqueuePR wakes the PullRequest controller without patching the PR object.
 	EnqueuePR PREnqueueFunc
 
-	// EnqueuePSH wakes the PromotionStrategyHistory controller without patching the
-	// PromotionStrategyHistory object. Used after writing a promotion-history git note so the
+	// EnqueueCTPH wakes the ChangeTransferPolicyHistory controller without patching the
+	// ChangeTransferPolicyHistory object. Used after writing a promotion-history git note so the
 	// history status reflects the merged pull request without waiting for the next requeue.
-	EnqueuePSH PSHEnqueueFunc
+	EnqueueCTPH CTPHEnqueueFunc
 
 	labelEvaluator prlabels.Evaluator
 }
@@ -98,6 +98,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch;create;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -143,6 +144,10 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	previousReady = utils.RemoveReadyCondition(&ctp)
 
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.upsertChangeTransferPolicyHistory(ctx, &ctp); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -782,7 +787,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 
 // handlePRFinalizerRemoval handles a PR being deleted with our finalizer. As soon as the PR reports a merge
 // it makes sure the promotion-history git note exists on the merge commit and wakes the
-// PromotionStrategyHistory controller to rebuild history from it, and once the CTP status matches the PR
+// ChangeTransferPolicyHistory controller to rebuild history from it, and once the CTP status matches the PR
 // status it removes the finalizer to allow the PR to be deleted.
 //
 // The note is written before the CTP-status gate on purpose. The PullRequest controller reports the merge
@@ -827,7 +832,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	}
 
 	// Write the promotion-history note before the CTP-status checks below: the note is built from the PR
-	// object and the merge commit, neither of which the CTP status gates, and the PromotionStrategyHistory
+	// object and the merge commit, neither of which the CTP status gates, and the ChangeTransferPolicyHistory
 	// controller is woken immediately after so a history entry that predates the note is not carried
 	// forward. The PR's commit message is the last place the trailers survive when the SCM rewrote the
 	// merge commit (squash or external merge), and the finalizer is what guarantees that data is still
@@ -884,7 +889,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 }
 
 // ensurePromotionHistoryNote makes sure the promotion-history note for a merged, terminating PullRequest
-// exists on its merge commit and wakes the PromotionStrategyHistory controller to rebuild history from it.
+// exists on its merge commit and wakes the ChangeTransferPolicyHistory controller to rebuild history from it.
 // A history entry for the merge commit may predate the note and carry trailer-derived metadata (including
 // a PR ID from merge-commit trailers); the rebuild corrects that.
 //
@@ -893,7 +898,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 // (spec.commit.message is never rewritten for a merged PR and the merge commit is immutable), so an existing
 // note is reused rather than rewritten, which avoids a redundant notes-ref push per pass. GetHistoryNote
 // reads the remote notes ref and does not need the merge commit locally; when the note already exists,
-// both the branch fetch and the PromotionStrategyHistory wake-up are skipped.
+// both the branch fetch and the ChangeTransferPolicyHistory wake-up are skipped.
 //
 // The merge commit may not be in the local clone yet: CloneRepo is blob-less and the active branch is only
 // fetched later in the reconcile by calculateStatus, so on the first pass after an external merge the active
@@ -929,37 +934,20 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 		return err
 	}
 
-	// Wake the PromotionStrategyHistory controller now that the note is on the remote: a history entry for
+	// Wake the ChangeTransferPolicyHistory controller now that the note is on the remote: a history entry for
 	// this merge commit may predate the note and carry trailer-derived metadata that the note corrects,
 	// and the note push generates no SCM webhook or CTP status change on its own.
-	r.enqueueSiblingPromotionStrategyHistories(ctx, ctp)
+	r.enqueueChangeTransferPolicyHistory(ctp)
 	return nil
 }
 
-// enqueueSiblingPromotionStrategyHistories wakes the PromotionStrategyHistory resources for the same
-// environment as this CTP (matched by the PromotionStrategy and Environment labels) via the external
-// enqueue channel, without patching the objects. No-op when EnqueuePSH is unset or the labels are missing.
-func (r *ChangeTransferPolicyReconciler) enqueueSiblingPromotionStrategyHistories(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) {
-	if r.EnqueuePSH == nil {
+// enqueueChangeTransferPolicyHistory wakes the ChangeTransferPolicyHistory owned by this CTP via the
+// external enqueue channel, without patching the object. No-op when EnqueueCTPH is unset.
+func (r *ChangeTransferPolicyReconciler) enqueueChangeTransferPolicyHistory(ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	if r.EnqueueCTPH == nil {
 		return
 	}
-	psLabel := ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]
-	envLabel := ctp.Labels[promoterv1alpha1.EnvironmentLabel]
-	if psLabel == "" || envLabel == "" {
-		return
-	}
-
-	var pshList promoterv1alpha1.PromotionStrategyHistoryList
-	if err := r.List(ctx, &pshList, client.InNamespace(ctp.Namespace), client.MatchingLabels{
-		promoterv1alpha1.PromotionStrategyLabel: psLabel,
-		promoterv1alpha1.EnvironmentLabel:       envLabel,
-	}); err != nil {
-		log.FromContext(ctx).V(4).Info("failed to list PromotionStrategyHistories to enqueue", "err", err)
-		return
-	}
-	for i := range pshList.Items {
-		r.EnqueuePSH(pshList.Items[i].Namespace, pshList.Items[i].Name)
-	}
+	r.EnqueueCTPH(ctp.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name)))
 }
 
 // writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge
@@ -1171,6 +1159,53 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 	return prApply.WithSpec(prSpec)
 }
 
+// upsertChangeTransferPolicyHistory creates or updates the ChangeTransferPolicyHistory owned by this
+// ChangeTransferPolicy. The history controller reconstructs status.history from git; this function
+// only manages the object's spec, labels, and ownership.
+func (r *ChangeTransferPolicyReconciler) upsertChangeTransferPolicyHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	ctphName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name))
+
+	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	ctphSpec := acv1alpha1.ChangeTransferPolicyHistorySpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ctp.Spec.RepositoryReference.Name)).
+		WithActiveBranch(ctp.Spec.ActiveBranch)
+	if ctp.Spec.ActivePath != "" {
+		ctphSpec = ctphSpec.WithActivePath(ctp.Spec.ActivePath)
+	}
+
+	ctphLabels := make(map[string]string, len(ctp.Labels)+1)
+	for k, v := range ctp.Labels {
+		ctphLabels[k] = v
+	}
+	ctphLabels[promoterv1alpha1.ChangeTransferPolicyLabel] = utils.KubeSafeLabel(ctp.Name)
+	ctphLabels = utils.StampInstanceIDLabel(ctphLabels)
+
+	ctphApply := acv1alpha1.ChangeTransferPolicyHistory(ctphName, ctp.Namespace).
+		WithLabels(ctphLabels).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(ctp.Name).
+			WithUID(ctp.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(ctphSpec)
+
+	ctph := &promoterv1alpha1.ChangeTransferPolicyHistory{}
+	ctph.Name = ctphName
+	ctph.Namespace = ctp.Namespace
+	if err := r.Patch(ctx, ctph, utils.ApplyPatch{ApplyConfig: ctphApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return fmt.Errorf("failed to apply ChangeTransferPolicyHistory %q: %w", ctphName, err)
+	}
+
+	logger.V(4).Info("Applied ChangeTransferPolicyHistory")
+	return nil
+}
+
 // handleCTPCleanupOnDelete removes ChangeTransferPolicyPullRequestFinalizer from all PullRequests for this CTP.
 // After that, the PullRequest controller and kube garbage collection (on a real cluster) complete removal; envtest
 // does not run the garbage collector, so owned PullRequests are not cascade-deleted by the apiserver alone.
@@ -1178,6 +1213,15 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 // blocks PR cleanup.
 func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
+
+	// envtest does not run kube garbage collection, so delete the owned history object explicitly
+	// rather than relying on owner-reference cascade.
+	ctph := &promoterv1alpha1.ChangeTransferPolicyHistory{}
+	ctph.Name = utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name))
+	ctph.Namespace = ctp.Namespace
+	if err := r.Delete(ctx, ctph); err != nil && !k8s_errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete ChangeTransferPolicyHistory %q: %w", ctph.Name, err)
+	}
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	err := r.List(ctx, prList, ctpPullRequestListOptions(ctp))

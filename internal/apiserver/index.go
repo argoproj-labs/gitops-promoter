@@ -112,7 +112,7 @@ func (p *BundleProvider) currentResourceVersion() string {
 func (p *BundleProvider) childKinds() []client.Object {
 	return append([]client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
-		&promoterv1alpha1.PromotionStrategyHistory{},
+		&promoterv1alpha1.ChangeTransferPolicyHistory{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
 		&promoterv1alpha1.PullRequest{},
 		&promoterv1alpha1.CommitStatus{},
@@ -240,7 +240,7 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 		return []types.NamespacedName{{Namespace: o.Namespace, Name: o.Name}}
 	case *promoterv1alpha1.ChangeTransferPolicy:
 		return keyFromLabel(o.Namespace, o.Labels)
-	case *promoterv1alpha1.PromotionStrategyHistory:
+	case *promoterv1alpha1.ChangeTransferPolicyHistory:
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.PullRequest:
 		return keyFromLabel(o.Namespace, o.Labels)

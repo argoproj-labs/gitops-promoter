@@ -1,5 +1,5 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategyHistory
+kind: ChangeTransferPolicyHistory
 metadata:
   name: example-promotion-strategy-environment-dev-history
 spec:

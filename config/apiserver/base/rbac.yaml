@@ -13,7 +13,7 @@ rules:
       - promoter.argoproj.io
     resources:
       - promotionstrategies
-      - promotionstrategyhistories
+      - changetransferpolicyhistories
       - changetransferpolicies
       - pullrequests
       - commitstatuses

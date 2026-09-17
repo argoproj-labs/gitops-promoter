@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { environmentsFromBundle } from '@shared/utils/environments';
 import type { PromotionStrategy } from '@shared/types/promotion';
-import type { ChangeTransferPolicy, PromotionStrategyHistory } from '@shared/types/view';
+import type { ChangeTransferPolicy, ChangeTransferPolicyHistory } from '@shared/types/view';
 
 const spec = {
   environments: [{ branch: 'environment/dev' }, { branch: 'environment/prod' }],
@@ -32,7 +32,7 @@ const histories = [
       history: [{ pullRequest: { id: '41' } }],
     },
   },
-] as unknown as PromotionStrategyHistory[];
+] as unknown as ChangeTransferPolicyHistory[];
 
 describe('environmentsFromBundle', () => {
   it('orders environments by the strategy spec and keys CTP status by activeBranch', () => {
@@ -44,7 +44,7 @@ describe('environmentsFromBundle', () => {
     expect(envs[1].pullRequest?.id).toBe('42');
   });
 
-  it('projects history from the PromotionStrategyHistory resources', () => {
+  it('projects history from the ChangeTransferPolicyHistory resources', () => {
     const envs = environmentsFromBundle(spec, ctps, histories);
 
     expect(envs[0].history).toHaveLength(1);

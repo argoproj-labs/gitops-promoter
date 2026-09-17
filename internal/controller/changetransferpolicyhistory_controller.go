@@ -48,33 +48,33 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// PSHEnqueueFunc is a function type that can be used to enqueue PromotionStrategyHistory reconcile
-// requests without modifying the PromotionStrategyHistory object. This is used by other controllers
+// CTPHEnqueueFunc is a function type that can be used to enqueue ChangeTransferPolicyHistory reconcile
+// requests without modifying the ChangeTransferPolicyHistory object. This is used by other controllers
 // (like ChangeTransferPolicy after writing a promotion-history git note) to trigger reconciliation
 // without causing object conflicts.
-type PSHEnqueueFunc func(namespace, name string)
+type CTPHEnqueueFunc func(namespace, name string)
 
-// PromotionStrategyHistoryReconciler reconciles a PromotionStrategyHistory object
-type PromotionStrategyHistoryReconciler struct {
+// ChangeTransferPolicyHistoryReconciler reconciles a ChangeTransferPolicyHistory object
+type ChangeTransferPolicyHistoryReconciler struct {
 	client.Client
 	Recorder    events.EventRecorder
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
-	// It allows other controllers to enqueue PromotionStrategyHistory reconcile requests.
-	enqueueFunc PSHEnqueueFunc
+	// It allows other controllers to enqueue ChangeTransferPolicyHistory reconcile requests.
+	enqueueFunc CTPHEnqueueFunc
 }
 
-// GetEnqueueFunc returns a function that can be used to enqueue PromotionStrategyHistory reconcile
+// GetEnqueueFunc returns a function that can be used to enqueue ChangeTransferPolicyHistory reconcile
 // requests. This should be called after SetupWithManager has been called.
-func (r *PromotionStrategyHistoryReconciler) GetEnqueueFunc() PSHEnqueueFunc {
+func (r *ChangeTransferPolicyHistoryReconciler) GetEnqueueFunc() CTPHEnqueueFunc {
 	return r.enqueueFunc
 }
 
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategyhistories,verbs=get;list;watch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategyhistories/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategyhistories/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
@@ -83,36 +83,36 @@ func (r *PromotionStrategyHistoryReconciler) GetEnqueueFunc() PSHEnqueueFunc {
 
 // Reconcile rebuilds the promotion history for one environment's active branch from git (rev-list
 // first-parent walk plus promotion-history git notes / commit message trailers) and stores it in
-// the PromotionStrategyHistory status.
-func (r *PromotionStrategyHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+// the ChangeTransferPolicyHistory status.
+func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling PromotionStrategyHistory")
+	logger.Info("Reconciling ChangeTransferPolicyHistory")
 	startTime := time.Now()
 
-	var psh promoterv1alpha1.PromotionStrategyHistory
+	var ctph promoterv1alpha1.ChangeTransferPolicyHistory
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
-	defer utils.HandleReconciliationResult(ctx, startTime, &psh, r.Client, r.Recorder, constants.PromotionStrategyHistoryControllerFieldOwner, &result, &err, &previousReady)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctph, r.Client, r.Recorder, constants.ChangeTransferPolicyHistoryControllerFieldOwner, &result, &err, &previousReady)
 
-	err = r.Get(ctx, req.NamespacedName, &psh, &client.GetOptions{})
+	err = r.Get(ctx, req.NamespacedName, &ctph, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
-			logger.Info("PromotionStrategyHistory not found")
+			logger.Info("ChangeTransferPolicyHistory not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get PromotionStrategyHistory")
-		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategyHistory: %w", err)
+		logger.Error(err, "failed to get ChangeTransferPolicyHistory")
+		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicyHistory: %w", err)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	previousReady = utils.RemoveReadyCondition(&psh)
+	previousReady = utils.RemoveReadyCondition(&ctph)
 
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyHistoryConfiguration](ctx, r.SettingsMgr)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
@@ -120,32 +120,32 @@ func (r *PromotionStrategyHistoryReconciler) Reconcile(ctx context.Context, req 
 	// Cheap fast-path before any git/network work: when the sibling ChangeTransferPolicy's active tip
 	// is already fully described by the newest history entry, the rev-list window and trailer content
 	// on those commits are immutable in git and a rebuild would produce the same result.
-	if activeSha, ok := r.siblingActiveSha(ctx, &psh); ok && shouldSkipHistoryRecalculation(psh.Status.History, activeSha) {
+	if activeSha, ok := r.siblingActiveSha(ctx, &ctph); ok && shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
 		logger.V(4).Info("skipping history recalculation, newest history entry describes the active tip")
 		return ctrl.Result{RequeueAfter: requeueDuration}, nil
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), psh.Spec.RepositoryReference, &psh)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctph.Spec.RepositoryReference, &ctph)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", psh.Spec.RepositoryReference.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
-	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: psh.Namespace, Name: psh.Spec.RepositoryReference.Name})
+	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: ctph.Namespace, Name: ctph.Spec.RepositoryReference.Name})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: psh.GetNamespace(), Name: psh.Spec.RepositoryReference.Name})
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: ctph.GetNamespace(), Name: ctph.Spec.RepositoryReference.Name})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	// Use this PromotionStrategyHistory's own git identity. The git package is not concurrency-safe
+	// Use this ChangeTransferPolicyHistory's own git identity. The git package is not concurrency-safe
 	// within a single identity, and the ChangeTransferPolicy controller reconciles the same repo under
 	// its own identity concurrently; per-identity clones are independent and safe.
-	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, psh.Namespace+"/"+psh.Name)
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, ctph.Namespace+"/"+ctph.Name)
 
 	err = gitOperations.CloneRepo(ctx)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", psh.Spec.RepositoryReference.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
 	// Fetch git notes: history entries are built from the promotion-history notes ref when present.
@@ -158,74 +158,66 @@ func (r *PromotionStrategyHistoryReconciler) Reconcile(ctx context.Context, req 
 	// matches the newest history entry). GetRevListFirstParent requires the branch commits to be present
 	// in the local clone.
 	lastSeenSha := ""
-	if len(psh.Status.History) > 0 {
-		lastSeenSha = psh.Status.History[0].Active.Hydrated.Sha
+	if len(ctph.Status.History) > 0 {
+		lastSeenSha = ctph.Status.History[0].Active.Hydrated.Sha
 	}
-	activeSha, err := gitOperations.GetBranchSha(ctx, psh.Spec.ActiveBranch, lastSeenSha)
+	activeSha, err := gitOperations.GetBranchSha(ctx, ctph.Spec.ActiveBranch, lastSeenSha)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get SHA for active branch %q: %w", psh.Spec.ActiveBranch, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get SHA for active branch %q: %w", ctph.Spec.ActiveBranch, err)
 	}
 
 	// Recheck the skip guard against the fetched tip. This covers resources without a sibling
 	// ChangeTransferPolicy (the fast-path above could not run) whose branch has not moved.
-	if shouldSkipHistoryRecalculation(psh.Status.History, activeSha) {
+	if shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
 		logger.V(4).Info("skipping history recalculation, newest history entry describes the fetched active tip")
 		return ctrl.Result{RequeueAfter: requeueDuration}, nil
 	}
 
-	history, err := calculateHistory(ctx, psh.Spec.ActiveBranch, psh.Spec.ActivePath, gitOperations)
+	history, err := calculateHistory(ctx, ctph.Spec.ActiveBranch, ctph.Spec.ActivePath, gitOperations)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate history for active branch %q: %w", psh.Spec.ActiveBranch, err)
+		return ctrl.Result{}, fmt.Errorf("failed to calculate history for active branch %q: %w", ctph.Spec.ActiveBranch, err)
 	}
-	psh.Status.History = history
+	ctph.Status.History = history
 
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
 	}, nil
 }
 
-// siblingActiveSha returns the active hydrated SHA of the ChangeTransferPolicy that manages the same
-// environment as this PromotionStrategyHistory, matched via the PromotionStrategy and Environment
-// labels stamped on both by the PromotionStrategy controller. The second return value is false when
-// the labels are missing, the lookup fails, or there is not exactly one matching ChangeTransferPolicy.
-func (r *PromotionStrategyHistoryReconciler) siblingActiveSha(ctx context.Context, psh *promoterv1alpha1.PromotionStrategyHistory) (string, bool) {
-	psLabel := psh.Labels[promoterv1alpha1.PromotionStrategyLabel]
-	envLabel := psh.Labels[promoterv1alpha1.EnvironmentLabel]
-	if psLabel == "" || envLabel == "" {
+// siblingActiveSha returns the active hydrated SHA of the ChangeTransferPolicy that owns this
+// ChangeTransferPolicyHistory. The second return value is false when there is no controller owner
+// or the owning ChangeTransferPolicy cannot be read.
+func (r *ChangeTransferPolicyHistoryReconciler) siblingActiveSha(ctx context.Context, ctph *promoterv1alpha1.ChangeTransferPolicyHistory) (string, bool) {
+	owner := metav1.GetControllerOf(ctph)
+	if owner == nil || owner.Kind != "ChangeTransferPolicy" {
 		return "", false
 	}
 
-	var ctpList promoterv1alpha1.ChangeTransferPolicyList
-	if err := r.List(ctx, &ctpList, client.InNamespace(psh.Namespace), client.MatchingLabels{
-		promoterv1alpha1.PromotionStrategyLabel: psLabel,
-		promoterv1alpha1.EnvironmentLabel:       envLabel,
-	}); err != nil {
-		log.FromContext(ctx).V(4).Info("failed to list sibling ChangeTransferPolicies", "err", err)
+	var ctp promoterv1alpha1.ChangeTransferPolicy
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ctph.Namespace, Name: owner.Name}, &ctp); err != nil {
+		log.FromContext(ctx).V(4).Info("failed to get owning ChangeTransferPolicy", "err", err)
 		return "", false
 	}
-	if len(ctpList.Items) != 1 {
-		return "", false
-	}
-	return ctpList.Items[0].Status.Active.Hydrated.Sha, true
+	return ctp.Status.Active.Hydrated.Sha, true
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PromotionStrategyHistoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *ChangeTransferPolicyHistoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
-	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyHistoryConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get PromotionStrategyHistory rate limiter: %w", err)
+		return fmt.Errorf("failed to get ChangeTransferPolicyHistory rate limiter: %w", err)
 	}
 
-	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.PromotionStrategyHistoryConfiguration](ctx, r.SettingsMgr)
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get PromotionStrategyHistory max concurrent reconciles: %w", err)
+		return fmt.Errorf("failed to get ChangeTransferPolicyHistory max concurrent reconciles: %w", err)
 	}
 
 	// Create a channel for external enqueue requests. This allows other controllers (the
 	// ChangeTransferPolicy controller after writing a promotion-history note) to trigger
-	// reconciliation without modifying the PromotionStrategyHistory object.
+	// reconciliation without modifying the ChangeTransferPolicyHistory object.
 	// We use a buffer of 1024 to match the default internal buffer size of source.Channel.
 	// Sends will block if the buffer is full, providing natural backpressure to callers.
 	externalEnqueueChan := make(chan event.GenericEvent, 1024)
@@ -233,23 +225,23 @@ func (r *PromotionStrategyHistoryReconciler) SetupWithManager(ctx context.Contex
 	// Store the enqueue function so it can be retrieved by other controllers.
 	// This is a blocking send - callers will wait if the channel buffer is full.
 	r.enqueueFunc = func(namespace, name string) {
-		psh := &promoterv1alpha1.PromotionStrategyHistory{}
-		psh.SetNamespace(namespace)
-		psh.SetName(name)
+		ctph := &promoterv1alpha1.ChangeTransferPolicyHistory{}
+		ctph.SetNamespace(namespace)
+		ctph.SetName(name)
 
 		select {
-		case externalEnqueueChan <- event.GenericEvent{Object: psh}:
+		case externalEnqueueChan <- event.GenericEvent{Object: ctph}:
 			// Sent successfully
 		default:
 			// Channel is full, log a warning and block until space is available
-			log.FromContext(ctx).Info("PromotionStrategyHistory enqueue channel is full, blocking until space is available",
+			log.FromContext(ctx).Info("ChangeTransferPolicyHistory enqueue channel is full, blocking until space is available",
 				"namespace", namespace, "name", name)
-			externalEnqueueChan <- event.GenericEvent{Object: psh}
+			externalEnqueueChan <- event.GenericEvent{Object: ctph}
 		}
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PromotionStrategyHistory{},
+		For(&promoterv1alpha1.ChangeTransferPolicyHistory{},
 			builder.WithPredicates(predicate.Or(
 				predicate.GenerationChangedPredicate{},
 				predicate.AnnotationChangedPredicate{},
@@ -258,8 +250,8 @@ func (r *PromotionStrategyHistoryReconciler) SetupWithManager(ctx context.Contex
 		// state change. The predicate is load-bearing: CTP status is SSA-applied on every reconcile
 		// pass, and without it every CTP requeue tick would wake this controller.
 		Watches(&promoterv1alpha1.ChangeTransferPolicy{},
-			handler.EnqueueRequestsFromMapFunc(r.mapCTPToPromotionStrategyHistories),
-			builder.WithPredicates(ctpUpdateEnqueuesPromotionStrategyHistoryPredicate())).
+			handler.EnqueueRequestsFromMapFunc(r.mapCTPToChangeTransferPolicyHistories),
+			builder.WithPredicates(ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate())).
 		// Watch for external enqueue requests from other controllers.
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
@@ -270,39 +262,22 @@ func (r *PromotionStrategyHistoryReconciler) SetupWithManager(ctx context.Contex
 	return nil
 }
 
-// mapCTPToPromotionStrategyHistories maps a ChangeTransferPolicy event to the PromotionStrategyHistory
-// resources for the same environment, matched by the PromotionStrategy and Environment labels. Names
-// are not reconstructed from labels because KubeSafeLabel truncates long values; the label list is the
-// robust join.
-func (r *PromotionStrategyHistoryReconciler) mapCTPToPromotionStrategyHistories(ctx context.Context, obj client.Object) []reconcile.Request {
-	psLabel := obj.GetLabels()[promoterv1alpha1.PromotionStrategyLabel]
-	envLabel := obj.GetLabels()[promoterv1alpha1.EnvironmentLabel]
-	if psLabel == "" || envLabel == "" {
-		return nil
-	}
-
-	var pshList promoterv1alpha1.PromotionStrategyHistoryList
-	if err := r.List(ctx, &pshList, client.InNamespace(obj.GetNamespace()), client.MatchingLabels{
-		promoterv1alpha1.PromotionStrategyLabel: psLabel,
-		promoterv1alpha1.EnvironmentLabel:       envLabel,
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "failed to list PromotionStrategyHistories for ChangeTransferPolicy event",
-			"namespace", obj.GetNamespace(), "name", obj.GetName())
-		return nil
-	}
-
-	requests := make([]reconcile.Request, 0, len(pshList.Items))
-	for _, psh := range pshList.Items {
-		requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&psh)})
-	}
-	return requests
+// mapCTPToChangeTransferPolicyHistories maps a ChangeTransferPolicy event to the history object
+// this CTP owns. The name is derived from the CTP name, matching upsertChangeTransferPolicyHistory.
+func (r *ChangeTransferPolicyHistoryReconciler) mapCTPToChangeTransferPolicyHistories(_ context.Context, obj client.Object) []reconcile.Request {
+	return []reconcile.Request{{
+		NamespacedName: client.ObjectKey{
+			Namespace: obj.GetNamespace(),
+			Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(obj.GetName())),
+		},
+	}}
 }
 
-// ctpUpdateEnqueuesPromotionStrategyHistoryPredicate returns a predicate that only lets a
+// ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate returns a predicate that only lets a
 // ChangeTransferPolicy update through when something history-relevant changed: the active hydrated
 // tip moved, or the observed pull request (ID, state, or merged target SHA) changed. Everything else
 // (periodic status re-applies, proposed-side changes, commit status churn) is filtered out.
-func ctpUpdateEnqueuesPromotionStrategyHistoryPredicate() predicate.Funcs {
+func ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc:  func(event.CreateEvent) bool { return false },
 		DeleteFunc:  func(event.DeleteEvent) bool { return false },

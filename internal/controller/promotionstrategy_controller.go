@@ -121,7 +121,6 @@ type PromotionStrategyReconciler struct {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;patch;create;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategyhistories,verbs=get;list;watch;patch;create;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -198,25 +197,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.cleanupOrphanedChangeTransferPolicies(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
-	}
-
-	// Each environment also gets a PromotionStrategyHistory, whose controller reconstructs the
-	// promotion history for that environment's active branch from git.
-	pshs := make([]*promoterv1alpha1.PromotionStrategyHistory, len(ps.Spec.Environments))
-	for i, environment := range ps.Spec.Environments {
-		var psh *promoterv1alpha1.PromotionStrategyHistory
-		psh, err = r.upsertPromotionStrategyHistory(ctx, &ps, environment)
-		if err != nil {
-			logger.Error(err, "failed to upsert PromotionStrategyHistory")
-			return ctrl.Result{}, fmt.Errorf("failed to create PromotionStrategyHistory for branch %q: %w", environment.Branch, err)
-		}
-		pshs[i] = psh
-	}
-
-	// Clean up orphaned PromotionStrategyHistories that are no longer in the environment list
-	err = r.cleanupOrphanedPromotionStrategyHistories(ctx, &ps, pshs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned PromotionStrategyHistories: %w", err)
 	}
 
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
@@ -371,118 +351,6 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	logger.V(4).Info("Applied ChangeTransferPolicy")
 
 	return ctp, nil
-}
-
-// upsertPromotionStrategyHistory creates or updates the PromotionStrategyHistory for one environment of
-// the PromotionStrategy. The PromotionStrategyHistory controller reconstructs the promotion history for
-// the environment's active branch from git; this function only manages the object's spec and ownership.
-func (r *PromotionStrategyReconciler) upsertPromotionStrategyHistory(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.PromotionStrategyHistory, error) {
-	logger := log.FromContext(ctx)
-
-	pshName := utils.KubeSafeUniqueName(utils.GetPromotionStrategyHistoryName(ps.Name, environment.Branch))
-
-	// Build owner reference
-	kind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	activePath := ps.Spec.ActivePath
-	if environment.ActivePath != "" {
-		activePath = environment.ActivePath
-	}
-
-	pshSpec := acv1alpha1.PromotionStrategyHistorySpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-		WithActiveBranch(environment.Branch)
-
-	if activePath != "" {
-		pshSpec = pshSpec.WithActivePath(activePath)
-	}
-
-	pshLabels := utils.StampInstanceIDLabel(map[string]string{
-		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
-		promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
-	})
-	pshApply := acv1alpha1.PromotionStrategyHistory(pshName, ps.Namespace).
-		WithLabels(pshLabels).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(ps.Name).
-			WithUID(ps.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(pshSpec)
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	psh := &promoterv1alpha1.PromotionStrategyHistory{}
-	psh.Name = pshName
-	psh.Namespace = ps.Namespace
-	if err := r.Patch(ctx, psh, utils.ApplyPatch{ApplyConfig: pshApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply PromotionStrategyHistory %q: %w", pshName, err)
-	}
-
-	logger.V(4).Info("Applied PromotionStrategyHistory")
-
-	return psh, nil
-}
-
-// cleanupOrphanedPromotionStrategyHistories deletes PromotionStrategyHistories that are owned by this
-// PromotionStrategy but are not in the current list of valid PromotionStrategyHistories (i.e., they
-// correspond to removed or renamed environments).
-//
-//nolint:dupl // Similar to the ChangeTransferPolicy cleanup but works with different types
-func (r *PromotionStrategyReconciler) cleanupOrphanedPromotionStrategyHistories(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, validPshs []*promoterv1alpha1.PromotionStrategyHistory) error {
-	logger := log.FromContext(ctx)
-
-	// Create a set of valid PromotionStrategyHistory names for quick lookup
-	validPshNames := make(map[string]bool)
-	for _, psh := range validPshs {
-		validPshNames[psh.Name] = true
-	}
-
-	// List all PromotionStrategyHistories in the namespace with the PromotionStrategy label
-	var pshList promoterv1alpha1.PromotionStrategyHistoryList
-	err := r.List(ctx, &pshList, client.InNamespace(ps.Namespace), client.MatchingLabels{
-		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list PromotionStrategyHistories: %w", err)
-	}
-
-	// Delete PromotionStrategyHistories that are not in the valid list
-	for _, psh := range pshList.Items {
-		// Skip if this PromotionStrategyHistory is in the valid list
-		if validPshNames[psh.Name] {
-			continue
-		}
-
-		// Verify this PromotionStrategyHistory is owned by this PromotionStrategy before deleting
-		if !metav1.IsControlledBy(&psh, ps) {
-			logger.V(4).Info("Skipping PromotionStrategyHistory not owned by this PromotionStrategy",
-				"pshName", psh.Name,
-				"promotionStrategy", ps.Name)
-			continue
-		}
-
-		// Delete the orphaned PromotionStrategyHistory
-		logger.Info("Deleting orphaned PromotionStrategyHistory",
-			"pshName", psh.Name,
-			"promotionStrategy", ps.Name,
-			"namespace", ps.Namespace)
-
-		if err := r.Delete(ctx, &psh); err != nil {
-			if k8serrors.IsNotFound(err) {
-				// Already deleted, which is fine
-				logger.V(4).Info("PromotionStrategyHistory already deleted", "pshName", psh.Name)
-				continue
-			}
-			return fmt.Errorf("failed to delete orphaned PromotionStrategyHistory %q: %w", psh.Name, err)
-		}
-
-		r.Recorder.Eventf(ps, nil, "Normal", constants.OrphanedPromotionStrategyHistoryDeletedReason, "CleaningOrphanedResources", constants.OrphanedPromotionStrategyHistoryDeletedMessage, psh.Name)
-	}
-
-	return nil
 }
 
 // cleanupOrphanedChangeTransferPolicies deletes ChangeTransferPolicies that are owned by this PromotionStrategy

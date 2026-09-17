@@ -991,9 +991,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var scmProvider *promoterv1alpha1.ScmProvider
 			var gitRepo *promoterv1alpha1.GitRepository
 			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
-			var promotionStrategyHistory *promoterv1alpha1.PromotionStrategyHistory
+			var changeTransferPolicyHistory *promoterv1alpha1.ChangeTransferPolicyHistory
 			var typeNamespacedName types.NamespacedName
-			var pshNamespacedName types.NamespacedName
+			var ctphNamespacedName types.NamespacedName
 			var gitPath string
 			var err error
 			var prName string
@@ -1012,34 +1012,25 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				// We set auto merge to false so the tests control when (and by whom) the PR is merged.
 				changeTransferPolicy.Spec.AutoMerge = new(false)
 
-				// The PromotionStrategyHistory controller owns history now. The CTP and PSH share the
-				// PromotionStrategy/Environment labels, which is how the PSH controller finds its sibling
-				// CTP (skip fast-path and CTP watch) and how the CTP controller enqueues history rebuilds
-				// after writing a promotion-history note.
+				// The ChangeTransferPolicy controller creates the history object. Labels on the CTP are
+				// copied onto it so the view bundle can still join histories to a PromotionStrategy.
 				environmentLabels := map[string]string{
 					promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(name),
 					promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(testBranchDevelopment),
 				}
 				changeTransferPolicy.Labels = environmentLabels
-				promotionStrategyHistory = &promoterv1alpha1.PromotionStrategyHistory{
-					Name:      name + "-history",
-					Namespace: "default",
-					Labels:    environmentLabels,
-					Spec: promoterv1alpha1.PromotionStrategyHistorySpec{
-						RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
-						ActiveBranch:        testBranchDevelopment,
-					},
-				}
-				pshNamespacedName = types.NamespacedName{
-					Name:      promotionStrategyHistory.Name,
+				ctphNamespacedName = types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(changeTransferPolicy.Name)),
 					Namespace: "default",
 				}
+				changeTransferPolicyHistory = &promoterv1alpha1.ChangeTransferPolicyHistory{}
+				changeTransferPolicyHistory.Name = ctphNamespacedName.Name
+				changeTransferPolicyHistory.Namespace = ctphNamespacedName.Namespace
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
-				Expect(k8sClient.Create(ctx, promotionStrategyHistory)).To(Succeed())
 
 				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 				prKey = types.NamespacedName{
@@ -1054,7 +1045,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			AfterEach(func() {
 				By("Cleaning up resources")
 				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
-				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, promotionStrategyHistory))).To(Succeed())
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicyHistory))).To(Succeed())
 				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
@@ -1114,11 +1105,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying the PromotionStrategyHistory history is populated")
+				By("Verifying the ChangeTransferPolicyHistory history is populated")
 				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, pshNamespacedName, promotionStrategyHistory)).To(Succeed())
-					g.Expect(promotionStrategyHistory.Status.History).ToNot(BeEmpty())
-					entry := promotionStrategyHistory.Status.History[0]
+					g.Expect(k8sClient.Get(ctx, ctphNamespacedName, changeTransferPolicyHistory)).To(Succeed())
+					g.Expect(changeTransferPolicyHistory.Status.History).ToNot(BeEmpty())
+					entry := changeTransferPolicyHistory.Status.History[0]
 					g.Expect(entry.PullRequest).ToNot(BeNil())
 					g.Expect(entry.PullRequest.ID).To(Equal(prID))
 					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
@@ -1179,11 +1170,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying the PromotionStrategyHistory history is populated from the note despite the trailer-less merge commit")
+				By("Verifying the ChangeTransferPolicyHistory history is populated from the note despite the trailer-less merge commit")
 				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, pshNamespacedName, promotionStrategyHistory)).To(Succeed())
-					g.Expect(promotionStrategyHistory.Status.History).ToNot(BeEmpty())
-					entry := promotionStrategyHistory.Status.History[0]
+					g.Expect(k8sClient.Get(ctx, ctphNamespacedName, changeTransferPolicyHistory)).To(Succeed())
+					g.Expect(changeTransferPolicyHistory.Status.History).ToNot(BeEmpty())
+					entry := changeTransferPolicyHistory.Status.History[0]
 					g.Expect(entry.PullRequest).ToNot(BeNil())
 					g.Expect(entry.PullRequest.ID).To(Equal(prID))
 					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
@@ -2894,8 +2885,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	var bareDir string
 	var gitOps *git.EnvironmentOperations
 	var ctp *promoterv1alpha1.ChangeTransferPolicy
-	var psh *promoterv1alpha1.PromotionStrategyHistory
-	var enqueuedPSH []string
+	var enqueuedCTPH []string
 	var proposedSha, squashSha string
 
 	const (
@@ -2944,12 +2934,12 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	}
 
 	newReconciler := func(pr *promoterv1alpha1.PullRequest) *ChangeTransferPolicyReconciler {
-		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr, psh).Build()
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr).Build()
 		return &ChangeTransferPolicyReconciler{
 			Client:   c,
 			Recorder: events.NewFakeRecorder(100),
-			EnqueuePSH: func(namespace, name string) {
-				enqueuedPSH = append(enqueuedPSH, namespace+"/"+name)
+			EnqueueCTPH: func(namespace, name string) {
+				enqueuedCTPH = append(enqueuedCTPH, namespace+"/"+name)
 			},
 		}
 	}
@@ -3007,17 +2997,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 			},
 		}
 
-		// The sibling PromotionStrategyHistory the CTP controller must wake after writing the note.
-		psh = &promoterv1alpha1.PromotionStrategyHistory{
-			Name:      "early-note-psh",
-			Namespace: "default",
-			Labels:    environmentLabels,
-			Spec: promoterv1alpha1.PromotionStrategyHistorySpec{
-				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "early-note-repo"},
-				ActiveBranch:        activeBranch,
-			},
-		}
-		enqueuedPSH = nil
+		enqueuedCTPH = nil
 
 		// Clone for the controller BEFORE the external merge lands, so the merge commit is not in the local
 		// clone yet: handlePRFinalizerRemoval runs before calculateStatus fetches the active branch.
@@ -3066,8 +3046,8 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{proposedSha}))
 		Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 
-		By("Verifying the sibling PromotionStrategyHistory was enqueued for a rebuild in this same reconcile")
-		Expect(enqueuedPSH).To(ConsistOf("default/early-note-psh"))
+		By("Verifying the owned ChangeTransferPolicyHistory was enqueued for a rebuild in this same reconcile")
+		Expect(enqueuedCTPH).To(ConsistOf("default/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName("early-note-ctp"))))
 
 		By("Verifying the finalizer is still held because the CTP status has not caught up")
 		var livePR promoterv1alpha1.PullRequest
@@ -3085,7 +3065,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notesRefSha()).To(Equal(firstNotesRef), "the notes ref must not be pushed again for an unchanged note")
-		Expect(enqueuedPSH).To(HaveLen(1), "an existing note must not trigger another PromotionStrategyHistory enqueue")
+		Expect(enqueuedCTPH).To(HaveLen(1), "an existing note must not trigger another ChangeTransferPolicyHistory enqueue")
 	})
 
 	It("writes nothing while the SCM has not reported the merge commit", func() {
@@ -3093,7 +3073,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 
 		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(enqueuedPSH).To(BeEmpty())
+		Expect(enqueuedCTPH).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist yet")
 	})
@@ -3103,7 +3083,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 
 		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(enqueuedPSH).To(BeEmpty())
+		Expect(enqueuedCTPH).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist")
 	})

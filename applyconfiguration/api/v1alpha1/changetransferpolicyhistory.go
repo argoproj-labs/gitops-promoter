@@ -26,78 +26,78 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// PromotionStrategyHistoryApplyConfiguration represents a declarative configuration of the PromotionStrategyHistory type for use
+// ChangeTransferPolicyHistoryApplyConfiguration represents a declarative configuration of the ChangeTransferPolicyHistory type for use
 // with apply.
 //
-// PromotionStrategyHistory is the Schema for the promotionstrategyhistories API.
-type PromotionStrategyHistoryApplyConfiguration struct {
+// ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories API.
+type ChangeTransferPolicyHistoryApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	// spec defines the desired state of PromotionStrategyHistory
-	Spec *PromotionStrategyHistorySpecApplyConfiguration `json:"spec,omitempty"`
-	// status defines the observed state of PromotionStrategyHistory
-	Status *PromotionStrategyHistoryStatusApplyConfiguration `json:"status,omitempty"`
+	// spec defines the desired state of ChangeTransferPolicyHistory
+	Spec *ChangeTransferPolicyHistorySpecApplyConfiguration `json:"spec,omitempty"`
+	// status defines the observed state of ChangeTransferPolicyHistory
+	Status *ChangeTransferPolicyHistoryStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// PromotionStrategyHistory constructs a declarative configuration of the PromotionStrategyHistory type for use with
+// ChangeTransferPolicyHistory constructs a declarative configuration of the ChangeTransferPolicyHistory type for use with
 // apply.
-func PromotionStrategyHistory(name, namespace string) *PromotionStrategyHistoryApplyConfiguration {
-	b := &PromotionStrategyHistoryApplyConfiguration{}
+func ChangeTransferPolicyHistory(name, namespace string) *ChangeTransferPolicyHistoryApplyConfiguration {
+	b := &ChangeTransferPolicyHistoryApplyConfiguration{}
 	b.WithName(name)
 	b.WithNamespace(namespace)
-	b.WithKind("PromotionStrategyHistory")
+	b.WithKind("ChangeTransferPolicyHistory")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b
 }
 
-// ExtractPromotionStrategyHistoryFrom extracts the applied configuration owned by fieldManager from
-// promotionStrategyHistory for the specified subresource. Pass an empty string for subresource to extract
+// ExtractChangeTransferPolicyHistoryFrom extracts the applied configuration owned by fieldManager from
+// changeTransferPolicyHistory for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// promotionStrategyHistory must be a unmodified PromotionStrategyHistory API object that was retrieved from the Kubernetes API.
-// ExtractPromotionStrategyHistoryFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// changeTransferPolicyHistory must be a unmodified ChangeTransferPolicyHistory API object that was retrieved from the Kubernetes API.
+// ExtractChangeTransferPolicyHistoryFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractPromotionStrategyHistoryFrom(promotionStrategyHistory *apiv1alpha1.PromotionStrategyHistory, fieldManager string, subresource string) (*PromotionStrategyHistoryApplyConfiguration, error) {
-	b := &PromotionStrategyHistoryApplyConfiguration{}
-	err := managedfields.ExtractInto(promotionStrategyHistory, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistory"), fieldManager, b, subresource)
+func ExtractChangeTransferPolicyHistoryFrom(changeTransferPolicyHistory *apiv1alpha1.ChangeTransferPolicyHistory, fieldManager string, subresource string) (*ChangeTransferPolicyHistoryApplyConfiguration, error) {
+	b := &ChangeTransferPolicyHistoryApplyConfiguration{}
+	err := managedfields.ExtractInto(changeTransferPolicyHistory, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistory"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(promotionStrategyHistory.Name)
-	b.WithNamespace(promotionStrategyHistory.Namespace)
+	b.WithName(changeTransferPolicyHistory.Name)
+	b.WithNamespace(changeTransferPolicyHistory.Namespace)
 
-	b.WithKind("PromotionStrategyHistory")
+	b.WithKind("ChangeTransferPolicyHistory")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractPromotionStrategyHistory extracts the applied configuration owned by fieldManager from
-// promotionStrategyHistory. If no managedFields are found in promotionStrategyHistory for fieldManager, a
-// PromotionStrategyHistoryApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractChangeTransferPolicyHistory extracts the applied configuration owned by fieldManager from
+// changeTransferPolicyHistory. If no managedFields are found in changeTransferPolicyHistory for fieldManager, a
+// ChangeTransferPolicyHistoryApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// promotionStrategyHistory must be a unmodified PromotionStrategyHistory API object that was retrieved from the Kubernetes API.
-// ExtractPromotionStrategyHistory provides a way to perform a extract/modify-in-place/apply workflow.
+// changeTransferPolicyHistory must be a unmodified ChangeTransferPolicyHistory API object that was retrieved from the Kubernetes API.
+// ExtractChangeTransferPolicyHistory provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractPromotionStrategyHistory(promotionStrategyHistory *apiv1alpha1.PromotionStrategyHistory, fieldManager string) (*PromotionStrategyHistoryApplyConfiguration, error) {
-	return ExtractPromotionStrategyHistoryFrom(promotionStrategyHistory, fieldManager, "")
+func ExtractChangeTransferPolicyHistory(changeTransferPolicyHistory *apiv1alpha1.ChangeTransferPolicyHistory, fieldManager string) (*ChangeTransferPolicyHistoryApplyConfiguration, error) {
+	return ExtractChangeTransferPolicyHistoryFrom(changeTransferPolicyHistory, fieldManager, "")
 }
 
-// ExtractPromotionStrategyHistoryStatus extracts the applied configuration owned by fieldManager from
-// promotionStrategyHistory for the status subresource.
-func ExtractPromotionStrategyHistoryStatus(promotionStrategyHistory *apiv1alpha1.PromotionStrategyHistory, fieldManager string) (*PromotionStrategyHistoryApplyConfiguration, error) {
-	return ExtractPromotionStrategyHistoryFrom(promotionStrategyHistory, fieldManager, "status")
+// ExtractChangeTransferPolicyHistoryStatus extracts the applied configuration owned by fieldManager from
+// changeTransferPolicyHistory for the status subresource.
+func ExtractChangeTransferPolicyHistoryStatus(changeTransferPolicyHistory *apiv1alpha1.ChangeTransferPolicyHistory, fieldManager string) (*ChangeTransferPolicyHistoryApplyConfiguration, error) {
+	return ExtractChangeTransferPolicyHistoryFrom(changeTransferPolicyHistory, fieldManager, "status")
 }
 
-func (b PromotionStrategyHistoryApplyConfiguration) IsApplyConfiguration() {}
+func (b ChangeTransferPolicyHistoryApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithKind(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithKind(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -105,7 +105,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithKind(value string) *Pro
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithAPIVersion(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithAPIVersion(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -113,7 +113,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithAPIVersion(value string
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithName(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithName(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -122,7 +122,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithName(value string) *Pro
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithGenerateName(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithGenerateName(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -131,7 +131,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithGenerateName(value stri
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithNamespace(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithNamespace(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -140,7 +140,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithNamespace(value string)
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithUID(value types.UID) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithUID(value types.UID) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -149,7 +149,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithUID(value types.UID) *P
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithResourceVersion(value string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithResourceVersion(value string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -158,7 +158,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithResourceVersion(value s
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithGeneration(value int64) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithGeneration(value int64) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -167,7 +167,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithGeneration(value int64)
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithCreationTimestamp(value metav1.Time) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -176,7 +176,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithCreationTimestamp(value
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -185,7 +185,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithDeletionTimestamp(value
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -195,7 +195,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithDeletionGracePeriodSeco
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithLabels(entries map[string]string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithLabels(entries map[string]string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -210,7 +210,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithLabels(entries map[stri
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithAnnotations(entries map[string]string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithAnnotations(entries map[string]string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -224,7 +224,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithAnnotations(entries map
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -238,7 +238,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithOwnerReferences(values 
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithFinalizers(values ...string) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithFinalizers(values ...string) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -246,7 +246,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithFinalizers(values ...st
 	return b
 }
 
-func (b *PromotionStrategyHistoryApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -255,7 +255,7 @@ func (b *PromotionStrategyHistoryApplyConfiguration) ensureObjectMetaApplyConfig
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithSpec(value *PromotionStrategyHistorySpecApplyConfiguration) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithSpec(value *ChangeTransferPolicyHistorySpecApplyConfiguration) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -263,29 +263,29 @@ func (b *PromotionStrategyHistoryApplyConfiguration) WithSpec(value *PromotionSt
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *PromotionStrategyHistoryApplyConfiguration) WithStatus(value *PromotionStrategyHistoryStatusApplyConfiguration) *PromotionStrategyHistoryApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) WithStatus(value *ChangeTransferPolicyHistoryStatusApplyConfiguration) *ChangeTransferPolicyHistoryApplyConfiguration {
 	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *PromotionStrategyHistoryApplyConfiguration) GetKind() *string {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *PromotionStrategyHistoryApplyConfiguration) GetAPIVersion() *string {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *PromotionStrategyHistoryApplyConfiguration) GetName() *string {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *PromotionStrategyHistoryApplyConfiguration) GetNamespace() *string {
+func (b *ChangeTransferPolicyHistoryApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

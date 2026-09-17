@@ -101,6 +101,31 @@ func (in ChangeTransferPolicyConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistory) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistory"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistorySpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistorySpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ChangeTransferPolicyList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyList"
 }
@@ -433,31 +458,6 @@ func (in PromotionStrategy) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PromotionStrategyConfiguration) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PromotionStrategyConfiguration"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in PromotionStrategyHistory) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistory"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in PromotionStrategyHistoryConfiguration) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryConfiguration"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in PromotionStrategyHistoryList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryList"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in PromotionStrategyHistorySpec) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistorySpec"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in PromotionStrategyHistoryStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

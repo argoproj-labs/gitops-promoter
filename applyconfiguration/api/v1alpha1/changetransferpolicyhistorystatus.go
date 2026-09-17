@@ -21,11 +21,11 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// PromotionStrategyHistoryStatusApplyConfiguration represents a declarative configuration of the PromotionStrategyHistoryStatus type for use
+// ChangeTransferPolicyHistoryStatusApplyConfiguration represents a declarative configuration of the ChangeTransferPolicyHistoryStatus type for use
 // with apply.
 //
-// PromotionStrategyHistoryStatus defines the observed state of PromotionStrategyHistory.
-type PromotionStrategyHistoryStatusApplyConfiguration struct {
+// ChangeTransferPolicyHistoryStatus defines the observed state of ChangeTransferPolicyHistory.
+type ChangeTransferPolicyHistoryStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -45,16 +45,16 @@ type PromotionStrategyHistoryStatusApplyConfiguration struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// PromotionStrategyHistoryStatusApplyConfiguration constructs a declarative configuration of the PromotionStrategyHistoryStatus type for use with
+// ChangeTransferPolicyHistoryStatusApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicyHistoryStatus type for use with
 // apply.
-func PromotionStrategyHistoryStatus() *PromotionStrategyHistoryStatusApplyConfiguration {
-	return &PromotionStrategyHistoryStatusApplyConfiguration{}
+func ChangeTransferPolicyHistoryStatus() *ChangeTransferPolicyHistoryStatusApplyConfiguration {
+	return &ChangeTransferPolicyHistoryStatusApplyConfiguration{}
 }
 
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithObservedGeneration(value int64) *PromotionStrategyHistoryStatusApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryStatusApplyConfiguration) WithObservedGeneration(value int64) *ChangeTransferPolicyHistoryStatusApplyConfiguration {
 	b.ObservedGeneration = &value
 	return b
 }
@@ -62,7 +62,7 @@ func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithObservedGeneratio
 // WithHistory adds the given value to the History field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the History field.
-func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithHistory(values ...*HistoryApplyConfiguration) *PromotionStrategyHistoryStatusApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryStatusApplyConfiguration) WithHistory(values ...*HistoryApplyConfiguration) *ChangeTransferPolicyHistoryStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithHistory")
@@ -75,7 +75,7 @@ func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithHistory(values ..
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *PromotionStrategyHistoryStatusApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ChangeTransferPolicyHistoryStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -88,7 +88,7 @@ func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithConditions(values
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *PromotionStrategyHistoryStatusApplyConfiguration) WithInstanceID(value string) *PromotionStrategyHistoryStatusApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryStatusApplyConfiguration) WithInstanceID(value string) *ChangeTransferPolicyHistoryStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }

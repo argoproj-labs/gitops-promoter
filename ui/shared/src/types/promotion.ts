@@ -19,7 +19,7 @@ export type PromotionStrategy = PromotionStrategyResource;
 /**
  * Per-environment status assembled for Card/PSData (from CTP status + spec branch).
  * `history` is not part of the EnvironmentStatus CRD schema; it is re-projected onto the
- * environment from the per-environment PromotionStrategyHistory resource in the bundle.
+ * environment from the per-environment ChangeTransferPolicyHistory resource in the bundle.
  */
 export type Environment = components['schemas']['EnvironmentStatus'] & {
   history?: History[];

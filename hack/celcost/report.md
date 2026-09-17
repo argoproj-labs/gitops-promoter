@@ -11,6 +11,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
 | ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
+| ChangeTransferPolicyHistory | v1alpha1 | 9,147 | 0.01% |
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 352 | 0.00% |
@@ -18,7 +19,6 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
-| PromotionStrategyHistory | v1alpha1 | 9,147 | 0.01% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
@@ -65,6 +65,29 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 | `.status.pullRequest.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | **Total** | **2,589** | **0.00%** | |
 
+#### ChangeTransferPolicyHistory
+
+Source: `promoter.argoproj.io_changetransferpolicyhistories.yaml`
+
+##### Version `v1alpha1`
+
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.status.history[].active.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.dry.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.note.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.status.history[].active.dry.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].pullRequest.url` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
+| **Total** | **9,147** | **0.01%** | |
+
 #### ClusterScmProvider
 
 Source: `promoter.argoproj.io_clusterscmproviders.yaml`
@@ -100,33 +123,33 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 |---|---:|---:|---|
 | `.spec.argocdCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| `.spec.promotionStrategyHistory.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.argocdCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
-| `.spec.promotionStrategyHistory.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.argocdCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| `.spec.promotionStrategyHistory.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
@@ -194,29 +217,6 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.status.environments[].pullRequest.url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
 | `.spec.orderCommitStatusRef.kind` | 3 | 0.00% | `self.endsWith('CommitStatus')` |
 | **Total** | **7,903,503** | **7.90%** | |
-
-#### PromotionStrategyHistory
-
-Source: `promoter.argoproj.io_promotionstrategyhistories.yaml`
-
-##### Version `v1alpha1`
-
-| Path | Cost | % of rule limit | Expression |
-|---|---:|---:|---|
-| `.status.history[].active.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.dry.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.note.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
-| `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
-| `.status.history[].active.dry.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].pullRequest.url` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **9,147** | **0.01%** | |
 
 #### PullRequest
 

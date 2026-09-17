@@ -11,17 +11,17 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: promotionstrategyhistory-admin-role
+  name: changetransferpolicyhistory-admin-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - promotionstrategyhistories
+  - changetransferpolicyhistories
   verbs:
   - '*'
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - promotionstrategyhistories/status
+  - changetransferpolicyhistories/status
   verbs:
   - get

@@ -17,29 +17,29 @@ limitations under the License.
 
 package v1alpha1
 
-// PromotionStrategyHistoryConfigurationApplyConfiguration represents a declarative configuration of the PromotionStrategyHistoryConfiguration type for use
+// ChangeTransferPolicyHistoryConfigurationApplyConfiguration represents a declarative configuration of the ChangeTransferPolicyHistoryConfiguration type for use
 // with apply.
 //
-// PromotionStrategyHistoryConfiguration defines the configuration for the PromotionStrategyHistory controller.
+// ChangeTransferPolicyHistoryConfiguration defines the configuration for the ChangeTransferPolicyHistory controller.
 //
-// This configuration controls how the PromotionStrategyHistory controller processes reconciliation
+// This configuration controls how the ChangeTransferPolicyHistory controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type PromotionStrategyHistoryConfigurationApplyConfiguration struct {
-	// WorkQueue contains the work queue configuration for the PromotionStrategyHistory controller.
+type ChangeTransferPolicyHistoryConfigurationApplyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ChangeTransferPolicyHistory controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 }
 
-// PromotionStrategyHistoryConfigurationApplyConfiguration constructs a declarative configuration of the PromotionStrategyHistoryConfiguration type for use with
+// ChangeTransferPolicyHistoryConfigurationApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicyHistoryConfiguration type for use with
 // apply.
-func PromotionStrategyHistoryConfiguration() *PromotionStrategyHistoryConfigurationApplyConfiguration {
-	return &PromotionStrategyHistoryConfigurationApplyConfiguration{}
+func ChangeTransferPolicyHistoryConfiguration() *ChangeTransferPolicyHistoryConfigurationApplyConfiguration {
+	return &ChangeTransferPolicyHistoryConfigurationApplyConfiguration{}
 }
 
 // WithWorkQueue sets the WorkQueue field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WorkQueue field is set to the value of the last call.
-func (b *PromotionStrategyHistoryConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *PromotionStrategyHistoryConfigurationApplyConfiguration {
+func (b *ChangeTransferPolicyHistoryConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *ChangeTransferPolicyHistoryConfigurationApplyConfiguration {
 	b.WorkQueue = value
 	return b
 }

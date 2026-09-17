@@ -21,8 +21,8 @@ spec:
           baseDelay: "1s"
           maxDelay: "1m"
 
-  # PromotionStrategyHistory controller reconstructs promotion history from git
-  promotionStrategyHistory:
+  # ChangeTransferPolicyHistory controller reconstructs promotion history from git
+  changeTransferPolicyHistory:
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 3

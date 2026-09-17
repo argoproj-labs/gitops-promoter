@@ -21,8 +21,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// PromotionStrategyHistorySpec defines the desired state of PromotionStrategyHistory.
-type PromotionStrategyHistorySpec struct {
+// ChangeTransferPolicyHistorySpec defines the desired state of ChangeTransferPolicyHistory.
+type ChangeTransferPolicyHistorySpec struct {
 	// RepositoryReference is the repository whose active branch is inspected to reconstruct
 	// the promotion history.
 	// +kubebuilder:validation:Required
@@ -45,8 +45,8 @@ type PromotionStrategyHistorySpec struct {
 	ActivePath string `json:"activePath,omitempty"`
 }
 
-// PromotionStrategyHistoryStatus defines the observed state of PromotionStrategyHistory.
-type PromotionStrategyHistoryStatus struct {
+// ChangeTransferPolicyHistoryStatus defines the observed state of ChangeTransferPolicyHistory.
+type ChangeTransferPolicyHistoryStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -80,7 +80,7 @@ type PromotionStrategyHistoryStatus struct {
 }
 
 // MaxPromotionHistory is the maximum number of promotion history entries stored on
-// PromotionStrategyHistory.status.history.
+// ChangeTransferPolicyHistory.status.history.
 const MaxPromotionHistory = 5
 
 // History describes a particular change that was promoted into an environment's active branch.
@@ -120,56 +120,56 @@ type CommitBranchStateHistoryProposed struct {
 }
 
 // +kubebuilder:ac:generate=true
-// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategyhistory",description="CRD reference (examples and behavior)"
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicyhistory",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// PromotionStrategyHistory is the Schema for the promotionstrategyhistories API.
+// ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories API.
 // +kubebuilder:printcolumn:name="Active Branch",type=string,JSONPath=`.spec.activeBranch`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-type PromotionStrategyHistory struct {
+type ChangeTransferPolicyHistory struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of PromotionStrategyHistory
+	// spec defines the desired state of ChangeTransferPolicyHistory
 	// +required
-	Spec PromotionStrategyHistorySpec `json:"spec"`
+	Spec ChangeTransferPolicyHistorySpec `json:"spec"`
 
-	// status defines the observed state of PromotionStrategyHistory
+	// status defines the observed state of ChangeTransferPolicyHistory
 	// +optional
-	Status PromotionStrategyHistoryStatus `json:"status,omitempty"`
+	Status ChangeTransferPolicyHistoryStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// PromotionStrategyHistoryList contains a list of PromotionStrategyHistory.
-type PromotionStrategyHistoryList struct {
+// ChangeTransferPolicyHistoryList contains a list of ChangeTransferPolicyHistory.
+type ChangeTransferPolicyHistoryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PromotionStrategyHistory `json:"items"`
+	Items           []ChangeTransferPolicyHistory `json:"items"`
 }
 
-// GetConditions returns the conditions of the PromotionStrategyHistory.
-func (psh *PromotionStrategyHistory) GetConditions() *[]metav1.Condition {
-	return &psh.Status.Conditions
+// GetConditions returns the conditions of the ChangeTransferPolicyHistory.
+func (ctph *ChangeTransferPolicyHistory) GetConditions() *[]metav1.Condition {
+	return &ctph.Status.Conditions
 }
 
 // SetObservedGeneration records the object generation that produced the current status.
-func (psh *PromotionStrategyHistory) SetObservedGeneration(generation int64) {
-	psh.Status.ObservedGeneration = generation
+func (ctph *ChangeTransferPolicyHistory) SetObservedGeneration(generation int64) {
+	ctph.Status.ObservedGeneration = generation
 }
 
 // SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
-func (psh *PromotionStrategyHistory) SetStatusInstanceID(v *string) {
-	psh.Status.InstanceID = v
+func (ctph *ChangeTransferPolicyHistory) SetStatusInstanceID(v *string) {
+	ctph.Status.InstanceID = v
 }
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &PromotionStrategyHistory{}, &PromotionStrategyHistoryList{})
+		s.AddKnownTypes(SchemeGroupVersion, &ChangeTransferPolicyHistory{}, &ChangeTransferPolicyHistoryList{})
 		return nil
 	})
 }

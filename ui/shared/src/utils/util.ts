@@ -166,7 +166,7 @@ export function getLastCommitTime(ps: PromotionStrategy): Date | null {
  */
 export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {
   const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
-  // The store adapters re-project history from the PromotionStrategyHistory resources onto each
+  // The store adapters re-project history from the ChangeTransferPolicyHistory resources onto each
   // environment, so the runtime shape is Environment (EnvironmentStatus + history).
   for (const env of (ps.status?.environments ?? []) as Environment[]) {
     env.active.commitStatuses?.sort(byKey);

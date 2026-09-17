@@ -26,7 +26,7 @@ function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
 }
 
 // The per-environment shape the matrix renders: the generated EnvironmentStatus plus the
-// history re-projected from the PromotionStrategyHistory resources by the store adapters.
+// history re-projected from the ChangeTransferPolicyHistory resources by the store adapters.
 type StatusEnvironment = Environment;
 
 function envHasContent(env: StatusEnvironment): boolean {

@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: promotionstrategyhistories.promoter.argoproj.io
+  name: changetransferpolicyhistories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: PromotionStrategyHistory
-    listKind: PromotionStrategyHistoryList
-    plural: promotionstrategyhistories
-    singular: promotionstrategyhistory
+    kind: ChangeTransferPolicyHistory
+    listKind: ChangeTransferPolicyHistoryList
+    plural: changetransferpolicyhistories
+    singular: changetransferpolicyhistory
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -24,11 +24,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionStrategyHistory is the Schema for the promotionstrategyhistories
+        description: ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories
           API.
         externalDocs:
           description: CRD reference (examples and behavior)
-          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategyhistory
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicyhistory
         properties:
           apiVersion:
             description: |-
@@ -48,7 +48,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of PromotionStrategyHistory
+            description: spec defines the desired state of ChangeTransferPolicyHistory
             properties:
               activeBranch:
                 description: |-
@@ -89,7 +89,7 @@ spec:
             - gitRepositoryRef
             type: object
           status:
-            description: status defines the observed state of PromotionStrategyHistory
+            description: status defines the observed state of ChangeTransferPolicyHistory
             properties:
               conditions:
                 description: Conditions Represents the observations of the current

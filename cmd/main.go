@@ -267,16 +267,16 @@ func runController(
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
-	// PromotionStrategyHistory controller is set up before the ChangeTransferPolicy controller so
+	// ChangeTransferPolicyHistory controller is set up before the ChangeTransferPolicy controller so
 	// the CTP controller can enqueue history rebuilds after writing promotion-history git notes.
-	pshReconciler := &controller.PromotionStrategyHistoryReconciler{
+	ctphReconciler := &controller.ChangeTransferPolicyHistoryReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("PromotionStrategyHistory"),
+		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicyHistory"),
 		SettingsMgr: settingsMgr,
 	}
-	if err = pshReconciler.SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create PromotionStrategyHistory controller: %w", err))
+	if err = ctphReconciler.SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ChangeTransferPolicyHistory controller: %w", err))
 	}
 
 	// ChangeTransferPolicy controller must be set up first so we can
@@ -287,7 +287,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 		EnqueuePR:   prReconciler.GetEnqueueFunc(),
-		EnqueuePSH:  pshReconciler.GetEnqueueFunc(),
+		EnqueueCTPH: ctphReconciler.GetEnqueueFunc(),
 	}
 	if err = ctpReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))

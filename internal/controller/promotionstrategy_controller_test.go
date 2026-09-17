@@ -6308,10 +6308,10 @@ var _ = Describe("Child creation instance-id label propagation", func() {
 			Expect(count).To(Equal(expectedCalls),
 				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
 		},
-		// One call stamps instance-id onto owned ChangeTransferPolicies and one onto owned
-		// PromotionStrategyHistories. The former DependentsSuccessfulCommitStatus call was removed
-		// when ordering gates became explicit CRDs.
-		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 2),
-		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),
+		// One call stamps instance-id onto owned ChangeTransferPolicies.
+		// The former DependentsSuccessfulCommitStatus call was removed when ordering gates became
+		// explicit CRDs. History objects are created by the ChangeTransferPolicy controller.
+		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
+		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 2),
 	)
 })

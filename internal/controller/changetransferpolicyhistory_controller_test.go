@@ -33,10 +33,10 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-//go:embed testdata/PromotionStrategyHistory.yaml
-var testPromotionStrategyHistoryYAML string
+//go:embed testdata/ChangeTransferPolicyHistory.yaml
+var testChangeTransferPolicyHistoryYAML string
 
-var _ = Describe("PromotionStrategyHistory Controller", func() {
+var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 	var ctx context.Context
 
 	BeforeEach(func() {
@@ -44,8 +44,8 @@ var _ = Describe("PromotionStrategyHistory Controller", func() {
 	})
 
 	Context("When unmarshalling the test data", func() {
-		It("should unmarshal the PromotionStrategyHistory resource", func() {
-			err := unmarshalYamlStrict(testPromotionStrategyHistoryYAML, &promoterv1alpha1.PromotionStrategyHistory{})
+		It("should unmarshal the ChangeTransferPolicyHistory resource", func() {
+			err := unmarshalYamlStrict(testChangeTransferPolicyHistoryYAML, &promoterv1alpha1.ChangeTransferPolicyHistory{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -60,9 +60,9 @@ var _ = Describe("PromotionStrategyHistory Controller", func() {
 
 		BeforeEach(func() {
 			By("Creating the resources")
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "psh-owned-by-ps", "default")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ctph-owned-by-ps", "default")
 			setupInitialTestGitRepoOnServer(ctx, gitRepo)
-			// Give one environment an activePath override to verify it is propagated to the PSH spec.
+			// Give one environment an activePath override to verify it is propagated to the CTPH spec.
 			promotionStrategy.Spec.Environments[1].ActivePath = "apps/staging"
 
 			typeNamespacedName = types.NamespacedName{
@@ -85,57 +85,66 @@ var _ = Describe("PromotionStrategyHistory Controller", func() {
 			_ = k8sClient.Delete(ctx, scmSecret)
 		})
 
-		It("creates a PromotionStrategyHistory per environment and cleans up orphans", func() {
-			By("Checking that a labeled, owned PromotionStrategyHistory exists per environment")
+		It("creates a ChangeTransferPolicyHistory per environment owned by the ChangeTransferPolicy and cleans up orphans", func() {
+			By("Checking that a labeled, CTP-owned ChangeTransferPolicyHistory exists per environment")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)).To(Succeed())
 
 				for _, environment := range promotionStrategy.Spec.Environments {
-					var psh promoterv1alpha1.PromotionStrategyHistory
+					var ctp promoterv1alpha1.ChangeTransferPolicy
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(utils.GetPromotionStrategyHistoryName(promotionStrategy.Name, environment.Branch)),
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, environment.Branch)),
 						Namespace: typeNamespacedName.Namespace,
-					}, &psh)
+					}, &ctp)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(psh.Labels[promoterv1alpha1.PromotionStrategyLabel]).To(Equal(utils.KubeSafeLabel(promotionStrategy.Name)))
-					g.Expect(psh.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(environment.Branch)))
-					g.Expect(metav1.IsControlledBy(&psh, promotionStrategy)).To(BeTrue())
+					var ctph promoterv1alpha1.ChangeTransferPolicyHistory
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctph)
+					g.Expect(err).To(Succeed())
 
-					g.Expect(psh.Spec.RepositoryReference.Name).To(Equal(promotionStrategy.Spec.RepositoryReference.Name))
-					g.Expect(psh.Spec.ActiveBranch).To(Equal(environment.Branch))
+					g.Expect(ctph.Labels[promoterv1alpha1.PromotionStrategyLabel]).To(Equal(utils.KubeSafeLabel(promotionStrategy.Name)))
+					g.Expect(ctph.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(environment.Branch)))
+					g.Expect(ctph.Labels[promoterv1alpha1.ChangeTransferPolicyLabel]).To(Equal(utils.KubeSafeLabel(ctp.Name)))
+					g.Expect(metav1.IsControlledBy(&ctph, &ctp)).To(BeTrue())
+
+					g.Expect(ctph.Spec.RepositoryReference.Name).To(Equal(promotionStrategy.Spec.RepositoryReference.Name))
+					g.Expect(ctph.Spec.ActiveBranch).To(Equal(environment.Branch))
 					if environment.ActivePath != "" {
-						g.Expect(psh.Spec.ActivePath).To(Equal(environment.ActivePath))
+						g.Expect(ctph.Spec.ActivePath).To(Equal(environment.ActivePath))
 					} else {
-						g.Expect(psh.Spec.ActivePath).To(BeEmpty())
+						g.Expect(ctph.Spec.ActivePath).To(BeEmpty())
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Removing an environment from the PromotionStrategy")
 			removedBranch := promotionStrategy.Spec.Environments[2].Branch
-			orphanedName := utils.KubeSafeUniqueName(utils.GetPromotionStrategyHistoryName(promotionStrategy.Name, removedBranch))
+			orphanedCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, removedBranch))
+			orphanedName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(orphanedCTPName))
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)).To(Succeed())
 				promotionStrategy.Spec.Environments = promotionStrategy.Spec.Environments[:2]
 				g.Expect(k8sClient.Update(ctx, promotionStrategy)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Checking that the orphaned PromotionStrategyHistory is deleted")
+			By("Checking that the orphaned ChangeTransferPolicyHistory is deleted with its ChangeTransferPolicy")
 			Eventually(func(g Gomega) {
-				var psh promoterv1alpha1.PromotionStrategyHistory
+				var ctph promoterv1alpha1.ChangeTransferPolicyHistory
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      orphanedName,
 					Namespace: typeNamespacedName.Namespace,
-				}, &psh)
-				g.Expect(errors.IsNotFound(err) || !psh.DeletionTimestamp.IsZero()).To(BeTrue())
+				}, &ctph)
+				g.Expect(errors.IsNotFound(err) || !ctph.DeletionTimestamp.IsZero()).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 
-	DescribeTable("ctpUpdateEnqueuesPromotionStrategyHistoryPredicate",
+	DescribeTable("ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate",
 		func(oldStatus, newStatus promoterv1alpha1.ChangeTransferPolicyStatus, expected bool) {
-			p := ctpUpdateEnqueuesPromotionStrategyHistoryPredicate()
+			p := ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate()
 			e := event.UpdateEvent{
 				ObjectOld: &promoterv1alpha1.ChangeTransferPolicy{Status: oldStatus},
 				ObjectNew: &promoterv1alpha1.ChangeTransferPolicy{Status: newStatus},
