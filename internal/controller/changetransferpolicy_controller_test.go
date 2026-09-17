@@ -1020,7 +1020,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				changeTransferPolicy.Labels = environmentLabels
 				ctphNamespacedName = types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(changeTransferPolicy.Name)),
+					Name:      utils.GetChangeTransferPolicyHistoryName(changeTransferPolicy.Name),
 					Namespace: "default",
 				}
 				changeTransferPolicyHistory = &promoterv1alpha1.ChangeTransferPolicyHistory{}
@@ -3047,7 +3047,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 
 		By("Verifying the owned ChangeTransferPolicyHistory was enqueued for a rebuild in this same reconcile")
-		Expect(enqueuedCTPH).To(ConsistOf("default/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName("early-note-ctp"))))
+		Expect(enqueuedCTPH).To(ConsistOf("default/" + utils.GetChangeTransferPolicyHistoryName("early-note-ctp")))
 
 		By("Verifying the finalizer is still held because the CTP status has not caught up")
 		var livePR promoterv1alpha1.PullRequest

@@ -100,7 +100,7 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 
 					var ctph promoterv1alpha1.ChangeTransferPolicyHistory
 					err = k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name)),
+						Name:      utils.GetChangeTransferPolicyHistoryName(ctp.Name),
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctph)
 					g.Expect(err).To(Succeed())
@@ -123,7 +123,7 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 			By("Removing an environment from the PromotionStrategy")
 			removedBranch := promotionStrategy.Spec.Environments[2].Branch
 			orphanedCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, removedBranch))
-			orphanedName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(orphanedCTPName))
+			orphanedName := utils.GetChangeTransferPolicyHistoryName(orphanedCTPName)
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)).To(Succeed())
 				promotionStrategy.Spec.Environments = promotionStrategy.Spec.Environments[:2]
@@ -144,7 +144,7 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 		It("recreates a ChangeTransferPolicyHistory deleted out from under its ChangeTransferPolicy", func() {
 			ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))
 			ctphKey := types.NamespacedName{
-				Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctpName)),
+				Name:      utils.GetChangeTransferPolicyHistoryName(ctpName),
 				Namespace: typeNamespacedName.Namespace,
 			}
 

@@ -957,7 +957,7 @@ func (r *ChangeTransferPolicyReconciler) enqueueChangeTransferPolicyHistory(ctp 
 	if r.EnqueueCTPH == nil {
 		return
 	}
-	r.EnqueueCTPH(ctp.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name)))
+	r.EnqueueCTPH(ctp.Namespace, utils.GetChangeTransferPolicyHistoryName(ctp.Name))
 }
 
 // writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge
@@ -1175,7 +1175,7 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 func (r *ChangeTransferPolicyReconciler) upsertChangeTransferPolicyHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 
-	ctphName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name))
+	ctphName := utils.GetChangeTransferPolicyHistoryName(ctp.Name)
 
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
@@ -1227,7 +1227,7 @@ func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Co
 	// envtest does not run kube garbage collection, so delete the owned history object explicitly
 	// rather than relying on owner-reference cascade.
 	ctph := &promoterv1alpha1.ChangeTransferPolicyHistory{}
-	ctph.Name = utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctp.Name))
+	ctph.Name = utils.GetChangeTransferPolicyHistoryName(ctp.Name)
 	ctph.Namespace = ctp.Namespace
 	if err := r.Delete(ctx, ctph); err != nil && !k8s_errors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete ChangeTransferPolicyHistory %q: %w", ctph.Name, err)

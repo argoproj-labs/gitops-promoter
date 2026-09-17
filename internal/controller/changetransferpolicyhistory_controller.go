@@ -268,7 +268,7 @@ func (r *ChangeTransferPolicyHistoryReconciler) mapCTPToChangeTransferPolicyHist
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{
 			Namespace: obj.GetNamespace(),
-			Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(obj.GetName())),
+			Name:      utils.GetChangeTransferPolicyHistoryName(obj.GetName()),
 		},
 	}}
 }
