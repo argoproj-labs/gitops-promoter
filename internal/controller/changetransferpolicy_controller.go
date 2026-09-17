@@ -564,6 +564,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerPullRequestSourceBranch,
 		constants.TrailerPullRequestTargetBranch,
 		constants.TrailerPullRequestCreationTime,
+		constants.TrailerPullRequestMergeTime,
 		constants.TrailerPullRequestUrl,
 		constants.TrailerCommitStatusActivePrefix,
 		constants.TrailerCommitStatusProposedPrefix,
