@@ -185,8 +185,8 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	for _, envConfig := range tcs.Spec.Environments {
 		listed = append(listed, envConfig.Branch)
 	}
-	if err := utils.ValidateGateEnvironmentList(ps, tcs.Spec.CommitStatusKey(), listed); err != nil {
-		return nil, nil, err
+	if err := utils.ValidateGateEnvironmentList(ps, tcs.Spec.Key, listed); err != nil {
+		return nil, nil, fmt.Errorf("failed to validate TimedCommitStatus environments: %w", err)
 	}
 
 	// Build a map of environments from PromotionStrategy for efficient lookup

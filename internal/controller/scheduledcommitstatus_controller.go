@@ -164,7 +164,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 		listed = append(listed, envConfig.Branch)
 	}
 	if err := utils.ValidateGateEnvironmentList(ps, scs.Spec.Key, listed); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to validate ScheduledCommitStatus environments: %w", err)
 	}
 
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
