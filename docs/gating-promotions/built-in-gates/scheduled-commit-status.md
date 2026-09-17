@@ -20,7 +20,7 @@ For each environment configured in a ScheduledCommitStatus resource:
 4. It creates/updates a CommitStatus for the environment's proposed SHA
 5. It requeues at the next window transition time for precise state changes
 
-Environments **not listed** in the ScheduledCommitStatus are not gated -- no CommitStatus resources are produced for them, and they default to success (24/7 open).
+Environments **not listed** in `spec.environments` get no CommitStatus from this controller. That is **not** the same as defaulting to success. A gate key your PromotionStrategy requires for an environment stays `pending` (`Waiting for status to be reported`) until a matching CommitStatus exists, so the promotion never merges. An unlisted environment is ungated only when `spec.key` is also absent from the checks the PromotionStrategy requires for it -- in particular, keep the key out of the top-level `spec.proposedCommitStatuses`, which applies to every environment. See [Requiring the key only where the window applies](#requiring-the-key-only-where-the-window-applies).
 
 ## Example Configurations
 
@@ -55,7 +55,7 @@ This configuration:
 
 - Allows deployments to `development` Monday-Friday 09:00-17:00 Eastern
 - Allows deployments to `staging` on Tuesdays 10:00-16:00 Eastern
-- The `production` environment is not listed, so it is ungated (24/7 open)
+- Does not write a CommitStatus for `production`. Production is ungated only if the PromotionStrategy does not require `promotion-window` there -- declare the key under `development` and `staging` only (see below).
 
 ### Global Exclusions (Deployment Freeze)
 
@@ -121,9 +121,11 @@ This configuration:
 
 `spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. This field is required -- set it to match the key referenced in your PromotionStrategy.
 
-### Integrating with PromotionStrategy
+### Requiring the key only where the window applies
 
-Reference the same key in `proposedCommitStatuses` (must match `ScheduledCommitStatus.spec.key`):
+In a PromotionStrategy, keys under the top-level `spec.proposedCommitStatuses` / `spec.activeCommitStatuses` are required by **every** environment; keys under `spec.environments[].proposedCommitStatuses` / `spec.environments[].activeCommitStatuses` are required by that environment only. A required key whose CommitStatus is missing is not skipped -- the promotion waits on it.
+
+So the branches listed on `ScheduledCommitStatus.spec.environments` must be the same environments whose PromotionStrategy entries require `spec.key`:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -133,19 +135,24 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
-  proposedCommitStatuses:
-    - key: promotion-window
   environments:
     - branch: environment/development
+      proposedCommitStatuses:
+        - key: promotion-window
     - branch: environment/staging
+      proposedCommitStatuses:
+        - key: promotion-window
     - branch: environment/production
+      # promotion-window not required here, so the window never blocks production
 ```
 
-In this configuration:
+Declaring `promotion-window` at the top level instead makes production require it too, and production then waits forever for a CommitStatus this controller never creates.
 
-- Promotions from `development` to `staging` are blocked unless `development` is inside an allow window
-- Promotions from `staging` to `production` are blocked unless `staging` is inside an allow window
-- The gate is a proposed commit status, so it controls whether a pending change is allowed to merge
+### Integrating with PromotionStrategy
+
+`spec.key` must match the `proposedCommitStatuses` entry you declare on the PromotionStrategy. When the ScheduledCommitStatus lists only a subset of branches, declare that key under those environments only, as in [Requiring the key only where the window applies](#requiring-the-key-only-where-the-window-applies). Declare it at the top level only when every environment in the strategy is listed on the ScheduledCommitStatus.
+
+The gate is a proposed commit status: it controls whether a pending change may merge into each environment that declares the key.
 
 ### Complete Example with Multiple Gates
 
@@ -161,12 +168,17 @@ spec:
     name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health
-    - key: timer
-  proposedCommitStatuses:
-    - key: promotion-window
   environments:
     - branch: environment/development
+      activeCommitStatuses:
+        - key: timer
+      proposedCommitStatuses:
+        - key: promotion-window
     - branch: environment/staging
+      activeCommitStatuses:
+        - key: timer
+      proposedCommitStatuses:
+        - key: promotion-window
     - branch: environment/production
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -211,12 +223,12 @@ spec:
 
 This configuration requires:
 
-- Argo CD health checks passing in all environments
-- 1-hour soak time in development, 4-hour soak time in staging
-- Development deployments only during business hours (Mon-Fri 09:00-17:00 ET)
-- Staging deployments only on Tuesdays 10:00-16:00 ET
-- A 48-hour deployment freeze over Christmas for all gated environments
-- Production is ungated by the promotion window (not listed), but still gated by health and soak time
+- Argo CD health checks passing in all environments (`argocd-health` is at the root; ArgoCDCommitStatus writes a CommitStatus for each environment)
+- 1-hour soak in development and 4-hour soak in staging before promoting *out* of those environments (`timer` is declared only where TimedCommitStatus lists the branch)
+- Development proposed commits only during business hours (Mon-Fri 09:00-17:00 ET)
+- Staging proposed commits only on Tuesdays 10:00-16:00 ET
+- A 48-hour deployment freeze over Christmas for the listed window environments
+- Production is not gated by `promotion-window` or soak *on production itself*. Promotions *into* production still wait on staging's soak and health via the ordering gate, because those are active statuses on staging.
 
 ## Global vs Per-Environment Windows
 
@@ -323,7 +335,7 @@ Common IANA timezone values:
 1. **Exclusions override allow windows.** If the current time is inside any exclusion window (global or per-environment), the promotion is blocked regardless of allow windows.
 2. **Allow windows use OR semantics.** If the current time is inside any allow window (global or per-environment), the promotion is allowed (unless excluded).
 3. **No allow windows = exclusion-only mode.** When no allow windows are defined, promotions are allowed at all times except during exclusion windows.
-4. **Unlisted environments are ungated.** Environments not in `spec.environments` default to success (24/7 open).
+4. **Unlisted environments get no CommitStatus.** The controller does not write a status for branches omitted from `spec.environments`. If the PromotionStrategy still requires that `spec.key` for such an environment -- including through a top-level `proposedCommitStatuses` entry, which applies to every environment -- the promotion stays `pending` (`Waiting for status to be reported`) and never merges. Omit the key from environments you do not want gated.
 
 ### Intelligent Reconciliation
 
@@ -385,11 +397,12 @@ Fields:
 
 If a scheduled gate remains in pending status:
 
-1. Check if the current time is outside all allow windows for the environment
-2. Check if the current time is inside an exclusion window
-3. Verify the timezone is correct -- cron expressions are evaluated in the resolved timezone (per-window override, then `spec.timezone`, then UTC)
-4. Inspect the status for `active.exclude` and `next.transition` fields
-5. Check the `Ready` condition -- cron parsing errors and invalid timezones surface in its message
+1. If the description is `Waiting for status to be reported`, the PromotionStrategy requires the key for that environment but no CommitStatus exists for the SHA. Either list the environment branch on the ScheduledCommitStatus, or remove the key from that environment's `proposedCommitStatuses` if it should be ungated
+2. Check if the current time is outside all allow windows for the environment
+3. Check if the current time is inside an exclusion window
+4. Verify the timezone is correct -- cron expressions are evaluated in the resolved timezone (per-window override, then `spec.timezone`, then UTC)
+5. Inspect the status for `active.exclude` and `next.transition` fields
+6. Check the `Ready` condition -- cron parsing errors and invalid timezones surface in its message
 
 ### Gate Not Created
 
