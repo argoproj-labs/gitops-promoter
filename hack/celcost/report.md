@@ -11,7 +11,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
 | ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
-| ChangeTransferPolicyHistory | v1alpha1 | 9,147 | 0.01% |
+| ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 352 | 0.00% |
@@ -73,20 +73,20 @@ Source: `promoter.argoproj.io_changetransferpolicyhistories.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.status.history[].active.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.dry.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.note.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.commitStatuses[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.commitStatuses[].url` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.dry.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.note.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.commitStatuses[].url` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.dry.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].pullRequest.url` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
-| `.status.history[].active.dry.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.repoURL` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
-| `.status.history[].pullRequest.url` | 15 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **9,147** | **0.01%** | |
+| **Total** | **36,327** | **0.04%** | |
 
 #### ClusterScmProvider
 

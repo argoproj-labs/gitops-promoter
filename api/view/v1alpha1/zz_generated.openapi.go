@@ -1280,7 +1280,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHisto
 					},
 					"history": {
 						SchemaProps: spec.SchemaProps{
-							Description: "History defines the history of promoted changes for this environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
+							Description: "History defines the history of promoted changes for this environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 20 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{

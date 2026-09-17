@@ -33,7 +33,7 @@ type ChangeTransferPolicyHistoryStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// History defines the history of promoted changes for this environment. You can think of
 	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is at most 5 entries.
+	// The history length is at most 20 entries.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
 	History []HistoryApplyConfiguration `json:"history,omitempty"`

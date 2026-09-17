@@ -56,10 +56,10 @@ type ChangeTransferPolicyHistoryStatus struct {
 
 	// History defines the history of promoted changes for this environment. You can think of
 	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is at most 5 entries.
+	// The history length is at most 20 entries.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
-	// +kubebuilder:validation:MaxItems=5
+	// +kubebuilder:validation:MaxItems=20
 	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -81,7 +81,7 @@ type ChangeTransferPolicyHistoryStatus struct {
 
 // MaxPromotionHistory is the maximum number of promotion history entries stored on
 // ChangeTransferPolicyHistory.status.history.
-const MaxPromotionHistory = 5
+const MaxPromotionHistory = 20
 
 // History describes a particular change that was promoted into an environment's active branch.
 type History struct {
