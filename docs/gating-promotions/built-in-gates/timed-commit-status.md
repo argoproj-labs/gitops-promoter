@@ -232,9 +232,10 @@ If a time-based gate remains in pending status:
 If no CommitStatus is created:
 
 1. Verify the PromotionStrategy reference is correct
-2. Ensure the environment branch names match exactly
-3. Check that the PromotionStrategy has been reconciled and has status populated
-4. Verify the environment has an active commit
+2. Ensure the environment branch names match exactly -- the controller sets Ready=False when a listed branch is missing from the PromotionStrategy
+3. Check Ready=False for `requires key ... for environments not listed`: every PromotionStrategy environment that requires `spec.key` must be listed on the TimedCommitStatus
+4. Check that the PromotionStrategy has been reconciled and has status populated
+5. Verify the environment has an active commit
 
 ### Checking Current Status
 

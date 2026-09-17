@@ -181,6 +181,14 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		previousStatus = &promoterv1alpha1.TimedCommitStatusStatus{}
 	}
 
+	listed := make([]string, 0, len(tcs.Spec.Environments))
+	for _, envConfig := range tcs.Spec.Environments {
+		listed = append(listed, envConfig.Branch)
+	}
+	if err := utils.ValidateGateEnvironmentList(ps, tcs.Spec.CommitStatusKey(), listed); err != nil {
+		return nil, nil, err
+	}
+
 	// Build a map of environments from PromotionStrategy for efficient lookup
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {

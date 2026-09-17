@@ -50,6 +50,11 @@ spec:
             description: spec defines the desired state of TimedCommitStatus
             properties:
               environments:
+                description: |-
+                  Environments is the list of branches this soak gate covers. A PromotionStrategy
+                  environment that requires spec.key (top-level or per-environment proposed or
+                  active commit statuses) must appear here; otherwise reconciliation fails with
+                  Ready=False. Extra listed environments are allowed.
                 items:
                   description: TimedCommitStatusEnvironments defines the branch/environment
                     and duration to wait before reporting the gate as success.

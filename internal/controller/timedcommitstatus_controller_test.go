@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -53,7 +54,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-commit-status-test", "default")
 
 		// Configure ActiveCommitStatuses to check for timer commit status
-		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+		promotionStrategy.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "timer"},
 		}
 
@@ -613,7 +614,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		It("should use custom spec.key on CommitStatus label and name", func() {
 			keyCtx := context.Background()
 			keyName, scmSecret, scmProvider, gitRepo, _, _, keyPS := promotionStrategyResource(keyCtx, "timed-commit-status-key-test", "default")
-			keyPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			keyPS.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: customKey},
 			}
 
@@ -662,6 +663,122 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(keyCtx, scmProvider)
 			_ = k8sClient.Delete(keyCtx, scmSecret)
 		})
+	})
+})
+
+var _ = Describe("TimedCommitStatus Controller - Environment Key Mismatch", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *v1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-key-mismatch", "default")
+		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "timer"},
+		}
+		declareDependentsSuccessfulGate(promotionStrategy)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+	})
+
+	AfterAll(func() {
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
+			})
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	It("should set Ready=False when PromotionStrategy requires the key for an unlisted environment", func() {
+		tcs := &promoterv1alpha1.TimedCommitStatus{
+			Name:      name + "-key-unlisted",
+			Namespace: "default",
+			Spec: promoterv1alpha1.TimedCommitStatusSpec{
+				Key: "timer",
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: name,
+				},
+				Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+					{
+						Branch:   testBranchDevelopment,
+						Duration: metav1.Duration{Duration: 1 * time.Hour},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, tcs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, tcs) })
+
+		Eventually(func(g Gomega) {
+			var current promoterv1alpha1.TimedCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name + "-key-unlisted",
+				Namespace: "default",
+			}, &current)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			readyCondition := meta.FindStatusCondition(current.Status.Conditions, "Ready")
+			g.Expect(readyCondition).ToNot(BeNil())
+			g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(readyCondition.Message).To(ContainSubstring("requires key \"timer\""))
+			g.Expect(readyCondition.Message).To(ContainSubstring(testBranchStaging))
+			g.Expect(readyCondition.Message).To(ContainSubstring(testBranchProduction))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("should set Ready=False when a branch does not exist in PromotionStrategy", func() {
+		tcs := &promoterv1alpha1.TimedCommitStatus{
+			Name:      name + "-branch-mismatch",
+			Namespace: "default",
+			Spec: promoterv1alpha1.TimedCommitStatusSpec{
+				Key: "timer",
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: name,
+				},
+				Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+					{
+						Branch:   "environment/nonexistent",
+						Duration: metav1.Duration{Duration: 1 * time.Hour},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, tcs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, tcs) })
+
+		Eventually(func(g Gomega) {
+			var current promoterv1alpha1.TimedCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name + "-branch-mismatch",
+				Namespace: "default",
+			}, &current)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			readyCondition := meta.FindStatusCondition(current.Status.Conditions, "Ready")
+			g.Expect(readyCondition).ToNot(BeNil())
+			g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(readyCondition.Message).To(ContainSubstring("environment/nonexistent"))
+		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 })
 

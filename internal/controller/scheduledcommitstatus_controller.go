@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -160,19 +159,12 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 		previousPhases[env.Branch] = env.Phase
 	}
 
-	psBranches := make(map[string]bool, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		psBranches[env.Branch] = true
-	}
-	var mismatchedBranches []string
+	listed := make([]string, 0, len(scs.Spec.Environments))
 	for _, envConfig := range scs.Spec.Environments {
-		if !psBranches[envConfig.Branch] {
-			mismatchedBranches = append(mismatchedBranches, envConfig.Branch)
-		}
+		listed = append(listed, envConfig.Branch)
 	}
-	if len(mismatchedBranches) > 0 {
-		return nil, nil, fmt.Errorf("branches not found in PromotionStrategy %q: %s",
-			ps.Name, strings.Join(mismatchedBranches, ", "))
+	if err := utils.ValidateGateEnvironmentList(ps, scs.Spec.Key, listed); err != nil {
+		return nil, nil, err
 	}
 
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))

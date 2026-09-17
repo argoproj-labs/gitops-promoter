@@ -402,7 +402,7 @@ If a scheduled gate remains in pending status:
 3. Check if the current time is inside an exclusion window
 4. Verify the timezone is correct -- cron expressions are evaluated in the resolved timezone (per-window override, then `spec.timezone`, then UTC)
 5. Inspect the status for `active.exclude` and `next.transition` fields
-6. Check the `Ready` condition -- cron parsing errors and invalid timezones surface in its message
+6. Check the `Ready` condition -- cron parsing errors, invalid timezones, unknown branches, and PromotionStrategy key/environment mismatches surface in its message
 
 ### Gate Not Created
 
@@ -410,8 +410,9 @@ If no CommitStatus is created:
 
 1. Verify the PromotionStrategy reference is correct (`spec.promotionStrategyRef.name`)
 2. Ensure the environment branch names match exactly between the ScheduledCommitStatus and the PromotionStrategy -- the controller validates this and sets Ready=False with the mismatched branch names in the message
-3. Check that the PromotionStrategy has been reconciled and has status populated (compare `metadata.generation` to `status.observedGeneration`)
-4. Verify the environment has an active hydrated commit
+3. Check Ready=False for `requires key ... for environments not listed`: every PromotionStrategy environment that requires `spec.key` must be listed on the ScheduledCommitStatus
+4. Check that the PromotionStrategy has been reconciled and has status populated (compare `metadata.generation` to `status.observedGeneration`)
+5. Verify the environment has an active hydrated commit
 
 ### Checking Current Status
 
