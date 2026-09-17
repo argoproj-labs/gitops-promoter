@@ -47,7 +47,7 @@ That fragility is exactly why the note exists.
 
 At finalization — before the `PullRequest` CR is allowed to disappear — the ChangeTransferPolicy controller writes the trailers as a JSON object in a git note at `refs/notes/promoter.history`, attached to the commit named by `PullRequest.status.mergedTargetSha`. See [Promotion history git notes](finalizers.md#promotion-history-git-notes) for the finalizer mechanics, failure handling, and what happens when no merge SHA is ever obtained.
 
-When rebuilding history, the ChangeTransferPolicyHistory controller walks the last five first-parent commits of the active branch and, for each, **prefers the note** and falls back to the commit message's trailers when no readable note exists. That fallback is what keeps merges from before the notes feature visible.
+When rebuilding history, the ChangeTransferPolicyHistory controller walks the last twenty first-parent commits of the active branch and, for each, **prefers the note** and falls back to the commit message's trailers when no readable note exists. That fallback is what keeps merges from before the notes feature visible.
 
 ## Note versus commit message
 

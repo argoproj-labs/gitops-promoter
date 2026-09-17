@@ -16,7 +16,7 @@ Migration notes:
   permissions, and apiserver read access). Updating the ChangeTransferPolicy and PromotionStrategy CRDs prunes the
   stored `history` values automatically.
 - No data is lost: history was always reconstructed from Git (commit trailers and the
-  `refs/notes/promoter.history` notes ref), and the new controller rebuilds the same last-five entries from the same
+  `refs/notes/promoter.history` notes ref), and the new controller rebuilds those entries from the same
   sources.
 - During a rolling upgrade, an old controller writing status containing `history` against the new CRD schema has the
   unknown field silently dropped by structural pruning; this is harmless.

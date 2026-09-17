@@ -23,7 +23,7 @@ status:
       status: "True" # "True," "False," or "Unknown"
       observedGeneration: 123
   history:
-    # Recent promotions merged by the controller (newest first, at most 5 entries).
+    # Recent promotions merged by the controller (newest first, at most 20 entries).
     - active:
         dry:
           sha: "fedcba0987654321fedcba0987654321fedcba09"
