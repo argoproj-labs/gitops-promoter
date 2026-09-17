@@ -194,7 +194,7 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 
 // GetChangeTransferPolicyHistoryName returns a name for the ChangeTransferPolicyHistory owned by the given ChangeTransferPolicy.
 func GetChangeTransferPolicyHistoryName(ctpName string) string {
-	return fmt.Sprintf("%s-history", ctpName)
+	return ctpName + "-history"
 }
 
 // EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
