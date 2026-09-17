@@ -140,6 +140,35 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 				g.Expect(errors.IsNotFound(err) || !ctph.DeletionTimestamp.IsZero()).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("recreates a ChangeTransferPolicyHistory deleted out from under its ChangeTransferPolicy", func() {
+			ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))
+			ctphKey := types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyHistoryName(ctpName)),
+				Namespace: typeNamespacedName.Namespace,
+			}
+
+			By("Waiting for the ChangeTransferPolicyHistory to be created")
+			var originalUID types.UID
+			Eventually(func(g Gomega) {
+				var ctph promoterv1alpha1.ChangeTransferPolicyHistory
+				g.Expect(k8sClient.Get(ctx, ctphKey, &ctph)).To(Succeed())
+				originalUID = ctph.UID
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the ChangeTransferPolicyHistory")
+			var deleted promoterv1alpha1.ChangeTransferPolicyHistory
+			deleted.Name = ctphKey.Name
+			deleted.Namespace = ctphKey.Namespace
+			Expect(k8sClient.Delete(ctx, &deleted)).To(Succeed())
+
+			By("Checking that the ChangeTransferPolicy controller recreates it without waiting for the periodic requeue")
+			Eventually(func(g Gomega) {
+				var recreated promoterv1alpha1.ChangeTransferPolicyHistory
+				g.Expect(k8sClient.Get(ctx, ctphKey, &recreated)).To(Succeed())
+				g.Expect(recreated.UID).ToNot(Equal(originalUID))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	DescribeTable("ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate",
