@@ -3372,3 +3372,38 @@ var _ = Describe("commit status description trailers", func() {
 		Expect(history.Proposed.CommitStatuses[0].Description).To(Equal("proposed description"))
 	})
 })
+
+var _ = Describe("removeKnownTrailers", func() {
+	It("leaves no promoter trailers in the body, including newly added keys", func() {
+		// One line per promoter trailer key/prefix from constants/trailers.go. When adding a
+		// trailer constant, add a line here so a missing strip-list entry fails this spec.
+		promoterTrailerLines := []string{
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-phase: success",
+			constants.TrailerCommitStatusProposedPrefix + "gate-url: https://example.com",
+			constants.TrailerMergeCommitSnapshotMismatch + ": true",
+			constants.TrailerPullRequestCreationTime + ": 2026-05-22T17:16:49-05:00",
+			constants.TrailerPullRequestMergeTime + ": 2026-05-22T17:17:42-05:00",
+			constants.TrailerPullRequestID + ": 42",
+			constants.TrailerPullRequestSourceBranch + ": environments/dev-next",
+			constants.TrailerPullRequestTargetBranch + ": environments/dev",
+			constants.TrailerPullRequestUrl + ": https://example.com/pr/42",
+			constants.TrailerShaDryActive + ": aaa",
+			constants.TrailerShaDryProposed + ": bbb",
+			constants.TrailerShaHydratedActive + ": ccc",
+			constants.TrailerShaHydratedProposed + ": ddd",
+		}
+
+		body := "This PR promotes changes to the environment.\n\n" +
+			"Signed-off-by: Alice <alice@example.com>\n" +
+			strings.Join(promoterTrailerLines, "\n") + "\n"
+
+		stripped := removeKnownTrailers(body)
+		Expect(stripped).To(ContainSubstring("This PR promotes changes to the environment."))
+
+		trailers, err := git.ParseTrailersFromMessage(context.Background(), "subject\n\n"+stripped)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(trailers).To(Equal(map[string][]string{
+			"Signed-off-by": {"Alice <alice@example.com>"},
+		}), "status bodies must not surface promoter bookkeeping trailers")
+	})
+})
