@@ -2,9 +2,9 @@
 
 This page documents breaking changes and migration steps between releases.
 
-## Unreleased — Promotion history moves to ChangeTransferPolicyHistory {#unreleased-changetransferpolicyhistory}
+## 0.50 — Promotion history moves to ChangeTransferPolicyHistory {#050-changetransferpolicyhistory}
 
-Promotion history no longer lives on `ChangeTransferPolicy.status.history` or
+Starting in 0.50.0, promotion history no longer lives on `ChangeTransferPolicy.status.history` or
 `PromotionStrategy.status.environments[].history`; both fields are removed from the CRD schemas. History is now owned by
 a dedicated [ChangeTransferPolicyHistory](crd-specs.md#changetransferpolicyhistory) resource, created per ChangeTransferPolicy by the
 ChangeTransferPolicy controller and reconciled by its own controller. The dashboard and Argo CD extension read history from
