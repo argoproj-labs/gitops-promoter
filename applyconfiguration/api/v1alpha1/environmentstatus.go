@@ -32,12 +32,6 @@ type EnvironmentStatusApplyConfiguration struct {
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
 	// LastHealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 	LastHealthyDryShas []HealthyDryShasApplyConfiguration `json:"lastHealthyDryShas,omitempty"`
-	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
-	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-	// manually merged. The history length is at most 5 entries.
-	// History is constructed on a best-effort basis and should be used for informational purposes only.
-	// History is in reverse chronological order (newest is first).
-	History []HistoryApplyConfiguration `json:"history,omitempty"`
 }
 
 // EnvironmentStatusApplyConfiguration constructs a declarative configuration of the EnvironmentStatus type for use with
@@ -87,19 +81,6 @@ func (b *EnvironmentStatusApplyConfiguration) WithLastHealthyDryShas(values ...*
 			panic("nil value passed to WithLastHealthyDryShas")
 		}
 		b.LastHealthyDryShas = append(b.LastHealthyDryShas, *values[i])
-	}
-	return b
-}
-
-// WithHistory adds the given value to the History field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the History field.
-func (b *EnvironmentStatusApplyConfiguration) WithHistory(values ...*HistoryApplyConfiguration) *EnvironmentStatusApplyConfiguration {
-	for i := range values {
-		if values[i] == nil {
-			panic("nil value passed to WithHistory")
-		}
-		b.History = append(b.History, *values[i])
 	}
 	return b
 }

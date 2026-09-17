@@ -109,6 +109,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Event Type | Event Reason                            | Description                                                                                                                               |
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
+| Normal     | OrphanedPromotionStrategyHistoryDeleted | An orphaned [PromotionStrategyHistory](../crd-specs.md#promotionstrategyhistory) was deleted after environment changes (e.g., branch rename). |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 
 Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus),

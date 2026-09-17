@@ -280,12 +280,6 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: instanceID
       type:
         scalar: string
@@ -527,6 +521,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration
+    - name: promotionStrategyHistory
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistoryConfiguration
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestConfiguration
@@ -720,12 +717,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: lastHealthyDryShas
       type:
         list:
@@ -1175,6 +1166,65 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistory
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistorySpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistoryStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistoryConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistorySpec
+  map:
+    fields:
+    - name: activeBranch
+      type:
+        scalar: string
+    - name: activePath
+      type:
+        scalar: string
+    - name: gitRepositoryRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyHistoryStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: history
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
+          elementRelationship: atomic
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategySpec
   map:
     fields:

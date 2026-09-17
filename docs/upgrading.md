@@ -2,6 +2,27 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## Unreleased — Promotion history moves to PromotionStrategyHistory {#unreleased-promotionstrategyhistory}
+
+Promotion history no longer lives on `ChangeTransferPolicy.status.history` or
+`PromotionStrategy.status.environments[].history`; both fields are removed from the CRD schemas. History is now owned by
+a dedicated [PromotionStrategyHistory](crd-specs.md#promotionstrategyhistory) resource, created per environment by the
+PromotionStrategy controller and reconciled by its own controller. The dashboard and Argo CD extension read history from
+the `promotionStrategyHistories` field of the `PromotionStrategyDetails` view bundle.
+
+Migration notes:
+
+- Apply the new CRDs and RBAC (`dist/install*.yaml` includes the `promotionstrategyhistories` CRD, controller
+  permissions, and apiserver read access). Updating the ChangeTransferPolicy and PromotionStrategy CRDs prunes the
+  stored `history` values automatically.
+- No data is lost: history was always reconstructed from Git (commit trailers and the
+  `refs/notes/promoter.history` notes ref), and the new controller rebuilds the same last-five entries from the same
+  sources.
+- During a rolling upgrade, an old controller writing status containing `history` against the new CRD schema has the
+  unknown field silently dropped by structural pruning; this is harmless.
+- Any external consumers reading `status.history` from ChangeTransferPolicy or PromotionStrategy must switch to the
+  PromotionStrategyHistory resource.
+
 ## 0.39 — Promotion order on PromotionStrategy {#039-promotion-order-on-promotionstrategy}
 
 > [!IMPORTANT]

@@ -18,6 +18,10 @@ const (
 	// performed by the PromotionStrategy controller.
 	PromotionStrategyControllerFieldOwner = "promoter.argoproj.io/promotionstrategy-controller"
 
+	// PromotionStrategyHistoryControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the PromotionStrategyHistory controller.
+	PromotionStrategyHistoryControllerFieldOwner = "promoter.argoproj.io/promotionstrategyhistory-controller"
+
 	// ChangeTransferPolicyControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ChangeTransferPolicy controller.
 	ChangeTransferPolicyControllerFieldOwner = "promoter.argoproj.io/changetransferpolicy-controller"

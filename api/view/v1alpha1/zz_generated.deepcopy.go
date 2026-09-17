@@ -38,6 +38,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.PromotionStrategyHistories != nil {
+		in, out := &in.PromotionStrategyHistories, &out.PromotionStrategyHistories
+		*out = make([]apiv1alpha1.PromotionStrategyHistory, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.PullRequests != nil {
 		in, out := &in.PullRequests, &out.PullRequests
 		*out = make([]apiv1alpha1.PullRequest, len(*in))

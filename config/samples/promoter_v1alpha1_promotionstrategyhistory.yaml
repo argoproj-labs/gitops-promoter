@@ -1,0 +1,13 @@
+# PromotionStrategyHistory resources are normally created and owned by the PromotionStrategy
+# controller, one per environment. This sample shows the shape for reference.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategyHistory
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: promotionstrategyhistory-sample
+spec:
+  gitRepositoryRef:
+    name: gitrepository-sample
+  activeBranch: environment/development

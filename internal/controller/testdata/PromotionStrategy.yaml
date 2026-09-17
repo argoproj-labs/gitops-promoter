@@ -85,21 +85,6 @@ status:
       state: open # open, closed, merged, merged-or-closed, or unknown
       url: https://github.com/org/repo/pull/848
       prCreationTime: 2023-10-01T00:00:00Z
-    history:
-      # The history field contains a snapshot of each promotion that has occurred in the environment. The most recent promotion
-      # is at the front of the list. The fields here are similar to those in proposed and active top level fields. They only differ in
-      # that the proposed field does not contain a dry field, because in the context of history proposed becomes active when promoted.
-      - active:
-        # same as top level active
-        proposed:
-        # same as top level proposed but without dry field because in the context of history proposed.dry becomes active when promoted.
-        pullRequest:
-          # The pullRequest field contains information about the pull request that was merged to create this history item.
-          id: '848'
-          prCreationTime: '2025-08-04T19:50:15Z'
-          url: https://github.com/org/repo/pull/848
-          # The active-branch commit this history item describes, as reported by the SCM after the merge.
-          mergedTargetSha: "3333333333333333333333333333333333333333"
     lastHealthyDryShas:
     - sha: "abcdef1234567890abcdef1234567890abcdef12"
       time: 2023-10-01T00:00:00Z

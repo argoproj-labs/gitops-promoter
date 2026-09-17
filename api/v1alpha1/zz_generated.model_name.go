@@ -436,6 +436,31 @@ func (in PromotionStrategyConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PromotionStrategyHistory) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistory"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PromotionStrategyHistoryConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PromotionStrategyHistoryList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PromotionStrategyHistorySpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistorySpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PromotionStrategyHistoryStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PromotionStrategyHistoryStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PromotionStrategyList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PromotionStrategyList"
 }

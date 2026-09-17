@@ -850,518 +850,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              history:
-                description: |-
-                  History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
-                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-                  The history length is at most 5 entries.
-                  History is constructed on a best-effort basis and should be used for informational purposes only.
-                  History is in reverse chronological order (newest is first).
-                items:
-                  description: History describes a particular change that was promoted
-                    by the ChangeTransferPolicy.
-                  properties:
-                    active:
-                      description: |-
-                        Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
-                        <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
-                        describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
-                        snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
-                      properties:
-                        commitStatuses:
-                          description: CommitStatuses is a list of commit statuses
-                            that are being monitored for this branch.
-                          items:
-                            description: ChangeRequestPolicyCommitStatusPhase defines
-                              the phase of a commit status in a ChangeTransferPolicy.
-                            properties:
-                              description:
-                                description: Description is the description of the
-                                  commit status
-                                type: string
-                              key:
-                                description: Key staging hydrated branch
-                                maxLength: 63
-                                minLength: 1
-                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                                type: string
-                              phase:
-                                description: Phase what phase is the status in
-                                enum:
-                                - pending
-                                - success
-                                - failure
-                                type: string
-                              url:
-                                description: Url is the URL of the commit status
-                                pattern: ^(https?://.*)?$
-                                type: string
-                                x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
-                            required:
-                            - key
-                            - phase
-                            type: object
-                          maxItems: 100
-                          type: array
-                          x-kubernetes-list-map-keys:
-                          - key
-                          x-kubernetes-list-type: map
-                        dry:
-                          description: Dry is the dry state of the branch, which is
-                            the commit that is being proposed.
-                          nullable: true
-                          properties:
-                            author:
-                              description: Author is the author of the commit
-                              type: string
-                            body:
-                              description: Body is the body of the commit message
-                                without the subject line
-                              type: string
-                            commitTime:
-                              description: CommitTime is the time the commit was made
-                              format: date-time
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located
-                              pattern: ^(https?://.*)?$
-                              type: string
-                              x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
-                            sha:
-                              description: |-
-                                Sha is the SHA of the commit in the branch
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the commit
-                                message
-                              type: string
-                          type: object
-                        hydrated:
-                          description: Hydrated is the hydrated state of the branch,
-                            which is the commit that is currently being worked on.
-                          properties:
-                            author:
-                              description: Author is the author of the commit
-                              type: string
-                            body:
-                              description: Body is the body of the commit message
-                                without the subject line
-                              type: string
-                            commitTime:
-                              description: CommitTime is the time the commit was made
-                              format: date-time
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located
-                              pattern: ^(https?://.*)?$
-                              type: string
-                              x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
-                            sha:
-                              description: |-
-                                Sha is the SHA of the commit in the branch
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the commit
-                                message
-                              type: string
-                          type: object
-                        note:
-                          description: Note is the hydrator metadata from the git
-                            note attached to the hydrated commit.
-                          properties:
-                            author:
-                              description: Author is the author of the dry commit
-                                that was used to hydrate the branch.
-                              type: string
-                            body:
-                              description: Body is the body of the dry commit that
-                                was used to hydrate the branch without the subject.
-                              type: string
-                            date:
-                              description: Date is the date of the dry commit that
-                                was used to hydrate the branch.
-                              format: date-time
-                              type: string
-                            drySha:
-                              description: |-
-                                DrySha is the SHA of the commit that was used as the dry source for hydration.
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch.
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located.
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the dry
-                                commit that was used to hydrate the branch.
-                              type: string
-                          type: object
-                      type: object
-                    mergeCommitSnapshotMismatch:
-                      description: |-
-                        MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
-                        the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
-                        the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
-                        active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
-                        gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
-                        revision rather than what actually merged.
-                      type: boolean
-                    proposed:
-                      description: Proposed is the state of the proposed branch at
-                        the time the PR was merged.
-                      properties:
-                        commitStatuses:
-                          description: |-
-                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
-                            This contains the state frozen at the moment the PR was merged. When the entry's
-                            mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
-                            revision the promoter last saw, which is not necessarily the revision that merged.
-                          items:
-                            description: ChangeRequestPolicyCommitStatusPhase defines
-                              the phase of a commit status in a ChangeTransferPolicy.
-                            properties:
-                              description:
-                                description: Description is the description of the
-                                  commit status
-                                type: string
-                              key:
-                                description: Key staging hydrated branch
-                                maxLength: 63
-                                minLength: 1
-                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                                type: string
-                              phase:
-                                description: Phase what phase is the status in
-                                enum:
-                                - pending
-                                - success
-                                - failure
-                                type: string
-                              url:
-                                description: Url is the URL of the commit status
-                                pattern: ^(https?://.*)?$
-                                type: string
-                                x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
-                            required:
-                            - key
-                            - phase
-                            type: object
-                          maxItems: 100
-                          type: array
-                        hydrated:
-                          description: |-
-                            Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
-                            Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
-                            but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
-                            merge was a squash the stale snapshot value is kept.
-                          properties:
-                            author:
-                              description: Author is the author of the commit
-                              type: string
-                            body:
-                              description: Body is the body of the commit message
-                                without the subject line
-                              type: string
-                            commitTime:
-                              description: CommitTime is the time the commit was made
-                              format: date-time
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located
-                              pattern: ^(https?://.*)?$
-                              type: string
-                              x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
-                            sha:
-                              description: |-
-                                Sha is the SHA of the commit in the branch
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the commit
-                                message
-                              type: string
-                          type: object
-                      type: object
-                    pullRequest:
-                      description: PullRequest is the state of the pull request that
-                        was created for this ChangeTransferPolicy.
-                      properties:
-                        externallyMergedOrClosed:
-                          description: |-
-                            ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
-                            promotion still desired it open. The PullRequest controller no longer sets this field.
-
-                            Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
-                            appear when mirrored from older PullRequest status. This field may be removed in a future API
-                            revision.
-                          type: boolean
-                        id:
-                          description: ID is the unique identifier of the pull request,
-                            set by the SCM.
-                          type: string
-                        mergedTargetSha:
-                          description: |-
-                            MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
-                            only when the SCM created one; squash and fast-forward merges report the resulting commit on the
-                            target branch instead. In the live pull request status it is mirrored from the PullRequest resource
-                            and is empty until the merge is observed; in a History entry it is the active-branch commit the
-                            entry describes.
-                          maxLength: 64
-                          minLength: 40
-                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                          type: string
-                        prCreationTime:
-                          description: PRCreationTime is the time when the pull request
-                            was created.
-                          format: date-time
-                          type: string
-                        prMergeTime:
-                          description: |-
-                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
-                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
-                            this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
-                            for that commit.
-                          format: date-time
-                          type: string
-                        state:
-                          description: State is the state of the pull request.
-                          enum:
-                          - closed
-                          - merged
-                          - open
-                          - merged-or-closed
-                          - unknown
-                          type: string
-                        url:
-                          description: Url is the URL of the pull request.
-                          pattern: ^(https?://.*)?$
-                          type: string
-                          x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
-                      type: object
-                  type: object
-                maxItems: 5
-                type: array
               instanceID:
                 description: |-
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -3541,6 +3029,215 @@ spec:
                 required:
                 - workQueue
                 type: object
+              promotionStrategyHistory:
+                description: |-
+                  PromotionStrategyHistory contains the configuration for the PromotionStrategyHistory controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the PromotionStrategyHistory controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               pullRequest:
                 description: |-
                   PullRequest contains the configuration for the PullRequest controller,
@@ -4404,6 +4101,7 @@ spec:
             - dependentsSuccessfulCommitStatus
             - gitCommitStatus
             - promotionStrategy
+            - promotionStrategyHistory
             - pullRequest
             - scheduledCommitStatus
             - timedCommitStatus
@@ -6103,541 +5801,6 @@ spec:
                         environment.
                       minLength: 1
                       type: string
-                    history:
-                      description: |-
-                        History defines the history of promoted changes done by the PromotionStrategy for each environment.
-                        You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-                        manually merged. The history length is at most 5 entries.
-                        History is constructed on a best-effort basis and should be used for informational purposes only.
-                        History is in reverse chronological order (newest is first).
-                      items:
-                        description: History describes a particular change that was
-                          promoted by the ChangeTransferPolicy.
-                        properties:
-                          active:
-                            description: |-
-                              Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
-                              <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
-                              describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
-                              snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
-                            properties:
-                              commitStatuses:
-                                description: CommitStatuses is a list of commit statuses
-                                  that are being monitored for this branch.
-                                items:
-                                  description: ChangeRequestPolicyCommitStatusPhase
-                                    defines the phase of a commit status in a ChangeTransferPolicy.
-                                  properties:
-                                    description:
-                                      description: Description is the description
-                                        of the commit status
-                                      type: string
-                                    key:
-                                      description: Key staging hydrated branch
-                                      maxLength: 63
-                                      minLength: 1
-                                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                                      type: string
-                                    phase:
-                                      description: Phase what phase is the status
-                                        in
-                                      enum:
-                                      - pending
-                                      - success
-                                      - failure
-                                      type: string
-                                    url:
-                                      description: Url is the URL of the commit status
-                                      pattern: ^(https?://.*)?$
-                                      type: string
-                                      x-kubernetes-validations:
-                                      - message: must be a valid URL
-                                        rule: self == '' || isURL(self)
-                                  required:
-                                  - key
-                                  - phase
-                                  type: object
-                                maxItems: 100
-                                type: array
-                                x-kubernetes-list-map-keys:
-                                - key
-                                x-kubernetes-list-type: map
-                              dry:
-                                description: Dry is the dry state of the branch, which
-                                  is the commit that is being proposed.
-                                nullable: true
-                                properties:
-                                  author:
-                                    description: Author is the author of the commit
-                                    type: string
-                                  body:
-                                    description: Body is the body of the commit message
-                                      without the subject line
-                                    type: string
-                                  commitTime:
-                                    description: CommitTime is the time the commit
-                                      was made
-                                    format: date-time
-                                    type: string
-                                  references:
-                                    description: References are the references to
-                                      other commits, that went into the hydration
-                                      of the branch
-                                    items:
-                                      description: |-
-                                        RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                        it supports only references to a commit. In the future, it may support other types of references.
-                                      properties:
-                                        commit:
-                                          description: Commit contains metadata about
-                                            the commit that is related in some way
-                                            to another commit.
-                                          properties:
-                                            author:
-                                              description: Author is the author of
-                                                the commit.
-                                              type: string
-                                            body:
-                                              description: Body is the body of the
-                                                commit message, excluding the subject
-                                                line, i.e. `git show --format=%b`.
-                                              type: string
-                                            date:
-                                              description: Date is the date of the
-                                                commit, formatted as by `git show
-                                                -s --format=%aI`.
-                                              format: date-time
-                                              type: string
-                                            repoURL:
-                                              description: RepoURL is the URL of the
-                                                repository where the commit is located.
-                                              pattern: ^(https?://.*)?$
-                                              type: string
-                                              x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
-                                            sha:
-                                              description: |-
-                                                Sha is the commit hash.
-                                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                              maxLength: 64
-                                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                              type: string
-                                            subject:
-                                              description: Subject is the subject
-                                                line of the commit message, i.e. `git
-                                                show --format=%s`.
-                                              type: string
-                                          type: object
-                                      type: object
-                                    maxItems: 100
-                                    type: array
-                                  repoURL:
-                                    description: RepoURL is the URL of the repository
-                                      where the commit is located
-                                    pattern: ^(https?://.*)?$
-                                    type: string
-                                    x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
-                                  sha:
-                                    description: |-
-                                      Sha is the SHA of the commit in the branch
-                                      Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                    maxLength: 64
-                                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                    type: string
-                                  subject:
-                                    description: Subject is the subject line of the
-                                      commit message
-                                    type: string
-                                type: object
-                              hydrated:
-                                description: Hydrated is the hydrated state of the
-                                  branch, which is the commit that is currently being
-                                  worked on.
-                                properties:
-                                  author:
-                                    description: Author is the author of the commit
-                                    type: string
-                                  body:
-                                    description: Body is the body of the commit message
-                                      without the subject line
-                                    type: string
-                                  commitTime:
-                                    description: CommitTime is the time the commit
-                                      was made
-                                    format: date-time
-                                    type: string
-                                  references:
-                                    description: References are the references to
-                                      other commits, that went into the hydration
-                                      of the branch
-                                    items:
-                                      description: |-
-                                        RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                        it supports only references to a commit. In the future, it may support other types of references.
-                                      properties:
-                                        commit:
-                                          description: Commit contains metadata about
-                                            the commit that is related in some way
-                                            to another commit.
-                                          properties:
-                                            author:
-                                              description: Author is the author of
-                                                the commit.
-                                              type: string
-                                            body:
-                                              description: Body is the body of the
-                                                commit message, excluding the subject
-                                                line, i.e. `git show --format=%b`.
-                                              type: string
-                                            date:
-                                              description: Date is the date of the
-                                                commit, formatted as by `git show
-                                                -s --format=%aI`.
-                                              format: date-time
-                                              type: string
-                                            repoURL:
-                                              description: RepoURL is the URL of the
-                                                repository where the commit is located.
-                                              pattern: ^(https?://.*)?$
-                                              type: string
-                                              x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
-                                            sha:
-                                              description: |-
-                                                Sha is the commit hash.
-                                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                              maxLength: 64
-                                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                              type: string
-                                            subject:
-                                              description: Subject is the subject
-                                                line of the commit message, i.e. `git
-                                                show --format=%s`.
-                                              type: string
-                                          type: object
-                                      type: object
-                                    maxItems: 100
-                                    type: array
-                                  repoURL:
-                                    description: RepoURL is the URL of the repository
-                                      where the commit is located
-                                    pattern: ^(https?://.*)?$
-                                    type: string
-                                    x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
-                                  sha:
-                                    description: |-
-                                      Sha is the SHA of the commit in the branch
-                                      Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                    maxLength: 64
-                                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                    type: string
-                                  subject:
-                                    description: Subject is the subject line of the
-                                      commit message
-                                    type: string
-                                type: object
-                              note:
-                                description: Note is the hydrator metadata from the
-                                  git note attached to the hydrated commit.
-                                properties:
-                                  author:
-                                    description: Author is the author of the dry commit
-                                      that was used to hydrate the branch.
-                                    type: string
-                                  body:
-                                    description: Body is the body of the dry commit
-                                      that was used to hydrate the branch without
-                                      the subject.
-                                    type: string
-                                  date:
-                                    description: Date is the date of the dry commit
-                                      that was used to hydrate the branch.
-                                    format: date-time
-                                    type: string
-                                  drySha:
-                                    description: |-
-                                      DrySha is the SHA of the commit that was used as the dry source for hydration.
-                                      Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                    maxLength: 64
-                                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                    type: string
-                                  references:
-                                    description: References are the references to
-                                      other commits, that went into the hydration
-                                      of the branch.
-                                    items:
-                                      description: |-
-                                        RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                        it supports only references to a commit. In the future, it may support other types of references.
-                                      properties:
-                                        commit:
-                                          description: Commit contains metadata about
-                                            the commit that is related in some way
-                                            to another commit.
-                                          properties:
-                                            author:
-                                              description: Author is the author of
-                                                the commit.
-                                              type: string
-                                            body:
-                                              description: Body is the body of the
-                                                commit message, excluding the subject
-                                                line, i.e. `git show --format=%b`.
-                                              type: string
-                                            date:
-                                              description: Date is the date of the
-                                                commit, formatted as by `git show
-                                                -s --format=%aI`.
-                                              format: date-time
-                                              type: string
-                                            repoURL:
-                                              description: RepoURL is the URL of the
-                                                repository where the commit is located.
-                                              pattern: ^(https?://.*)?$
-                                              type: string
-                                              x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
-                                            sha:
-                                              description: |-
-                                                Sha is the commit hash.
-                                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                              maxLength: 64
-                                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                              type: string
-                                            subject:
-                                              description: Subject is the subject
-                                                line of the commit message, i.e. `git
-                                                show --format=%s`.
-                                              type: string
-                                          type: object
-                                      type: object
-                                    maxItems: 100
-                                    type: array
-                                  repoURL:
-                                    description: RepoURL is the URL of the repository
-                                      where the commit is located.
-                                    type: string
-                                  subject:
-                                    description: Subject is the subject line of the
-                                      dry commit that was used to hydrate the branch.
-                                    type: string
-                                type: object
-                            type: object
-                          mergeCommitSnapshotMismatch:
-                            description: |-
-                              MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
-                              the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
-                              the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
-                              active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
-                              gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
-                              revision rather than what actually merged.
-                            type: boolean
-                          proposed:
-                            description: Proposed is the state of the proposed branch
-                              at the time the PR was merged.
-                            properties:
-                              commitStatuses:
-                                description: |-
-                                  CommitStatuses is a list of commit statuses that were being monitored for this branch.
-                                  This contains the state frozen at the moment the PR was merged. When the entry's
-                                  mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
-                                  revision the promoter last saw, which is not necessarily the revision that merged.
-                                items:
-                                  description: ChangeRequestPolicyCommitStatusPhase
-                                    defines the phase of a commit status in a ChangeTransferPolicy.
-                                  properties:
-                                    description:
-                                      description: Description is the description
-                                        of the commit status
-                                      type: string
-                                    key:
-                                      description: Key staging hydrated branch
-                                      maxLength: 63
-                                      minLength: 1
-                                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                                      type: string
-                                    phase:
-                                      description: Phase what phase is the status
-                                        in
-                                      enum:
-                                      - pending
-                                      - success
-                                      - failure
-                                      type: string
-                                    url:
-                                      description: Url is the URL of the commit status
-                                      pattern: ^(https?://.*)?$
-                                      type: string
-                                      x-kubernetes-validations:
-                                      - message: must be a valid URL
-                                        rule: self == '' || isURL(self)
-                                  required:
-                                  - key
-                                  - phase
-                                  type: object
-                                maxItems: 100
-                                type: array
-                              hydrated:
-                                description: |-
-                                  Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
-                                  Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
-                                  but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
-                                  merge was a squash the stale snapshot value is kept.
-                                properties:
-                                  author:
-                                    description: Author is the author of the commit
-                                    type: string
-                                  body:
-                                    description: Body is the body of the commit message
-                                      without the subject line
-                                    type: string
-                                  commitTime:
-                                    description: CommitTime is the time the commit
-                                      was made
-                                    format: date-time
-                                    type: string
-                                  references:
-                                    description: References are the references to
-                                      other commits, that went into the hydration
-                                      of the branch
-                                    items:
-                                      description: |-
-                                        RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                        it supports only references to a commit. In the future, it may support other types of references.
-                                      properties:
-                                        commit:
-                                          description: Commit contains metadata about
-                                            the commit that is related in some way
-                                            to another commit.
-                                          properties:
-                                            author:
-                                              description: Author is the author of
-                                                the commit.
-                                              type: string
-                                            body:
-                                              description: Body is the body of the
-                                                commit message, excluding the subject
-                                                line, i.e. `git show --format=%b`.
-                                              type: string
-                                            date:
-                                              description: Date is the date of the
-                                                commit, formatted as by `git show
-                                                -s --format=%aI`.
-                                              format: date-time
-                                              type: string
-                                            repoURL:
-                                              description: RepoURL is the URL of the
-                                                repository where the commit is located.
-                                              pattern: ^(https?://.*)?$
-                                              type: string
-                                              x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
-                                            sha:
-                                              description: |-
-                                                Sha is the commit hash.
-                                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                              maxLength: 64
-                                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                              type: string
-                                            subject:
-                                              description: Subject is the subject
-                                                line of the commit message, i.e. `git
-                                                show --format=%s`.
-                                              type: string
-                                          type: object
-                                      type: object
-                                    maxItems: 100
-                                    type: array
-                                  repoURL:
-                                    description: RepoURL is the URL of the repository
-                                      where the commit is located
-                                    pattern: ^(https?://.*)?$
-                                    type: string
-                                    x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
-                                  sha:
-                                    description: |-
-                                      Sha is the SHA of the commit in the branch
-                                      Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                    maxLength: 64
-                                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                    type: string
-                                  subject:
-                                    description: Subject is the subject line of the
-                                      commit message
-                                    type: string
-                                type: object
-                            type: object
-                          pullRequest:
-                            description: PullRequest is the state of the pull request
-                              that was created for this ChangeTransferPolicy.
-                            properties:
-                              externallyMergedOrClosed:
-                                description: |-
-                                  ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
-                                  promotion still desired it open. The PullRequest controller no longer sets this field.
-
-                                  Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
-                                  appear when mirrored from older PullRequest status. This field may be removed in a future API
-                                  revision.
-                                type: boolean
-                              id:
-                                description: ID is the unique identifier of the pull
-                                  request, set by the SCM.
-                                type: string
-                              mergedTargetSha:
-                                description: |-
-                                  MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
-                                  only when the SCM created one; squash and fast-forward merges report the resulting commit on the
-                                  target branch instead. In the live pull request status it is mirrored from the PullRequest resource
-                                  and is empty until the merge is observed; in a History entry it is the active-branch commit the
-                                  entry describes.
-                                maxLength: 64
-                                minLength: 40
-                                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                type: string
-                              prCreationTime:
-                                description: PRCreationTime is the time when the pull
-                                  request was created.
-                                format: date-time
-                                type: string
-                              prMergeTime:
-                                description: |-
-                                  PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
-                                  it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
-                                  this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
-                                  for that commit.
-                                format: date-time
-                                type: string
-                              state:
-                                description: State is the state of the pull request.
-                                enum:
-                                - closed
-                                - merged
-                                - open
-                                - merged-or-closed
-                                - unknown
-                                type: string
-                              url:
-                                description: Url is the URL of the pull request.
-                                pattern: ^(https?://.*)?$
-                                type: string
-                                x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
-                            type: object
-                        type: object
-                      maxItems: 5
-                      type: array
                     lastHealthyDryShas:
                       description: LastHealthyDryShas is a list of dry commits that
                         were observed to be healthy in the environment.
@@ -7026,6 +6189,697 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: promotionstrategyhistories.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: PromotionStrategyHistory
+    listKind: PromotionStrategyHistoryList
+    plural: promotionstrategyhistories
+    singular: promotionstrategyhistory
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.activeBranch
+      name: Active Branch
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PromotionStrategyHistory is the Schema for the promotionstrategyhistories
+          API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategyhistory
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of PromotionStrategyHistory
+            properties:
+              activeBranch:
+                description: |-
+                  ActiveBranch is the hydrated active branch whose merged changes are reconstructed into history.
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
+              activePath:
+                description: |-
+                  ActivePath is an optional repository subpath for this environment's active state.
+                  When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                minLength: 1
+                type: string
+              gitRepositoryRef:
+                description: |-
+                  RepositoryReference is the repository whose active branch is inspected to reconstruct
+                  the promotion history.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - activeBranch
+            - gitRepositoryRef
+            type: object
+          status:
+            description: status defines the observed state of PromotionStrategyHistory
+            properties:
+              conditions:
+                description: Conditions Represents the observations of the current
+                  state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              history:
+                description: |-
+                  History defines the history of promoted changes for this environment. You can think of
+                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+                  The history length is at most 5 entries.
+                  History is constructed on a best-effort basis and should be used for informational purposes only.
+                  History is in reverse chronological order (newest is first).
+                items:
+                  description: History describes a particular change that was promoted
+                    into an environment's active branch.
+                  properties:
+                    active:
+                      description: |-
+                        Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+                        <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+                        describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+                        snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
+                      properties:
+                        commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
+                          items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
+                            properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
+                              key:
+                                description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                              url:
+                                description: Url is the URL of the commit status
+                                pattern: ^(https?://.*)?$
+                                type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid URL
+                                  rule: self == '' || isURL(self)
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          maxItems: 100
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - key
+                          x-kubernetes-list-type: map
+                        dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
+                          nullable: true
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        note:
+                          description: Note is the hydrator metadata from the git
+                            note attached to the hydrated commit.
+                          properties:
+                            author:
+                              description: Author is the author of the dry commit
+                                that was used to hydrate the branch.
+                              type: string
+                            body:
+                              description: Body is the body of the dry commit that
+                                was used to hydrate the branch without the subject.
+                              type: string
+                            date:
+                              description: Date is the date of the dry commit that
+                                was used to hydrate the branch.
+                              format: date-time
+                              type: string
+                            drySha:
+                              description: |-
+                                DrySha is the SHA of the commit that was used as the dry source for hydration.
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch.
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located.
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the dry
+                                commit that was used to hydrate the branch.
+                              type: string
+                          type: object
+                      type: object
+                    mergeCommitSnapshotMismatch:
+                      description: |-
+                        MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+                        the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+                        the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+                        active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+                        gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+                        revision rather than what actually merged.
+                      type: boolean
+                    proposed:
+                      description: Proposed is the state of the proposed branch at
+                        the time the PR was merged.
+                      properties:
+                        commitStatuses:
+                          description: |-
+                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                            This contains the state frozen at the moment the PR was merged. When the entry's
+                            mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
+                            revision the promoter last saw, which is not necessarily the revision that merged.
+                          items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
+                            properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
+                              key:
+                                description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                              url:
+                                description: Url is the URL of the commit status
+                                pattern: ^(https?://.*)?$
+                                type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid URL
+                                  rule: self == '' || isURL(self)
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          maxItems: 100
+                          type: array
+                        hydrated:
+                          description: |-
+                            Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+                            Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
+                            but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
+                            merge was a squash the stale snapshot value is kept.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                      type: object
+                    pullRequest:
+                      description: PullRequest is the state of the pull request that
+                        promoted this change.
+                      properties:
+                        externallyMergedOrClosed:
+                          description: |-
+                            ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+                            promotion still desired it open. The PullRequest controller no longer sets this field.
+
+                            Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+                            appear when mirrored from older PullRequest status. This field may be removed in a future API
+                            revision.
+                          type: boolean
+                        id:
+                          description: ID is the unique identifier of the pull request,
+                            set by the SCM.
+                          type: string
+                        mergedTargetSha:
+                          description: |-
+                            MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                            only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                            target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                            and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                            entry describes.
+                          maxLength: 64
+                          minLength: 40
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                        prCreationTime:
+                          description: PRCreationTime is the time when the pull request
+                            was created.
+                          format: date-time
+                          type: string
+                        prMergeTime:
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                            for that commit.
+                          format: date-time
+                          type: string
+                        state:
+                          description: State is the state of the pull request.
+                          enum:
+                          - closed
+                          - merged
+                          - open
+                          - merged-or-closed
+                          - unknown
+                          type: string
+                        url:
+                          description: Url is the URL of the pull request.
+                          pattern: ^(https?://.*)?$
+                          type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid URL
+                            rule: self == '' || isURL(self)
+                      type: object
+                  type: object
+                maxItems: 5
+                type: array
               instanceID:
                 description: |-
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -9709,6 +9563,7 @@ rules:
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
+  - promotionstrategyhistories/finalizers
   - pullrequests/finalizers
   - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
@@ -9727,6 +9582,7 @@ rules:
   - gitcommitstatuses/status
   - gitrepositories/status
   - promotionstrategies/status
+  - promotionstrategyhistories/status
   - pullrequests/status
   - scheduledcommitstatuses/status
   - scmproviders/status
@@ -9781,6 +9637,17 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -9796,6 +9663,77 @@ metadata:
 rules:
 - nonResourceURLs:
   - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-promotionstrategyhistory-admin-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories
+  verbs:
+  - '*'
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-promotionstrategyhistory-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-promotionstrategyhistory-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategyhistories/status
   verbs:
   - get
 ---
@@ -10318,6 +10256,19 @@ spec:
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  promotionStrategyHistory:
+    workQueue:
+      maxConcurrentReconciles: 5
       rateLimiter:
         maxOf:
         - bucket:

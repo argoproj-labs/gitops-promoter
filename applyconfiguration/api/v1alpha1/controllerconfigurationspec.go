@@ -39,6 +39,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	PromotionStrategy *PromotionStrategyConfigurationApplyConfiguration `json:"promotionStrategy,omitempty"`
+	// PromotionStrategyHistory contains the configuration for the PromotionStrategyHistory controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	PromotionStrategyHistory *PromotionStrategyHistoryConfigurationApplyConfiguration `json:"promotionStrategyHistory,omitempty"`
 	// ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ChangeTransferPolicy *ChangeTransferPolicyConfigurationApplyConfiguration `json:"changeTransferPolicy,omitempty"`
@@ -87,6 +90,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithInstanceID(value str
 // If called multiple times, the PromotionStrategy field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithPromotionStrategy(value *PromotionStrategyConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.PromotionStrategy = value
+	return b
+}
+
+// WithPromotionStrategyHistory sets the PromotionStrategyHistory field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PromotionStrategyHistory field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithPromotionStrategyHistory(value *PromotionStrategyHistoryConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.PromotionStrategyHistory = value
 	return b
 }
 

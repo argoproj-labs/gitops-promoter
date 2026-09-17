@@ -73,6 +73,11 @@ const (
 	// OrphanedChangeTransferPolicyDeletedMessage is the message for a deleted orphaned ChangeTransferPolicy.
 	OrphanedChangeTransferPolicyDeletedMessage = "Deleted orphaned ChangeTransferPolicy %s"
 
+	// OrphanedPromotionStrategyHistoryDeletedReason indicates that an orphaned PromotionStrategyHistory has been deleted.
+	OrphanedPromotionStrategyHistoryDeletedReason = "OrphanedPromotionStrategyHistoryDeleted"
+	// OrphanedPromotionStrategyHistoryDeletedMessage is the message for a deleted orphaned PromotionStrategyHistory.
+	OrphanedPromotionStrategyHistoryDeletedMessage = "Deleted orphaned PromotionStrategyHistory %s"
+
 	// OrphanedCommitStatusDeletedReason indicates that an orphaned CommitStatus has been deleted.
 	OrphanedCommitStatusDeletedReason = "OrphanedCommitStatusDeleted"
 	// OrphanedCommitStatusDeletedMessage is the message for a deleted orphaned CommitStatus.

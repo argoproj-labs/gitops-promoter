@@ -30,7 +30,19 @@ ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers s
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
+### PromotionStrategyHistory
+
+A PromotionStrategyHistory records the recent promotions for one environment. The PromotionStrategy controller creates
+one per configured environment (alongside the environment's ChangeTransferPolicy), and the PromotionStrategyHistory
+controller reconstructs the history from Git — the first-parent commits of the active branch plus the
+[promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) and
+[commit trailers](debugging/git-trailers.md) — on a best-effort basis.
+
 `status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `mergeCommitSnapshotMismatch` is `true` on an entry, hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced): proposed dry SHA was reconstructed from the merge commit (and proposed hydrated SHA too for regular merges); **recorded commit statuses may not reflect the revision that actually merged**. Squash merges get the squash commit SHA from SCM `Get` like other merges, but proposed hydrated SHA is usually not recoverable from git. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes and operator guidance.
+
+```yaml
+{!internal/controller/testdata/PromotionStrategyHistory.yaml!}
+```
 
 ### PullRequest
 

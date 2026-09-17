@@ -192,6 +192,11 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
+// GetPromotionStrategyHistoryName returns a name for the PromotionStrategyHistory based on the promotion strategy name and environment branch.
+func GetPromotionStrategyHistoryName(promotionStrategyName, environmentBranch string) string {
+	return fmt.Sprintf("%s-%s-history", promotionStrategyName, environmentBranch)
+}
+
 // EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
 // environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
 // calling). logReason describes why the transition occurred and is included in the log message

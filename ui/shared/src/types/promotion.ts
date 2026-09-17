@@ -16,8 +16,14 @@ export type RelativeTimeAgo = string;
 /** Full PromotionStrategy CRD object (generated from view OpenAPI). */
 export type PromotionStrategy = PromotionStrategyResource;
 
-/** Per-environment status assembled for Card/PSData (from CTP status + spec branch). */
-export type Environment = components['schemas']['EnvironmentStatus'];
+/**
+ * Per-environment status assembled for Card/PSData (from CTP status + spec branch).
+ * `history` is not part of the EnvironmentStatus CRD schema; it is re-projected onto the
+ * environment from the per-environment PromotionStrategyHistory resource in the bundle.
+ */
+export type Environment = components['schemas']['EnvironmentStatus'] & {
+  history?: History[];
+};
 
 export type History = components['schemas']['History'];
 
