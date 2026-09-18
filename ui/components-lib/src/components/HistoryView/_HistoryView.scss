@@ -294,6 +294,9 @@
   .hp-env-banner {
     margin: 16px 0 8px;
   }
+  .hp-stale-link + .hp-env-banner {
+    margin-top: 0;
+  }
 }
 
 .hp-matrix__head {
@@ -426,6 +429,12 @@
   strong {
     font-weight: 700;
   }
+}
+
+.hp-stale-link {
+  border-color: $pending-border;
+  background: $pending-soft;
+  color: $pending-ink;
 }
 
 .hp-env-banner__clear {
