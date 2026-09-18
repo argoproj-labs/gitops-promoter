@@ -96,11 +96,12 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
-	blobs    map[string]blobObject
-	commits  map[string]commitObject
-	identity string
+	gap          scms.GitOperationsProvider
+	gitRepo      *v1alpha1.GitRepository
+	blobs        map[string]blobObject
+	commits      map[string]commitObject
+	historyNotes map[string]historyNoteEntry
+	identity     string
 }
 
 // HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.
@@ -143,11 +144,12 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
-		blobs:    make(map[string]blobObject),
-		commits:  make(map[string]commitObject),
+		gap:          gap,
+		gitRepo:      gitRepo,
+		identity:     identity,
+		blobs:        make(map[string]blobObject),
+		commits:      make(map[string]commitObject),
+		historyNotes: make(map[string]historyNoteEntry),
 	}
 }
 
@@ -850,11 +852,22 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
+	key := strings.ToLower(sha)
+	if entry, ok := g.historyNotes[key]; ok {
+		if entry.missing {
+			logger.V(4).Info("No history note found for commit (cached)", "sha", sha)
+			return nil, nil
+		}
+		logger.V(4).Info("Got history note (cached)", "sha", sha, "trailers", entry.trailers)
+		return entry.trailers, nil
+	}
+
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
 	if err != nil {
 		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
 		if strings.Contains(strings.ToLower(stderr), "no note found") {
 			logger.V(4).Info("No history note found for commit", "sha", sha)
+			g.historyNotes[key] = historyNoteEntry{missing: true}
 			return nil, nil
 		}
 		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
@@ -864,10 +877,12 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 	var trailers map[string][]string
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &trailers); err != nil {
 		logger.V(4).Info("Failed to parse history note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		g.historyNotes[key] = historyNoteEntry{missing: true}
 		return nil, nil
 	}
 
 	logger.V(4).Info("Got history note", "sha", sha, "trailers", trailers)
+	g.historyNotes[key] = historyNoteEntry{trailers: trailers}
 	return trailers, nil
 }
 
@@ -917,6 +932,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", PromoterHistoryNotesRef+":"+PromoterHistoryNotesRef)
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPushNotes, metrics.GitOperationResultFromError(err), time.Since(start))
 		if err == nil {
+			delete(g.historyNotes, strings.ToLower(sha))
 			logger.V(4).Info("Pushed history note", "sha", sha, "attempt", attempt)
 			return nil
 		}
