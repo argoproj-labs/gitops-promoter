@@ -1067,6 +1067,25 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				return pr
 			}
 
+			// expectHydratedBodyOmitsMergeCommitTrailers fails if any trailer the controller wrote onto
+			// the merge commit still appears in a hydrated body. A new write-path trailer without a
+			// matching strip-list entry shows up here without updating this spec.
+			expectHydratedBodyOmitsMergeCommitTrailers := func(g Gomega, body, mergeCommitSha string) {
+				GinkgoHelper()
+				mergeMsg, err := runGitCmd(ctx, gitPath, "log", "-1", "--format=%B", mergeCommitSha)
+				g.Expect(err).NotTo(HaveOccurred())
+				written, err := git.ParseTrailersFromMessage(ctx, mergeMsg)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(written).ToNot(BeEmpty(), "merge commit must carry promoter trailers")
+
+				remaining, err := git.ParseTrailersFromMessage(ctx, "subject\n\n"+body)
+				g.Expect(err).NotTo(HaveOccurred())
+				for key := range written {
+					g.Expect(remaining).ToNot(HaveKey(key),
+						"trailer %q is on the merge commit but still appears in hydrated body", key)
+				}
+			}
+
 			It("writes a history note on a controller-initiated merge and builds history from it", func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
@@ -1105,7 +1124,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying the ChangeTransferPolicyHistory history is populated")
+				By("Verifying the ChangeTransferPolicyHistory history is populated and promoter trailers are stripped from bodies")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctphNamespacedName, changeTransferPolicyHistory)).To(Succeed())
 					g.Expect(changeTransferPolicyHistory.Status.History).ToNot(BeEmpty())
@@ -1116,6 +1135,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(entry.Proposed.Hydrated.Sha).To(Equal(mergeSha))
 					g.Expect(entry.Active.Hydrated.Sha).To(Equal(mergeCommitSha))
 					g.Expect(entry.PullRequest.MergedTargetSha).To(Equal(mergeCommitSha))
+
+					expectHydratedBodyOmitsMergeCommitTrailers(g, changeTransferPolicy.Status.Active.Hydrated.Body, mergeCommitSha)
+					expectHydratedBodyOmitsMergeCommitTrailers(g, entry.Active.Hydrated.Body, mergeCommitSha)
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 

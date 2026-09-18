@@ -1,6 +1,8 @@
 version: 2
 updates:
-  # Note: Go version and golangci-lint version updates are handled by Renovate.
+  # Note: CI/Docker Go toolchain and golangci-lint version updates are handled by
+  # Renovate. The go.mod go directive is not auto-bumped for patches; see
+  # hack/go-fix-maybe-bump.sh for language-version raises after go fix.
   # The coupled Kubernetes platform packages (tagged k8s.io/*, controller-runtime,
   # multicluster-runtime, staging deps) are owned by Renovate; kube-openapi and
   # structured-merge-diff are follower deps (see RENOVATE_SETUP.md). Ignored here
