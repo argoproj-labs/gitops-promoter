@@ -26,25 +26,18 @@ export function getEnvironmentStatus(
   const proposedSha = proposed.dry?.sha;
   const activeSha = active.dry?.sha;
 
-  const proposedChecks = proposed.commitStatuses || [];
-  const activeChecks = active.commitStatuses || [];
-
-  //FAILURE -> any check is failure
-  if (
-    proposedChecks.some((cs) => cs.phase === 'failure') ||
-    activeChecks.some((cs) => cs.phase === 'failure')
-  ) {
-    return 'failure';
-  }
-
-  //PENDING -> proposed sha is different from active sha
-  if (proposedSha && proposedSha !== activeSha) {
-    return 'pending';
-  }
-
-  //PROMOTED -> proposed sha is the same as active sha
+  // Active check failures are health on the already-deployed commit, not promotion state.
+  // Hide Proposed changes whenever dry SHAs match (including both unset).
   if (proposedSha === activeSha) {
     return 'promoted';
+  }
+
+  if (proposedSha) {
+    const proposedChecks = proposed.commitStatuses || [];
+    if (proposedChecks.some((cs) => cs.phase === 'failure')) {
+      return 'failure';
+    }
+    return 'pending';
   }
 
   return 'unknown';
