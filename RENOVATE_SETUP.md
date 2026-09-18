@@ -5,10 +5,12 @@ This repository uses **self-hosted Renovate via GitHub Workflows** to automatica
 ## Overview
 
 Renovate has been configured to:
-1. **Automatically detect and update Go versions** across:
-   - `go.mod` (go directive)
+1. **Automatically detect and update the Go *build* toolchain** across:
    - GitHub Actions workflows (`.github/workflows/*.yaml`)
-   - Dockerfiles (`Dockerfile`, `release.Dockerfile`)
+   - Dockerfiles (`Dockerfile`)
+   - `install-tool golang …` pins in `renovate.json5`
+
+   The `go` directive in `go.mod` is the **minimum language version**, not the build pin. Toolchain **patches** apply immediately. **Minor/major** Go toolchain bumps wait **30 days** after the release so contributors can upgrade before `go-fix-maybe-bump` (often) raises the floor. A new language version is kept only when `go fix` on that version rewrites source, or when `go mod tidy` sees a dependency that requires it.
 
 2. **Automatically detect and update golangci-lint versions** in:
    - `Makefile` (`GOLANGCI_LINT_VERSION`)
@@ -23,7 +25,7 @@ Renovate has been configured to:
 ## Why Self-Hosted Renovate?
 
 We use self-hosted Renovate (via GitHub Workflows) instead of the hosted GitHub App because:
-- **Post-upgrade tasks are only supported in self-hosted mode** - We need to run `go mod tidy`, `make go-fix`, and `make lint-fix` automatically
+- **Post-upgrade tasks are only supported in self-hosted mode** - We need to run `go mod tidy`, `make go-fix-maybe-bump`, and `make lint-fix` automatically
 - Full control over when and how Renovate runs
 - No external dependencies on Renovate's hosted infrastructure
 
@@ -98,9 +100,10 @@ Renovate is triggered by `.github/workflows/renovate.yaml` (Sun/Wed/Sat). A sepa
 
 Renovate uses regex managers to detect version strings in various files:
 
-- **Go version** in `go.mod`: `go 1.26.3`
-- **Go version** in workflows: `go-version: "1.26.3"` (patch segment optional in the regex)
-- **Go version** in Dockerfiles: `FROM golang:1.26.3@sha256:...`
+- **Go build version** in workflows: `go-version: "1.26.3"` (patch segment optional in the regex)
+- **Go build version** in Dockerfiles: `FROM golang:1.26.3@sha256:...`
+- **Go build version** in `renovate.json5`: `install-tool golang 1.26.3`
+- **`go.mod` `go` directive:** not bumped for toolchain patches. Minor/major CI Go bumps wait 30 days (`minimumReleaseAge`). On a new language version, `make go-fix-maybe-bump` keeps `go X.Y.0` only if the modernized code fails to build at the old floor. `go mod tidy` may also raise it when a dependency requires a newer language.
 - **golangci-lint** in Makefile: `GOLANGCI_LINT_VERSION ?= v2.5.0`
 - **golangci-lint** in workflows: `version: v2.5.0`
 
@@ -108,12 +111,12 @@ Renovate uses regex managers to detect version strings in various files:
 
 When Renovate creates a PR for Go or golangci-lint updates, it will:
 
-1. Update all version references across the repository
-2. Run `go mod tidy` to update dependencies
-3. Run `make go-fix` to apply stdlib fixers for the new toolchain (e.g. `interface{}` → `any`, iterator helpers)
+1. Update CI / Docker / `install-tool` Go pins (patch immediately; minor/major after 30 days). That is not itself a `go.mod` language bump.
+2. Run `go mod tidy` to update dependencies (this may raise the `go` directive if a dependency requires it)
+3. Run `make go-fix-maybe-bump`: `go fix` at the current language version, then (if the new toolchain's language is newer) `go fix` again at `go X.Y.0`, keeping those fixes but reverting the bump when the result still builds at the old floor
 4. Run `make lint-fix` to automatically fix linting issues
 
-`go-fix` and `lint-fix` are run with `|| true` so the PR is still created if a fixer fails or leaves issues that need manual review.
+`go-fix-maybe-bump` and `lint-fix` are run with `|| true` so the PR is still created if a fixer fails or leaves issues that need manual review.
 
 **Note**: Post-upgrade tasks only work with self-hosted Renovate. The hosted GitHub App does not support this feature.
 
@@ -156,7 +159,7 @@ Key configuration options:
 - **Concurrent limit**: See `prConcurrentLimit` in `renovate.json5`
 - **Automerge**: Disabled (requires manual review)
 - **Kubernetes platform group**: Anchor bumps (controller-runtime, tagged `k8s.io/*`); follower deps (`kube-openapi`, structured-merge-diff) disabled—see [Kubernetes platform alignment](#kubernetes-platform-alignment)
-- **Post-upgrade tasks**: Platform PRs run `make mod-tidy`, `make build-installer`, codegen; Go/linter group runs `go mod tidy`, `make go-fix`, `make lint-fix`
+- **Post-upgrade tasks**: Platform PRs run `make mod-tidy`, `make build-installer`, codegen; Go/linter group runs `go mod tidy`, `make go-fix-maybe-bump`, `make lint-fix`
   - These only work because we're using self-hosted Renovate
   - Commands must be whitelisted in the workflow
 
@@ -167,7 +170,8 @@ Dependabot continues to handle:
 - ✅ GitHub Actions updates (via `github-actions` package ecosystem), batched into one weekly grouped PR
 
 Dependabot does NOT handle:
-- ❌ Go version updates (handled by Renovate)
+- ❌ CI/Docker Go toolchain updates (handled by Renovate)
+- ❌ `go.mod` `go` directive (two-pass `go fix` on language bumps, `go mod tidy` when a dependency requires it, or manual)
 - ❌ golangci-lint version updates (handled by Renovate)
 
 This avoids conflicts between the two tools.
@@ -280,7 +284,7 @@ To test the workflow without making real changes:
 The workflow only allows specific commands in `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`:
 - `go mod tidy` - Safe, only updates dependency checksums
 - `make mod-tidy` - Root and `hack/celcost` modules; syncs follower deps after Kubernetes platform bumps
-- `make go-fix` - Runs `go fix ./...` (stdlib modernizations for the new Go version)
+- `make go-fix-maybe-bump` - `go fix` with a trial run at the toolchain language (`X.Y.0`); raises `go.mod` only when the fixes require it
 - `make lint-fix` - Runs golangci-lint with auto-fix
 - `make build-installer`, `make generate-apiserver`, `make generate-ui-types`, … - Platform/codegen post-upgrade tasks
 

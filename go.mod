@@ -1,6 +1,12 @@
 module github.com/argoproj-labs/gitops-promoter
 
-go 1.27.1
+// Language floor, not the CI/release toolchain. Do not bump for a toolchain
+// patch. Renovate waits 30 days after a new Go minor before updating CI, then
+// raises X.Y.0 only when go fix produces code that does not build at the
+// current floor (see hack/go-fix-maybe-bump.sh). go mod tidy may also raise it
+// when a dependency requires a newer language. Otherwise update workflows,
+// Dockerfiles, and the install-tool golang pins in renovate.json5.
+go 1.27.0
 
 require (
 	code.gitea.io/sdk/gitea v0.25.1
