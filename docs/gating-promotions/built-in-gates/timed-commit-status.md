@@ -65,18 +65,20 @@ spec:
     group: promoter.argoproj.io
     kind: DependentsSuccessfulCommitStatus
     name: webservice-tier-1
-  activeCommitStatuses:
-    - key: timer
   environments:
     - branch: environment/development
+      activeCommitStatuses:
+        - key: timer
     - branch: environment/staging
+      activeCommitStatuses:
+        - key: timer
     - branch: environment/production
 ```
 
 In this configuration:
 - Changes must meet the 1-hour requirement in `development` before being promoted to `staging`
 - Changes must meet the 4-hour requirement in `staging` before being promoted to `production`
-- The timed gate applies globally as an active commit status, preventing promotions when time requirements are not met
+- `timer` is required only by the environments TimedCommitStatus lists. A key under the top-level `activeCommitStatuses` is required by every environment, so production would wait forever (`Waiting for status to be reported`) -- this controller writes no CommitStatus for branches it does not list
 
 ### Complete Example with Multiple Gates
 
@@ -230,9 +232,10 @@ If a time-based gate remains in pending status:
 If no CommitStatus is created:
 
 1. Verify the PromotionStrategy reference is correct
-2. Ensure the environment branch names match exactly
-3. Check that the PromotionStrategy has been reconciled and has status populated
-4. Verify the environment has an active commit
+2. Ensure the environment branch names match exactly -- the controller sets Ready=False when a listed branch is missing from the PromotionStrategy
+3. Check Ready=False for `requires key ... for environments not listed`: every PromotionStrategy environment that requires `spec.key` must be listed on the TimedCommitStatus
+4. Check that the PromotionStrategy has been reconciled and has status populated
+5. Verify the environment has an active commit
 
 ### Checking Current Status
 
