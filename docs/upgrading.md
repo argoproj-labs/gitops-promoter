@@ -2,9 +2,9 @@
 
 This page documents breaking changes and migration steps between releases.
 
-## 0.50 — Promotion history moves to ChangeTransferPolicyHistory {#050-changetransferpolicyhistory}
+## 0.41 — Promotion history moves to ChangeTransferPolicyHistory
 
-Starting in 0.50.0, promotion history no longer lives on `ChangeTransferPolicy.status.history` or
+Starting in 0.41.0, promotion history no longer lives on `ChangeTransferPolicy.status.history` or
 `PromotionStrategy.status.environments[].history`; both fields are removed from the CRD schemas. History is now owned by
 a dedicated [ChangeTransferPolicyHistory](crd-specs.md#changetransferpolicyhistory) resource, created per ChangeTransferPolicy by the
 ChangeTransferPolicy controller and reconciled by its own controller. The dashboard and Argo CD extension read history from
@@ -23,7 +23,7 @@ Migration notes:
 - Any external consumers reading `status.history` from ChangeTransferPolicy or PromotionStrategy must switch to the
   ChangeTransferPolicyHistory resource.
 
-## 0.39 — Promotion order on PromotionStrategy {#039-promotion-order-on-promotionstrategy}
+## 0.39 — Promotion order on PromotionStrategy
 
 > [!IMPORTANT]
 > Your PromotionStrategies will stop reconciling after upgrading to 0.39.0+ until you apply manifest changes. This is a breaking change requiring downtime to address.
@@ -122,7 +122,7 @@ spec:
 - [Architecture — Embedding vs. Decoupling Promotion Order](architecture.md#embedding-vs-decoupling-promotion-order)
 - [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
 
-## 0.38 — Promotion ordering gate (`DependentsSuccessfulCommitStatus`) {#038-promotion-ordering-gate}
+## 0.38 — Promotion ordering gate (`DependentsSuccessfulCommitStatus`)
 
 Release **0.38** extracts promotion ordering from the `PromotionStrategy` controller into a dedicated gate CR,
 `DependentsSuccessfulCommitStatus`. This enables linear pipelines and custom dependency graphs (fan-out / fan-in) with
