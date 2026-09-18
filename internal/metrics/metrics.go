@@ -289,7 +289,7 @@ func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCM
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
 
-	log.FromContext(ctx).V(1).Info("SCM API call",
+	log.FromContext(ctx).V(2).Info("SCM API call",
 		"git_repository", gitRepo.Name,
 		"git_repository_namespace", gitRepo.Namespace,
 		"scm_provider", gitRepo.Spec.ScmProviderRef.Name,

@@ -123,7 +123,7 @@ func removeSecretFinalizerForProvider(
 	}
 
 	if stillUsed {
-		logger.Info("Secret still referenced by other provider, keeping finalizer",
+		logger.V(2).Info("Secret still referenced by other provider, keeping finalizer",
 			"secret", secretKey)
 		return nil
 	}
@@ -203,7 +203,7 @@ func handleResourceFinalizerWithDependencies(
 			obj.GetNamespace(),
 		).Set(float64(len(dependents)))
 
-		logger.Info(resourceType+" still has dependent resources, cannot delete",
+		logger.V(2).Info(resourceType+" still has dependent resources, cannot delete",
 			"resource", obj.GetName(),
 			"namespace", obj.GetNamespace(),
 			"count", len(dependents),

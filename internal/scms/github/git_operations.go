@@ -191,14 +191,14 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	// If an installation ID is already provided, use it directly.
 	if scmProvider.GetSpec().GitHub.InstallationID != 0 {
-		logger.V(4).Info("using provided installation ID", "org", org, "id", scmProvider.GetSpec().GitHub.InstallationID, "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("using provided installation ID", "org", org, "id", scmProvider.GetSpec().GitHub.InstallationID, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
 	appInstallationIdCacheMutex.RLock()
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
 		appInstallationIdCacheMutex.RUnlock()
-		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.RUnlock()
@@ -227,18 +227,18 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	}
 	// We are logging this metric vs using prometheus because this is a provider specific metric that, and we want to try and keep prometheus metrics
 	// generic.
-	logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
+	logger.V(1).Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
 
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
 			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
-			logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
+			logger.V(5).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
 		}
 	}
 
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
 		appInstallationIdCacheMutex.Unlock()
-		logger.V(4).Info("found cached installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("found cached installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.Unlock()

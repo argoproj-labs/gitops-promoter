@@ -182,7 +182,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	logger.V(4).Info("Created directory", "directory", path)
+	logger.V(5).Info("Created directory", "directory", path)
 
 	start := time.Now()
 	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
@@ -209,7 +209,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 		return err
 	}
 
-	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "identity", g.identity)
+	logger.V(1).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "identity", g.identity)
 
 	gitpaths.Set(g.cloneKey(), path)
 
@@ -281,10 +281,10 @@ func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKn
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	logger.V(4).Info("git path", "path", gitPath)
+	logger.V(5).Info("git path", "path", gitPath)
 
 	if skipFetch {
-		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
+		logger.V(5).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
 	} else if err := g.FetchBranch(ctx, branch); err != nil {
 		return "", err
 	}
@@ -297,7 +297,7 @@ func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKn
 	}
 
 	sha := strings.TrimSpace(stdout)
-	logger.V(4).Info("Got branch sha", "branch", branch, "sha", sha)
+	logger.V(5).Info("Got branch sha", "branch", branch, "sha", sha)
 	return sha, nil
 }
 
@@ -318,7 +318,7 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 		logger.Error(err, "could not fetch branch", "gitError", stderr)
 		return fmt.Errorf("failed to fetch branch %q: %w", branch, err)
 	}
-	logger.V(4).Info("Fetched branch", "branch", branch)
+	logger.V(5).Info("Fetched branch", "branch", branch)
 
 	return nil
 }
@@ -348,13 +348,13 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 		// cat-file --batch reports both "path absent from tree" and "unknown SHA" as missing.
 		// Only degrade when the commit itself exists; unknown revisions must stay errors.
 		if g.CommitExists(ctx, sha) {
-			logger.V(4).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
+			logger.V(5).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
 			return v1alpha1.CommitShaState{}, nil
 		}
-		logger.V(4).Info("could not git cat-file blob", "sha", sha, "ref", ref)
+		logger.V(5).Info("could not git cat-file blob", "sha", sha, "ref", ref)
 		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to read hydrator.metadata from commit %q: blob %q is missing", sha, ref)
 	}
-	logger.V(4).Info("Got metadata file", "sha", sha, "file", string(obj.Data))
+	logger.V(5).Info("Got metadata file", "sha", sha, "file", string(obj.Data))
 
 	var hydratorFile HydratorMetadata
 	err = json.Unmarshal(obj.Data, &hydratorFile)
@@ -446,7 +446,7 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 		shas[branch] = sha
 	}
 
-	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
+	logger.V(6).Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
 
 	return shas, nil
 }
@@ -559,7 +559,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	if err != nil {
 		// Exit code 1 with conflict info in stderr means conflicts were detected
 		if strings.Contains(stdout, "CONFLICT") {
-			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			logger.V(5).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 			return true, nil
 		}
 		// Some other error occurred
@@ -568,7 +568,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	}
 
 	// Exit code 0 means clean merge - stdout contains the resulting tree SHA
-	logger.V(4).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
+	logger.V(5).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
 	return false, nil
 }
 
@@ -611,7 +611,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
 
-	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	logger.V(2).Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 	return nil
 }
 
@@ -697,7 +697,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
 
-	logger.Info("Successfully merged branches with path-scoped strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
+	logger.V(2).Info("Successfully merged branches with path-scoped strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
 	return nil
 }
 
@@ -793,7 +793,7 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
 			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
-			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
+			logger.V(5).Info("Git notes ref does not exist on remote", "ref", ref)
 			return nil
 		}
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
@@ -802,7 +802,7 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 
-	logger.V(4).Info("Fetched git notes", "ref", ref)
+	logger.V(5).Info("Fetched git notes", "ref", ref)
 	return nil
 }
 
@@ -821,7 +821,7 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 	if err != nil {
 		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
 		if strings.Contains(strings.ToLower(stderr), "no note found") {
-			logger.V(4).Info("No git note found for commit", "sha", sha)
+			logger.V(5).Info("No git note found for commit", "sha", sha)
 			return nil, nil
 		}
 		logger.Error(err, "Failed to read git note", "sha", sha, "stderr", stderr)
@@ -834,7 +834,7 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 		return nil, nil
 	}
 
-	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
+	logger.V(5).Info("Got hydrator note", "sha", sha, "note", note)
 	return &note, nil
 }
 
@@ -854,7 +854,7 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 	if err != nil {
 		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
 		if strings.Contains(strings.ToLower(stderr), "no note found") {
-			logger.V(4).Info("No history note found for commit", "sha", sha)
+			logger.V(5).Info("No history note found for commit", "sha", sha)
 			return nil, nil
 		}
 		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
@@ -867,7 +867,7 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 		return nil, nil
 	}
 
-	logger.V(4).Info("Got history note", "sha", sha, "trailers", trailers)
+	logger.V(5).Info("Got history note", "sha", sha, "trailers", trailers)
 	return trailers, nil
 }
 
@@ -917,7 +917,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", PromoterHistoryNotesRef+":"+PromoterHistoryNotesRef)
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPushNotes, metrics.GitOperationResultFromError(err), time.Since(start))
 		if err == nil {
-			logger.V(4).Info("Pushed history note", "sha", sha, "attempt", attempt)
+			logger.V(5).Info("Pushed history note", "sha", sha, "attempt", attempt)
 			return nil
 		}
 
@@ -1016,7 +1016,7 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		if note == nil || note.DrySha != expectedDrySha {
 			continue
 		}
-		logger.V(4).Info("Adopted hydrator note from first-parent ancestor",
+		logger.V(5).Info("Adopted hydrator note from first-parent ancestor",
 			"startSha", startSha,
 			"noteSha", sha,
 			"noteDrySha", note.DrySha)
@@ -1067,7 +1067,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 			}
 		}
 	}
-	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
+	logger.V(5).Info("Parsed trailers from message", "trailers", trailers)
 	return trailers, nil
 }
 

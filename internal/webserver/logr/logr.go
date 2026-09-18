@@ -20,7 +20,7 @@ import (
 // Ginlogr returns a gin.HandlerFunc (middleware) that logs requests using github.com/go-logr/logr.
 //
 // Requests with errors are logged using logr.Error().
-// Requests without errors are logged using logr.Info().
+// Requests without errors are logged at verbosity level 6.
 //
 // It receives:
 //  1. A time package format string (e.g. time.RFC3339).
@@ -45,7 +45,7 @@ func Ginlogr(logger logr.Logger, timeFormat string, utc bool) gin.HandlerFunc {
 				logger.Error(errors.New(e), "Error")
 			}
 		} else {
-			logger.Info(path,
+			logger.V(6).Info(path,
 				"status", c.Writer.Status(),
 				"method", c.Request.Method,
 				"path", path,

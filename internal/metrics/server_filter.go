@@ -10,7 +10,7 @@ import (
 )
 
 // ScrapeLogFilterProvider returns a metrics FilterProvider that logs each HTTP request
-// to the metrics server (including /metrics and ExtraHandlers) at info level.
+// to the metrics server (including /metrics and ExtraHandlers) at verbosity level 6.
 func ScrapeLogFilterProvider() func(*rest.Config, *http.Client) (metricsserver.Filter, error) {
 	return func(*rest.Config, *http.Client) (metricsserver.Filter, error) {
 		return func(log logr.Logger, h http.Handler) (http.Handler, error) {
@@ -18,7 +18,7 @@ func ScrapeLogFilterProvider() func(*rest.Config, *http.Client) (metricsserver.F
 				start := time.Now()
 				sw := &statusCapturingWriter{ResponseWriter: w, status: http.StatusOK}
 				h.ServeHTTP(sw, r)
-				log.Info("metrics HTTP request",
+				log.V(6).Info("metrics HTTP request",
 					"method", r.Method,
 					"remoteAddr", r.RemoteAddr,
 					"userAgent", r.UserAgent(),

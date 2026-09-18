@@ -96,7 +96,7 @@ type DependentsSuccessfulCommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
 func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Reconciling DependentsSuccessfulCommitStatus")
+	logger.V(3).Info("Reconciling DependentsSuccessfulCommitStatus")
 	startTime := time.Now()
 
 	var dcs promoterv1alpha1.DependentsSuccessfulCommitStatus
@@ -107,7 +107,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Conte
 	// 1. Fetch the DependentsSuccessfulCommitStatus instance.
 	if err = r.Get(ctx, req.NamespacedName, &dcs); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("DependentsSuccessfulCommitStatus not found")
+			logger.V(3).Info("DependentsSuccessfulCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get DependentsSuccessfulCommitStatus %q: %w", req.Name, err)
@@ -323,7 +323,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) cleanupLegacyPreviousEnviro
 			continue
 		}
 
-		logger.Info("Deleting legacy previous-environment CommitStatus",
+		logger.V(2).Info("Deleting legacy previous-environment CommitStatus",
 			"commitStatusName", cs.Name,
 			"dependentsSuccessfulCommitStatus", dcs.Name,
 			"promotionStrategy", ps.Name,
@@ -331,7 +331,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) cleanupLegacyPreviousEnviro
 
 		if err := r.Delete(ctx, cs); err != nil {
 			if k8serrors.IsNotFound(err) {
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				logger.V(5).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
 				continue
 			}
 			return fmt.Errorf("failed to delete legacy previous-environment CommitStatus %q: %w", cs.Name, err)
@@ -533,7 +533,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
 		}
-		logf.FromContext(ctx).V(4).Info("Rendered URL template",
+		logf.FromContext(ctx).V(5).Info("Rendered URL template",
 			"url", renderedURL,
 			"environment", branch,
 			"commitStatus", commitStatusName,

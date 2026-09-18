@@ -379,7 +379,7 @@ func (ws *WebServer) httpWatch(c *gin.Context) {
 		return false
 	})
 	if gone {
-		logger.Info("client gone stream")
+		logger.V(3).Info("client gone stream")
 		// Send closed connection to event server
 		ws.Event.closedClients <- clientChan
 	}
@@ -393,13 +393,13 @@ func (stream *Event) listen() {
 		// Add new available client
 		case client := <-stream.newClients:
 			stream.totalClients[client] = true
-			logger.Info("Client added.", "clientCount", len(stream.totalClients))
+			logger.V(3).Info("Client added.", "clientCount", len(stream.totalClients))
 
 		// Remove closed client
 		case client := <-stream.closedClients:
 			delete(stream.totalClients, client)
 			close(client)
-			logger.Info("Removed client.", "clientCount", len(stream.totalClients))
+			logger.V(3).Info("Removed client.", "clientCount", len(stream.totalClients))
 
 		// Broadcast message to client
 		case eventMsg := <-stream.Message:
@@ -457,7 +457,7 @@ func filter(msg Message, c *gin.Context) (bool, error) {
 	queryKey := fmt.Sprintf("%s/%s/%s", strings.ToLower(kindQuery), strings.ToLower(namespaceQuery), strings.ToLower(nameQuery))
 
 	match, err := path.Match(queryKey, msgKey)
-	logger.V(1).Info("filter", "msgKey", msgKey, "queryKey", queryKey, "match", match)
+	logger.V(6).Info("filter", "msgKey", msgKey, "queryKey", queryKey, "match", match)
 	if err != nil {
 		return false, fmt.Errorf("failed to match path: %w", err)
 	}

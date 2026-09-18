@@ -133,7 +133,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling PromotionStrategy")
+	logger.V(3).Info("Reconciling PromotionStrategy")
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
@@ -153,7 +153,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("PromotionStrategy not found")
+			logger.V(3).Info("PromotionStrategy not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
@@ -384,14 +384,14 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 
 		// Verify this CTP is owned by this PromotionStrategy before deleting
 		if !metav1.IsControlledBy(&ctp, ps) {
-			logger.V(4).Info("Skipping ChangeTransferPolicy not owned by this PromotionStrategy",
+			logger.V(5).Info("Skipping ChangeTransferPolicy not owned by this PromotionStrategy",
 				"ctpName", ctp.Name,
 				"promotionStrategy", ps.Name)
 			continue
 		}
 
 		// Delete the orphaned CTP
-		logger.Info("Deleting orphaned ChangeTransferPolicy",
+		logger.V(2).Info("Deleting orphaned ChangeTransferPolicy",
 			"ctpName", ctp.Name,
 			"promotionStrategy", ps.Name,
 			"namespace", ps.Namespace)
@@ -399,7 +399,7 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 		if err := r.Delete(ctx, &ctp); err != nil {
 			if k8serrors.IsNotFound(err) {
 				// Already deleted, which is fine
-				logger.V(4).Info("ChangeTransferPolicy already deleted", "ctpName", ctp.Name)
+				logger.V(5).Info("ChangeTransferPolicy already deleted", "ctpName", ctp.Name)
 				continue
 			}
 			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)

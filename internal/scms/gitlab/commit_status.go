@@ -74,7 +74,7 @@ func NewGitlabCommitStatusProvider(k8sClient client.Client, secret v1.Secret, do
 // See https://gitlab.com/gitlab-org/gitlab-foss/-/issues/25807
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitStatus) (*v1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Phase")
+	logger.V(5).Info("Setting Commit Phase")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{
 		Namespace: commitStatus.Namespace,
@@ -106,7 +106,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		// it. On first reconcile (or after controller restart) Id may be empty, but GitLab's Set
 		// endpoint routes by project+SHA+name, not Id, so subsequent calls still succeed.
 		if isAlreadyInDesiredState(resp, err, commitStatus.Spec.Phase) {
-			logger.Info("GitLab status already in desired state, treating as synced",
+			logger.V(4).Info("GitLab status already in desired state, treating as synced",
 				"sha", commitStatus.Spec.Sha, "phase", commitStatus.Spec.Phase)
 			commitStatus.Status.Phase = commitStatus.Spec.Phase
 			commitStatus.Status.Sha = commitStatus.Spec.Sha
@@ -120,7 +120,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		repo.Spec.ScmProviderRef.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	commitStatus.Status.Id = strconv.FormatInt(glStatus.ID, 10)

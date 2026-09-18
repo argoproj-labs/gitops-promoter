@@ -213,7 +213,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	case found:
 		ctpFound = true
 	case retryable:
-		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
+		reqLogger.V(4).Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
 		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
 	default:
@@ -232,7 +232,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 func (wr *WebhookReceiver) scheduleMissRetry(provider, sha, ref, deliveryID string) {
 	if wr.pendingMissRetries.Add(1) > int64(wr.getMaxPendingRetries()) {
 		wr.pendingMissRetries.Add(-1)
-		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
+		logger.Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
 		return
 	}
 	metrics.IncWebhookMissRetryPending()
@@ -334,7 +334,7 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 		if wr.enqueueCTP != nil {
 			wr.enqueueCTP(ctp.Namespace, ctp.Name)
 		}
-		logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
+		logger.V(3).Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
 		return true, false, nil
 	case ctpLookupNotFound:
 		return false, true, nil

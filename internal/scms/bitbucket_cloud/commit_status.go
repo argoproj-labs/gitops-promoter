@@ -42,7 +42,7 @@ func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Se
 // Set sets the commit status for a given commit SHA in the specified repository.
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitStatus) (*v1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Phase")
+	logger.V(5).Info("Setting Commit Phase")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{
 		Namespace: commitStatus.Namespace,
@@ -84,7 +84,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the response
 	resultMap, ok := result.(map[string]any)

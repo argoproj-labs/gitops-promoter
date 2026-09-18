@@ -4,9 +4,7 @@ controller-specific fields.
 
 ## SCM API call logs
 
-For each SCM REST API request that GitOps Promoter records for metrics (the same calls that increment `scm_calls_total` in the [metrics reference](metrics.md)), the controller emits a structured log line with the message **`SCM API call`**. These lines are emitted at **verbosity level 1** (`V(1)` in code), not at the default `info` level.
-
-**How to enable:** set `--zap-log-level` to **`1`** or **`debug`** (equivalent to level `1`). Higher values such as `5` also include these lines. See [Log verbosity](#log-verbosity) for deployment examples; use `--zap-log-level=1` instead of `5` if you only want SCM call lines without the rest of the controller’s most verbose output.
+For each SCM REST API request that GitOps Promoter records for metrics (the same calls that increment `scm_calls_total` in the [metrics reference](metrics.md)), the controller emits a structured log line with the message **`SCM API call`**. These lines are emitted at **verbosity level 2** (`V(2)` in code), so they are visible at the default level: each line pairs with a metrics increment and is the canonical record of the controller's SCM traffic.
 
 **Fields** (all keys are stable for filtering and parsing):
 
@@ -21,19 +19,20 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 
-**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit` may still appear at `info` when enabled by that provider.
+**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit`, `GitLab rate limits`, and per-request response statuses are also emitted at verbosity level 2, so the default level carries the full per-request SCM picture. Git-transport polling (`ls-remote called`) stays at level 6.
 
 ## Log Verbosity
 
 The controller uses [controller-runtime's zap logger](https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/log/zap), 
 which supports configurable log verbosity via the `--zap-log-level` flag.
 
-The default log level is `info`. For debugging, it is common to increase the log level to `5`, which enables verbose 
-debug logging throughout the controller.
+Log statements follow the [Kubernetes community logging conventions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/logging.md): higher verbosity levels carry progressively more detail, and each statement is assigned the level matching its usefulness for debugging.
+
+**The default verbosity level is `2`**, matching the default used by Kubernetes components such as the kubelet. At the default level you see errors, warnings, notable one-off events, and significant state changes (promotions, pull requests created/merged, gates transitioning). For debugging, raise the level to `4` (controller decision logic), `5` (git and template plumbing), or `6` (per-request SCM/HTTP traffic).
 
 ### Increasing the log level in Kubernetes
 
-To increase the log level, edit the controller's `Deployment` and add `--zap-log-level=5` to the container's `args`:
+To increase the log level, edit the controller's `Deployment` and add `--zap-log-level=<n>` to the container's `args`:
 
 ```yaml
 containers:
@@ -55,15 +54,30 @@ kubectl patch deployment controller-manager -n gitops-promoter \
   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--zap-log-level=5"}]'
 ```
 
-### Log level values
+To make the controller quieter than the default, set `--zap-log-level=1` (one-off events and warnings only) or `--zap-log-level=0` / `info` (warnings and errors only).
 
-The `--zap-log-level` flag accepts the following values:
+### Log level conventions
 
-| Value | Description |
-|-------|-------------|
-| `info` | Default level. Logs informational messages and errors. |
-| `debug` | Logs additional debug messages. Equivalent to level `1`. |
-| `5` | Highly verbose output useful for diagnosing bugs. |
+Levels follow the Kubernetes convention. Each level includes everything below it.
 
-Any positive integer can be used as a log level; higher values produce more output. The most commonly used value for 
-diagnosing bugs is `5`.
+| Level | What lands here |
+|-------|-----------------|
+| `0` (`info`) | Always visible: actionable warnings and anomalies — missing or deleted secrets, saturation (full enqueue channels, webhook retry capacity exhausted), programmer errors, controller shutdown triggers. |
+| `1` | Notable one-off events: server and manager lifecycle, repository clones, GitHub App installation listing, status-apply fallback recoveries, unexpected-but-recovered SCM states (for example a 404 on a check run update). |
+| `2` (**default**) | Significant state changes and side effects: pull requests created/updated/merged/closed, promotions and branch merges, merge conflicts detected and resolved, gates transitioning to success, commit statuses pushed for a phase change, orphaned and legacy resource cleanup, finalizer holds that block deletion, and per-SCM-request telemetry ([`SCM API call`](#scm-api-call-logs) lines, provider response statuses, and rate-limit headers). |
+| `3` | Extended reconcile flow: reconcile start/end (with duration), per-environment processing results, cross-resource reconcile triggers and enqueues, finalizer removal steps, promotion history notes written. |
+| `4` | Debug — the logic behind decisions: gate evaluations (for example `Proposed commit status is not success`, DAG gate results), promotion-needed checks, finalizer wait reasons, requeue and rate-limit decisions, best-effort fallback failures. |
+| `5` | Trace — plumbing detail: git command internals (fetches, notes, trailers, cat-file), expression evaluation results, rendered templates, HTTP client auth setup, provider-level operation logs, routine skip reasons. |
+| `6` | Wire — remaining per-request traffic: gate HTTP request/response detail (`WebRequestCommitStatus`), `ls-remote` calls, metrics/dashboard HTTP access logs, per-message stream filtering. |
+
+Any positive integer can be used as a log level; higher values produce more output.
+
+### Guidance for adding log statements
+
+When adding a new log statement, pick the level by asking who needs it and how often it fires:
+
+- An operator watching a healthy system should see it → `2` (state change) or `0`–`1` (warning / one-off).
+- Someone debugging "why is my change not promoting" needs it → `3` (what the controller did) or `4` (why it decided that).
+- Someone tracing a specific git or SCM interaction needs it → `5`, or `6` if it fires once per HTTP request.
+
+A line that fires on every reconcile in a healthy steady state should never be below level `3`; a line that fires once per external request should be `6`.

@@ -46,7 +46,7 @@ func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmPr
 // Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Creating Pull Request in Azure DevOps")
+	logger.V(5).Info("Creating Pull Request in Azure DevOps")
 
 	if title == "" {
 		return "", errors.New("title is required for pull request creation")
@@ -93,7 +93,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
-	logger.Info("Azure DevOps pull request created successfully", "prId", *createdPR.PullRequestId)
+	logger.V(5).Info("Azure DevOps pull request created successfully", "prId", *createdPR.PullRequestId)
 
 	return strconv.Itoa(*createdPR.PullRequestId), nil
 }
@@ -101,7 +101,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Updating Pull Request in Azure DevOps")
+	logger.V(5).Info("Updating Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -143,7 +143,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
-	logger.V(4).Info("Azure DevOps pull request updated successfully", "prId", prId)
+	logger.V(5).Info("Azure DevOps pull request updated successfully", "prId", prId)
 
 	return nil
 }
@@ -151,7 +151,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 // Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Closing Pull Request in Azure DevOps")
+	logger.V(5).Info("Closing Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -193,7 +193,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
-	logger.V(4).Info("Azure DevOps pull request closed successfully", "prId", prId)
+	logger.V(5).Info("Azure DevOps pull request closed successfully", "prId", prId)
 
 	return nil
 }
@@ -201,7 +201,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 // Merge merges an existing pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Merging Pull Request in Azure DevOps")
+	logger.V(5).Info("Merging Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -251,7 +251,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
-	logger.V(4).Info("Azure DevOps pull request merged successfully", "prId", prId)
+	logger.V(5).Info("Azure DevOps pull request merged successfully", "prId", prId)
 
 	// Azure DevOps completes a pull request asynchronously: the response to the completion request
 	// carries the pre-completion merge preview commit, which is not necessarily the commit that
@@ -262,7 +262,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Finding Open Pull Request in Azure DevOps")
+	logger.V(5).Info("Finding Open Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -334,7 +334,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 // Get fetches a pull request by status.id.
 func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Getting pull request by ID in Azure DevOps")
+	logger.V(5).Info("Getting pull request by ID in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -379,7 +379,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 	if adoPR.ClosedDate != nil {
 		result.MergedAt = adoPR.ClosedDate.Time
 	}
-	logger.V(4).Info("Azure DevOps pull request fetched", "prId", prID, "state", result.State)
+	logger.V(5).Info("Azure DevOps pull request fetched", "prId", prID, "state", result.State)
 	return result, nil
 }
 
