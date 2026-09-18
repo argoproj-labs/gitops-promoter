@@ -27,20 +27,20 @@ export function getEnvironmentStatus(
   const activeSha = active.dry?.sha;
 
   // Active check failures are health on the already-deployed commit, not promotion state.
-  // Hide Proposed changes whenever dry SHAs match (including both unset).
+  // No proposed SHA yet (including both unset) means git/hydrator has not populated status.
+  if (!proposedSha) {
+    return 'unknown';
+  }
+
   if (proposedSha === activeSha) {
     return 'promoted';
   }
 
-  if (proposedSha) {
-    const proposedChecks = proposed.commitStatuses || [];
-    if (proposedChecks.some((cs) => cs.phase === 'failure')) {
-      return 'failure';
-    }
-    return 'pending';
+  const proposedChecks = proposed.commitStatuses || [];
+  if (proposedChecks.some((cs) => cs.phase === 'failure')) {
+    return 'failure';
   }
-
-  return 'unknown';
+  return 'pending';
 }
 
 // Overall promotion status across all environments

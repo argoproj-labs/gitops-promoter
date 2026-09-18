@@ -72,8 +72,8 @@ describe('getEnvironmentStatus', () => {
     expect(getEnvironmentStatus(env({ activeSha: 'abc' }))).toBe('unknown');
   });
 
-  it('is promoted when both dry SHAs are unset', () => {
-    expect(getEnvironmentStatus(env({}))).toBe('promoted');
+  it('is unknown when both dry SHAs are unset', () => {
+    expect(getEnvironmentStatus(env({}))).toBe('unknown');
   });
 });
 
@@ -91,6 +91,20 @@ describe('getPromotionStatus', () => {
       pending: 0,
       failed: 0,
       overallStatus: 'promoted',
+    });
+  });
+
+  it('is unknown overall when environments have no dry SHAs yet', () => {
+    const ps = {
+      status: { environments: [env({})] },
+    } as unknown as PromotionStrategy;
+
+    expect(getPromotionStatus(ps)).toMatchObject({
+      total: 1,
+      promoted: 0,
+      pending: 0,
+      failed: 0,
+      overallStatus: 'unknown',
     });
   });
 });
