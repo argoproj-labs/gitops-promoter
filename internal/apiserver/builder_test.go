@@ -101,6 +101,10 @@ func seedObjects() []client.Object {
 			ObjectMeta: psLabeledMeta("dev-ctp"),
 			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		},
+		&promoterv1alpha1.ChangeTransferPolicyHistory{
+			ObjectMeta: psLabeledMeta("dev-ctph"),
+			Spec:       promoterv1alpha1.ChangeTransferPolicyHistorySpec{ActiveBranch: "environment/dev"},
+		},
 		&promoterv1alpha1.PullRequest{ObjectMeta: psLabeledMeta("dev-pr")},
 		&promoterv1alpha1.CommitStatus{ObjectMeta: psLabeledMeta("dev-cs")},
 		// Managers that reference the PS by spec.promotionStrategyRef.name.
@@ -175,6 +179,8 @@ var _ = Describe("BuildBundle", func() {
 
 		By("selecting label-owned children")
 		Expect(bundle.ChangeTransferPolicies).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories[0].Name).To(Equal("dev-ctph"))
 		Expect(bundle.PullRequests).To(HaveLen(1))
 		Expect(bundle.CommitStatuses).To(HaveLen(1))
 

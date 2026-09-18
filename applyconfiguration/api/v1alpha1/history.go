@@ -20,7 +20,7 @@ package v1alpha1
 // HistoryApplyConfiguration represents a declarative configuration of the History type for use
 // with apply.
 //
-// History describes a particular change that was promoted by the ChangeTransferPolicy.
+// History describes a particular change that was promoted into an environment's active branch.
 type HistoryApplyConfiguration struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed *CommitBranchStateHistoryProposedApplyConfiguration `json:"proposed,omitempty"`
@@ -29,7 +29,7 @@ type HistoryApplyConfiguration struct {
 	// describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
 	// snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
-	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
+	// PullRequest is the state of the pull request that promoted this change.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
 	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
 	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,

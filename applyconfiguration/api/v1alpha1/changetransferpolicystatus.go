@@ -37,12 +37,6 @@ type ChangeTransferPolicyStatusApplyConfiguration struct {
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
-	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
-	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is at most 5 entries.
-	// History is constructed on a best-effort basis and should be used for informational purposes only.
-	// History is in reverse chronological order (newest is first).
-	History []HistoryApplyConfiguration `json:"history,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -86,19 +80,6 @@ func (b *ChangeTransferPolicyStatusApplyConfiguration) WithActive(value *CommitB
 // If called multiple times, the PullRequest field is set to the value of the last call.
 func (b *ChangeTransferPolicyStatusApplyConfiguration) WithPullRequest(value *PullRequestCommonStatusApplyConfiguration) *ChangeTransferPolicyStatusApplyConfiguration {
 	b.PullRequest = value
-	return b
-}
-
-// WithHistory adds the given value to the History field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the History field.
-func (b *ChangeTransferPolicyStatusApplyConfiguration) WithHistory(values ...*HistoryApplyConfiguration) *ChangeTransferPolicyStatusApplyConfiguration {
-	for i := range values {
-		if values[i] == nil {
-			panic("nil value passed to WithHistory")
-		}
-		b.History = append(b.History, *values[i])
-	}
 	return b
 }
 

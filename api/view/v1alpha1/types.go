@@ -43,6 +43,10 @@ type PromotionStrategyDetails struct {
 	// (selected by the promoter.argoproj.io/promotion-strategy label).
 	ChangeTransferPolicies []promoterv1alpha1.ChangeTransferPolicy `json:"changeTransferPolicies,omitempty"`
 
+	// ChangeTransferPolicyHistories are the per-environment promotion histories owned by the
+	// PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).
+	ChangeTransferPolicyHistories []promoterv1alpha1.ChangeTransferPolicyHistory `json:"changeTransferPolicyHistories,omitempty"`
+
 	// PullRequests are the PullRequests associated with the PromotionStrategy
 	// (selected by the promoter.argoproj.io/promotion-strategy label).
 	PullRequests []promoterv1alpha1.PullRequest `json:"pullRequests,omitempty"`

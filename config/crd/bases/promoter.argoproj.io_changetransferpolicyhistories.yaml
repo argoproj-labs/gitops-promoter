@@ -4,27 +4,31 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: promotionstrategies.promoter.argoproj.io
+  name: changetransferpolicyhistories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: PromotionStrategy
-    listKind: PromotionStrategyList
-    plural: promotionstrategies
-    singular: promotionstrategy
+    kind: ChangeTransferPolicyHistory
+    listKind: ChangeTransferPolicyHistoryList
+    plural: changetransferpolicyhistories
+    singular: changetransferpolicyhistory
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.activeBranch
+      name: Active Branch
+      type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionStrategy is the Schema for the promotionstrategies API
+        description: ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories
+          API.
         externalDocs:
           description: CRD reference (examples and behavior)
-          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicyhistory
         properties:
           apiVersion:
             description: |-
@@ -44,154 +48,32 @@ spec:
           metadata:
             type: object
           spec:
-            description: PromotionStrategySpec defines the desired state of PromotionStrategy
+            description: spec defines the desired state of ChangeTransferPolicyHistory
             properties:
-              activeCommitStatuses:
+              activeBranch:
                 description: |-
-                  ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
-                  is failing for an environment, subsequent environments will not deploy the failing commit.
-
-                  The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
-                  specify commit statuses for individual environments in the `environments` field.
-                items:
-                  description: CommitStatusSelector is used to select commit statuses
-                    by their key.
-                  properties:
-                    key:
-                      maxLength: 63
-                      minLength: 1
-                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                      type: string
-                  required:
-                  - key
-                  type: object
-                type: array
-                x-kubernetes-list-map-keys:
-                - key
-                x-kubernetes-list-type: map
-              activePath:
-                description: |-
-                  ActivePath is the default repository subpath for this strategy's active state.
-                  When set, proposed branches are created as <environment-branch>-next/<activePath>.
-                  Individual environments can override this value via their own activePath field.
+                  ActiveBranch is the hydrated active branch whose merged changes are reconstructed into history.
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
-              environments:
-                description: Environments is the sequence of environments that a dry
-                  commit will be promoted through.
-                items:
-                  description: Environment defines a single environment in the promotion
-                    sequence.
-                  properties:
-                    activeCommitStatuses:
-                      description: |-
-                        ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
-                        is failing for an environment, subsequent environments will not deploy the failing commit.
-
-                        The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-                        for all environments in the `spec.activeCommitStatuses` field.
-                      items:
-                        description: CommitStatusSelector is used to select commit
-                          statuses by their key.
-                        properties:
-                          key:
-                            maxLength: 63
-                            minLength: 1
-                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                            type: string
-                        required:
-                        - key
-                        type: object
-                      type: array
-                      x-kubernetes-list-map-keys:
-                      - key
-                      x-kubernetes-list-type: map
-                    activePath:
-                      description: |-
-                        ActivePath optionally overrides the strategy-level activePath for this environment.
-                        When set, this environment's CTP uses this path instead of spec.activePath.
-                      minLength: 1
-                      type: string
-                    autoMerge:
-                      default: true
-                      description: |-
-                        AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
-                        If false, the dry commit will be proposed but not merged.
-                      type: boolean
-                    branch:
-                      description: |-
-                        Branch is the name of the active branch for the environment.
-                        Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
-                      minLength: 1
-                      type: string
-                      x-kubernetes-validations:
-                      - message: branch must not start with '-'
-                        rule: '!self.startsWith(''-'')'
-                      - message: branch must not contain ':'
-                        rule: '!self.contains('':'')'
-                      - message: branch must not contain '..'
-                        rule: '!self.contains(''..'')'
-                    dependsOn:
-                      description: |-
-                        DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
-                        for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment
-                        a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers
-                        a linear chain from spec.environments order.
-                        Each item must not start with '-', contain ':', or contain '..'.
-                      items:
-                        maxLength: 100
-                        minLength: 1
-                        type: string
-                        x-kubernetes-validations:
-                        - message: branch must not start with '-'
-                          rule: '!self.startsWith(''-'')'
-                        - message: branch must not contain ':'
-                          rule: '!self.contains('':'')'
-                        - message: branch must not contain '..'
-                          rule: '!self.contains(''..'')'
-                      maxItems: 100
-                      type: array
-                      x-kubernetes-list-type: set
-                    proposedCommitStatuses:
-                      description: |-
-                        ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
-                        in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
-                        be promoted to that environment.
-
-                        The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-                        for all environments in the `spec.proposedCommitStatuses` field.
-                      items:
-                        description: CommitStatusSelector is used to select commit
-                          statuses by their key.
-                        properties:
-                          key:
-                            maxLength: 63
-                            minLength: 1
-                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                            type: string
-                        required:
-                        - key
-                        type: object
-                      type: array
-                      x-kubernetes-list-map-keys:
-                      - key
-                      x-kubernetes-list-type: map
-                  required:
-                  - branch
-                  type: object
-                  x-kubernetes-validations:
-                  - message: branch cannot depend on itself
-                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
-                maxItems: 500
-                minItems: 1
-                type: array
-                x-kubernetes-list-map-keys:
-                - branch
-                x-kubernetes-list-type: map
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
+              activePath:
+                description: |-
+                  ActivePath is an optional repository subpath for this environment's active state.
+                  When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                minLength: 1
+                type: string
               gitRepositoryRef:
-                description: RepositoryReference indicates what repository to promote
-                  commits in.
+                description: |-
+                  RepositoryReference is the repository whose active branch is inspected to reconstruct
+                  the promotion history.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -202,101 +84,12 @@ spec:
                 required:
                 - name
                 type: object
-              orderCommitStatusRef:
-                description: |-
-                  OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
-                  environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
-                properties:
-                  group:
-                    default: promoter.argoproj.io
-                    description: |-
-                      Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
-                      out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
-                    maxLength: 253
-                    minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                    type: string
-                  kind:
-                    default: DependentsSuccessfulCommitStatus
-                    description: |-
-                      Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
-                      ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
-                    type: string
-                    x-kubernetes-validations:
-                    - message: kind must name a CommitStatus gate CR
-                      rule: self.endsWith('CommitStatus')
-                  name:
-                    description: Name is the name of the resource being referenced.
-                    maxLength: 253
-                    minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
-                    type: string
-                required:
-                - group
-                - kind
-                - name
-                type: object
-              proposedCommitStatuses:
-                description: |-
-                  ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
-                  in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
-                  be promoted to that environment.
-
-                  The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
-                  specify commit statuses for individual environments in the `environments` field.
-
-                  The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
-                  does not need to be declared here.
-                items:
-                  description: CommitStatusSelector is used to select commit statuses
-                    by their key.
-                  properties:
-                    key:
-                      maxLength: 63
-                      minLength: 1
-                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
-                      type: string
-                  required:
-                  - key
-                  type: object
-                type: array
-                x-kubernetes-list-map-keys:
-                - key
-                x-kubernetes-list-type: map
-              pullRequest:
-                description: PullRequest configures SCM pull request behavior for
-                  all environments in this strategy.
-                properties:
-                  labels:
-                    description: Labels configures dynamic SCM labels applied to promotion
-                      pull requests.
-                    properties:
-                      expression:
-                        description: |-
-                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
-                          ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
-
-                          Available variables:
-                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
-                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
-                            - PromotionStrategy: owning PromotionStrategy spec and status when available
-
-                          Each returned label name must satisfy the same validation as PullRequest.spec.labels
-                          (non-empty, max 50 characters, no newlines, max 10 labels, unique).
-                        maxLength: 8192
-                        minLength: 1
-                        type: string
-                    required:
-                    - expression
-                    type: object
-                type: object
             required:
-            - environments
+            - activeBranch
             - gitRepositoryRef
-            - orderCommitStatusRef
             type: object
           status:
-            description: PromotionStrategyStatus defines the observed state of PromotionStrategy
+            description: status defines the observed state of ChangeTransferPolicyHistory
             properties:
               conditions:
                 description: Conditions Represents the observations of the current
@@ -359,16 +152,23 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              environments:
-                description: Environments holds the status of each environment in
-                  the promotion sequence.
+              history:
+                description: |-
+                  History defines the history of promoted changes for this environment. You can think of
+                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+                  The history length is at most 20 entries.
+                  History is constructed on a best-effort basis and should be used for informational purposes only.
+                  History is in reverse chronological order (newest is first).
                 items:
-                  description: EnvironmentStatus defines the observed state of an
-                    environment in a PromotionStrategy.
+                  description: History describes a particular change that was promoted
+                    into an environment's active branch.
                   properties:
                     active:
-                      description: Active is the state of the active branch for the
-                        environment.
+                      description: |-
+                        Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+                        <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+                        describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+                        snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
                       properties:
                         commitStatuses:
                           description: CommitStatuses is a list of commit statuses
@@ -662,42 +462,25 @@ spec:
                               type: string
                           type: object
                       type: object
-                    branch:
-                      description: Branch is the name of the active branch for the
-                        environment.
-                      minLength: 1
-                      type: string
-                    lastHealthyDryShas:
-                      description: LastHealthyDryShas is a list of dry commits that
-                        were observed to be healthy in the environment.
-                      items:
-                        description: HealthyDryShas is a list of dry commits that
-                          were observed to be healthy in the environment.
-                        properties:
-                          sha:
-                            description: |-
-                              Sha is the commit SHA of the dry commit that was observed to be healthy.
-                              Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                            maxLength: 64
-                            pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                            type: string
-                          time:
-                            description: Time is the time when the proposed commit
-                              for the given dry SHA was merged into the active branch.
-                            format: date-time
-                            type: string
-                        required:
-                        - sha
-                        - time
-                        type: object
-                      type: array
+                    mergeCommitSnapshotMismatch:
+                      description: |-
+                        MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+                        the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+                        the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+                        active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+                        gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+                        revision rather than what actually merged.
+                      type: boolean
                     proposed:
-                      description: Proposed is the state of the proposed branch for
-                        the environment.
+                      description: Proposed is the state of the proposed branch at
+                        the time the PR was merged.
                       properties:
                         commitStatuses:
-                          description: CommitStatuses is a list of commit statuses
-                            that are being monitored for this branch.
+                          description: |-
+                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                            This contains the state frozen at the moment the PR was merged. When the entry's
+                            mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
+                            revision the promoter last saw, which is not necessarily the revision that merged.
                           items:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
@@ -732,97 +515,12 @@ spec:
                             type: object
                           maxItems: 100
                           type: array
-                          x-kubernetes-list-map-keys:
-                          - key
-                          x-kubernetes-list-type: map
-                        dry:
-                          description: Dry is the dry state of the branch, which is
-                            the commit that is being proposed.
-                          nullable: true
-                          properties:
-                            author:
-                              description: Author is the author of the commit
-                              type: string
-                            body:
-                              description: Body is the body of the commit message
-                                without the subject line
-                              type: string
-                            commitTime:
-                              description: CommitTime is the time the commit was made
-                              format: date-time
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located
-                              pattern: ^(https?://.*)?$
-                              type: string
-                              x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
-                            sha:
-                              description: |-
-                                Sha is the SHA of the commit in the branch
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the commit
-                                message
-                              type: string
-                          type: object
                         hydrated:
-                          description: Hydrated is the hydrated state of the branch,
-                            which is the commit that is currently being worked on.
+                          description: |-
+                            Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+                            Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
+                            but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
+                            merge was a squash the stale snapshot value is kept.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -902,94 +600,12 @@ spec:
                             subject:
                               description: Subject is the subject line of the commit
                                 message
-                              type: string
-                          type: object
-                        note:
-                          description: Note is the hydrator metadata from the git
-                            note attached to the hydrated commit.
-                          properties:
-                            author:
-                              description: Author is the author of the dry commit
-                                that was used to hydrate the branch.
-                              type: string
-                            body:
-                              description: Body is the body of the dry commit that
-                                was used to hydrate the branch without the subject.
-                              type: string
-                            date:
-                              description: Date is the date of the dry commit that
-                                was used to hydrate the branch.
-                              format: date-time
-                              type: string
-                            drySha:
-                              description: |-
-                                DrySha is the SHA of the commit that was used as the dry source for hydration.
-                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                              maxLength: 64
-                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                              type: string
-                            references:
-                              description: References are the references to other
-                                commits, that went into the hydration of the branch.
-                              items:
-                                description: |-
-                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
-                                  it supports only references to a commit. In the future, it may support other types of references.
-                                properties:
-                                  commit:
-                                    description: Commit contains metadata about the
-                                      commit that is related in some way to another
-                                      commit.
-                                    properties:
-                                      author:
-                                        description: Author is the author of the commit.
-                                        type: string
-                                      body:
-                                        description: Body is the body of the commit
-                                          message, excluding the subject line, i.e.
-                                          `git show --format=%b`.
-                                        type: string
-                                      date:
-                                        description: Date is the date of the commit,
-                                          formatted as by `git show -s --format=%aI`.
-                                        format: date-time
-                                        type: string
-                                      repoURL:
-                                        description: RepoURL is the URL of the repository
-                                          where the commit is located.
-                                        pattern: ^(https?://.*)?$
-                                        type: string
-                                        x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
-                                      sha:
-                                        description: |-
-                                          Sha is the commit hash.
-                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                                        maxLength: 64
-                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                                        type: string
-                                      subject:
-                                        description: Subject is the subject line of
-                                          the commit message, i.e. `git show --format=%s`.
-                                        type: string
-                                    type: object
-                                type: object
-                              maxItems: 100
-                              type: array
-                            repoURL:
-                              description: RepoURL is the URL of the repository where
-                                the commit is located.
-                              type: string
-                            subject:
-                              description: Subject is the subject line of the dry
-                                commit that was used to hydrate the branch.
                               type: string
                           type: object
                       type: object
                     pullRequest:
                       description: PullRequest is the state of the pull request that
-                        was created for this environment.
+                        promoted this change.
                       properties:
                         externallyMergedOrClosed:
                           description: |-
@@ -1045,16 +661,9 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
-                  required:
-                  - active
-                  - branch
-                  - proposed
                   type: object
-                maxItems: 500
+                maxItems: 20
                 type: array
-                x-kubernetes-list-map-keys:
-                - branch
-                x-kubernetes-list-type: map
               instanceID:
                 description: |-
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each

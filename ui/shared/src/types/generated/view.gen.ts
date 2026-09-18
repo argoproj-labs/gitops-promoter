@@ -188,6 +188,57 @@ export type components = {
             /** @default {} */
             status?: components["schemas"]["ChangeTransferPolicyStatus"];
         };
+        /** @description ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories API. */
+        ChangeTransferPolicyHistory: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of ChangeTransferPolicyHistory
+             * @default {}
+             */
+            spec: components["schemas"]["ChangeTransferPolicyHistorySpec"];
+            /**
+             * @description status defines the observed state of ChangeTransferPolicyHistory
+             * @default {}
+             */
+            status?: components["schemas"]["ChangeTransferPolicyHistoryStatus"];
+        };
+        /** @description ChangeTransferPolicyHistorySpec defines the desired state of ChangeTransferPolicyHistory. */
+        ChangeTransferPolicyHistorySpec: {
+            /**
+             * @description ActiveBranch is the hydrated active branch whose merged changes are reconstructed into history. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            activeBranch: string;
+            /** @description ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. */
+            activePath?: string;
+            /**
+             * @description RepositoryReference is the repository whose active branch is inspected to reconstruct the promotion history.
+             * @default {}
+             */
+            gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+        };
+        /** @description ChangeTransferPolicyHistoryStatus defines the observed state of ChangeTransferPolicyHistory. */
+        ChangeTransferPolicyHistoryStatus: {
+            /** @description Conditions Represents the observations of the current state. */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description History defines the history of promoted changes for this environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 20 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
+            history?: components["schemas"]["History"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
         /** @description ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy */
         ChangeTransferPolicySpec: {
             /**
@@ -224,8 +275,6 @@ export type components = {
             active?: components["schemas"]["CommitBranchState"];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
-            history?: components["schemas"]["History"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
             /**
@@ -557,8 +606,6 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
-            history?: components["schemas"]["History"][];
             /** @description LastHealthyDryShas is a list of dry commits that were observed to be healthy in the environment. */
             lastHealthyDryShas: components["schemas"]["HealthyDryShas"][];
             /**
@@ -989,7 +1036,7 @@ export type components = {
             /** @description Time is the time when the proposed commit for the given dry SHA was merged into the active branch. */
             time: components["schemas"]["Time"];
         };
-        /** @description History describes a particular change that was promoted by the ChangeTransferPolicy. */
+        /** @description History describes a particular change that was promoted into an environment's active branch. */
         History: {
             /**
              * @description Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
@@ -1003,7 +1050,7 @@ export type components = {
              * @default {}
              */
             proposed?: components["schemas"]["CommitBranchStateHistoryProposed"];
-            /** @description PullRequest is the state of the pull request that was created for this ChangeTransferPolicy. */
+            /** @description PullRequest is the state of the pull request that promoted this change. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
         };
         /** @description HydratorMetadata contains metadata about the hydrated commit. This is extracted from the git note or metadata file. */
@@ -1295,6 +1342,8 @@ export type components = {
             argoCDCommitStatuses?: components["schemas"]["ArgoCDCommitStatus"][];
             /** @description ChangeTransferPolicies are the CTPs owned by the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             changeTransferPolicies?: components["schemas"]["ChangeTransferPolicy"][];
+            /** @description ChangeTransferPolicyHistories are the per-environment promotion histories owned by the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
+            changeTransferPolicyHistories?: components["schemas"]["ChangeTransferPolicyHistory"][];
             /** @description ClusterScmProvider is the cluster-scoped ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */

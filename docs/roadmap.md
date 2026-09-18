@@ -77,7 +77,7 @@ See also: [Argo CD Commit Status](gating-promotions/built-in-gates/argocd-commit
 
 The PromotionStrategy controller currently hard-fails reconcile when no `DependentsSuccessfulCommitStatus` targets a
 strategy, or when a gate's `key` is undeclared in the effective `proposedCommitStatuses` for an environment branch.
-This guard may be relaxed in v1.0 so misconfiguration surfaces differently. See [Upgrading](upgrading.md#038-promotion-ordering-gate) for the 0.38
+This guard may be relaxed in v1.0 so misconfiguration surfaces differently. See [Upgrading](upgrading.md#038-promotion-ordering-gate-dependentssuccessfulcommitstatus) for the 0.38
 migration that introduced the gate CR.
 
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
@@ -86,4 +86,4 @@ Remove `cleanupLegacyOrphanedCommitStatusesWithoutParentLabel` once clusters are
 
 ### DependentsSuccessfulCommitStatus legacy previous-environment cleanup (planned for v1.0)
 
-Remove `cleanupLegacyPreviousEnvironmentCommitStatuses` (and the related constants and annotation) once clusters are past the 0.38 promotion-ordering-gate migration. See [Upgrading](upgrading.md#038-promotion-ordering-gate).
+Remove `cleanupLegacyPreviousEnvironmentCommitStatuses` (and the related constants and annotation) once clusters are past the 0.38 promotion-ordering-gate migration. See [Upgrading](upgrading.md#038-promotion-ordering-gate-dependentssuccessfulcommitstatus).

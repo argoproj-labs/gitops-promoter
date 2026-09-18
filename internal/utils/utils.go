@@ -192,6 +192,26 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
+const changeTransferPolicyHistoryNameSuffix = "-history"
+
+// GetChangeTransferPolicyHistoryName returns the name of the ChangeTransferPolicyHistory owned by
+// the given ChangeTransferPolicy. CTP and CTPH are 1:1, and ctpName is already a
+// KubeSafeUniqueName, so uniqueness is inherited; we only append "-history". If that would exceed
+// DNS-1123 subdomain length, the CTP name is truncated from the beginning so the unique hash suffix
+// and "-history" are preserved.
+func GetChangeTransferPolicyHistoryName(ctpName string) string {
+	limit := validation.DNS1123SubdomainMaxLength
+	stemBudget := limit - len(changeTransferPolicyHistoryNameSuffix)
+	stem := TruncateStringFromBeginning(ctpName, stemBudget)
+	for len(stem) > 0 && stem[0] == '-' {
+		stem = stem[1:]
+	}
+	if stem == "" {
+		stem = "x"
+	}
+	return stem + changeTransferPolicyHistoryNameSuffix
+}
+
 // EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
 // environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
 // calling). logReason describes why the transition occurred and is included in the log message

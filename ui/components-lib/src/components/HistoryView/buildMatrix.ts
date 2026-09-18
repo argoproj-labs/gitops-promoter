@@ -1,6 +1,7 @@
 import { extractNameOnly, extractBodyPreTrailer, getCommitUrl } from '@shared/utils/util';
 import type {
   Commit,
+  Environment,
   PromotionStrategy,
   PullRequest,
   ReferenceCommit,
@@ -24,9 +25,9 @@ function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
     }));
 }
 
-type StatusEnvironment = NonNullable<
-  NonNullable<PromotionStrategy['status']>['environments']
->[number];
+// The per-environment shape the matrix renders: the generated EnvironmentStatus plus the
+// history re-projected from the ChangeTransferPolicyHistory resources by the store adapters.
+type StatusEnvironment = Environment;
 
 function envHasContent(env: StatusEnvironment): boolean {
   return (env.history?.length ?? 0) > 0 || !!env.active?.dry;

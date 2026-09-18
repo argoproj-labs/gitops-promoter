@@ -228,6 +228,65 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistory
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistorySpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistorySpec
+  map:
+    fields:
+    - name: activeBranch
+      type:
+        scalar: string
+    - name: activePath
+      type:
+        scalar: string
+    - name: gitRepositoryRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: history
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
+          elementRelationship: atomic
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicySpec
   map:
     fields:
@@ -280,12 +339,6 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: instanceID
       type:
         scalar: string
@@ -512,6 +565,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: changeTransferPolicy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyConfiguration
+    - name: changeTransferPolicyHistory
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
@@ -720,12 +776,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: lastHealthyDryShas
       type:
         list:

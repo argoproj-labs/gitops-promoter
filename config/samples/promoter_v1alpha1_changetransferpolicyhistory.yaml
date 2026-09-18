@@ -1,0 +1,13 @@
+# ChangeTransferPolicyHistory resources are normally created and owned by the ChangeTransferPolicy
+# controller, one per ChangeTransferPolicy. This sample shows the shape for reference.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ChangeTransferPolicyHistory
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: changetransferpolicyhistory-sample
+spec:
+  gitRepositoryRef:
+    name: gitrepository-sample
+  activeBranch: environment/development

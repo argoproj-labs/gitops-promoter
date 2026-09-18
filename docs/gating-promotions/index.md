@@ -23,7 +23,7 @@ phase for the commit deployed on that live branch. If any active gate is pending
 successful. This is an aggregate idea over the individual CommitStatuses you configure—not a separate CR. It helps explain
 what ordering gates are waiting on: a downstream promotion may stay blocked until upstream environments are successful.
 
-Upgrading from a release before 0.39? See [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy). From 0.37 or earlier, also see [0.38 — Promotion ordering gate](../upgrading.md#038-promotion-ordering-gate).
+Upgrading from a release before 0.39? See [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy). From 0.37 or earlier, also see [0.38 — Promotion ordering gate](../upgrading.md#038-promotion-ordering-gate-dependentssuccessfulcommitstatus).
 
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
 status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The controller injects that gate's

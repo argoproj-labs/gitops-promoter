@@ -90,6 +90,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ChangeTransferPolicies = nilIfEmpty(ctpList.Items)
 
+	ctphList := &promoterv1alpha1.ChangeTransferPolicyHistoryList{}
+	if err := reader.List(ctx, ctphList, client.InNamespace(namespace), psLabel); err != nil {
+		return nil, fmt.Errorf("failed to list ChangeTransferPolicyHistories: %w", err)
+	}
+	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
+
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list PullRequests: %w", err)

@@ -59,6 +59,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyConfiguration"):
 		return &apiv1alpha1.ChangeTransferPolicyConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistory"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryConfiguration"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistorySpec"):
+		return &apiv1alpha1.ChangeTransferPolicyHistorySpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryStatus"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicySpec"):
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):

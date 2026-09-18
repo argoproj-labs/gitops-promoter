@@ -48,6 +48,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	PromotionStrategy PromotionStrategyConfiguration `json:"promotionStrategy"`
 
+	// ChangeTransferPolicyHistory contains the configuration for the ChangeTransferPolicyHistory controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	ChangeTransferPolicyHistory ChangeTransferPolicyHistoryConfiguration `json:"changeTransferPolicyHistory"`
+
 	// ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -100,6 +105,17 @@ type ControllerConfigurationSpec struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type PromotionStrategyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the PromotionStrategy controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// ChangeTransferPolicyHistoryConfiguration defines the configuration for the ChangeTransferPolicyHistory controller.
+//
+// This configuration controls how the ChangeTransferPolicyHistory controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ChangeTransferPolicyHistoryConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ChangeTransferPolicyHistory controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

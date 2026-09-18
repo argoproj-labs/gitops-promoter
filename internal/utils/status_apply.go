@@ -59,6 +59,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return changeTransferPolicyStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.PromotionStrategy:
 		return promotionStrategyStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.ChangeTransferPolicyHistory:
+		return changeTransferPolicyHistoryStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.CommitStatus:
 		return commitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.WebRequestCommitStatus:
@@ -106,6 +108,16 @@ func promotionStrategyStatusApply(o *promoterv1alpha1.PromotionStrategy, conditi
 		return nil, err
 	}
 	return acv1alpha1.PromotionStrategy(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func changeTransferPolicyHistoryStatusApply(o *promoterv1alpha1.ChangeTransferPolicyHistory, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.ChangeTransferPolicyHistoryStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.ChangeTransferPolicyHistory(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func commitStatusStatusApply(o *promoterv1alpha1.CommitStatus, conditionsOnly bool) (any, error) {
