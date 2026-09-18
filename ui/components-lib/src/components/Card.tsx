@@ -87,7 +87,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     healthSummary={env.activeChecksSummary}
                   />
 
-                  {isProcessing ? (
+                  {isProcessing || proposedStatus === 'unknown' ? (
                     <div className="commit-group env-card__proposed-loading">
                       <div className="commit-group-header">
                         <StatusIcon phase="pending" type="health" />
@@ -96,10 +96,16 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       <div
                         className="env-card__proposed-loading-bar"
                         role="progressbar"
-                        aria-label="Preparing newer commit"
+                        aria-label={
+                          proposedStatus === 'unknown'
+                            ? 'Waiting for commit'
+                            : 'Preparing newer commit'
+                        }
                       />
                       <div className="env-card__proposed-loading-text">
-                        preparing newer commit&hellip;
+                        {proposedStatus === 'unknown'
+                          ? 'waiting for commit…'
+                          : 'preparing newer commit…'}
                       </div>
                     </div>
                   ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
