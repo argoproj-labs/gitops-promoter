@@ -73,6 +73,23 @@
       ],
       enabled: false,
     },
+    {
+      // The go directive is the minimum language version, not the CI/release
+      // toolchain. Raise it only when source or a dependency requires it
+      // (typically via go mod tidy). See go.mod and issue #2043.
+      // Renovate's gomod manager already skips go-directive bumps unless
+      // rangeStrategy is "bump"; disable it explicitly so a custom regex
+      // cannot be reintroduced without noticing this rule.
+      description: 'Do not bump go.mod go/toolchain directives automatically',
+      matchManagers: [
+        'gomod',
+      ],
+      matchDepTypes: [
+        'golang',
+        'toolchain',
+      ],
+      enabled: false,
+    },
     // ----------------------------------------------------------------------
     // Group A: Kubernetes platform (gomod + Makefile + e2e workflow, lockstep)
     // Anchor: controller-runtime + tagged k8s.io/* (v0.N.x). See RENOVATE_SETUP.md.
@@ -292,9 +309,32 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
-    // Group B: Go toolchain + golangci-lint + mockery + deadcode (+ golang base image)
-    // mockery/deadcode must track Go: both use golang.org/x/tools and break on new
-    // pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
+    // Delay Go language-minor bumps so contributors can upgrade before we
+    // raise the go.mod floor (go-fix-maybe-bump often follows the toolchain).
+    // Patches (1.27.1 -> 1.27.2) are immediate. internalChecksFilter +
+    // prCreation keep the PR from opening until the wait has elapsed.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Wait 30 days after a new Go minor/major before bumping CI or the language floor',
+      matchPackageNames: [
+        'go',
+        'golang',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'major',
+      ],
+      minimumReleaseAge: '30 days',
+      minimumReleaseAgeBehaviour: 'timestamp-required',
+      internalChecksFilter: 'strict',
+      prCreation: 'not-pending',
+    },
+    // ----------------------------------------------------------------------
+    // Group B: Go BUILD toolchain + golangci-lint + mockery + deadcode (+ golang image)
+    // The go.mod go directive is not regex-managed. go-fix-maybe-bump may raise
+    // it to X.Y.0 when a newer-language go fix pass rewrites source.
+    // mockery/deadcode must track the CI Go: both use golang.org/x/tools and break
+    // on new pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
     // ----------------------------------------------------------------------
     {
       description: 'Group Go, golangci-lint, mockery, deadcode, and the golang base image together',
@@ -320,9 +360,11 @@
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.1',
-          // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
+          // go fix at the current go.mod language version, then again at the new
+          // toolchain's language version if it is newer. The bump is kept only if
+          // the resulting code does not compile at the old floor.
           // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
-          'make go-fix || true',
+          'make go-fix-maybe-bump || true',
           'make lint-fix || true',
           // Regenerate mocks with the bumped mockery (must match the Go toolchain).
           'make mockery-gen',
@@ -574,23 +616,13 @@
     },
   ],
   customManagers: [
-    // ===== Go toolchain version (go.mod + workflows) =====
+    // ===== Go BUILD toolchain (workflows + renovate post-upgrade pins) =====
+    // The go.mod go directive is the minimum language version and is not
+    // managed here (see packageRules + go.mod comment). CI/release/Docker
+    // pins are the versions used to build.
     {
       customType: 'regex',
-      description: 'Update Go version in go.mod',
-      managerFilePatterns: [
-        '/^go\\.mod$/',
-      ],
-      matchStrings: [
-        'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
-      ],
-      depNameTemplate: 'go',
-      datasourceTemplate: 'golang-version',
-      versioningTemplate: 'semver',
-    },
-    {
-      customType: 'regex',
-      description: 'Keep post-upgrade install-tool golang pins in lockstep with go.mod',
+      description: 'Keep post-upgrade install-tool golang pins in lockstep with the CI Go toolchain',
       managerFilePatterns: [
         '/^renovate\\.json5$/',
       ],

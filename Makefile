@@ -170,8 +170,12 @@ mod-tidy: ## Tidy the root module and the celcost helper module.
 	cd hack/celcost && go mod tidy
 
 .PHONY: go-fix
-go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
+go-fix: ## Apply stdlib go fix modernizations for the go.mod language version.
 	go fix ./...
+
+.PHONY: go-fix-maybe-bump
+go-fix-maybe-bump: ## go fix; raise go.mod language version only if the fixes require it.
+	hack/go-fix-maybe-bump.sh
 
 .PHONY: vet
 vet: ## Run go vet against code.
