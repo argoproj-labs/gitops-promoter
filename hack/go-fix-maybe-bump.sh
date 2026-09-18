@@ -46,8 +46,19 @@ version_ge() {
   [[ "$(printf '%s\n%s\n' "$left" "$right" | sort -V | tail -n1)" == "$left" ]]
 }
 
+# go fix can drop imports; every successful (and failed-but-rewritten) path
+# must tidy before returning so Renovate PRs stay go.mod/go.sum consistent.
+tidy_exit() {
+  local code="$1"
+  go mod tidy
+  exit "$code"
+}
+
 echo "go-fix-maybe-bump: pass 1 (go.mod language version)"
-go fix ./... || true
+if ! go fix ./...; then
+  echo "go-fix-maybe-bump: pass 1 failed; leaving changes for manual review" >&2
+  tidy_exit 1
+fi
 
 current="$(go list -m -f '{{.GoVersion}}')"
 current_lang="$(lang_floor "$current")"
@@ -57,23 +68,27 @@ toolchain_lang="$(lang_floor "$(go env GOVERSION)")" || toolchain_lang=""
 
 if [[ -z "$toolchain_lang" ]]; then
   echo "go-fix-maybe-bump: could not parse go env GOVERSION=$(go env GOVERSION); skipping language bump"
-  exit 0
+  tidy_exit 0
 fi
 
 if version_ge "$current_lang" "$toolchain_lang"; then
   echo "go-fix-maybe-bump: skipping language bump (go.mod language ${current_lang} >= toolchain language ${toolchain_lang})"
-  exit 0
+  tidy_exit 0
 fi
 
 hash_before="$(go_files_hash)"
 echo "go-fix-maybe-bump: pass 2 (trying go ${toolchain_lang}; was go ${current})"
 go mod edit -go="$toolchain_lang"
-go fix "${SEMANTIC_GATED_FIXERS[@]}" ./... || true
+if ! go fix "${SEMANTIC_GATED_FIXERS[@]}" ./...; then
+  echo "go-fix-maybe-bump: pass 2 failed; restoring go ${current}" >&2
+  go mod edit -go="$current"
+  tidy_exit 1
+fi
 
 if [[ "$hash_before" == "$(go_files_hash)" ]]; then
   echo "go-fix-maybe-bump: reverting go ${toolchain_lang} -> ${current} (second pass made no Go file changes)"
   go mod edit -go="$current"
-  exit 0
+  tidy_exit 0
 fi
 
 # -stdversion type-checks every package, tests included, and reports stdlib
@@ -90,5 +105,4 @@ else
   go mod edit -go="$toolchain_lang"
 fi
 
-# The rewrites can drop imports, so go.mod/go.sum may no longer be tidy.
-go mod tidy
+tidy_exit 0
