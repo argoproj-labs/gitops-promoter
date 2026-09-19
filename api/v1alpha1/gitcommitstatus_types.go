@@ -201,9 +201,7 @@ type GitCommitStatusEnvironmentStatus struct {
 // +kubebuilder:printcolumn:name="Validates",type=string,JSONPath=`.spec.target`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
-// GitCommitStatus is the Schema for the gitcommitstatuses API.
-//
-// It validates commits from PromotionStrategy environments using configurable expressions
+// GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions
 // and creates CommitStatus resources with the validation results.
 //
 // Use the Target field to control which commit is validated:

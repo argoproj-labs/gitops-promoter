@@ -29,7 +29,9 @@ import (
 // WebRequestCommitStatusApplyConfiguration represents a declarative configuration of the WebRequestCommitStatus type for use
 // with apply.
 //
-// WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API
+// WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to
+// configurable endpoints, evaluates a validation expression against the response, and creates or updates
+// CommitStatus resources.
 type WebRequestCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata
