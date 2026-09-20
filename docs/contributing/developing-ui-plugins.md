@@ -175,11 +175,12 @@ Point the dashboard at a directory containing your built bundle:
 go run ./cmd dashboard --kubeconfig ~/.kube/config --plugins-dir /path/to/your/plugin/dist
 ```
 
-The dashboard's `/plugins.js` route reads this directory on every request — drop a new bundle
-in, remove one, or replace one, and the change is visible on the next page load with no
-restart. This is the same mechanism an init container or sidecar uses to add plugins to a
-running deployment without rebuilding the dashboard image. `--plugins-dir` defaults to
-`/tmp/plugins`.
+The dashboard's `/plugins.js` route reads this directory once at startup and caches the result
+for the life of the process — drop a new bundle in, remove one, or replace one, and the change
+is not picked up until the dashboard restarts. This is the same mechanism an init container or
+sidecar uses to add plugins to a running deployment without rebuilding the dashboard image,
+provided the container restarts (or is started) after the bundle is in place. `--plugins-dir`
+defaults to `/tmp/plugins`.
 
 ### Dashboard, bundled at build time
 

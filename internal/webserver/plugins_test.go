@@ -39,6 +39,11 @@ func newPluginsRouterWithDistFS(pluginsDir string, distFS fstest.MapFS) *gin.Eng
 	if distFS != nil {
 		ws.distFS = distFS
 	}
+	bundle, etag, err := ws.buildPluginsBundle()
+	Expect(err).NotTo(HaveOccurred())
+	ws.pluginsBundle = bundle
+	ws.pluginsETag = etag
+
 	router := gin.New()
 	router.GET("/plugins.js", ws.httpPlugins)
 	return router

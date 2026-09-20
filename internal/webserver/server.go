@@ -51,6 +51,12 @@ type WebServer struct {
 	// plugins dropped into PluginsDir at runtime.
 	distFS     fs.FS
 	PluginsDir string
+
+	// pluginsBundle and pluginsETag are the concatenated plugin bundle body and
+	// its ETag, computed once at startup by buildPluginsBundle. Plugins added to
+	// PluginsDir after startup are not picked up until the process restarts.
+	pluginsBundle []byte
+	pluginsETag   string
 }
 
 // Event represents a server-sent event that can be broadcast to clients.
@@ -181,6 +187,13 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create assets sub FS: %w", err)
 	}
+
+	pluginsBundle, pluginsETag, err := ws.buildPluginsBundle()
+	if err != nil {
+		return fmt.Errorf("failed to build plugins bundle: %w", err)
+	}
+	ws.pluginsBundle = pluginsBundle
+	ws.pluginsETag = pluginsETag
 
 	router := gin.New()
 	router.Use(webserverlogr.Ginlogr(logger, time.RFC3339, true))
@@ -325,15 +338,13 @@ func writePluginFile(body *bytes.Buffer, source string, content []byte) {
 	fmt.Fprintf(body, "\n} catch(e) { console.error('Plugin %s failed to load:', e); }\n", path.Base(source))
 }
 
-// httpPlugins concatenates every external plugin bundle - both build-time-bundled
+// buildPluginsBundle concatenates every external plugin bundle - both build-time-bundled
 // plugins embedded into the dashboard's own static assets and runtime plugins found in
-// ws.PluginsDir - into a single script response. Each file is wrapped in its own
-// try/catch so one broken plugin doesn't take down the others, mirroring ArgoCD's
-// /extensions.js handler. Unlike ArgoCD, the response is buffered so a content-based
-// ETag can be computed and checked against If-None-Match before anything is written,
-// giving operators real cache revalidation instead of ArgoCD's no-cache-headers-at-all
-// behavior.
-func (ws *WebServer) httpPlugins(c *gin.Context) {
+// ws.PluginsDir - into a single script body, along with a content-based ETag. Each file
+// is wrapped in its own try/catch so one broken plugin doesn't take down the others,
+// mirroring ArgoCD's /extensions.js handler. It is called once at startup; a plugin
+// dropped into PluginsDir afterward is not picked up until the process restarts.
+func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 	var body bytes.Buffer
 
 	// Build-time-bundled plugins (copied into the dashboard's build output by
@@ -344,8 +355,7 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 	if ws.distFS != nil {
 		embeddedEntries, err := fs.ReadDir(ws.distFS, ".")
 		if err != nil {
-			c.String(http.StatusInternalServerError, "failed to read embedded plugin files: %v", err)
-			return
+			return nil, "", fmt.Errorf("failed to read embedded plugin files: %w", err)
 		}
 		for _, entry := range embeddedEntries {
 			if !isPluginFilename(entry.Name()) {
@@ -353,8 +363,7 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 			}
 			content, err := fs.ReadFile(ws.distFS, entry.Name())
 			if err != nil {
-				c.String(http.StatusInternalServerError, "failed to read embedded plugin file: %v", err)
-				return
+				return nil, "", fmt.Errorf("failed to read embedded plugin file: %w", err)
 			}
 			writePluginFile(&body, entry.Name(), content)
 		}
@@ -363,8 +372,7 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 	diskEntries, err := os.ReadDir(ws.PluginsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			c.String(http.StatusInternalServerError, "failed to read plugins directory: %v", err)
-			return
+			return nil, "", fmt.Errorf("failed to read plugins directory: %w", err)
 		}
 		diskEntries = nil
 	}
@@ -381,8 +389,7 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 		filePath := filepath.Join(ws.PluginsDir, entry.Name())
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "failed to read plugin file: %v", err)
-			return
+			return nil, "", fmt.Errorf("failed to read plugin file: %w", err)
 		}
 
 		writePluginFile(&body, filePath, content)
@@ -391,16 +398,24 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 	sum := sha256.Sum256(body.Bytes())
 	etag := `"` + hex.EncodeToString(sum[:]) + `"`
 
+	return body.Bytes(), etag, nil
+}
+
+// httpPlugins serves the plugin bundle computed once at startup by buildPluginsBundle.
+// Unlike ArgoCD's /extensions.js handler, the response carries a content-based ETag
+// checked against If-None-Match, giving operators real cache revalidation instead of
+// ArgoCD's no-cache-headers-at-all behavior.
+func (ws *WebServer) httpPlugins(c *gin.Context) {
 	c.Header("Content-Type", "application/javascript")
 	c.Header("Cache-Control", "no-cache")
-	c.Header("ETag", etag)
+	c.Header("ETag", ws.pluginsETag)
 
-	if match := c.GetHeader("If-None-Match"); match == etag {
+	if match := c.GetHeader("If-None-Match"); match == ws.pluginsETag {
 		c.Status(http.StatusNotModified)
 		return
 	}
 
-	c.Data(http.StatusOK, "application/javascript", body.Bytes())
+	c.Data(http.StatusOK, "application/javascript", ws.pluginsBundle)
 }
 
 func (ws *WebServer) httpList(c *gin.Context) {
