@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/extension-prcard.js",
   "scripts": {
-    "build": "webpack --config webpack.config.mjs",
+    "build": "webpack --config webpack.config.mjs && node concat-plugins.mjs",
     "dev": "webpack --config webpack.config.mjs --watch",
     "dev-local": "webpack --config webpack.config.mjs --watch --output-path /tmp/extensions",
     "type-check": "tsc --noEmit",

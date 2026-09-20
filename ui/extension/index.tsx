@@ -1,5 +1,4 @@
-import React from 'react';
-import { loadPluginBundle } from '@shared/components/plugins';
+import { installPluginHostApi } from '@shared/components/plugins';
 import AppViewExtension from './AppViewExtension';
 import { injectIconStyles } from './injectIconStyles';
 import { showExtension } from './showExtension';
@@ -18,12 +17,8 @@ window.extensionsAPI?.registerAppViewExtension(
   showExtension,
 );
 
-// This extension is installed into the argocd-server pod and served from
-// Argo CD's own origin; every existing call in this package (AppViewExtension's
-// resource fetches) goes through Argo CD's `/api/v1/applications/.../resource`
-// proxy rather than any same-origin promoter route. There is no established
-// path from here to the promoter webserver's own `/plugins.js`, so this is a
-// best-effort same-origin fetch that only works when the promoter is reverse
-// proxied under the same origin as argocd-server. Until that's set up, this
-// will 404 harmlessly (handled by `loadPluginBundle`'s onerror).
-loadPluginBundle(React);
+// Plugin bundles from the shared plugins directory are concatenated onto this
+// file at build time (see concat-plugins.mjs), so they run as part of this
+// same script and self-register once it executes. The host API just needs to
+// exist on `window` before that code runs.
+installPluginHostApi();

@@ -21,6 +21,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"testing/fstest"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,8 +30,15 @@ import (
 )
 
 func newPluginsRouter(pluginsDir string) *gin.Engine {
+	return newPluginsRouterWithDistFS(pluginsDir, nil)
+}
+
+func newPluginsRouterWithDistFS(pluginsDir string, distFS fstest.MapFS) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	ws := &WebServer{PluginsDir: pluginsDir}
+	if distFS != nil {
+		ws.distFS = distFS
+	}
 	router := gin.New()
 	router.GET("/plugins.js", ws.httpPlugins)
 	return router
@@ -115,5 +123,33 @@ var _ = Describe("httpPlugins", func() {
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(w.Body.String()).NotTo(ContainSubstring("not js"))
+	})
+
+	It("includes plugin files embedded into the dashboard's build output alongside PluginsDir", func() {
+		dir := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dir, "plugin-runtime.js"), []byte("console.log('runtime')"), 0o644)).To(Succeed())
+
+		distFS := fstest.MapFS{
+			"index.html":      {Data: []byte("<html></html>")},
+			"favicon.png":     {Data: []byte("not-a-real-png")},
+			"plugin-build.js": {Data: []byte("console.log('build')")},
+			"assets/index.js": {Data: []byte("console.log('should not be picked up')")},
+		}
+
+		router := newPluginsRouterWithDistFS(dir, distFS)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/plugins.js", nil))
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		body := w.Body.String()
+		Expect(body).To(ContainSubstring("console.log('build')"))
+		Expect(body).To(ContainSubstring("console.log('runtime')"))
+		Expect(body).NotTo(ContainSubstring("should not be picked up"))
+		Expect(body).NotTo(ContainSubstring("<html>"))
+
+		// Build-time-embedded plugins are written before runtime PluginsDir
+		// plugins, so a runtime plugin of the same name registers later and
+		// can override one shipped at build time.
+		Expect(body).To(MatchRegexp(`(?s)console\.log\('build'\).*console\.log\('runtime'\)`))
 	})
 })

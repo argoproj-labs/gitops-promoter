@@ -42,8 +42,14 @@ const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Event      *Event
+	Scheme *runtime.Scheme
+	Event  *Event
+	// distFS is the dashboard's embedded static asset tree, set by StartDashboard.
+	// httpPlugins reads plugin bundles out of it alongside PluginsDir so that
+	// plugins copied into the build output at build time (ui/dashboard's
+	// build:embed step) are served from the same /plugins.js response as
+	// plugins dropped into PluginsDir at runtime.
+	distFS     fs.FS
 	PluginsDir string
 }
 
@@ -169,6 +175,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sub FS: %w", err)
 	}
+	ws.distFS = distFS
 
 	assetsFS, err := fs.Sub(distFS, "assets")
 	if err != nil {
@@ -303,26 +310,67 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	return nil
 }
 
-// httpPlugins concatenates every external plugin bundle in ws.PluginsDir into a single
-// script response. Each file is wrapped in its own try/catch so one broken plugin doesn't
-// take down the others, mirroring ArgoCD's /extensions.js handler. Unlike ArgoCD, the
-// response is buffered so a content-based ETag can be computed and checked against
-// If-None-Match before anything is written, giving operators real cache revalidation
-// instead of ArgoCD's no-cache-headers-at-all behavior.
+// isPluginFilename reports whether a file name matches the plugin bundle naming
+// convention shared by both plugin sources httpPlugins reads from.
+func isPluginFilename(name string) bool {
+	return strings.HasPrefix(name, "plugin") && strings.HasSuffix(name, ".js")
+}
+
+// writePluginFile appends one plugin bundle's contents to body, wrapped in its own
+// try/catch so a broken plugin doesn't take down the others in the response.
+func writePluginFile(body *bytes.Buffer, source string, content []byte) {
+	fmt.Fprintf(body, "// source: %s\n", source)
+	body.WriteString("try {\n")
+	body.Write(content)
+	fmt.Fprintf(body, "\n} catch(e) { console.error('Plugin %s failed to load:', e); }\n", path.Base(source))
+}
+
+// httpPlugins concatenates every external plugin bundle - both build-time-bundled
+// plugins embedded into the dashboard's own static assets and runtime plugins found in
+// ws.PluginsDir - into a single script response. Each file is wrapped in its own
+// try/catch so one broken plugin doesn't take down the others, mirroring ArgoCD's
+// /extensions.js handler. Unlike ArgoCD, the response is buffered so a content-based
+// ETag can be computed and checked against If-None-Match before anything is written,
+// giving operators real cache revalidation instead of ArgoCD's no-cache-headers-at-all
+// behavior.
 func (ws *WebServer) httpPlugins(c *gin.Context) {
 	var body bytes.Buffer
 
-	entries, err := os.ReadDir(ws.PluginsDir)
+	// Build-time-bundled plugins (copied into the dashboard's build output by
+	// ui/dashboard's build:embed step) are written first, so a plugin dropped
+	// into PluginsDir at runtime registers after and can override one shipped
+	// at build time - the same "last registration wins" rule the plugin
+	// registry itself uses.
+	if ws.distFS != nil {
+		embeddedEntries, err := fs.ReadDir(ws.distFS, ".")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "failed to read embedded plugin files: %v", err)
+			return
+		}
+		for _, entry := range embeddedEntries {
+			if !isPluginFilename(entry.Name()) {
+				continue
+			}
+			content, err := fs.ReadFile(ws.distFS, entry.Name())
+			if err != nil {
+				c.String(http.StatusInternalServerError, "failed to read embedded plugin file: %v", err)
+				return
+			}
+			writePluginFile(&body, entry.Name(), content)
+		}
+	}
+
+	diskEntries, err := os.ReadDir(ws.PluginsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			c.String(http.StatusInternalServerError, "failed to read plugins directory: %v", err)
 			return
 		}
-		entries = nil
+		diskEntries = nil
 	}
 
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "plugin") || !strings.HasSuffix(entry.Name(), ".js") {
+	for _, entry := range diskEntries {
+		if !isPluginFilename(entry.Name()) {
 			continue
 		}
 
@@ -337,10 +385,7 @@ func (ws *WebServer) httpPlugins(c *gin.Context) {
 			return
 		}
 
-		fmt.Fprintf(&body, "// source: %s\n", filePath)
-		body.WriteString("try {\n")
-		body.Write(content)
-		fmt.Fprintf(&body, "\n} catch(e) { console.error('Plugin %s failed to load:', e); }\n", entry.Name())
+		writePluginFile(&body, filePath, content)
 	}
 
 	sum := sha256.Sum256(body.Bytes())

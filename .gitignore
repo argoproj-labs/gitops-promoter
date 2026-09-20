@@ -98,6 +98,12 @@ yarn-error.log*
 ui/web/static/*
 !ui/web/static/placeholder.txt
 
+# Shared plugin source directory (see docs/contributing/developing-ui-plugins.md):
+# externally-built plugin bundles placed here manually are not repo content.
+# The directory itself is untracked - both build:embed and concat-plugins.mjs
+# tolerate it being absent.
+ui/plugins/
+
 # MkDocs build output
 mkdocs-lint.log
 # MkDocs build site directory
