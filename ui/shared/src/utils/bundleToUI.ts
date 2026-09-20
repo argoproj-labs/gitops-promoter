@@ -2,13 +2,7 @@ import { mergeCommitStatusManagers } from './PSData';
 import { sortStrategyCommitStatuses } from './util';
 import type { CommitStatusManagerBundle } from './PSData';
 import type { Environment, PromotionStrategy } from '../types/promotion';
-import type {
-  ChangeTransferPolicy,
-  ClusterScmProvider,
-  GitRepository,
-  PromotionStrategyDetails,
-  ScmProvider,
-} from '../types/view';
+import type { ChangeTransferPolicy, PromotionStrategyDetails } from '../types/view';
 
 // Reconstruct the per-environment status the UI renders. The bundle no longer carries
 // the PromotionStrategy status (it was a duplicate aggregation); instead we build the
@@ -48,16 +42,9 @@ export function managersFromBundle(bundle: PromotionStrategyDetails): CommitStat
   };
 }
 
-export interface MergedPromotionStrategy {
-  promotionStrategy: PromotionStrategy;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
-}
-
 export function mergePromotionStrategyFromBundle(
   bundle: PromotionStrategyDetails,
-): MergedPromotionStrategy {
+): PromotionStrategy {
   const ps = bundle.promotionStrategy;
   const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
   const psWithEnvironments = {
@@ -70,10 +57,5 @@ export function mergePromotionStrategyFromBundle(
     status: { ...ps.status, environments },
   } as PromotionStrategy;
   sortStrategyCommitStatuses(psWithEnvironments);
-  return {
-    promotionStrategy: mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle)),
-    gitRepository: bundle.gitRepository,
-    scmProvider: bundle.scmProvider,
-    clusterScmProvider: bundle.clusterScmProvider,
-  };
+  return mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
 }

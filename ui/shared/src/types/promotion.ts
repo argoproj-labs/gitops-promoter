@@ -1,12 +1,5 @@
-import type {
-  PromotionStrategy as PromotionStrategyResource,
-  GitRepository,
-  ScmProvider,
-  ClusterScmProvider,
-} from './view';
+import type { PromotionStrategy as PromotionStrategyResource } from './view';
 import type { components } from './generated/view.gen';
-
-export type { GitRepository, ScmProvider, ClusterScmProvider } from './view';
 
 /**
  * RFC 3339 timestamp from the API (Kubernetes `metav1.Time` JSON, or git `%aI` on reference commits).
@@ -98,9 +91,6 @@ export interface Check {
   activeHydratedSha?: string;
   proposedDrySha?: string;
   proposedHydratedSha?: string;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
 }
 
 export interface HealthSummaryResult {

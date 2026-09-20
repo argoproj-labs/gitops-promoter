@@ -2,24 +2,17 @@ import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import { mergePromotionStrategyFromBundle } from '@shared/utils/bundleToUI';
 import type { PromotionStrategy } from '@shared/utils/PSData';
-import type { PromotionStrategyDetails, GitRepository, ScmProvider, ClusterScmProvider } from '@shared/types/view';
+import type { PromotionStrategyDetails } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
 }
 
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
-  const { promotionStrategy, gitRepository, scmProvider, clusterScmProvider } =
-    mergePromotionStrategyFromBundle(bundle);
+  const promotionStrategy = mergePromotionStrategyFromBundle(bundle);
   return {
     ...promotionStrategy,
-    gitRepository,
-    scmProvider,
-    clusterScmProvider,
-    enriched: enrichFromCRD(promotionStrategy, 0, { gitRepository, scmProvider, clusterScmProvider }),
+    enriched: enrichFromCRD(promotionStrategy, 0),
   } as T;
 }
 

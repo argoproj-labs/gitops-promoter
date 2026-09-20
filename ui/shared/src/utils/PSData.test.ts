@@ -1,12 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mergeCommitStatusManagers, getChecks, enrichFromCRD, enrichFromEnvironments } from './PSData';
 import type { CommitStatusManagerBundle } from './PSData';
-import type {
-  Environment,
-  EnrichedBranchCommitStatus,
-  GitRepository,
-  PromotionStrategy,
-} from '../types/promotion';
+import type { Environment, EnrichedBranchCommitStatus, PromotionStrategy } from '../types/promotion';
 
 const BRANCH = 'environments/qal';
 const OTHER_BRANCH = 'environments/prd';
@@ -285,36 +280,28 @@ describe('getChecks - widened context', () => {
 
     expect(check.promotionStrategy).toBeUndefined();
     expect(check.environment).toBeUndefined();
-    expect(check.gitRepository).toBeUndefined();
-    expect(check.scmProvider).toBeUndefined();
-    expect(check.clusterScmProvider).toBeUndefined();
   });
 
   it('stamps every check with the supplied context', () => {
     const ps = { metadata: { name: 'my-strategy' } } as unknown as PromotionStrategy;
-    const gitRepository = { metadata: { name: 'my-repo' } } as unknown as GitRepository;
 
-    const [check] = getChecks(statuses, BRANCH, { promotionStrategy: ps, gitRepository });
+    const [check] = getChecks(statuses, BRANCH, { promotionStrategy: ps });
 
     expect(check.promotionStrategy).toBe(ps);
-    expect(check.gitRepository).toBe(gitRepository);
-    expect(check.scmProvider).toBeUndefined();
   });
 });
 
 describe('enrichFromCRD / enrichFromEnvironments - widened context', () => {
-  it('enrichFromCRD stamps checks with the promotion strategy and any bundle-level extras', () => {
+  it('enrichFromCRD stamps checks with the promotion strategy', () => {
     const environment = envWithKeys(BRANCH, ['gate']);
     const ps = {
       metadata: { name: 'my-strategy' },
       status: { environments: [environment] },
     } as unknown as PromotionStrategy;
-    const gitRepository = { metadata: { name: 'my-repo' } } as unknown as GitRepository;
 
-    const [details] = enrichFromCRD(ps, 0, { gitRepository });
+    const [details] = enrichFromCRD(ps, 0);
 
     expect(details.activeChecks[0].promotionStrategy).toBe(ps);
-    expect(details.activeChecks[0].gitRepository).toBe(gitRepository);
     expect(details.activeChecks[0].environment).toBe(environment);
   });
 

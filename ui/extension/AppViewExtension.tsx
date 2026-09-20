@@ -3,7 +3,7 @@ import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
-import { PromotionStrategy, GitRepository, ScmProvider, ClusterScmProvider } from '@shared/types/promotion';
+import { PromotionStrategy } from '@shared/types/promotion';
 import type { PromotionStrategyDetails } from '@shared/types/view';
 import { mergePromotionStrategyFromBundle } from '@shared/utils/bundleToUI';
 import { AppViewComponentProps } from '@shared/types/extension';
@@ -18,15 +18,11 @@ const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface StrategyItem {
   promotionStrategy: PromotionStrategy;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
 }
 
 function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
-  const { promotionStrategy, gitRepository, scmProvider, clusterScmProvider } =
-    mergePromotionStrategyFromBundle(bundle);
-  return { promotionStrategy, gitRepository, scmProvider, clusterScmProvider };
+  const promotionStrategy = mergePromotionStrategyFromBundle(bundle);
+  return { promotionStrategy };
 }
 
 interface SelectOption {
@@ -241,18 +237,12 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
         <Card
           environments={selected.promotionStrategy.status?.environments || []}
           promotionStrategy={selected.promotionStrategy}
-          gitRepository={selected.gitRepository}
-          scmProvider={selected.scmProvider}
-          clusterScmProvider={selected.clusterScmProvider}
         />
       )}
       {selected && view === 'history' && (
         <div className="gp-history-wrapper">
           <HistoryView
             strategy={selected.promotionStrategy}
-            gitRepository={selected.gitRepository}
-            scmProvider={selected.scmProvider}
-            clusterScmProvider={selected.clusterScmProvider}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}
           />

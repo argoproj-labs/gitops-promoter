@@ -7,30 +7,15 @@ import {
   enrichFromEnvironments,
   getProcessingEnvs,
 } from '@shared/utils/PSData';
-import type {
-  ClusterScmProvider,
-  Environment,
-  GitRepository,
-  PromotionStrategy,
-  ScmProvider,
-} from '@shared/types/promotion';
+import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
   promotionStrategy?: PromotionStrategy;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
 }
 
-const Card: React.FC<CardProps> = ({
-  environments,
-  promotionStrategy,
-  gitRepository,
-  scmProvider,
-  clusterScmProvider,
-}) => {
+const Card: React.FC<CardProps> = ({ environments, promotionStrategy }) => {
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -52,16 +37,8 @@ const Card: React.FC<CardProps> = ({
   const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
 
   const enrichedEnvs = useMemo(() => {
-    return environments.map(
-      (env) =>
-        enrichFromEnvironments([env], 0, {
-          promotionStrategy,
-          gitRepository,
-          scmProvider,
-          clusterScmProvider,
-        })[0],
-    );
-  }, [environments, promotionStrategy, gitRepository, scmProvider, clusterScmProvider]);
+    return environments.map((env) => enrichFromEnvironments([env], 0, { promotionStrategy })[0]);
+  }, [environments, promotionStrategy]);
 
   return (
     <div className="env-cards-container">

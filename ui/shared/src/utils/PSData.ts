@@ -18,9 +18,6 @@ import type {
   PromotionPhase,
   ReferenceCommit,
   RelativeTimeAgo,
-  GitRepository,
-  ScmProvider,
-  ClusterScmProvider,
 } from '../types/promotion';
 
 export interface CheckContext {
@@ -30,9 +27,6 @@ export interface CheckContext {
   activeHydratedSha?: string;
   proposedDrySha?: string;
   proposedHydratedSha?: string;
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
 }
 
 export interface CommitStatusManagerBundle {
@@ -237,7 +231,7 @@ function deriveActivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | n
 function getEnvDetails(
   environment: Environment,
   index: number = 0,
-  extra?: Omit<CheckContext, 'environment' | 'activeDrySha' | 'activeHydratedSha' | 'proposedDrySha' | 'proposedHydratedSha'>,
+  extra?: Pick<CheckContext, 'promotionStrategy'>,
 ): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
   const branch = environment.branch || '';
@@ -375,24 +369,14 @@ export function getProcessingEnvs(environments: Environment[]): Set<string> {
   );
 }
 
-export interface EnrichExtra {
-  gitRepository?: GitRepository;
-  scmProvider?: ScmProvider;
-  clusterScmProvider?: ClusterScmProvider;
-}
-
 // Takes the PS objects (for dashboard)
-export function enrichFromCRD(
-  ps: PromotionStrategy,
-  historyIndex: number = 0,
-  extra?: EnrichExtra,
-): EnrichedEnvDetails[] {
+export function enrichFromCRD(ps: PromotionStrategy, historyIndex: number = 0): EnrichedEnvDetails[] {
   if (!ps.status?.environments) {
     return [];
   }
 
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment, historyIndex, { ...extra, promotionStrategy: ps }),
+    getEnvDetails(environment, historyIndex, { promotionStrategy: ps }),
   );
 }
 
@@ -400,7 +384,7 @@ export function enrichFromCRD(
 export function enrichFromEnvironments(
   environments: Environment[],
   historyIndex: number = 0,
-  extra?: EnrichExtra & { promotionStrategy?: PromotionStrategy },
+  extra?: Pick<CheckContext, 'promotionStrategy'>,
 ): EnrichedEnvDetails[] {
   return environments.map((environment: Environment) =>
     getEnvDetails(environment, historyIndex, extra),
