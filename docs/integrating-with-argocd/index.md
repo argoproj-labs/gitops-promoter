@@ -92,6 +92,79 @@ server:
 Once applied, you should see a new gitops-promoter section in the Argo CD UI
 ![Screenshot of Argo CD UI showing the Promoter section](../assets/argocd-ui-extension.png)
 
+### Loading UI Plugins Into the Extension at Runtime
+
+The `TimedCommitStatus` row (and any other commit status row) can be replaced with a custom
+UI plugin without rebuilding the `gitops-promoter` extension image — add one more
+`argocd-extension-installer` init container per plugin, pointed at the plugin's own release
+artifact, mounting the same shared `extensions` volume as the extension init container above.
+Argo CD's own server already concatenates every `extension*.js` file it finds under
+`/tmp/extensions/` into the `/extensions.js` it serves, so no further wiring is needed on
+either the Argo CD or the promoter side. See
+[Developing UI Plugins](../contributing/developing-ui-plugins.md) for how a plugin bundle is
+built and how it must register itself.
+
+```yaml
+# argocd-server-extension-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: extension-gitops-promoter
+          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          env:
+            - name: EXTENSION_NAME
+              value: gitops-promoter
+            - name: EXTENSION_URL
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/gitops-promoter-argocd-extension.tar.gz
+            - name: EXTENSION_CHECKSUM_URL
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/gitops-promoter_0.38.1_checksums.txt
+          volumeMounts:
+            - name: extensions
+              mountPath: /tmp/extensions/
+          securityContext:
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+        - name: extension-plugin-my-plugin
+          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          env:
+            - name: EXTENSION_NAME
+              value: plugin-my-plugin
+            - name: EXTENSION_URL
+              value: https://example.com/releases/my-plugin.tar.gz
+            - name: EXTENSION_CHECKSUM_URL
+              value: https://example.com/releases/my-plugin_checksums.txt
+          volumeMounts:
+            - name: extensions
+              mountPath: /tmp/extensions/
+          securityContext:
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+      containers:
+        - name: argocd-server
+          volumeMounts:
+            - name: extensions
+              mountPath: /tmp/extensions/
+      volumes:
+        - name: extensions
+          emptyDir: {}
+```
+
+Apply with the same `kubectl patch` command as above, or add the extra `initContainers` entry
+to the Helm chart's `server.initContainers` list from the previous section — both accept any
+number of these init containers side by side.
+
+> [!WARNING]
+> Each plugin's release tarball must extract into its own uniquely named subdirectory under
+> `resources/` (matching the convention `argocd-extension-installer` already uses for the
+> promoter extension itself). The installer does a plain file copy with no collision
+> detection: a plugin sharing a subdirectory name with `gitops-promoter`, or with another
+> plugin, silently overwrites files with no error at install time.
+
 ### Compatibility Matrix
 
 The following table shows the compatibility between GitOps Promoter versions and Argo CD versions for the UI Extension:
