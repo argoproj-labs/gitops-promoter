@@ -201,12 +201,24 @@ var _ = BeforeSuite(func() {
 	err = prReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// ChangeTransferPolicyHistory controller is set up before ChangeTransferPolicy so CTP can enqueue
+	// history rebuilds after writing promotion-history git notes.
+	ctphReconciler := &ChangeTransferPolicyHistoryReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicyHistory"),
+		SettingsMgr: settingsMgr,
+	}
+	err = ctphReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	ctpReconciler := &ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 		EnqueuePR:   prReconciler.GetEnqueueFunc(),
+		EnqueueCTPH: ctphReconciler.GetEnqueueFunc(),
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -243,6 +255,7 @@ var _ = BeforeSuite(func() {
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
+		RESTMapper:  k8sManager.GetRESTMapper(),
 		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

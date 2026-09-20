@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import {
   timeAgo,
   formatDate,

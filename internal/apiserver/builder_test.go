@@ -90,8 +90,9 @@ func seedObjects() []client.Object {
 			"keep-me":             "yes",
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
-			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-			Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+			RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+			OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+			Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 		},
 		Status: promoterv1alpha1.PromotionStrategyStatus{
 			Environments: []promoterv1alpha1.EnvironmentStatus{
@@ -109,6 +110,10 @@ func seedObjects() []client.Object {
 		&promoterv1alpha1.ChangeTransferPolicy{
 			ObjectMeta: psLabeledMeta("dev-ctp"),
 			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+		},
+		&promoterv1alpha1.ChangeTransferPolicyHistory{
+			ObjectMeta: psLabeledMeta("dev-ctph"),
+			Spec:       promoterv1alpha1.ChangeTransferPolicyHistorySpec{ActiveBranch: "environment/dev"},
 		},
 		&promoterv1alpha1.PullRequest{ObjectMeta: psLabeledMeta("dev-pr")},
 		&promoterv1alpha1.CommitStatus{ObjectMeta: psLabeledMeta("dev-cs")},
@@ -188,6 +193,8 @@ var _ = Describe("BuildBundle", func() {
 
 		By("selecting label-owned children")
 		Expect(bundle.ChangeTransferPolicies).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories[0].Name).To(Equal("dev-ctph"))
 		Expect(bundle.PullRequests).To(HaveLen(1))
 		Expect(bundle.CommitStatuses).To(HaveLen(1))
 
@@ -319,8 +326,9 @@ var _ = Describe("BuildBundle", func() {
 			&promoterv1alpha1.PromotionStrategy{
 				Name: testPSName, Namespace: testNamespace,
 				Spec: promoterv1alpha1.PromotionStrategySpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-					Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 				},
 			},
 			&promoterv1alpha1.GitRepository{

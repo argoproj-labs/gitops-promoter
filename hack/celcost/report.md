@@ -10,14 +10,15 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | Resource | Version | Total cost | % of schema limit |
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
-| ChangeTransferPolicy | v1alpha1 | 56,623,293 | 56.62% |
+| ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
+| ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
-| ControllerConfiguration | v1alpha1 | 320 | 0.00% |
-| DependentsSuccessfulCommitStatus | v1alpha1 | 19,683,456 | 19.68% |
+| ControllerConfiguration | v1alpha1 | 352 | 0.00% |
+| DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
-| PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
+| PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
@@ -43,24 +44,14 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.status.active.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.active.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.active.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.active.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.dry.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].active.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].proposed.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.history[].pullRequest.url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.proposed.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.proposed.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.proposed.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.proposed.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
+| `.status.active.commitStatuses[].url` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.active.dry.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.active.hydrated.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.active.note.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.proposed.commitStatuses[].url` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.proposed.dry.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.proposed.hydrated.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.proposed.note.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `.spec.proposedBranch` | 42 | 0.00% | `!self.contains(':')` |
@@ -72,7 +63,30 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 | `.status.proposed.dry.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.hydrated.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.pullRequest.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **56,623,293** | **56.62%** | |
+| **Total** | **2,589** | **0.00%** | |
+
+#### ChangeTransferPolicyHistory
+
+Source: `promoter.argoproj.io_changetransferpolicyhistories.yaml`
+
+##### Version `v1alpha1`
+
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.status.history[].active.commitStatuses[].url` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.dry.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.note.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.commitStatuses[].url` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.dry.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].active.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].proposed.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.status.history[].pullRequest.url` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
+| **Total** | **36,327** | **0.04%** | |
 
 #### ClusterScmProvider
 
@@ -109,6 +123,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 |---|---:|---:|---|
 | `.spec.argocdCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
@@ -119,6 +134,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.argocdCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
@@ -129,6 +145,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.argocdCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.changeTransferPolicy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicyHistory.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.commitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
@@ -137,7 +154,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| **Total** | **320** | **0.00%** | |
+| **Total** | **352** | **0.00%** | |
 
 #### DependentsSuccessfulCommitStatus
 
@@ -147,16 +164,9 @@ Source: `promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.environments[]` | 4,605,000 | 46.05% | `!has(self.dependsOn) \|\| self.dependsOn.all(d, d != self.branch)` |
-| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains(':')` |
-| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains('..')` |
-| `.status.environments[].activeCommitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.spec.environments[].dependsOn[]` | 300,000 | 3.00% | `!self.startsWith('-')` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
-| `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **19,683,456** | **19.68%** | |
+| `.status.environments[].activeCommitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| **Total** | **151,500** | **0.15%** | |
 
 #### GitCommitStatus
 
@@ -185,33 +195,28 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.status.environments[].active.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].active.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].active.dry.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].active.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].active.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].active.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.dry.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].active.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].proposed.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].proposed.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].proposed.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].history[].pullRequest.url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.dry.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].proposed.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.status.environments[].pullRequest.url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
-| `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **72,438,744** | **72.44%** | |
+| `.spec.environments[]` | 2,302,500 | 23.03% | `!has(self.dependsOn) \|\| self.dependsOn.all(d, d != self.branch)` |
+| `.spec.environments[].dependsOn[]` | 2,100,000 | 21.00% | `!self.contains(':')` |
+| `.spec.environments[].dependsOn[]` | 2,100,000 | 21.00% | `!self.contains('..')` |
+| `.spec.environments[].dependsOn[]` | 150,000 | 1.50% | `!self.startsWith('-')` |
+| `.status.environments[].active.commitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].active.dry.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].active.hydrated.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].active.note.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.commitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.dry.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.hydrated.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.note.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains(':')` |
+| `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains('..')` |
+| `.spec.environments[].branch` | 1,500 | 0.01% | `!self.startsWith('-')` |
+| `.status.environments[].active.dry.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].active.hydrated.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.dry.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].proposed.hydrated.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].pullRequest.url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.spec.orderCommitStatusRef.kind` | 3 | 0.00% | `self.endsWith('CommitStatus')` |
+| **Total** | **7,903,503** | **7.90%** | |
 
 #### PullRequest
 

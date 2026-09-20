@@ -6,14 +6,6 @@ spec:
   key: dependents-successful
   promotionStrategyRef:
     name: example-promotion-strategy
-  environments:
-    - branch: environment/dev
-    - branch: environment/staging
-      dependsOn:
-        - environment/dev
-    - branch: environment/prod
-      dependsOn:
-        - environment/staging
   url:
     template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
 status:

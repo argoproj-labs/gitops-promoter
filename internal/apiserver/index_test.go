@@ -59,7 +59,11 @@ func mappingSeed() []client.Object {
 	return []client.Object{
 		&promoterv1alpha1.PromotionStrategy{
 			Name: testPSName, Namespace: testNamespace,
-			Spec: promoterv1alpha1.PromotionStrategySpec{RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"}},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+				OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+				Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+			},
 		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),

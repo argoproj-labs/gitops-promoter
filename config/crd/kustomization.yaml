@@ -17,6 +17,7 @@ resources:
 - bases/promoter.argoproj.io_webrequestcommitstatuses.yaml
 - bases/promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml
 - bases/promoter.argoproj.io_scheduledcommitstatuses.yaml
+- bases/promoter.argoproj.io_changetransferpolicyhistories.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

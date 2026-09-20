@@ -59,6 +59,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyConfiguration"):
 		return &apiv1alpha1.ChangeTransferPolicyConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistory"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryConfiguration"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistorySpec"):
+		return &apiv1alpha1.ChangeTransferPolicyHistorySpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryStatus"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicySpec"):
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):
@@ -93,8 +101,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
 		return &apiv1alpha1.CronWindowApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DependentEnvironment"):
-		return &apiv1alpha1.DependentEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatus"):
 		return &apiv1alpha1.DependentsSuccessfulCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusConfiguration"):
@@ -169,6 +175,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OrderCommitStatusRef"):
+		return &apiv1alpha1.OrderCommitStatusRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OutputSpec"):
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):

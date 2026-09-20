@@ -30,6 +30,12 @@ const TimedCommitStatusDefaultKey = "timer"
 // dependent environments are promoted and successful.
 const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
+// DefaultOrderCommitStatusGroup is the default API group for PromotionStrategy.spec.orderCommitStatusRef.
+const DefaultOrderCommitStatusGroup = "promoter.argoproj.io"
+
+// DefaultOrderCommitStatusKind is the default kind for PromotionStrategy.spec.orderCommitStatusRef.
+const DefaultOrderCommitStatusKind = "DependentsSuccessfulCommitStatus"
+
 // LegacyPreviousEnvironmentCommitStatusKey is the commit status key used by PromotionStrategy ≤ 0.37 for
 // linear ordering. DependentsSuccessfulCommitStatus deletes orphaned CommitStatuses with this label once
 // the replacement gate is configured.

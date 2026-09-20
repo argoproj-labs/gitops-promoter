@@ -3862,6 +3862,11 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: grName,
 			},
+			OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+				Group: promoterv1alpha1.SchemeGroupVersion.Group,
+				Kind:  "DependentsSuccessfulCommitStatus",
+				Name:  psName,
+			},
 			Environments: []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment},
 				{Branch: testBranchStaging},
@@ -3873,22 +3878,26 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
-// declareDependentsSuccessfulGate appends the DAG ordering gate key to the PromotionStrategy's
-// proposedCommitStatuses. The PS controller no longer auto-injects linear ordering, so tests
-// that rely on sequential promotion must declare the gate explicitly. Call this before the
-// PromotionStrategy is created; it appends (rather than overwrites) so any test-specific
-// proposedCommitStatuses are preserved. Pair it with createDependentsSuccessfulCommitStatus.
+// declareDependentsSuccessfulGate sets the required orderCommitStatusRef on the PromotionStrategy.
+// When dcsName is empty, ps.Name is used. Pair with createDependentsSuccessfulCommitStatus.
 func declareDependentsSuccessfulGate(ps *promoterv1alpha1.PromotionStrategy) {
-	ps.Spec.ProposedCommitStatuses = append(ps.Spec.ProposedCommitStatuses,
-		promoterv1alpha1.CommitStatusSelector{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey})
+	ps.Spec.OrderCommitStatusRef = promoterv1alpha1.OrderCommitStatusRef{
+		Group: promoterv1alpha1.SchemeGroupVersion.Group,
+		Kind:  "DependentsSuccessfulCommitStatus",
+		Name:  ps.Name,
+	}
 }
 
-// createDependentsSuccessfulCommitStatus creates the DependentsSuccessfulCommitStatus that backs the ordering gate for the given
-// PromotionStrategy. With no spec.environments, the controller infers a linear chain from the
-// PromotionStrategy's environment order. Call this after the PromotionStrategy has been created.
+// createDependentsSuccessfulCommitStatus creates the DependentsSuccessfulCommitStatus referenced by
+// orderCommitStatusRef. Call after the PromotionStrategy has been created (or create the DSCS first
+// if the test expects the PS to reconcile successfully on the first pass).
 func createDependentsSuccessfulCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
+	dcsName := ps.Spec.OrderCommitStatusRef.Name
+	if dcsName == "" {
+		dcsName = ps.Name
+	}
 	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: dcsName, Namespace: ps.Namespace},
 		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -3935,7 +3944,7 @@ func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd
 	return apps[0], apps[1], apps[2]
 }
 
-var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety check", func() {
+var _ = Describe("PromotionStrategy orderCommitStatusRef resolution", func() {
 	var (
 		ctx                              context.Context
 		name                             string
@@ -3960,40 +3969,37 @@ var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety 
 		_ = k8sClient.Delete(ctx, promotionStrategy)
 	})
 
-	It("hard-fails the reconcile when no DependentsSuccessfulCommitStatus is configured", func() {
-		By("Creating a PromotionStrategy with no DependentsSuccessfulCommitStatus")
+	It("hard-fails the reconcile when orderCommitStatusRef points to a missing DependentsSuccessfulCommitStatus", func() {
+		By("Creating a PromotionStrategy whose orderCommitStatusRef target does not exist")
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		By("Checking that the Ready condition reports the missing ordering configuration")
+		By("Checking that the Ready condition reports the missing ordering gate")
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
 			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
 			g.Expect(cond).ToNot(BeNil())
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
-			g.Expect(cond.Message).To(ContainSubstring("has no DependentsSuccessfulCommitStatus"))
+			g.Expect(cond.Message).To(ContainSubstring("orderCommitStatusRef"))
+			g.Expect(cond.Message).To(ContainSubstring("was not found"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
-	It("hard-fails the reconcile when a DependentsSuccessfulCommitStatus key is not declared in proposedCommitStatuses", func() {
-		By("Creating a PromotionStrategy with no proposedCommitStatuses")
+	It("hard-fails the reconcile when orderCommitStatusRef points to a DSCS with a mismatched promotionStrategyRef", func() {
+		By("Creating a PromotionStrategy and a DSCS that references a different PS")
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		By("Creating a DependentsSuccessfulCommitStatus that references the PS with a key it does not declare")
 		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other-ps"},
 				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-				Environments: []promoterv1alpha1.DependentEnvironment{
-					{Branch: testBranchDevelopment},
-				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -4005,132 +4011,54 @@ var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety 
 			g.Expect(cond).ToNot(BeNil())
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
-			g.Expect(cond.Message).To(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+			g.Expect(cond.Message).To(ContainSubstring("promotionStrategyRef.name"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
-	It("does not fail the safety check when the DependentsSuccessfulCommitStatus key is declared in proposedCommitStatuses", func() {
-		By("Creating a PromotionStrategy that declares the DAG gate key")
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-		}
+	It("reconciles successfully when orderCommitStatusRef and the DSCS agree", func() {
+		By("Creating a PromotionStrategy and matching DependentsSuccessfulCommitStatus")
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, dependentsSuccessfulCommitStatus)).To(Succeed())
 
-		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
-		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
-			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-				Environments: []promoterv1alpha1.DependentEnvironment{
-					{Branch: testBranchDevelopment},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
-
-		By("Checking that the Ready condition never fails the safety check")
-		Consistently(func(g Gomega) {
+		By("Checking that the PromotionStrategy becomes Ready")
+		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
 			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
-			if cond != nil && cond.Message != "" {
-				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
-			}
-		}, "5s", "1s").Should(Succeed())
+			g.Expect(cond).ToNot(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
-	It("does not fail the safety check when the key is declared on each environment's proposedCommitStatuses", func() {
-		By("Creating a PromotionStrategy that declares the ordering gate per environment")
-		for i := range promotionStrategy.Spec.Environments {
-			promotionStrategy.Spec.Environments[i].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-			}
-		}
+	It("injects the ordering gate key onto CTP proposedCommitStatuses without declaring it on the PS", func() {
+		By("Creating a PromotionStrategy with no proposedCommitStatuses ordering key")
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, dependentsSuccessfulCommitStatus)).To(Succeed())
 
-		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
-		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag-per-env", Namespace: "default"},
-			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-			},
-		}
-		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
-
-		By("Checking that the Ready condition never fails the safety check")
-		Consistently(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
-			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
-			if cond != nil && cond.Message != "" {
-				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+		Eventually(func(g Gomega) {
+			var ctp promoterv1alpha1.ChangeTransferPolicy
+			ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchDevelopment))
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpName, Namespace: "default"}, &ctp)).To(Succeed())
+			found := false
+			for _, sel := range ctp.Spec.ProposedCommitStatuses {
+				if sel.Key == promoterv1alpha1.DependentsSuccessfulCommitStatusKey {
+					found = true
+					break
+				}
 			}
-		}, "5s", "1s").Should(Succeed())
-	})
-})
-
-var _ = Describe("proposedCommitStatusKeyDeclared", func() {
-	It("accepts a globally declared key", func() {
-		ps := &promoterv1alpha1.PromotionStrategy{
-			Spec: promoterv1alpha1.PromotionStrategySpec{
-				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-				},
-				Environments: []promoterv1alpha1.Environment{
-					{Branch: testBranchDevelopment},
-					{Branch: testBranchStaging},
-				},
-			},
-		}
-		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
-	})
-
-	It("accepts a key declared on every environment", func() {
-		ps := &promoterv1alpha1.PromotionStrategy{
-			Spec: promoterv1alpha1.PromotionStrategySpec{
-				Environments: []promoterv1alpha1.Environment{
-					{
-						Branch: testBranchDevelopment,
-						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-						},
-					},
-					{
-						Branch: testBranchStaging,
-						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-						},
-					},
-				},
-			},
-		}
-		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
-	})
-
-	It("reports branches missing a per-environment key", func() {
-		ps := &promoterv1alpha1.PromotionStrategy{
-			Spec: promoterv1alpha1.PromotionStrategySpec{
-				Environments: []promoterv1alpha1.Environment{
-					{
-						Branch: testBranchDevelopment,
-						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-						},
-					},
-					{Branch: testBranchStaging},
-				},
-			},
-		}
-		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).
-			To(Equal([]string{testBranchStaging}))
+			g.Expect(found).To(BeTrue())
+		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 })
 
@@ -4913,7 +4841,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// The previous environment commit status should exist and be pending
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
@@ -5066,7 +4996,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Eventually(func(g Gomega) {
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
@@ -5532,7 +5464,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when not hydrated",
 				"OLD", "OLD", "OLD", // prev: hasn't hydrated (note=OLD, target=ABC)
 				"OLD", "ABC", "ABC", // curr: target SHA is ABC
-				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+				true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 
 			// Case 2: Hydrated, NOT no-op, NOT merged → BLOCK "waiting for promotion"
 			Entry("blocks when hydrated but not merged (has real changes)",
@@ -5626,7 +5558,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 				Entry("blocks when not hydrated",
 					"OLD", "OLD", "OLD", "ABC",
-					true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+					true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 				Entry("blocks when hydrated but not merged",
 					"OLD", "ABC", "OLD", "ABC",
 					true, `Waiting for "linear-env-0" to be promoted`),
@@ -5669,7 +5601,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
+				Expect(reason).To(Equal(`Waiting for hydrator on "env1" to process dry ABC (currently OLD)`))
 			})
 
 			It("blocks on unmerged env after recursing through no-ops", func() {
@@ -6001,9 +5933,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
-		// immediate enqueue plus at most 3 chained delayed retries per distinct disagreement (a
-		// retried nudge covers a git note landing shortly after the previous one), after
-		// which the periodic CTP requeue is the retry path until the disagreement changes.
+		// immediate enqueue plus chained delayed retries on the threshold until the
+		// disagreement changes or the CTP converges (a retried nudge covers a git note
+		// landing shortly after the previous one).
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				Name:      name,
@@ -6117,8 +6049,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// Mixed fleet: the newest environment's hydrator writes notes (target moves to
 			// its note newnote456); the other environment's hydrator does not, so it can
 			// never represent newnote456 and a refetch cannot help it. It gets one prompt
-			// nudge for the disagreement; repeats defer to a bounded number of delayed
-			// retries — not a fixed-rate live-lock loop.
+			// nudge for the disagreement; repeats defer to the running delayed-retry chain
+			// rather than a live-lock of immediate re-enqueues.
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
@@ -6149,17 +6081,18 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			enqueueMutex.Unlock()
 		})
 
-		It("should retry an unchanged disagreement at most 3 times", func() {
+		It("should keep retrying an unchanged disagreement until it converges", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
+			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeLaggingCTP("test-ctp"),
+				lagging,
 				makeTargetCTP(),
 			}
 
 			// One call enqueues immediately and auto-chains threshold-spaced delayed
-			// retries until the disagreement budget is exhausted. Repeats within the
-			// rate-limit window do not enqueue again or arm duplicate chains.
+			// retries. Repeats within the rate-limit window do not enqueue again or
+			// arm duplicate chains.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			for range 3 {
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -6167,28 +6100,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
 			// The chained retries cover a git note landing shortly after each nudge (note
-			// pushes have no webhooks). The budget allows 3 delayed retries after the
-			// immediate enqueue — 4 total — without further reconcile calls.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"chained delayed retries should exhaust the disagreement budget")
+			// pushes have no webhooks). With no retry max, the chain continues past the
+			// former budget of 3 delayed retries (4 total including the immediate enqueue).
+			Eventually(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 5*time.Second, 20*time.Millisecond).Should(BeNumerically(">=", 5),
+				"chained delayed retries should continue past the former retry max")
 
-			// The budget is exhausted: further owner-watch loops neither enqueue nor
-			// schedule retries. Under the previous fixed-interval semantics another
-			// enqueue would land inside every window — forever. The periodic CTP requeue
-			// is the retry path from here on.
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an unchanged disagreement must stop retrying once its budget is exhausted")
-
-			// Even outside the rate-limit window, the exhausted budget blocks enqueues.
+			// Convergence stops the chain. A tick already in flight may still fire once;
+			// after that, lastDisagreement is cleared and further ticks are no-ops.
+			lagging.Status.Proposed.Note.DrySha = "abc123"
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
+			time.Sleep(reconciler.enqueueThreshold)
+			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			Consistently(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 2*time.Second, 100*time.Millisecond).Should(Equal(stoppedAt),
+				"convergence must stop further retries")
 		})
 
 		It("should re-arm when the disagreement changes and auto-chain retries for the new disagreement", func() {
@@ -6212,16 +6140,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// The new chain delivers its budget of threshold-spaced nudges:
-			// 1 (old, immediate) + maxEnqueueRetriesPerDisagreement (new chain) = 4 total.
-			Eventually(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
-				"new disagreement should get a fresh chained retry budget")
-			Consistently(func() []string {
-				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"no additional enqueue may fire without a new disagreement")
+			// The new chain delivers threshold-spaced nudges (at least two delayed retries
+			// beyond the original immediate enqueue).
+			Eventually(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 5*time.Second, 20*time.Millisecond).Should(BeNumerically(">=", 3),
+				"new disagreement should get a fresh chained retry")
+
+			// Convergence stops the replacement chain. A tick already in flight may still
+			// fire once; after that, further ticks are no-ops.
+			lagging.Status.Proposed.Note.DrySha = "abc123"
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			time.Sleep(reconciler.enqueueThreshold)
+			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			Consistently(func() int {
+				return len(enqueuedNames(enqueuedCTPs, enqueueMutex))
+			}, 2*time.Second, 100*time.Millisecond).Should(Equal(stoppedAt),
+				"convergence must stop retries for the re-armed disagreement")
 		})
 
 		It("should cancel pending retries when the CTP converges with the target", func() {
@@ -6237,7 +6172,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			lagging.Status.Proposed.Note.DrySha = "abc123"
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 
-			// Without cancellation the auto-chain would reach 4 enqueues within a few seconds.
+			// Without cancellation the auto-chain would keep enqueueing on the threshold.
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
 			}, 3*time.Second, 100*time.Millisecond).Should(Equal([]string{"test-ctp"}),
@@ -6373,10 +6308,10 @@ var _ = Describe("Child creation instance-id label propagation", func() {
 			Expect(count).To(Equal(expectedCalls),
 				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
 		},
-		// One call stamps instance-id onto owned ChangeTransferPolicies. The former second call
-		// lived on auto-injected DependentsSuccessfulCommitStatus creation, which was removed when
-		// ordering gates became explicit CRDs.
+		// One call stamps instance-id onto owned ChangeTransferPolicies.
+		// The former DependentsSuccessfulCommitStatus call was removed when ordering gates became
+		// explicit CRDs. History objects are created by the ChangeTransferPolicy controller.
 		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
-		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),
+		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 2),
 	)
 })

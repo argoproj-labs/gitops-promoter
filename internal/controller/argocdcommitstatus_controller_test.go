@@ -67,6 +67,11 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "example-repo",
 					},
+					OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+						Group: promoterv1alpha1.SchemeGroupVersion.Group,
+						Kind:  "DependentsSuccessfulCommitStatus",
+						Name:  "example-promotion-strategy-dscs",
+					},
 					Environments: []promoterv1alpha1.Environment{
 						{
 							Branch: testBranchStaging,
@@ -75,6 +80,13 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: "example-promotion-strategy-dscs", Namespace: "default"},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "example-promotion-strategy"},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				},
+			})).To(Succeed())
 
 			// Create ArgoCDCommitStatus SECOND (before Application!)
 			// This ensures the controller's secondary watch on Applications will find this resource
@@ -1026,6 +1038,11 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "invalid-repo",
 					},
+					OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+						Group: promoterv1alpha1.SchemeGroupVersion.Group,
+						Kind:  "DependentsSuccessfulCommitStatus",
+						Name:  "sorting-test-strategy-dscs",
+					},
 					Environments: []promoterv1alpha1.Environment{
 						{
 							Branch: "env/argocd/west",
@@ -1040,6 +1057,13 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: "sorting-test-strategy-dscs", Namespace: "default"},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "sorting-test-strategy"},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				},
+			})).To(Succeed())
 
 			// Create Argo CD Applications with the correct branches BEFORE creating ArgoCDCommitStatus
 			// This ensures all applications are available when the first reconciliation happens

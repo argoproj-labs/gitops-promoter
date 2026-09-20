@@ -3,6 +3,7 @@ package utils_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -903,5 +904,20 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 
 		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
 		Expect(capturedName).To(Equal(expected))
+	})
+})
+
+var _ = Describe("GetChangeTransferPolicyHistoryName", func() {
+	It("appends -history to the CTP name without hashing", func() {
+		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "environment/dev"))
+		Expect(utils.GetChangeTransferPolicyHistoryName(ctpName)).To(Equal(ctpName + "-history"))
+	})
+
+	It("stays within DNS-1123 subdomain length when the CTP name is already at the limit", func() {
+		ctpName := utils.KubeSafeUniqueName(strings.Repeat("a", 300) + "-env")
+		name := utils.GetChangeTransferPolicyHistoryName(ctpName)
+		Expect(len(name)).To(BeNumerically("<=", 253))
+		Expect(name).To(HaveSuffix("-history"))
+		Expect(name).To(ContainSubstring(ctpName[len(ctpName)-8:]))
 	})
 })

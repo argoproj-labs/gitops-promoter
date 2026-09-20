@@ -64,6 +64,12 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		},
 	})
 
+	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
+		promotercache.OptionsForInstanceID(instanceID, namespace),
+		cfg,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
 	mcMgr, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
 		Client: promotercache.ClientOptions(),
@@ -71,7 +77,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 			BindAddress: "0",
 		},
 		HealthProbeBindAddress: "0",
-		Cache:                  promotercache.OptionsForInstanceID(instanceID, namespace),
+		Cache:                  cacheOpts,
 		Controller: config.Controller{
 			SkipNameValidation: &skipNameValidation,
 		},
@@ -152,6 +158,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
+		RESTMapper:  localMgr.GetRESTMapper(),
 		Recorder:    localMgr.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

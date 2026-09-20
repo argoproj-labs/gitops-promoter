@@ -2,7 +2,127 @@
 
 This page documents breaking changes and migration steps between releases.
 
-## 0.38 — Promotion ordering gate (`DependentsSuccessfulCommitStatus`) {#038-promotion-ordering-gate}
+## 0.41 — Promotion history moves to ChangeTransferPolicyHistory
+
+Starting in 0.41.0, promotion history no longer lives on `ChangeTransferPolicy.status.history` or
+`PromotionStrategy.status.environments[].history`; both fields are removed from the CRD schemas. History is now owned by
+a dedicated [ChangeTransferPolicyHistory](crd-specs.md#changetransferpolicyhistory) resource, created per ChangeTransferPolicy by the
+ChangeTransferPolicy controller and reconciled by its own controller. The dashboard and Argo CD extension read history from
+the `changeTransferPolicyHistories` field of the `PromotionStrategyDetails` view bundle.
+
+Migration notes:
+
+- Apply the new CRDs and RBAC (`dist/install*.yaml` includes the `changetransferpolicyhistories` CRD, controller
+  permissions, and apiserver read access). Updating the ChangeTransferPolicy and PromotionStrategy CRDs prunes the
+  stored `history` values automatically.
+- No data is lost: history was always reconstructed from Git (commit trailers and the
+  `refs/notes/promoter.history` notes ref), and the new controller rebuilds those entries from the same
+  sources.
+- During a rolling upgrade, an old controller writing status containing `history` against the new CRD schema has the
+  unknown field silently dropped by structural pruning; this is harmless.
+- Any external consumers reading `status.history` from ChangeTransferPolicy or PromotionStrategy must switch to the
+  ChangeTransferPolicyHistory resource.
+
+## 0.39 — Promotion order on PromotionStrategy
+
+> [!IMPORTANT]
+> Your PromotionStrategies will stop reconciling after upgrading to 0.39.0+ until you apply manifest changes. This is a breaking change requiring downtime to address.
+>
+> **From 0.37 (or earlier):** PromotionStrategy used to auto-inject a hard-coded `promoter-previous-environment` check for linear order. That magic is gone. For each PromotionStrategy, create a `DependentsSuccessfulCommitStatus` (`spec.key` plus `spec.promotionStrategyRef` naming the PS) and add required `spec.orderCommitStatusRef` on the PS pointing at that gate. Do not put the ordering key in `proposedCommitStatuses` — the PS controller injects it. Linear pipelines omit `dependsOn`; custom DAGs set `dependsOn` on `PromotionStrategy.spec.environments[]`.
+>
+> **From 0.38:** You already have a `DependentsSuccessfulCommitStatus`. Copy any `DependentsSuccessfulCommitStatus.spec.environments[].dependsOn` onto the matching `PromotionStrategy.spec.environments[]`, delete `spec.environments` from the DSCS, add required `spec.orderCommitStatusRef` on the PS, and remove the ordering key (usually `dependents-successful`) from `proposedCommitStatuses`. Keep DSCS `spec.key` and `spec.promotionStrategyRef`.
+>
+
+This release moves the promotion dependency graph from `DependentsSuccessfulCommitStatus` onto
+`PromotionStrategy` and wires the ordering gate through required `orderCommitStatusRef`.
+
+### What changed
+
+| 0.38 | 0.39+ |
+| ---- | ----- |
+| Custom graphs used `DependentsSuccessfulCommitStatus.spec.environments` / `dependsOn` | Set `dependsOn` on `PromotionStrategy.spec.environments[]` |
+| Users declared `dependents-successful` in `proposedCommitStatuses` | Required `spec.orderCommitStatusRef`; the PS controller injects `spec.key` onto every CTP |
+| PS discovered DSCS by reverse index | PS `Get`s the named DSCS; `promotionStrategyRef` must agree |
+
+Linear pipelines still omit `dependsOn`; the DSCS controller infers dev → staging → prod from list order.
+
+### Migrate from 0.38
+
+For each `PromotionStrategy` / `DependentsSuccessfulCommitStatus` pair:
+
+1. Copy any `DependentsSuccessfulCommitStatus.spec.environments[].dependsOn` onto the matching
+   `PromotionStrategy.spec.environments[]`.
+2. Delete `spec.environments` from the DSCS.
+3. Add required `spec.orderCommitStatusRef` on the PS (`group`, `kind`, `name` of that DSCS).
+4. Remove the ordering key (usually `dependents-successful`) from PS `proposedCommitStatuses`.
+5. Keep DSCS `spec.key` and `spec.promotionStrategyRef` (must still name the PS).
+
+**Before (0.38 DAG example):**
+
+```yaml
+kind: PromotionStrategy
+metadata:
+  name: demo-dag
+spec:
+  proposedCommitStatuses:
+    - key: dependents-successful
+  environments:
+    - branch: environment/dev
+    - branch: environment/e2e
+    - branch: environment/prod
+---
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo-dag
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo-dag
+  environments:
+    - branch: environment/dev
+    - branch: environment/e2e
+      dependsOn:
+        - environment/dev
+    - branch: environment/prod
+      dependsOn:
+        - environment/e2e
+```
+
+**After (0.39+):**
+
+```yaml
+kind: PromotionStrategy
+metadata:
+  name: demo-dag
+spec:
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo-dag
+  environments:
+    - branch: environment/dev
+    - branch: environment/e2e
+      dependsOn:
+        - environment/dev
+    - branch: environment/prod
+      dependsOn:
+        - environment/e2e
+---
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo-dag
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo-dag
+```
+
+### Further reading
+
+- [Architecture — Embedding vs. Decoupling Promotion Order](architecture.md#embedding-vs-decoupling-promotion-order)
+- [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
+
+## 0.38 — Promotion ordering gate (`DependentsSuccessfulCommitStatus`)
 
 Release **0.38** extracts promotion ordering from the `PromotionStrategy` controller into a dedicated gate CR,
 `DependentsSuccessfulCommitStatus`. This enables linear pipelines and custom dependency graphs (fan-out / fan-in) with

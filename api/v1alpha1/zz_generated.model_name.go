@@ -101,6 +101,31 @@ func (in ChangeTransferPolicyConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistory) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistory"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistorySpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistorySpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ChangeTransferPolicyList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyList"
 }
@@ -408,6 +433,11 @@ func (in OAuth2Auth) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ObjectReference) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ObjectReference"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in OrderCommitStatusRef) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.OrderCommitStatusRef"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

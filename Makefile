@@ -170,8 +170,12 @@ mod-tidy: ## Tidy the root module and the celcost helper module.
 	cd hack/celcost && go mod tidy
 
 .PHONY: go-fix
-go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
+go-fix: ## Apply stdlib go fix modernizations for the go.mod language version.
 	go fix ./...
+
+.PHONY: go-fix-maybe-bump
+go-fix-maybe-bump: ## go fix; raise go.mod language version only if the fixes require it.
+	hack/go-fix-maybe-bump.sh
 
 .PHONY: vet
 vet: ## Run go vet against code.
@@ -452,13 +456,13 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
-ENVTEST_VERSION ?= release-0.24
+ENVTEST_VERSION ?= release-0.25
 GOLANGCI_LINT_VERSION ?= v2.13.2
 DEADCODE_VERSION ?= v0.50.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.0
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.1
+GORELEASER_VERSION ?= v2.18.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

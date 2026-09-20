@@ -57,6 +57,7 @@ rules:
   resources:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
+  - changetransferpolicyhistories/finalizers
   - clusterscmproviders/finalizers
   - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
@@ -74,6 +75,7 @@ rules:
   resources:
   - argocdcommitstatuses/status
   - changetransferpolicies/status
+  - changetransferpolicyhistories/status
   - clusterscmproviders/status
   - commitstatuses/status
   - dependentssuccessfulcommitstatuses/status
@@ -102,6 +104,17 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicyhistories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
   - watch
 - apiGroups:
   - promoter.argoproj.io

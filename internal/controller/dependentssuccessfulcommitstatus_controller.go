@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -56,8 +55,8 @@ type DAGURLTemplateData struct {
 	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
 	DependsOnQuery string
 	// DependsOn is the current environment's immediate upstream branches (one edge away),
-	// from the resolved dependency graph (explicit spec.environments or the linear chain inferred
-	// from PromotionStrategy.spec.environments when spec.environments is omitted).
+	// from the resolved dependency graph on the PromotionStrategy (explicit dependsOn or
+	// the linear chain inferred from spec.environments order when no environment declares dependsOn).
 	DependsOn []string
 }
 
@@ -141,22 +140,34 @@ func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Conte
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
-// resolveDependentEnvironments returns the effective dependency graph for a DependentsSuccessfulCommitStatus. When
-// spec.environments is empty, a linear chain is inferred from the PromotionStrategy's
-// spec.environments order (each environment dependsOn the one before it; the first is a root).
-func resolveDependentEnvironments(dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.DependentEnvironment, error) {
-	if len(dcs.Spec.Environments) > 0 {
-		return dcs.Spec.Environments, nil
-	}
+// resolveDependentEnvironments returns the effective dependency graph from the referenced
+// PromotionStrategy. When any environment declares dependsOn, the PS list is treated as an
+// explicit DAG (omitted dependsOn means root). When none declare dependsOn, a linear chain
+// is inferred from spec.environments order (each environment dependsOn the one before it;
+// the first is a root).
+func resolveDependentEnvironments(ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.DependentEnvironment, error) {
 	if len(ps.Spec.Environments) == 0 {
-		return nil, fmt.Errorf("DependentsSuccessfulCommitStatus %q has no spec.environments and PromotionStrategy %q has no environments to infer a linear chain from",
-			dcs.Name, ps.Name)
+		return nil, fmt.Errorf("PromotionStrategy %q has no environments to build a dependency graph from", ps.Name)
 	}
+
+	explicitDAG := false
+	for _, env := range ps.Spec.Environments {
+		if len(env.DependsOn) > 0 {
+			explicitDAG = true
+			break
+		}
+	}
+
 	environments := make([]promoterv1alpha1.DependentEnvironment, 0, len(ps.Spec.Environments))
 	for i, env := range ps.Spec.Environments {
 		dagEnv := promoterv1alpha1.DependentEnvironment{Branch: env.Branch}
-		if i > 0 {
+		switch {
+		case explicitDAG:
+			dagEnv.DependsOn = slices.Clone(env.DependsOn)
+		case i > 0:
 			dagEnv.DependsOn = []string{ps.Spec.Environments[i-1].Branch}
+		default:
+			// First environment in list order has no predecessor.
 		}
 		environments = append(environments, dagEnv)
 	}
@@ -169,7 +180,7 @@ func resolveDependentEnvironments(dcs *promoterv1alpha1.DependentsSuccessfulComm
 // per-environment CommitStatus: success once all of an environment's dependsOn upstreams are
 // satisfied, pending otherwise.
 func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
-	environments, err := resolveDependentEnvironments(dcs, ps)
+	environments, err := resolveDependentEnvironments(ps)
 	if err != nil {
 		return err
 	}
@@ -179,9 +190,6 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 	}
 	if err := graph.validateDAG(); err != nil {
 		return fmt.Errorf("invalid dependency graph: %w", err)
-	}
-	if err := graph.validateEnvironmentsMatchPS(dcs.Name, ps); err != nil {
-		return err
 	}
 
 	// Index PromotionStrategy environment status by branch so each DAG node can look up its own
@@ -422,7 +430,7 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	// The upstream's hydrator must have processed the same dry SHA the current environment is
 	// promoting.
 	if envHydratedForDrySha != targetDrySha {
-		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
+		return true, hydratorPendingReason(branch, targetDrySha, envHydratedForDrySha)
 	}
 
 	// If the upstream has merged the target dry SHA, verify commit-time ordering and health.
@@ -456,6 +464,15 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 		}
 	}
 	return false, ""
+}
+
+func hydratorPendingReason(branch, targetDrySha, currentHydratedDrySha string) string {
+	current := utils.TruncateString(currentHydratedDrySha, 7)
+	if current == "" {
+		current = "none"
+	}
+	return fmt.Sprintf(`Waiting for hydrator on %q to process dry %s (currently %s)`,
+		branch, utils.TruncateString(targetDrySha, 7), current)
 }
 
 // checkCommitStatusesPassing reports whether an environment's active commit statuses are all
@@ -593,7 +610,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx contex
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.DependentsSuccessfulCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDependentsSuccessfulCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.DependentsSuccessfulCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("dependentssuccessfulcommitstatus").
 		Complete(r)
@@ -601,35 +618,6 @@ func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx contex
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-// enqueueDependentsSuccessfulCommitStatusForPromotionStrategy returns a handler that enqueues all
-// DependentsSuccessfulCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
-func (r *DependentsSuccessfulCommitStatusReconciler) enqueueDependentsSuccessfulCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
-		if err := r.List(ctx, &dcsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			logf.FromContext(ctx).Error(err, "failed to list DependentsSuccessfulCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(dcsList.Items))
-		for i := range dcsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&dcsList.Items[i]),
-			})
-		}
-
-		return requests
-	})
 }
 
 // dag is the in-memory dependency graph built from a DependentsSuccessfulCommitStatus's environments.
@@ -662,35 +650,6 @@ func buildDAG(environments []promoterv1alpha1.DependentEnvironment) (*dag, error
 		g.dependsOn[env.Branch] = env.DependsOn
 	}
 	return g, nil
-}
-
-// validateEnvironmentsMatchPS checks that the DAG's declared branches are exactly the set of
-// environments on the referenced PromotionStrategy. A mismatch would otherwise stall promotions
-// with no clear error: an unknown DAG branch never gets a usable CommitStatus, and a PS
-// environment omitted from the DAG waits forever on "Waiting for status to be reported" when the
-// gate key is in global proposedCommitStatuses.
-func (g *dag) validateEnvironmentsMatchPS(dcsName string, ps *promoterv1alpha1.PromotionStrategy) error {
-	psBranches := make(map[string]bool, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		psBranches[env.Branch] = true
-	}
-	for _, branch := range g.branches {
-		if !psBranches[branch] {
-			return fmt.Errorf("DependentsSuccessfulCommitStatus %q declares branch %q, but PromotionStrategy %q has no such environment",
-				dcsName, branch, ps.Name)
-		}
-		delete(psBranches, branch)
-	}
-	if len(psBranches) > 0 {
-		missing := make([]string, 0, len(psBranches))
-		for branch := range psBranches {
-			missing = append(missing, branch)
-		}
-		slices.Sort(missing)
-		return fmt.Errorf("DependentsSuccessfulCommitStatus %q is missing PromotionStrategy %q environment branches: %s",
-			dcsName, ps.Name, strings.Join(missing, ", "))
-	}
-	return nil
 }
 
 // validateDAG checks the dependency graph for two failure modes that would otherwise let an

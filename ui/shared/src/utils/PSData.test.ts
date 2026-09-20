@@ -223,7 +223,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
 
     const ps = { status: { environments: [environment] } } as unknown as PromotionStrategy;
     const merged = mergeCommitStatusManagers(ps, { timedCommitStatuses: [manager] });
-    const env = merged.status!.environments![0];
+    const env = merged.status!.environments![0] as Environment;
 
     const enriched = [
       env.active.commitStatuses?.[0],
