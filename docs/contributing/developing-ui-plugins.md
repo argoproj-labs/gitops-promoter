@@ -54,8 +54,39 @@ window.promoterPluginsAPI?.registerCommitStatusRowPlugin(myPlugin, 'TimedCommitS
   rendered is still picked up, since consumers subscribe to registry changes rather than
   reading it once.
 
-Guard the call with `window.promoterPluginsAPI?.` — the host installs this API as early as
-possible during bootstrap, but a defensive plugin should not assume it exists yet.
+**On the dashboard surface**, `window.promoterPluginsAPI` is installed by the dashboard's own
+app bundle, which always executes before `/plugins.js` is loaded — a plain `?.` guard is
+sufficient there.
+
+**On the Argo CD extension surface, do not assume `window.promoterPluginsAPI` already exists
+when your plugin's top-level code runs — poll for it instead.** Both `extension-promoter.js`
+(which installs the API) and any plugin bundle are just separate files that Argo CD's own
+server concatenates live, per request, into the single script the browser loads as
+`/extensions.js`. Their relative order comes from a lexical directory walk over
+`/tmp/extensions/`
+([`serveExtensions`](https://github.com/argoproj/argo-cd/blob/master/server/server.go),
+`filepath.Walk`, re-run on every request with no caching) — not a guarantee that the promoter's
+own registration code has already run by the time your file executes. A `?.`-guarded call that
+happens to run first silently no-ops, with no error surfaced anywhere. Poll instead:
+
+```ts
+function registerWhenReady(plugin: RowPlugin, kind: string, attempts = 0): void {
+  if (window.promoterPluginsAPI) {
+    window.promoterPluginsAPI.registerCommitStatusRowPlugin(plugin, kind);
+    return;
+  }
+  if (attempts >= 50) {
+    console.error(`promoterPluginsAPI not available after ${attempts} attempts; giving up`);
+    return;
+  }
+  setTimeout(() => registerWhenReady(plugin, kind, attempts + 1), 100);
+}
+
+registerWhenReady(myPlugin, 'TimedCommitStatus');
+```
+
+This works unchanged on the dashboard too (the API is already there, so the first check
+succeeds immediately), so it's the pattern to use regardless of which surface you're targeting.
 
 ## React sharing and version constraints
 
@@ -182,8 +213,80 @@ origin, which is the normal case in a real deployment. See
 [Building and Testing the Argo CD UI Extension](developing-the-argocd-extension.md) for how to
 load the built file into a running Argo CD server.
 
-Loading a plugin into the Argo CD extension **at runtime**, without a rebuild, is not
-supported today.
+### Argo CD UI extension, loaded at runtime (no rebuild)
+
+A plugin can also be delivered straight into a running Argo CD deployment, without rebuilding
+the extension, by piggybacking on the same `/tmp/extensions/` convention
+`argocd-extension-installer` already uses for the extension itself
+(see [Integrating with Argo CD](../integrating-with-argocd/index.md#ui-extension)). This
+requires no Argo CD code changes and no runtime connection from the extension back to the
+promoter's webserver — Argo CD's own server (`argocd-server`) already concatenates every file
+matching `extension*.js` under `/tmp/extensions/` into the `/extensions.js` response it serves,
+on every request, regardless of which init container wrote it.
+
+Add one extra init container per plugin, mounting the same shared `extensions` volume, each
+installing its bundle into its own subdirectory so filenames can't collide:
+
+```yaml
+initContainers:
+  - name: extension-gitops-promoter
+    image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+    env:
+      - name: EXTENSION_NAME
+        value: gitops-promoter
+      - name: EXTENSION_URL
+        value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/gitops-promoter-argocd-extension.tar.gz
+      - name: EXTENSION_CHECKSUM_URL
+        value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/gitops-promoter_0.38.1_checksums.txt
+    volumeMounts:
+      - name: extensions
+        mountPath: /tmp/extensions/
+  - name: extension-plugin-my-plugin
+    image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+    env:
+      - name: EXTENSION_NAME
+        value: plugin-my-plugin
+      - name: EXTENSION_URL
+        value: https://example.com/releases/my-plugin.tar.gz
+      - name: EXTENSION_CHECKSUM_URL
+        value: https://example.com/releases/my-plugin_checksums.txt
+    volumeMounts:
+      - name: extensions
+        mountPath: /tmp/extensions/
+containers:
+  - name: argocd-server
+    volumeMounts:
+      - name: extensions
+        mountPath: /tmp/extensions/
+volumes:
+  - name: extensions
+    emptyDir: {}
+```
+
+Two things this depends on that are easy to get wrong:
+
+- **The plugin's release tarball must be built the same way `argocd-extension-installer`
+  expects for any extension** — a top-level `resources/` directory in the tarball, containing a
+  subdirectory unique to the plugin, containing the built bundle file. `argocd-extension-installer`
+  does a plain `cp -Rf`, so a subdirectory name clash with another plugin (or with
+  `gitops-promoter`) silently overwrites files with no error. The bundle file itself must still
+  be named to match Argo CD's `extension*.js` pattern, e.g. `extension-plugin-my-plugin.js` —
+  this is a different filename convention from the `plugin*.js` pattern used by the dashboard's
+  build-time-embed and `--plugins-dir` paths, since it's Argo CD's server doing the matching
+  here, not the promoter's.
+- **The plugin must use the polling registration pattern from
+  [Registering a plugin](#registering-a-plugin), not a `?.`-guarded call.** Because
+  `argocd-server` re-walks `/tmp/extensions/` fresh on every request with no caching, the order
+  in which `extension-promoter.js` and each plugin's file end up concatenated is not something
+  to build a naming convention on alone (Argo CD's own tooling does use a naming convention for
+  this — `argocd-extension-installer`'s `EXTENSION_JS_VARS` files are literally named
+  `extension-0-*` to sort first — but that only has to survive one write, not every page load
+  against a live filesystem walk). Polling for `window.promoterPluginsAPI` is what actually
+  makes load order irrelevant.
+
+This is a deployment-time delivery mechanism layered on top of the existing build — it needs no
+changes to `ui/extension`'s webpack config or `concat-plugins.mjs`, which continue to serve the
+separate, unrelated build-time-embed use case described above.
 
 ## Shared plugins directory (`ui/plugins/`)
 
