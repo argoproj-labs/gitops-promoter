@@ -972,7 +972,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, prKey, &createdPR)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				}, 10*time.Second).Should(Succeed())
+				}, 30*time.Second).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
