@@ -12,8 +12,51 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  ci:
-    name: Continuous Integration
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.1"
+      - name: Verify web/static exists
+        run: |
+          if [ ! -d "ui/web/static" ]; then
+            echo "Error: ui/web/static directory does not exist!"
+            ls -la ui/web/
+            exit 1
+          fi
+          echo "ui/web/static directory exists ✓"
+      - name: Run Integration Tests
+        run: make test-parallel
+      - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
+        run: make fuzz-replay
+      - name: Generate code coverage artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-code-coverage
+          path: cover.out
+      - name: Upload code coverage information to codecov.io
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        with:
+          files: cover.out
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to codecov.io
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        with:
+          report_type: test_results
+          token: ${{ secrets.CODECOV_TOKEN }}
+  build:
+    name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -31,6 +74,26 @@ jobs:
           cache-dependency-path: |
             ui/shared/package-lock.json
             ui/dashboard/package-lock.json
+            ui/components-lib/package-lock.json
+      - name: Build dashboard for embed
+        run: make build-dashboard
+      - name: Build manager
+        run: go build -o bin/manager cmd/main.go
+  ui:
+    name: UI Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+          cache: 'npm'
+          cache-dependency-path: |
+            ui/shared/package-lock.json
+            ui/dashboard/package-lock.json
             ui/extension/package-lock.json
             ui/components-lib/package-lock.json
       - name: Install UI dependencies and build
@@ -40,8 +103,12 @@ jobs:
         env:
           # If this is a build for a push to main, set the codecov token.
           CODECOV_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CODECOV_TOKEN || '' }}
-      - name: UI Checks
+      - name: UI lint
         run: make lint-ui
+      - name: Frontend Extension Unit Tests
+        run: make test-unit-test-extension
+      - name: Frontend Dashboard Unit Tests
+        run: make test-ui-test-dashboard
       - name: Set up Python and venv for docs
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -53,57 +120,40 @@ jobs:
           pip install -r docs/requirements-hashed.txt --require-hashes
       - name: Lint Docs
         run: . .venv/bin/activate && make lint-docs
-      - name: Get dependencies
-        run: go mod download
-      - name: Restore build output from cache
-        id: cache-build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: bin/manager
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
-      - name: Verify web/static exists
-        run: |
-          if [ ! -d "ui/web/static" ]; then
-            echo "Error: ui/web/static directory does not exist!"
-            ls -la ui/web/
-            exit 1
-          fi
-          echo "ui/web/static directory exists ✓"
-      - name: Build
-        if: steps.cache-build.outputs.cache-hit != 'true'
-        run: make
-      - name: Frontend Extension Unit Tests
-        run: make test-unit-test-extension
-      - name: Frontend Dashboard Unit Tests
-        run: make test-ui-test-dashboard
-      - name: Run Integration Tests
-        run: make test-parallel
-      - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
-        run: make fuzz-replay
-      - name: Generate code coverage artifacts
+      - name: Generate UI coverage artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: code-coverage
+          name: ui-code-coverage
           path: |
-            cover.out
             ui/dashboard/coverage/lcov.info
             ui/extension/coverage/lcov.info
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
-          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
-          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          # Vitest lcov (repo-root SF: via lcov projectRoot).
+          files: ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Upload test results to codecov.io
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
-        with:
-          report_type: test_results
-          token: ${{ secrets.CODECOV_TOKEN }}
+  ci:
+    name: Continuous Integration
+    if: always()
+    needs: [tests, build, ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All CI slices passed
+        env:
+          TESTS: ${{ needs.tests.result }}
+          BUILD: ${{ needs.build.result }}
+          UI: ${{ needs.ui.result }}
+        run: |
+          echo "tests=$TESTS build=$BUILD ui=$UI"
+          if [ "$TESTS" != "success" ] || [ "$BUILD" != "success" ] || [ "$UI" != "success" ]; then
+            exit 1
+          fi
   lint:
     name: Lint
     runs-on: ubuntu-latest
