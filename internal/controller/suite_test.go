@@ -495,13 +495,10 @@ func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepo
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial commit for "+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
@@ -514,13 +511,10 @@ func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepo
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "commit", "-m", "initial commit next")
+		_, err = runGitCmd(ctx, gitPath, "commit", "-m", "initial commit next for "+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -585,17 +579,11 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, repo *promoterv1alpha1
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
-
 		activeB, _ := strings.CutSuffix(environment, "-next")
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", activeB)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", activeB)
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
@@ -664,7 +652,6 @@ func setupInitialTestGitRepoForActivePath(ctx context.Context, repo *promoterv1a
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
-		time.Sleep(1 * time.Second)
 	}
 	GinkgoLogr.Info("Git repository initialized for activePath", "path", gitPath)
 }
@@ -797,9 +784,6 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 
 		// Send webhook after push with the "before" SHA that the CTP knows about
 		sendWebhookForPush(ctx, beforeBranchSha, environment)
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 
 	return sha, shortSha
