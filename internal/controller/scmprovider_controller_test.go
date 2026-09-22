@@ -30,6 +30,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 //go:embed testdata/ScmProvider.yaml
@@ -86,6 +87,56 @@ var _ = Describe("ScmProvider Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				// Verify that the controller has added the finalizer
 				g.Expect(scmprovider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When secretRef is changed to a different Secret", func() {
+		It("should remove the finalizer from the previously referenced Secret", func() {
+			ctx := context.Background()
+			name := "scmprovider-secretref-change-" + utils.KubeSafeUniqueName(randomString(15))
+
+			oldSecret := &v1.Secret{Name: name + "-old", Namespace: "default"}
+			newSecret := &v1.Secret{Name: name + "-new", Namespace: "default"}
+			scmProvider := &promoterv1alpha1.ScmProvider{
+				Name:      name,
+				Namespace: "default",
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					SecretRef: &v1.LocalObjectReference{Name: oldSecret.Name},
+					Fake:      &promoterv1alpha1.Fake{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, newSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))).To(Succeed())
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(scmProvider), scmProvider)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, oldSecret))).To(Succeed())
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, newSecret))).To(Succeed())
+			})
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSecret), oldSecret)).To(Succeed())
+				g.Expect(oldSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pointing the ScmProvider at the new Secret")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(scmProvider), scmProvider)).To(Succeed())
+				scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: newSecret.Name}
+				g.Expect(k8sClient.Update(ctx, scmProvider)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(newSecret), newSecret)).To(Succeed())
+				g.Expect(newSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSecret), oldSecret)).To(Succeed())
+				g.Expect(oldSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

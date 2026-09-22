@@ -550,11 +550,27 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				_ = os.RemoveAll(gitPath)
 			}()
 
+			// Capture SHAs before the change so we wait for a real update, not merely "already
+			// non-empty" status from suite setup. Without that, makeChangeAndHydrateRepo can
+			// return before webhooks land and the wait below races on the old proposed tip.
+			var previousProposedSHA string
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				for _, env := range ps.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
+						previousProposedSHA = env.Proposed.Hydrated.Sha
+					}
+				}
+				g.Expect(previousProposedSHA).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Make a change with hydrated commit message that starts with "feat:"
 			// Note: dryCommitMessage is for dry branch, hydratedCommitMessage is for hydrated branches (what we validate)
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "new commit", "feat: new feature content")
 
-			By("Waiting for PromotionStrategy to update")
+			By("Waiting for PromotionStrategy to reflect the new proposed hydrated commit")
 			var developmentProposedSHA string
 			var developmentActiveSHA string
 			Eventually(func(g Gomega) {
@@ -570,6 +586,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
 						g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty())
+						g.Expect(env.Proposed.Hydrated.Sha).ToNot(Equal(previousProposedSHA))
+						g.Expect(env.Proposed.Hydrated.Subject).To(HavePrefix("feat:"))
 						developmentProposedSHA = env.Proposed.Hydrated.Sha
 						developmentActiveSHA = env.Active.Hydrated.Sha
 					}
