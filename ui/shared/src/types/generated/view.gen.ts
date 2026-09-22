@@ -2107,6 +2107,7 @@ export type components = {
              *       - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
              *       - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
              *       - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+             *       - NamespaceMetadata (object): labels and annotations of the WebRequestCommitStatus's namespace (NamespaceMetadata.Labels, NamespaceMetadata.Annotations)
              *       - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
              *
              *     Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence. Use Branch + filter/find to look up environment-specific data:
