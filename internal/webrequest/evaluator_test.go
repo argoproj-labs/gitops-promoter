@@ -61,6 +61,22 @@ var _ = Describe("ExpressionEvaluator", func() {
 		})
 	})
 
+	Describe("evaluateTriggerWhenBranch", func() {
+		It("can read NamespaceMetadata labels from TemplateData", func() {
+			trigger := &promoterv1alpha1.TriggerModeSpec{
+				When: promoterv1alpha1.WhenWithOutputSpec{
+					Expression: `NamespaceMetadata.Labels["team"] == "payments"`,
+				},
+			}
+			td := TemplateData{
+				NamespaceMetadata: NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
+			}
+			shouldFire, _, _, err := e.evaluateTriggerWhenBranch(ctx, trigger, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(shouldFire).To(BeTrue())
+		})
+	})
+
 	Describe("evaluateTriggerDataExpression", func() {
 		It("returns the map produced by the expression", func() {
 			result, err := e.evaluateTriggerDataExpression(ctx, `{"foo": "bar"}`, map[string]any{})
@@ -280,7 +296,14 @@ var _ = Describe("ExpressionEvaluator", func() {
 var _ = Describe("Pure helpers", func() {
 	Describe("TemplateData.triggerExprData", func() {
 		It("exposes expected keys", func() {
-			td := TemplateData{Branch: "env/dev", Phase: "pending"}
+			td := TemplateData{
+				Branch: "env/dev",
+				Phase:  "pending",
+				NamespaceMetadata: NamespaceMetadata{
+					Labels:      map[string]string{"team": "payments"},
+					Annotations: map[string]string{"cost-center": "cc-42"},
+				},
+			}
 			m := td.triggerExprData()
 			Expect(m).To(HaveKeyWithValue("Branch", "env/dev"))
 			Expect(m).To(HaveKeyWithValue("Phase", "pending"))
@@ -289,6 +312,11 @@ var _ = Describe("Pure helpers", func() {
 			Expect(m).To(HaveKey("TriggerOutput"))
 			Expect(m).To(HaveKey("ResponseOutput"))
 			Expect(m).To(HaveKey("SuccessOutput"))
+			Expect(m).To(HaveKey("NamespaceMetadata"))
+			ns, ok := m["NamespaceMetadata"].(NamespaceMetadata)
+			Expect(ok).To(BeTrue())
+			Expect(ns.Labels).To(HaveKeyWithValue("team", "payments"))
+			Expect(ns.Annotations).To(HaveKeyWithValue("cost-center", "cc-42"))
 		})
 	})
 

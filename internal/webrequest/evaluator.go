@@ -206,7 +206,7 @@ func (e *ExpressionEvaluator) evaluateTriggerDataExpression(ctx context.Context,
 // evaluateValidationExpressionForEnvironments runs the success.when expression when mode.context is environments,
 // to determine the commit status phase for the branch currently being processed.
 // The exprData map is built by successWhenExprData and includes Response (nil when no request was made),
-// Branch, Phase, PromotionStrategy, WebRequestCommitStatus, and output variables.
+// Branch, Phase, PromotionStrategy, WebRequestCommitStatus, NamespaceMetadata, and output variables.
 // The expression may return: a boolean (true → success, false → pending); or an object { phase } where phase is
 // "success", "pending", or "failure" (defaults to "pending" when omitted or empty).
 // The per-branch object form accepted in promotionstrategy context is not accepted here: each evaluation is
