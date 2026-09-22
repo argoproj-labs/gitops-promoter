@@ -153,6 +153,7 @@ func removeUnreferencedSecretFinalizers(
 		return fmt.Errorf("failed to list Secrets: %w", err)
 	}
 
+	var errs []error
 	for i := range secrets.Items {
 		secret := &secrets.Items[i]
 		if referenced[secret.Name] || !controllerutil.ContainsFinalizer(secret, finalizer) {
@@ -160,10 +161,12 @@ func removeUnreferencedSecretFinalizers(
 		}
 		if err := removeSecretFinalizerForProvider(ctx, c, secretNamespace, secret.Name, finalizer,
 			func() (bool, error) { return false, nil }); err != nil {
-			return err
+			log.FromContext(ctx).Error(err, "failed to remove finalizer from unreferenced Secret",
+				"secret", types.NamespacedName{Namespace: secretNamespace, Name: secret.Name})
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // handleResourceFinalizerWithDependencies handles the common finalizer add/remove logic for resources with dependencies.
