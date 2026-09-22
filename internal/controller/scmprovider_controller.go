@@ -90,6 +90,10 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to ensure Secret finalizer: %w", err)
 	}
 
+	if err := r.removeStaleSecretFinalizers(ctx, &scmProvider); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to remove stale Secret finalizers: %w", err)
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -197,6 +201,28 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 		scmProvider.Spec.SecretRef.Name,
 		promoterv1alpha1.ScmProviderSecretFinalizer,
 		checkOtherProviders,
+	)
+}
+
+func (r *ScmProviderReconciler) removeStaleSecretFinalizers(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) error {
+	var scmProviders promoterv1alpha1.ScmProviderList
+	if err := r.List(ctx, &scmProviders, client.InNamespace(scmProvider.Namespace)); err != nil {
+		return fmt.Errorf("failed to list ScmProviders: %w", err)
+	}
+
+	referenced := make(map[string]bool, len(scmProviders.Items))
+	for _, sp := range scmProviders.Items {
+		if sp.Spec.SecretRef != nil {
+			referenced[sp.Spec.SecretRef.Name] = true
+		}
+	}
+
+	return removeUnreferencedSecretFinalizers(
+		ctx,
+		r.Client,
+		scmProvider.Namespace,
+		promoterv1alpha1.ScmProviderSecretFinalizer,
+		referenced,
 	)
 }
 
