@@ -5,15 +5,24 @@ import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { useCommitStatusRowPlugin } from './useCommitStatusRowPlugin';
-import { PROMOTER_GROUP, registerCommitStatusRowPlugin, resetPluginRegistry } from './registry';
+import {
+  PROMOTER_GROUP,
+  registerCommitStatusRowPlugin,
+  registerCommitStatusRowPluginByAnnotation,
+  resetPluginRegistry,
+} from './registry';
 import type { RowPlugin } from './types';
 
 const pluginA: RowPlugin = { rowHeader: () => React.createElement('span', null, 'A') };
 const pluginB: RowPlugin = { rowHeader: () => React.createElement('span', null, 'B') };
 
 // Renders whatever the hook resolves, so the DOM reflects the current plugin.
-const Probe: React.FC<{ kind?: string; apiVersion?: string }> = ({ kind, apiVersion }) => {
-  const plugin = useCommitStatusRowPlugin(kind, apiVersion);
+const Probe: React.FC<{
+  kind?: string;
+  apiVersion?: string;
+  annotations?: Record<string, string>;
+}> = ({ kind, apiVersion, annotations }) => {
+  const plugin = useCommitStatusRowPlugin(kind, apiVersion, annotations);
   if (!plugin) {
     return React.createElement('span', null, 'none');
   }
@@ -40,7 +49,11 @@ describe('useCommitStatusRowPlugin', () => {
     vi.useRealTimers();
   });
 
-  const render = async (props: { kind?: string; apiVersion?: string }) => {
+  const render = async (props: {
+    kind?: string;
+    apiVersion?: string;
+    annotations?: Record<string, string>;
+  }) => {
     root = createRoot(container);
     root.render(React.createElement(Probe, props));
     await vi.advanceTimersByTimeAsync(0);
@@ -90,5 +103,66 @@ describe('useCommitStatusRowPlugin', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(container.textContent).toBe('A');
+  });
+
+  it('resolves a plugin by GVK+annotation, preferring it over a plain GVK match', async () => {
+    registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
+    registerCommitStatusRowPluginByAnnotation(
+      pluginB,
+      'WebRequestCommitStatus',
+      'example.com/plugin',
+      'my-plugin',
+    );
+
+    await render({
+      kind: 'WebRequestCommitStatus',
+      annotations: { 'example.com/plugin': 'my-plugin' },
+    });
+
+    expect(container.textContent).toBe('B');
+  });
+
+  it('ignores a GVK+annotation registration for a different kind', async () => {
+    registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
+    registerCommitStatusRowPluginByAnnotation(
+      pluginB,
+      'GitCommitStatus',
+      'example.com/plugin',
+      'my-plugin',
+    );
+
+    await render({
+      kind: 'WebRequestCommitStatus',
+      annotations: { 'example.com/plugin': 'my-plugin' },
+    });
+
+    expect(container.textContent).toBe('A');
+  });
+
+  it('re-renders when the annotations prop changes to match a different plugin', async () => {
+    registerCommitStatusRowPluginByAnnotation(
+      pluginA,
+      'WebRequestCommitStatus',
+      'example.com/plugin',
+      'plugin-a',
+    );
+    registerCommitStatusRowPluginByAnnotation(
+      pluginB,
+      'WebRequestCommitStatus',
+      'example.com/plugin',
+      'plugin-b',
+    );
+
+    await render({
+      kind: 'WebRequestCommitStatus',
+      annotations: { 'example.com/plugin': 'plugin-a' },
+    });
+    expect(container.textContent).toBe('A');
+
+    await render({
+      kind: 'WebRequestCommitStatus',
+      annotations: { 'example.com/plugin': 'plugin-b' },
+    });
+    expect(container.textContent).toBe('B');
   });
 });

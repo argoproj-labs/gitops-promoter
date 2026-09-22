@@ -26,10 +26,16 @@ export {
   PROMOTER_GROUP,
   getCommitStatusRowPlugin,
   listCommitStatusRowPlugins,
+  listCommitStatusRowPluginsByAnnotation,
   registerCommitStatusRowPlugin,
+  registerCommitStatusRowPluginByAnnotation,
   subscribeToPluginRegistry,
 } from './registry';
-export type { CommitStatusRowPluginRegistration, PluginRegistryListener } from './registry';
+export type {
+  CommitStatusRowPluginAnnotationRegistration,
+  CommitStatusRowPluginRegistration,
+  PluginRegistryListener,
+} from './registry';
 export { installPluginHostApi } from './hostApi';
 export { useCommitStatusRowPlugin } from './useCommitStatusRowPlugin';
 export { assertSharedReactInstance } from './reactSharing';

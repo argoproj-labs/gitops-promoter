@@ -11,7 +11,11 @@ export const DrawerCheckItem: React.FC<{
   isExpanded: boolean;
   onToggleExpanded: () => void;
 }> = ({ check, isExpanded, onToggleExpanded }) => {
-  const Plugin = useCommitStatusRowPlugin(check.kind, check.apiVersion);
+  const Plugin = useCommitStatusRowPlugin(
+    check.kind,
+    check.apiVersion,
+    check.manager?.metadata?.annotations,
+  );
   const manager = Plugin ? check.manager : undefined;
   const RowContent = manager ? Plugin?.rowContent : undefined;
   const panelId = `hp-drawer-check-panel-${check.name}`;

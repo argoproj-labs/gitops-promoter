@@ -32,4 +32,21 @@ describe('installPluginHostApi', () => {
     expect(second).toBe(first);
     expect(window.promoterPluginsAPI).toBe(first);
   });
+
+  it('registers a plugin by GVK+annotation through the window API', () => {
+    installPluginHostApi();
+
+    window.promoterPluginsAPI?.registerCommitStatusRowPluginByAnnotation(
+      plugin,
+      'WebRequestCommitStatus',
+      'example.com/plugin',
+      'my-plugin',
+    );
+
+    expect(
+      getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+        'example.com/plugin': 'my-plugin',
+      }),
+    ).toBe(plugin);
+  });
 });

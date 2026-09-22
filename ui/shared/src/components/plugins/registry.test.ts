@@ -4,7 +4,9 @@ import {
   PROMOTER_GROUP,
   getCommitStatusRowPlugin,
   listCommitStatusRowPlugins,
+  listCommitStatusRowPluginsByAnnotation,
   registerCommitStatusRowPlugin,
+  registerCommitStatusRowPluginByAnnotation,
   resetPluginRegistry,
   subscribeToPluginRegistry,
 } from './registry';
@@ -103,5 +105,168 @@ describe('commit status row plugin registry', () => {
         plugin: pluginA,
       },
     ]);
+  });
+
+  describe('GVK+annotation-keyed registration', () => {
+    it('returns a plugin registered for a matching kind and annotation', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBe(pluginA);
+    });
+
+    it('does not match a different kind even if the annotation matches', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('GitCommitStatus', undefined, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the kind matches but no annotation does', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+          'example.com/plugin': 'other-plugin',
+        }),
+      ).toBeUndefined();
+    });
+
+    it('prefers a GVK+annotation match over a plain GVK match for the same kind', () => {
+      registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
+      registerCommitStatusRowPluginByAnnotation(
+        pluginB,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBe(pluginB);
+    });
+
+    it('falls back to a plain GVK match when no annotation on the resource matches', () => {
+      registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
+      registerCommitStatusRowPluginByAnnotation(
+        pluginB,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+          'some-other/annotation': 'value',
+        }),
+      ).toBe(pluginA);
+    });
+
+    it('lets a later registration override an earlier one for the same GVK/annotation combination', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+      registerCommitStatusRowPluginByAnnotation(
+        pluginB,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', undefined, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBe(pluginB);
+      expect(listCommitStatusRowPluginsByAnnotation()).toHaveLength(1);
+    });
+
+    it('prefers a version-pinned annotation registration over a version-agnostic one', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+      registerCommitStatusRowPluginByAnnotation(
+        pluginB,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+        PROMOTER_GROUP,
+        'v1alpha1',
+      );
+
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', `${PROMOTER_GROUP}/v1alpha1`, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBe(pluginB);
+      expect(
+        getCommitStatusRowPlugin('WebRequestCommitStatus', `${PROMOTER_GROUP}/v1beta1`, {
+          'example.com/plugin': 'my-plugin',
+        }),
+      ).toBe(pluginA);
+    });
+
+    it('notifies subscribers on GVK+annotation-keyed registration', () => {
+      const listener = vi.fn();
+      subscribeToPluginRegistry(listener);
+
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('records the GVK+annotation registration for diagnostics', () => {
+      registerCommitStatusRowPluginByAnnotation(
+        pluginA,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(listCommitStatusRowPluginsByAnnotation()).toEqual([
+        {
+          group: PROMOTER_GROUP,
+          version: ANY_VERSION,
+          kind: 'WebRequestCommitStatus',
+          annotationKey: 'example.com/plugin',
+          annotationValue: 'my-plugin',
+          plugin: pluginA,
+        },
+      ]);
+    });
   });
 });

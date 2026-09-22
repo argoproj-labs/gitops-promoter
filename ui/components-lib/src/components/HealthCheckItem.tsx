@@ -5,7 +5,11 @@ import { Check } from '@shared/types/promotion';
 import { useCommitStatusRowPlugin, PluginErrorBoundary } from '@shared/components/plugins';
 
 export const HealthCheckItem: React.FC<{ check: Check }> = ({ check }) => {
-  const Plugin = useCommitStatusRowPlugin(check.kind, check.apiVersion);
+  const Plugin = useCommitStatusRowPlugin(
+    check.kind,
+    check.apiVersion,
+    check.manager?.metadata?.annotations,
+  );
 
   return (
     <Tooltip content={check.description}>

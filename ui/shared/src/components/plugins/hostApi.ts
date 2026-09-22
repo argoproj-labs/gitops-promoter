@@ -1,5 +1,8 @@
 import type { PromoterPluginsAPI } from '../../types/plugin';
-import { registerCommitStatusRowPlugin } from './registry';
+import {
+  registerCommitStatusRowPlugin,
+  registerCommitStatusRowPluginByAnnotation,
+} from './registry';
 
 /**
  * Installs the plugin API on `window` so externally loaded bundles can register
@@ -14,13 +17,16 @@ export function installPluginHostApi(): PromoterPluginsAPI {
   if (typeof window === 'undefined') {
     // Server-side rendering and unit tests without a DOM: the registry still
     // works for internal plugins; there is simply no global to hang it on.
-    return { registerCommitStatusRowPlugin };
+    return { registerCommitStatusRowPlugin, registerCommitStatusRowPluginByAnnotation };
   }
   const existing = window.promoterPluginsAPI;
   if (existing) {
     return existing;
   }
-  const api: PromoterPluginsAPI = { registerCommitStatusRowPlugin };
+  const api: PromoterPluginsAPI = {
+    registerCommitStatusRowPlugin,
+    registerCommitStatusRowPluginByAnnotation,
+  };
   window.promoterPluginsAPI = api;
   return api;
 }

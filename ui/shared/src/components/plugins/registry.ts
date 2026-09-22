@@ -17,6 +17,15 @@ export interface CommitStatusRowPluginRegistration {
   plugin: RowPlugin;
 }
 
+export interface CommitStatusRowPluginAnnotationRegistration {
+  group: string;
+  version: string;
+  kind: string;
+  annotationKey: string;
+  annotationValue: string;
+  plugin: RowPlugin;
+}
+
 export type PluginRegistryListener = () => void;
 
 /** Registry key. `version` is part of the key so a plugin can pin one. */
@@ -24,7 +33,22 @@ function registryKey(group: string, version: string, kind: string): string {
   return `${group}/${version}/${kind}`;
 }
 
+/**
+ * Annotation registry key. Annotation registrations are scoped to a GVK, not
+ * a standalone dimension, so the key is a GVK key plus the annotation pair.
+ */
+function annotationRegistryKey(
+  group: string,
+  version: string,
+  kind: string,
+  annotationKey: string,
+  annotationValue: string,
+): string {
+  return `${registryKey(group, version, kind)}/${annotationKey}=${annotationValue}`;
+}
+
 const plugins = new Map<string, CommitStatusRowPluginRegistration>();
+const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistration>();
 const listeners = new Set<PluginRegistryListener>();
 
 function notify(): void {
@@ -55,20 +79,78 @@ export function registerCommitStatusRowPlugin(
 }
 
 /**
- * Returns the plugin registered for a commit status GVK, preferring an exact
- * version match over a version-agnostic one.
+ * Registers a row plugin for a commit status GVK that also carries a given
+ * annotation key/value.
+ *
+ * This lets a plugin author claim specific commit status instances of a kind
+ * (e.g. one particular `WebRequestCommitStatus` resource among many) rather
+ * than every resource of that kind. The annotation refines a GVK match; it
+ * does not stand in for one, so a resource of a different kind never matches
+ * regardless of its annotations. A match here takes priority over a plain
+ * GVK match in {@link getCommitStatusRowPlugin}. As with GVK registrations, a
+ * later registration for the same GVK/annotation combination replaces an
+ * earlier one, and omitting `version` matches any version.
+ */
+export function registerCommitStatusRowPluginByAnnotation(
+  plugin: RowPlugin,
+  kind: string,
+  annotationKey: string,
+  annotationValue: string,
+  group: string = PROMOTER_GROUP,
+  version: string = ANY_VERSION,
+): void {
+  annotationPlugins.set(annotationRegistryKey(group, version, kind, annotationKey, annotationValue), {
+    group,
+    version,
+    kind,
+    annotationKey,
+    annotationValue,
+    plugin,
+  });
+  notify();
+}
+
+/**
+ * Returns the plugin registered for a commit status, preferring a GVK+annotation
+ * match over a plain GVK match, and within each preferring an exact version
+ * match over a version-agnostic one.
  *
  * `apiVersion` is the manager's `apiVersion` as served in the bundle
  * (`group/version`); a bare group or an empty string is treated as no version.
+ * `annotations` is the manager's `metadata.annotations`. If more than one
+ * annotation on the resource matches a registration, which one wins is
+ * unspecified — plugin authors should not register conflicting annotations
+ * for the same GVK.
  */
 export function getCommitStatusRowPlugin(
   kind: string | undefined,
   apiVersion?: string,
+  annotations?: Record<string, string>,
 ): RowPlugin | undefined {
   if (!kind) {
     return undefined;
   }
   const [group = PROMOTER_GROUP, version] = splitApiVersion(apiVersion);
+
+  if (annotations) {
+    for (const [key, value] of Object.entries(annotations)) {
+      if (version) {
+        const exact = annotationPlugins.get(
+          annotationRegistryKey(group, version, kind, key, value),
+        );
+        if (exact) {
+          return exact.plugin;
+        }
+      }
+      const anyVersion = annotationPlugins.get(
+        annotationRegistryKey(group, ANY_VERSION, kind, key, value),
+      );
+      if (anyVersion) {
+        return anyVersion.plugin;
+      }
+    }
+  }
+
   if (version) {
     const exact = plugins.get(registryKey(group, version, kind));
     if (exact) {
@@ -103,13 +185,19 @@ export function subscribeToPluginRegistry(listener: PluginRegistryListener): () 
   };
 }
 
-/** All current registrations, for diagnostics and tests. */
+/** All current GVK registrations, for diagnostics and tests. */
 export function listCommitStatusRowPlugins(): CommitStatusRowPluginRegistration[] {
   return [...plugins.values()];
+}
+
+/** All current GVK+annotation registrations, for diagnostics and tests. */
+export function listCommitStatusRowPluginsByAnnotation(): CommitStatusRowPluginAnnotationRegistration[] {
+  return [...annotationPlugins.values()];
 }
 
 /** Clears every registration. Intended for tests. */
 export function resetPluginRegistry(): void {
   plugins.clear();
+  annotationPlugins.clear();
   notify();
 }
