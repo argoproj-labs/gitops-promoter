@@ -54,7 +54,9 @@ export const DrawerCheckItem: React.FC<{
               {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
             </span>
             <span className="hp-drawer__check-key">{check.name}</span>
-            {check.description && <span className="hp-drawer__check-desc">{check.description}</span>}
+            {check.description && (
+              <span className="hp-drawer__check-desc">{check.description}</span>
+            )}
             {check.url && (
               <a
                 href={check.url}

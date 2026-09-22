@@ -31,7 +31,8 @@ export function useCommitStatusRowPlugin(
   );
 
   useEffect(() => {
-    const read = () => setPlugin(getCommitStatusRowPlugin(kind, apiVersion, annotationsRef.current));
+    const read = () =>
+      setPlugin(getCommitStatusRowPlugin(kind, apiVersion, annotationsRef.current));
     // Re-read on subscribe: a bundle may have registered between the initial
     // render and this effect.
     read();

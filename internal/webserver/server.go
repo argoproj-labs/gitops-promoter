@@ -42,21 +42,20 @@ const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Event  *Event
 	// distFS is the dashboard's embedded static asset tree, set by StartDashboard.
 	// httpPlugins reads plugin bundles out of it alongside PluginsDir so that
 	// plugins copied into the build output at build time (ui/dashboard's
 	// build:embed step) are served from the same /plugins.js response as
 	// plugins dropped into PluginsDir at runtime.
 	distFS     fs.FS
+	Scheme     *runtime.Scheme
+	Event      *Event
 	PluginsDir string
-
 	// pluginsBundle and pluginsETag are the concatenated plugin bundle body and
 	// its ETag, computed once at startup by buildPluginsBundle. Plugins added to
 	// PluginsDir after startup are not picked up until the process restarts.
-	pluginsBundle []byte
 	pluginsETag   string
+	pluginsBundle []byte
 }
 
 // Event represents a server-sent event that can be broadcast to clients.

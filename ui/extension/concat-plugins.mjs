@@ -10,7 +10,9 @@ import path from 'path';
 const pluginsDir = path.resolve(process.cwd(), '../plugins');
 const outputFile = path.resolve(process.cwd(), 'dist/extension-promoter.js');
 
-const entries = fs.existsSync(pluginsDir) ? fs.readdirSync(pluginsDir, { withFileTypes: true }) : [];
+const entries = fs.existsSync(pluginsDir)
+  ? fs.readdirSync(pluginsDir, { withFileTypes: true })
+  : [];
 
 let appended = '';
 for (const entry of entries) {

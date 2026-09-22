@@ -99,14 +99,17 @@ export function registerCommitStatusRowPluginByAnnotation(
   group: string = PROMOTER_GROUP,
   version: string = ANY_VERSION,
 ): void {
-  annotationPlugins.set(annotationRegistryKey(group, version, kind, annotationKey, annotationValue), {
-    group,
-    version,
-    kind,
-    annotationKey,
-    annotationValue,
-    plugin,
-  });
+  annotationPlugins.set(
+    annotationRegistryKey(group, version, kind, annotationKey, annotationValue),
+    {
+      group,
+      version,
+      kind,
+      annotationKey,
+      annotationValue,
+      plugin,
+    },
+  );
   notify();
 }
 

@@ -370,7 +370,10 @@ export function getProcessingEnvs(environments: Environment[]): Set<string> {
 }
 
 // Takes the PS objects (for dashboard)
-export function enrichFromCRD(ps: PromotionStrategy, historyIndex: number = 0): EnrichedEnvDetails[] {
+export function enrichFromCRD(
+  ps: PromotionStrategy,
+  historyIndex: number = 0,
+): EnrichedEnvDetails[] {
   if (!ps.status?.environments) {
     return [];
   }

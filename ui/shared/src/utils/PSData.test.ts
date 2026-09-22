@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { mergeCommitStatusManagers, getChecks, enrichFromCRD, enrichFromEnvironments } from './PSData';
+import {
+  mergeCommitStatusManagers,
+  getChecks,
+  enrichFromCRD,
+  enrichFromEnvironments,
+} from './PSData';
 import type { CommitStatusManagerBundle } from './PSData';
-import type { Environment, EnrichedBranchCommitStatus, PromotionStrategy } from '../types/promotion';
+import type {
+  Environment,
+  EnrichedBranchCommitStatus,
+  PromotionStrategy,
+} from '../types/promotion';
 
 const BRANCH = 'environments/qal';
 const OTHER_BRANCH = 'environments/prd';

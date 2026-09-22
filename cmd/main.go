@@ -530,7 +530,8 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 	// Add default port flag
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
-	cmd.Flags().StringVar(&pluginsDir, "plugins-dir", "/tmp/plugins", "Directory containing external UI plugin bundles (.js files) to serve at /plugins.js")
+	cmd.Flags().StringVar(&pluginsDir, "plugins-dir", "/tmp/plugins",
+		"Directory containing external UI plugin bundles (.js files) to serve at /plugins.js")
 	return cmd
 }
 
