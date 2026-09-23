@@ -6037,7 +6037,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// lagging environment still reports abc123. The laggard is the environment
 			// with something to fetch — it must be the one selected, not the sibling that
 			// already has the note.
-			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyKey, []*promoterv1alpha1.ChangeTransferPolicy{
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("lagging-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now()),
 			})
