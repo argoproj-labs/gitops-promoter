@@ -130,6 +130,21 @@ var _ = Describe("httpPlugins", func() {
 		Expect(w.Body.String()).NotTo(ContainSubstring("not js"))
 	})
 
+	It("skips a malformed plugin file without failing the whole bundle", func() {
+		dir := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dir, "plugin-good.js"), []byte("console.log('good')"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(dir, "plugin-broken.js"), []byte("console.log('broken'"), 0o644)).To(Succeed())
+
+		router := newPluginsRouter(dir)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/plugins.js", nil))
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		body := w.Body.String()
+		Expect(body).To(ContainSubstring("good"))
+		Expect(body).NotTo(ContainSubstring("broken"))
+	})
+
 	It("includes plugin files embedded into the dashboard's build output alongside PluginsDir", func() {
 		dir := GinkgoT().TempDir()
 		Expect(os.WriteFile(filepath.Join(dir, "plugin-runtime.js"), []byte("console.log('runtime')"), 0o644)).To(Succeed())
