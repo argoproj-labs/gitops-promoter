@@ -77,9 +77,12 @@ window.promoterPluginsAPI?.registerCommitStatusRowPlugin(myPlugin, 'TimedCommitS
   against `v1alpha1` keeps rendering if the CRD later moves to `v1beta1`.
 - **Later registrations win.** Built-in plugins register first, at module load, so an
   externally loaded plugin registering the same kind overrides the built-in row.
-- The registry is event-emitting: a plugin that registers after the host has already
-  rendered is still picked up, since consumers subscribe to registry changes rather than
-  reading it once.
+- **Register before the app's first render.** The registry is read once per row, not
+  subscribed to — a plugin that registers after a row has already rendered is not picked
+  up until something else causes that row to re-render. Both surfaces are built to load every
+  plugin bundle before mounting the app for exactly this reason (see the loading paths below),
+  so this only matters if you're doing something unusual, like registering from code that
+  runs on a later user interaction rather than at bundle load time.
 
 **On the dashboard surface**, `window.promoterPluginsAPI` is installed by the dashboard's own
 app bundle, which always executes before `/plugins.js` is loaded — a plain `?.` guard is

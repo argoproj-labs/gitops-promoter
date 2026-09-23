@@ -63,72 +63,34 @@ describe('useCommitStatusRowPlugin', () => {
     resetPluginRegistry();
     container = document.createElement('div');
     document.body.appendChild(container);
-    vi.useFakeTimers();
   });
 
   afterEach(() => {
     root?.unmount();
     container.remove();
-    vi.useRealTimers();
   });
 
-  const render = async (props: {
-    kind?: string;
-    apiVersion?: string;
-    annotations?: Record<string, string>;
-  }) => {
+  const render = (props: { kind?: string; apiVersion?: string; annotations?: Record<string, string> }) => {
     root = createRoot(container);
-    root.render(React.createElement(Probe, props));
-    await vi.advanceTimersByTimeAsync(0);
+    act(() => {
+      root.render(React.createElement(Probe, props));
+    });
   };
 
-  it('resolves a plugin registered before mount', async () => {
+  it('resolves a plugin registered before render', () => {
     registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
-    await render({ kind: 'TimedCommitStatus', apiVersion: `${PROMOTER_GROUP}/v1alpha1` });
+    render({ kind: 'TimedCommitStatus', apiVersion: `${PROMOTER_GROUP}/v1alpha1` });
 
     expect(container.textContent).toBe('A');
   });
 
-  it('renders nothing for a kind with no plugin', async () => {
-    await render({ kind: 'GitCommitStatus' });
+  it('renders nothing for a kind with no plugin', () => {
+    render({ kind: 'GitCommitStatus' });
 
     expect(container.textContent).toBe('none');
   });
 
-  it('picks up a plugin registered after mount', async () => {
-    // The case the subscription exists for: plugin bundles are fetched at
-    // runtime and can register after the row has already rendered.
-    await render({ kind: 'TimedCommitStatus' });
-    expect(container.textContent).toBe('none');
-
-    registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(container.textContent).toBe('A');
-  });
-
-  it('re-renders when a later registration overrides the plugin', async () => {
-    registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
-    await render({ kind: 'TimedCommitStatus' });
-    expect(container.textContent).toBe('A');
-
-    registerCommitStatusRowPlugin(pluginB, 'TimedCommitStatus');
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(container.textContent).toBe('B');
-  });
-
-  it('ignores registrations for other kinds', async () => {
-    registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
-    await render({ kind: 'TimedCommitStatus' });
-
-    registerCommitStatusRowPlugin(pluginB, 'GitCommitStatus');
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(container.textContent).toBe('A');
-  });
-
-  it('resolves a plugin by GVK+annotation, preferring it over a plain GVK match', async () => {
+  it('resolves a plugin by GVK+annotation, preferring it over a plain GVK match', () => {
     registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
     registerCommitStatusRowPluginByAnnotation(
       pluginB,
@@ -137,7 +99,7 @@ describe('useCommitStatusRowPlugin', () => {
       'my-plugin',
     );
 
-    await render({
+    render({
       kind: 'WebRequestCommitStatus',
       annotations: { 'example.com/plugin': 'my-plugin' },
     });
@@ -145,7 +107,7 @@ describe('useCommitStatusRowPlugin', () => {
     expect(container.textContent).toBe('B');
   });
 
-  it('ignores a GVK+annotation registration for a different kind', async () => {
+  it('ignores a GVK+annotation registration for a different kind', () => {
     registerCommitStatusRowPlugin(pluginA, 'WebRequestCommitStatus');
     registerCommitStatusRowPluginByAnnotation(
       pluginB,
@@ -154,7 +116,7 @@ describe('useCommitStatusRowPlugin', () => {
       'my-plugin',
     );
 
-    await render({
+    render({
       kind: 'WebRequestCommitStatus',
       annotations: { 'example.com/plugin': 'my-plugin' },
     });
@@ -162,7 +124,7 @@ describe('useCommitStatusRowPlugin', () => {
     expect(container.textContent).toBe('A');
   });
 
-  it('re-renders when the annotations prop changes to match a different plugin', async () => {
+  it('re-renders when the annotations prop changes to match a different plugin', () => {
     registerCommitStatusRowPluginByAnnotation(
       pluginA,
       'WebRequestCommitStatus',
@@ -176,20 +138,20 @@ describe('useCommitStatusRowPlugin', () => {
       'plugin-b',
     );
 
-    await render({
+    render({
       kind: 'WebRequestCommitStatus',
       annotations: { 'example.com/plugin': 'plugin-a' },
     });
     expect(container.textContent).toBe('A');
 
-    await render({
+    render({
       kind: 'WebRequestCommitStatus',
       annotations: { 'example.com/plugin': 'plugin-b' },
     });
     expect(container.textContent).toBe('B');
   });
 
-  it('end-to-end: a registered plugin that throws while rendering falls back to the default row', async () => {
+  it('end-to-end: a registered plugin that throws while rendering falls back to the default row', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     registerCommitStatusRowPlugin(crashingPlugin, 'TimedCommitStatus');
 
@@ -197,7 +159,6 @@ describe('useCommitStatusRowPlugin', () => {
     act(() => {
       root.render(React.createElement(ProbeWithBoundary, { kind: 'TimedCommitStatus' }));
     });
-    await vi.advanceTimersByTimeAsync(0);
 
     expect(container.textContent).toBe('default row');
     consoleErrorSpy.mockRestore();

@@ -29,15 +29,12 @@ export {
   listCommitStatusRowPluginsByAnnotation,
   registerCommitStatusRowPlugin,
   registerCommitStatusRowPluginByAnnotation,
-  subscribeToPluginRegistry,
 } from './registry';
 export type {
   CommitStatusRowPluginAnnotationRegistration,
   CommitStatusRowPluginRegistration,
-  PluginRegistryListener,
 } from './registry';
 export { installPluginHostApi } from './hostApi';
 export { useCommitStatusRowPlugin } from './useCommitStatusRowPlugin';
 export { assertSharedReactInstance } from './reactSharing';
-export { loadPluginBundle } from './loadPluginBundle';
 export { PluginErrorBoundary } from './PluginErrorBoundary';

@@ -26,8 +26,6 @@ export interface CommitStatusRowPluginAnnotationRegistration {
   plugin: RowPlugin;
 }
 
-export type PluginRegistryListener = () => void;
-
 /** Registry key. `version` is part of the key so a plugin can pin one. */
 function registryKey(group: string, version: string, kind: string): string {
   return `${group}/${version}/${kind}`;
@@ -49,13 +47,6 @@ function annotationRegistryKey(
 
 const plugins = new Map<string, CommitStatusRowPluginRegistration>();
 const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistration>();
-const listeners = new Set<PluginRegistryListener>();
-
-function notify(): void {
-  for (const listener of listeners) {
-    listener();
-  }
-}
 
 /**
  * Rejects a registration whose `rowHeader` isn't callable. This is the only
@@ -103,7 +94,6 @@ export function registerCommitStatusRowPlugin(
     return;
   }
   plugins.set(registryKey(group, version, kind), { group, version, kind, plugin });
-  notify();
 }
 
 /**
@@ -141,7 +131,6 @@ export function registerCommitStatusRowPluginByAnnotation(
       plugin,
     },
   );
-  notify();
 }
 
 /**
@@ -206,19 +195,6 @@ function splitApiVersion(apiVersion?: string): [string | undefined, string | und
   return [apiVersion.slice(0, slash), apiVersion.slice(slash + 1)];
 }
 
-/**
- * Subscribes to registry changes and returns an unsubscribe function.
- *
- * External bundles load asynchronously and may register after the consuming
- * component has mounted, so consumers subscribe rather than reading once.
- */
-export function subscribeToPluginRegistry(listener: PluginRegistryListener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
 /** All current GVK registrations, for diagnostics and tests. */
 export function listCommitStatusRowPlugins(): CommitStatusRowPluginRegistration[] {
   return [...plugins.values()];
@@ -233,5 +209,4 @@ export function listCommitStatusRowPluginsByAnnotation(): CommitStatusRowPluginA
 export function resetPluginRegistry(): void {
   plugins.clear();
   annotationPlugins.clear();
-  notify();
 }

@@ -8,7 +8,6 @@ import {
   registerCommitStatusRowPlugin,
   registerCommitStatusRowPluginByAnnotation,
   resetPluginRegistry,
-  subscribeToPluginRegistry,
 } from './registry';
 import type { RowPlugin } from './types';
 
@@ -80,18 +79,6 @@ describe('commit status row plugin registry', () => {
 
     expect(getCommitStatusRowPlugin('TimedCommitStatus', PROMOTER_GROUP)).toBe(pluginA);
     expect(getCommitStatusRowPlugin('TimedCommitStatus', '')).toBe(pluginA);
-  });
-
-  it('notifies subscribers on registration and stops after unsubscribe', () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeToPluginRegistry(listener);
-
-    registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    unsubscribe();
-    registerCommitStatusRowPlugin(pluginB, 'GitCommitStatus');
-    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('records the registration GVK for diagnostics', () => {
@@ -233,20 +220,6 @@ describe('commit status row plugin registry', () => {
           'example.com/plugin': 'my-plugin',
         }),
       ).toBe(pluginA);
-    });
-
-    it('notifies subscribers on GVK+annotation-keyed registration', () => {
-      const listener = vi.fn();
-      subscribeToPluginRegistry(listener);
-
-      registerCommitStatusRowPluginByAnnotation(
-        pluginA,
-        'WebRequestCommitStatus',
-        'example.com/plugin',
-        'my-plugin',
-      );
-
-      expect(listener).toHaveBeenCalledTimes(1);
     });
 
     it('records the GVK+annotation registration for diagnostics', () => {

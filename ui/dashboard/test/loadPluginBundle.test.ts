@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as ActualReact from 'react';
-import { loadPluginBundle } from './loadPluginBundle';
-import { resetPluginRegistry } from './registry';
+import { loadPluginBundle } from '../src/loadPluginBundle';
+import { resetPluginRegistry } from '@shared/components/plugins/registry';
 
 const hostReact = ActualReact;
 
@@ -65,6 +65,25 @@ describe('loadPluginBundle', () => {
     expect(() => document.body.querySelector('script')?.onload?.(new Event('load'))).not.toThrow();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringMatching(/brought its own copy/));
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('resolves the returned promise once the script loads', async () => {
+    window.React = hostReact;
+    const done = loadPluginBundle(hostReact);
+
+    document.body.querySelector('script')?.onload?.(new Event('load'));
+
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it('resolves the returned promise even when the script fails to load', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const done = loadPluginBundle(hostReact);
+
+    document.body.querySelector('script')?.onerror?.(new Event('error'));
+
+    await expect(done).resolves.toBeUndefined();
     consoleErrorSpy.mockRestore();
   });
 });
