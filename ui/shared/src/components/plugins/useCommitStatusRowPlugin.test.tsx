@@ -2,9 +2,10 @@
  * @vitest-environment jsdom
  */
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useCommitStatusRowPlugin } from './useCommitStatusRowPlugin';
+import { PluginErrorBoundary } from './PluginErrorBoundary';
 import {
   PROMOTER_GROUP,
   registerCommitStatusRowPlugin,
@@ -15,6 +16,11 @@ import type { RowPlugin } from './types';
 
 const pluginA: RowPlugin = { rowHeader: () => React.createElement('span', null, 'A') };
 const pluginB: RowPlugin = { rowHeader: () => React.createElement('span', null, 'B') };
+const crashingPlugin: RowPlugin = {
+  rowHeader: () => {
+    throw new Error('boom');
+  },
+};
 
 // Renders whatever the hook resolves, so the DOM reflects the current plugin.
 const Probe: React.FC<{
@@ -29,6 +35,23 @@ const Probe: React.FC<{
   return React.createElement(plugin.rowHeader, {
     check: { name: 'c', status: 'pending', branch: 'production' },
     manager: {} as never,
+  });
+};
+
+// Mirrors how HealthCheckItem/DrawerCheckItem wire the hook's result into
+// PluginErrorBoundary, so this exercises the same registration-to-fallback
+// path a user actually sees when a registered plugin crashes while rendering.
+const ProbeWithBoundary: React.FC<{ kind?: string }> = ({ kind }) => {
+  const plugin = useCommitStatusRowPlugin(kind);
+  const check = { name: 'c', status: 'pending', branch: 'production' };
+  if (!plugin) {
+    return React.createElement('span', null, 'default row');
+  }
+  return React.createElement(PluginErrorBoundary, {
+    key: kind,
+    pluginKind: kind,
+    fallback: React.createElement('span', null, 'default row'),
+    children: React.createElement(plugin.rowHeader, { check, manager: {} as never }),
   });
 };
 
@@ -164,5 +187,19 @@ describe('useCommitStatusRowPlugin', () => {
       annotations: { 'example.com/plugin': 'plugin-b' },
     });
     expect(container.textContent).toBe('B');
+  });
+
+  it('end-to-end: a registered plugin that throws while rendering falls back to the default row', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    registerCommitStatusRowPlugin(crashingPlugin, 'TimedCommitStatus');
+
+    root = createRoot(container);
+    act(() => {
+      root.render(React.createElement(ProbeWithBoundary, { kind: 'TimedCommitStatus' }));
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(container.textContent).toBe('default row');
+    consoleErrorSpy.mockRestore();
   });
 });

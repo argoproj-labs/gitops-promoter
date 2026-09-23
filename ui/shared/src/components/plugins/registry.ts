@@ -58,6 +58,31 @@ function notify(): void {
 }
 
 /**
+ * Rejects a registration whose `rowHeader` isn't callable. This is the only
+ * shape check performed here — a `rowHeader` that renders something reasonable
+ * to a JSX call site but throws or misbehaves once rendered is caught later by
+ * `PluginErrorBoundary`, which is a render-time concern this registry-time
+ * check cannot substitute for.
+ */
+function isValidRowPlugin(plugin: RowPlugin): boolean {
+  if (typeof plugin?.rowHeader !== 'function') {
+    console.error(
+      'Ignoring plugin registration: rowHeader must be a function component, got',
+      plugin?.rowHeader,
+    );
+    return false;
+  }
+  if (plugin.rowContent !== undefined && typeof plugin.rowContent !== 'function') {
+    console.error(
+      'Ignoring plugin registration: rowContent must be a function component when provided, got',
+      plugin.rowContent,
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
  * Registers a row plugin for a commit status GVK.
  *
  * Later registrations replace earlier ones for the same GVK, so an externally
@@ -74,6 +99,9 @@ export function registerCommitStatusRowPlugin(
   group: string = PROMOTER_GROUP,
   version: string = ANY_VERSION,
 ): void {
+  if (!isValidRowPlugin(plugin)) {
+    return;
+  }
   plugins.set(registryKey(group, version, kind), { group, version, kind, plugin });
   notify();
 }
@@ -99,6 +127,9 @@ export function registerCommitStatusRowPluginByAnnotation(
   group: string = PROMOTER_GROUP,
   version: string = ANY_VERSION,
 ): void {
+  if (!isValidRowPlugin(plugin)) {
+    return;
+  }
   annotationPlugins.set(
     annotationRegistryKey(group, version, kind, annotationKey, annotationValue),
     {

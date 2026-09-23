@@ -172,4 +172,40 @@ var _ = Describe("httpPlugins", func() {
 		// can override one shipped at build time.
 		Expect(body).To(MatchRegexp(`(?s)console\.log\('build'\).*console\.log\('runtime'\)`))
 	})
+
+	It("produces different ETags for different plugin content", func() {
+		dirA := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dirA, "plugin-a.js"), []byte("console.log('a')"), 0o644)).To(Succeed())
+
+		dirB := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dirB, "plugin-a.js"), []byte("console.log('b')"), 0o644)).To(Succeed())
+
+		wsA := &WebServer{PluginsDir: dirA}
+		_, etagA, err := wsA.buildPluginsBundle()
+		Expect(err).NotTo(HaveOccurred())
+
+		wsB := &WebServer{PluginsDir: dirB}
+		_, etagB, err := wsB.buildPluginsBundle()
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(etagA).NotTo(BeEmpty())
+		Expect(etagB).NotTo(BeEmpty())
+		Expect(etagA).NotTo(Equal(etagB))
+	})
+
+	It("fails to build the bundle when a directory is named plugin*.js", func() {
+		dir := GinkgoT().TempDir()
+		Expect(os.Mkdir(filepath.Join(dir, "plugin-oops.js"), 0o755)).To(Succeed())
+
+		ws := &WebServer{PluginsDir: dir}
+		_, _, err := ws.buildPluginsBundle()
+
+		// Documents current behavior (REVIEW.md §3): a directory or unreadable
+		// file named plugin*.js aborts the whole bundle build (and, via
+		// StartDashboard, dashboard startup) rather than being skipped with a
+		// log like a malformed-content file is. This is a known, undecided
+		// design gap, not the intended behavior.
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("is a directory"))
+	})
 })

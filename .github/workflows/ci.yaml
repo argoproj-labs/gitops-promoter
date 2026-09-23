@@ -76,6 +76,8 @@ jobs:
         run: make test-unit-test-extension
       - name: Frontend Dashboard Unit Tests
         run: make test-ui-test-dashboard
+      - name: Frontend Shared Unit Tests
+        run: make test-ui-test-shared
       - name: Run Integration Tests
         run: make test-parallel
       - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
@@ -89,12 +91,13 @@ jobs:
             cover.out
             ui/dashboard/coverage/lcov.info
             ui/extension/coverage/lcov.info
+            ui/shared/coverage/lcov.info
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
-          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info,ui/shared/coverage/lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

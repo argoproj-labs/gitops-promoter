@@ -269,4 +269,60 @@ describe('commit status row plugin registry', () => {
       ]);
     });
   });
+
+  describe('rejects malformed registrations', () => {
+    it('ignores a plugin whose rowHeader is not a function', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      registerCommitStatusRowPlugin(
+        { rowHeader: 'not a component' } as unknown as RowPlugin,
+        'TimedCommitStatus',
+      );
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('ignores a plugin whose rowContent is not a function', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      registerCommitStatusRowPlugin(
+        { rowHeader: headerA, rowContent: 'not a component' } as unknown as RowPlugin,
+        'TimedCommitStatus',
+      );
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('ignores a malformed annotation-keyed plugin without registering it', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      registerCommitStatusRowPluginByAnnotation(
+        { rowHeader: undefined } as unknown as RowPlugin,
+        'WebRequestCommitStatus',
+        'example.com/plugin',
+        'my-plugin',
+      );
+
+      expect(listCommitStatusRowPluginsByAnnotation()).toEqual([]);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('leaves a prior valid registration for the same GVK in place', () => {
+      registerCommitStatusRowPlugin(pluginA, 'TimedCommitStatus');
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      registerCommitStatusRowPlugin(
+        { rowHeader: null } as unknown as RowPlugin,
+        'TimedCommitStatus',
+      );
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBe(pluginA);
+      consoleErrorSpy.mockRestore();
+    });
+  });
 });
