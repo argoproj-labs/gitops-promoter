@@ -136,13 +136,21 @@ var _ = BeforeSuite(func() {
 	logf.Log.Info("Git storage path", "path", gitStoragePath)
 
 	By("bootstrapping test environments")
-	// Create a local test environment to test the single cluster functionality
-	testEnv, cfg, k8sClient = createAndStartTestEnv()
-
-	// Create a dev and staging test environment to test the multi cluster functionality
-	// for watching argocd applications in the other clusters
-	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
-	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
+	// Start the control planes concurrently: each one boots its own etcd and
+	// kube-apiserver and installs CRDs, which dominates BeforeSuite time when
+	// done serially.
+	// - local: single cluster functionality
+	// - dev and staging: multi cluster functionality for watching argocd
+	//   applications in the other clusters
+	var envLocal, envDev, envStaging startedTestEnv
+	var envGroup errgroup.Group
+	envGroup.Go(func() (err error) { envLocal, err = startTestEnv(); return err })
+	envGroup.Go(func() (err error) { envDev, err = startTestEnv(); return err })
+	envGroup.Go(func() (err error) { envStaging, err = startTestEnv(); return err })
+	Expect(envGroup.Wait()).To(Succeed())
+	testEnv, cfg, k8sClient = envLocal.env, envLocal.cfg, envLocal.client
+	testEnvDev, cfgDev, k8sClientDev = envDev.env, envDev.cfg, envDev.client
+	testEnvStaging, cfgStaging, k8sClientStaging = envStaging.env, envStaging.cfg, envStaging.client
 
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
@@ -259,6 +267,9 @@ var _ = BeforeSuite(func() {
 		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		// Specs that push a git note without a new commit wait on the out-of-sync
+		// retry chain; the 15s production default makes each of them sit idle.
+		enqueueThreshold: 2 * time.Second,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -1480,6 +1491,20 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 }
 
 func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
+	started, err := startTestEnv()
+	Expect(err).NotTo(HaveOccurred())
+	return started.env, started.cfg, started.client
+}
+
+type startedTestEnv struct {
+	env    *envtest.Environment
+	cfg    *rest.Config
+	client client.Client
+}
+
+// startTestEnv starts an envtest control plane and returns errors instead of
+// asserting, so it is safe to call from goroutines.
+func startTestEnv() (startedTestEnv, error) {
 	env := &envtest.Environment{
 		UseExistingCluster: new(false),
 		CRDDirectoryPaths: []string{
@@ -1500,14 +1525,16 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 	}
 
 	cfg, err := env.Start()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
+	if err != nil {
+		return startedTestEnv{}, fmt.Errorf("failed to start envtest: %w", err)
+	}
 
 	cl, err := client.New(cfg, client.Options{Scheme: scheme})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cl).NotTo(BeNil())
+	if err != nil {
+		return startedTestEnv{}, fmt.Errorf("failed to create client: %w", err)
+	}
 
-	return env, cfg, cl
+	return startedTestEnv{env: env, cfg: cfg, client: cl}, nil
 }
 
 // unmarshalYaml unmarshals a YAML string into the target struct using JSON decoding. It disallows unknown fields. Using

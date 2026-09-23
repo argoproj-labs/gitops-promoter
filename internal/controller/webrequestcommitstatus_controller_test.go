@@ -1643,7 +1643,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
-							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
 							When: promoterv1alpha1.WhenWithOutputSpec{
 								Expression: "TriggerOutput == nil || TriggerOutput[\"triggered\"] != true",
 								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ triggered: true }`},
@@ -1694,7 +1694,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				c := requestCount
 				mu.Unlock()
 				g.Expect(c).To(Equal(1), "Should only make one request")
-			}, 15*time.Second, 3*time.Second).Should(Succeed())
+			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 
 		It("should use response data in subsequent trigger expressions", func() {
