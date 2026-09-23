@@ -30,10 +30,37 @@ interface RowPlugin {
 - `check` is the projected view of the commit status; `manager` is the full manager CR
   (e.g. the `TimedCommitStatus` object), including its `status` subresource.
 
+`check` (defined in
+[`ui/shared/src/types/promotion.ts`](https://github.com/argoproj-labs/gitops-promoter/blob/main/ui/shared/src/types/promotion.ts))
+carries more than the projected commit status fields — it's also stamped with data from the
+surrounding `PromotionStrategy`, so a plugin doesn't have to look it up separately:
+
+```ts
+interface Check {
+  name: string;
+  status: string;
+  description?: string;
+  url?: string;
+  branch: string;
+  kind?: string;
+  apiVersion?: string;
+  manager?: CommitStatusManager;
+  promotionStrategy?: PromotionStrategy;
+  environment?: Environment;
+  activeDrySha?: string;
+  activeHydratedSha?: string;
+  proposedDrySha?: string;
+  proposedHydratedSha?: string;
+}
+```
+
+All of these beyond the base commit status fields are optional and populated on a best-effort
+basis by the consuming component — a plugin should treat them as possibly `undefined` rather
+than assuming they're always present.
+
 This contract is not published as an npm package. Copy the interfaces you need into your own
-plugin's source — see [`gitops-promoter-example-plugin`](#example-plugin) for the pattern. There
-is no dependency-version skew to manage: the shapes are small and stable, and copying avoids
-requiring plugin authors to consume this repo's build tooling.
+plugin's source. There is no dependency-version skew to manage: the shapes are small and
+stable, and copying avoids requiring plugin authors to consume this repo's build tooling.
 
 ## Registering a plugin
 
@@ -87,6 +114,41 @@ registerWhenReady(myPlugin, 'TimedCommitStatus');
 
 This works unchanged on the dashboard too (the API is already there, so the first check
 succeeds immediately), so it's the pattern to use regardless of which surface you're targeting.
+
+### Claiming a specific commit status instance
+
+`registerCommitStatusRowPlugin` claims every commit status resource of a given kind. To
+instead claim one specific resource — for example, one particular `WebRequestCommitStatus`
+among several in the cluster — register by annotation instead:
+
+```ts
+window.promoterPluginsAPI?.registerCommitStatusRowPluginByAnnotation(
+  myPlugin,
+  'WebRequestCommitStatus',
+  'example.com/plugin',
+  'my-plugin',
+);
+```
+
+Put the matching annotation on the commit status manager resource itself:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  annotations:
+    example.com/plugin: my-plugin
+```
+
+- The annotation *refines* a GVK match; it does not replace one. A resource of a different
+  kind never matches regardless of its annotations.
+- An annotation match takes priority over a plain GVK match for the same resource, so a
+  `registerCommitStatusRowPluginByAnnotation` registration renders instead of any
+  `registerCommitStatusRowPlugin` registration that would otherwise apply to that kind.
+- If more than one annotation on a resource matches a registered key/value pair, which one
+  wins is unspecified — do not register conflicting annotations for the same GVK.
+- `group` and `version` are optional trailing arguments, defaulting the same way as
+  `registerCommitStatusRowPlugin`.
 
 ## React sharing and version constraints
 
@@ -152,20 +214,15 @@ module.exports = {
 The output filename must start with `plugin` and end in `.js` (e.g. `plugin-my-plugin.js`) —
 both surfaces' build tooling and the dashboard's runtime loader filter on that convention.
 
-## Example plugin
-
-[`gitops-promoter-example-plugin`](https://github.com/jwinters01/gitops-promoter-example-plugin)
-is an alternate `TimedCommitStatus` row, built entirely outside this repository, that
-overrides the built-in `TimedCommitStatus` plugin shipped in
-[`ui/shared/src/components/plugins/TimedCommitStatus/`](https://github.com/argoproj-labs/gitops-promoter/blob/main/ui/shared/src/components/plugins/TimedCommitStatus/TimedCommitStatus.tsx).
-It implements both `rowHeader` and `rowContent`, and is a working reference for the webpack
-config, `tsconfig.json`, and registration call described above.
-
 ## Loading a plugin for testing
 
-All three loading paths read from `.js` files matching `plugin*.js`. Each file is wrapped in
-its own `try/catch` when served, so one broken plugin bundle doesn't take down another or the
-host page.
+All three loading paths read from `.js` files matching `plugin*.js`. Each file is syntax-checked
+before being concatenated — a bundle with a parse error (truncated download, stray token, an
+`import`/`export` statement, which is invalid outside an ES module) is skipped and logged rather
+than included, since a single malformed file would otherwise make the whole concatenated script
+fail to parse and take every plugin (and, on the extension surface, the extension itself) down
+with it. Each included file is also wrapped in its own `try/catch` when served, so a *runtime*
+throw in one plugin doesn't take down another or the host page.
 
 ### Dashboard, at runtime (no rebuild)
 
@@ -182,6 +239,19 @@ sidecar uses to add plugins to a running deployment without rebuilding the dashb
 provided the container restarts (or is started) after the bundle is in place. `--plugins-dir`
 defaults to `/tmp/plugins`.
 
+Two things to know about how `--plugins-dir` is scanned:
+
+- **Symlinks are not followed.** A `plugin*.js` entry that's a symlink is skipped (logged at
+  startup). This matters if you mount plugins from a Kubernetes ConfigMap or projected
+  volume — those materialize files as symlinks into a hidden `..data/` directory, so mounting
+  a plugin bundle this way yields an empty `/plugins.js` rather than the bundle you expect.
+  Copy the bundle into a real directory (e.g. via an init container) instead of mounting it
+  directly from a ConfigMap.
+- **A directory, or a file the process can't read, named `plugin*.js` aborts dashboard startup
+  entirely** rather than being skipped with a log — unlike a file with malformed JS content,
+  which is skipped and logged. Make sure nothing matching that filename pattern in the
+  directory is anything other than a readable plugin bundle file.
+
 ### Dashboard, bundled at build time
 
 Copy your bundle into `ui/plugins/` before building the dashboard:
@@ -191,11 +261,12 @@ cp /path/to/your/plugin/dist/plugin-my-plugin.js ui/plugins/
 make build-dashboard
 ```
 
-`ui/dashboard`'s `build:embed` script copies everything in `ui/plugins/` into the dashboard's
-build output, which is then embedded into the promoter binary via `//go:embed`. A plugin added
-this way ships with the binary and needs no `--plugins-dir` at runtime. Build-time-bundled and
-runtime-loaded plugins can coexist: `/plugins.js` serves both, with a runtime plugin of the
-same name loading after (and therefore overriding) a build-time one.
+`ui/dashboard`'s `build:embed` script copies files matching `plugin*.js` from `ui/plugins/`
+into the dashboard's build output, which is then embedded into the promoter binary via
+`//go:embed`. A plugin added this way ships with the binary and needs no `--plugins-dir` at
+runtime. Build-time-bundled and runtime-loaded plugins can coexist: `/plugins.js` serves both,
+with a runtime plugin of the same name loading after (and therefore overriding) a build-time
+one.
 
 ### Argo CD UI extension, bundled at build time
 
