@@ -79,44 +79,32 @@ window.promoterPluginsAPI?.registerCommitStatusRowPlugin(myPlugin, 'TimedCommitS
   externally loaded plugin registering the same kind overrides the built-in row.
 - **Register before the app's first render.** The registry is read once per row, not
   subscribed to — a plugin that registers after a row has already rendered is not picked
-  up until something else causes that row to re-render. Both surfaces are built to load every
-  plugin bundle before mounting the app for exactly this reason (see the loading paths below),
-  so this only matters if you're doing something unusual, like registering from code that
-  runs on a later user interaction rather than at bundle load time.
+  up until something else causes that row to re-render. Both surfaces guarantee registration
+  happens before mount, by two different mechanisms: the dashboard awaits the plugin script
+  before rendering (see below), and the extension's build-time-concatenated plugin code runs
+  as part of the same script that installs the host API, in file order, before Argo CD mounts
+  anything. This only matters if you're doing something unusual, like registering from code
+  that runs on a later user interaction rather than at bundle load time.
 
 **On the dashboard surface**, `window.promoterPluginsAPI` is installed by the dashboard's own
 app bundle, which always executes before `/plugins.js` is loaded — a plain `?.` guard is
 sufficient there.
 
-**On the Argo CD extension surface, do not assume `window.promoterPluginsAPI` already exists
-when your plugin's top-level code runs — poll for it instead.** Both `extension-promoter.js`
-(which installs the API) and any plugin bundle are just separate files that Argo CD's own
-server concatenates live, per request, into the single script the browser loads as
-`/extensions.js`. Their relative order comes from a lexical directory walk over
-`/tmp/extensions/`
-([`serveExtensions`](https://github.com/argoproj/argo-cd/blob/master/server/server.go),
-`filepath.Walk`, re-run on every request with no caching) — not a guarantee that the promoter's
-own registration code has already run by the time your file executes. A `?.`-guarded call that
-happens to run first silently no-ops, with no error surfaced anywhere. Poll instead:
+**On the Argo CD extension surface, which path you're using changes this:**
 
-```ts
-function registerWhenReady(plugin: RowPlugin, kind: string, attempts = 0): void {
-  if (window.promoterPluginsAPI) {
-    window.promoterPluginsAPI.registerCommitStatusRowPlugin(plugin, kind);
-    return;
-  }
-  if (attempts >= 50) {
-    console.error(`promoterPluginsAPI not available after ${attempts} attempts; giving up`);
-    return;
-  }
-  setTimeout(() => registerWhenReady(plugin, kind, attempts + 1), 100);
-}
-
-registerWhenReady(myPlugin, 'TimedCommitStatus');
-```
-
-This works unchanged on the dashboard too (the API is already there, so the first check
-succeeds immediately), so it's the pattern to use regardless of which surface you're targeting.
+- **Built into the extension at build time** (the path documented below under "Argo CD UI
+  extension, bundled at build time"): your plugin's code is concatenated onto the extension's
+  own compiled output into one file, after the code that installs the host API. A plain `?.`
+  guard is safe here — `window.promoterPluginsAPI` is guaranteed to exist by the time your
+  code runs, in the same way it is on the dashboard.
+- **Delivered at runtime via a separate init container** (documented below under "Argo CD UI
+  extension, loaded at runtime"): your plugin bundle and the promoter's own extension bundle
+  are two independent files that Argo CD's own server concatenates live, per request, in
+  whatever order a lexical directory walk over `/tmp/extensions/` happens to return
+  ([`serveExtensions`](https://github.com/argoproj/argo-cd/blob/master/server/server.go),
+  `filepath.Walk`, re-run on every request with no caching). A `?.`-guarded call that happens
+  to run first silently no-ops, with no error surfaced anywhere. **Poll for the API instead**
+  — see the runtime-loading section below for the pattern and why it's needed there.
 
 ### Claiming a specific commit status instance
 
@@ -219,13 +207,17 @@ both surfaces' build tooling and the dashboard's runtime loader filter on that c
 
 ## Loading a plugin for testing
 
-All three loading paths read from `.js` files matching `plugin*.js`. Each file is syntax-checked
-before being concatenated — a bundle with a parse error (truncated download, stray token, an
-`import`/`export` statement, which is invalid outside an ES module) is skipped and logged rather
-than included, since a single malformed file would otherwise make the whole concatenated script
-fail to parse and take every plugin (and, on the extension surface, the extension itself) down
-with it. Each included file is also wrapped in its own `try/catch` when served, so a *runtime*
-throw in one plugin doesn't take down another or the host page.
+There are four ways to load a plugin, covered below. The three that involve promoter code
+(the two dashboard paths and the extension build-time path) read from `.js` files matching
+`plugin*.js`, syntax-check each one before concatenating it — a bundle with a parse error
+(truncated download, stray token, an `import`/`export` statement, which is invalid outside an
+ES module) is skipped and logged rather than included, since a single malformed file would
+otherwise make the whole concatenated script fail to parse and take every plugin (and, on the
+extension surface, the extension itself) down with it — and wrap each included file in its
+own `try/catch` when served, so a *runtime* throw in one plugin doesn't take down another or
+the host page. The fourth path, delivering a plugin into a running Argo CD deployment via an
+init container, involves no promoter code at all — a malformed file there is Argo CD's own
+`/extensions.js` concatenation to handle, not something this repo validates or controls.
 
 ### Dashboard, at runtime (no rebuild)
 
@@ -349,15 +341,35 @@ Two things this depends on that are easy to get wrong:
   this is a different filename convention from the `plugin*.js` pattern used by the dashboard's
   build-time-embed and `--plugins-dir` paths, since it's Argo CD's server doing the matching
   here, not the promoter's.
-- **The plugin must use the polling registration pattern from
-  [Registering a plugin](#registering-a-plugin), not a `?.`-guarded call.** Because
-  `argocd-server` re-walks `/tmp/extensions/` fresh on every request with no caching, the order
-  in which `extension-promoter.js` and each plugin's file end up concatenated is not something
-  to build a naming convention on alone (Argo CD's own tooling does use a naming convention for
-  this — `argocd-extension-installer`'s `EXTENSION_JS_VARS` files are literally named
-  `extension-0-*` to sort first — but that only has to survive one write, not every page load
-  against a live filesystem walk). Polling for `window.promoterPluginsAPI` is what actually
-  makes load order irrelevant.
+- **The plugin must poll for `window.promoterPluginsAPI` rather than use a `?.`-guarded
+  call.** Because `argocd-server` re-walks `/tmp/extensions/` fresh on every request with no
+  caching, the order in which `extension-promoter.js` and each plugin's file end up
+  concatenated is not something to build a naming convention on alone (Argo CD's own tooling
+  does use a naming convention for this — `argocd-extension-installer`'s `EXTENSION_JS_VARS`
+  files are literally named `extension-0-*` to sort first — but that only has to survive one
+  write, not every page load against a live filesystem walk). A `?.`-guarded call that happens
+  to run before the promoter's own registration code silently no-ops, with no error surfaced
+  anywhere. Poll instead:
+
+  ```ts
+  function registerWhenReady(plugin: RowPlugin, kind: string, attempts = 0): void {
+    if (window.promoterPluginsAPI) {
+      window.promoterPluginsAPI.registerCommitStatusRowPlugin(plugin, kind);
+      return;
+    }
+    if (attempts >= 50) {
+      console.error(`promoterPluginsAPI not available after ${attempts} attempts; giving up`);
+      return;
+    }
+    setTimeout(() => registerWhenReady(plugin, kind, attempts + 1), 100);
+  }
+
+  registerWhenReady(myPlugin, 'TimedCommitStatus');
+  ```
+
+  This pattern is only necessary for this delivery path. A plugin built into the extension at
+  build time, or loaded into the dashboard, can use a plain `?.`-guarded call — see
+  [Registering a plugin](#registering-a-plugin).
 
 This is a deployment-time delivery mechanism layered on top of the existing build — it needs no
 changes to `ui/extension`'s webpack config or `concat-plugins.mjs`, which continue to serve the
