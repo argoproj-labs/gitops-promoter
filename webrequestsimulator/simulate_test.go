@@ -464,6 +464,23 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			Expect(req.URL).To(HavePrefix("https://example.com/payments/"))
 		}
 	})
+
+	It("Simulate forwards NamespaceMetadata into success expressions", func() {
+		wrcs := newWRCS(
+			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+			`NamespaceMetadata.Labels["team"] == "payments" && Response.StatusCode == 200`,
+		)
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+			WebRequestCommitStatus: wrcs,
+			PromotionStrategy:      newPS(),
+			NamespaceMetadata:      simulatortypes.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
+			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+		})
+		Expect(err).ToNot(HaveOccurred())
+		for _, e := range r.Status.Environments {
+			Expect(e.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		}
+	})
 })
 
 var _ = Describe("webrequestsimulator.Simulate scenarios", func() {

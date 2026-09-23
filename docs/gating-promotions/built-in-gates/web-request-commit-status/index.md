@@ -20,7 +20,7 @@ For each applicable environment (after resolving context):
    - `active`: Validates the currently deployed commit
 2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
 3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
-4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, and output variables (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`) — see [Success expression variables](#success-expression-variables) below.
+4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `NamespaceMetadata`, and output variables (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`) — see [Success expression variables](#success-expression-variables) below.
 5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
@@ -68,7 +68,7 @@ Optional **`when.variables`** (same shape as `when.output`: an `expression` stri
 
 **Order:** `when.variables` (if set) → `when.expression` (boolean) → `when.output` (if set, map persisted to `triggerOutput` or `successOutput`).
 
-**Base environment** for `when.variables` is the same as for `when.expression`: `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput` (and `Response` for **`success.when`** only). There is **no** `Variables` binding inside the variables program itself.
+**Base environment** for `when.variables` is the same as for `when.expression`: `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `NamespaceMetadata`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput` (and `Response` for **`success.when`** only). There is **no** `Variables` binding inside the variables program itself.
 
 **Downstream:** use `Variables.<key>` in `when.expression` and `when.output.expression`, for example `Variables.fingerprint == (TriggerOutput.lastFingerprint ?? "")`.
 
@@ -122,6 +122,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). Per-environment in `environments` context; aggregate of all branches in `promotionstrategy` context. |
 | `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. Use `find(PromotionStrategy.Status.Environments, {.Branch == Branch})` to access per-environment data (e.g. `.Proposed.Hydrated.Sha`). |
 | `WebRequestCommitStatus` | WebRequestCommitStatus | The full WebRequestCommitStatus spec and status (snapshot from the previous reconcile). Access per-branch status via `Status.Environments` or `Status.PromotionStrategyContext`. |
+| `NamespaceMetadata` | object | Labels and annotations of the WebRequestCommitStatus's namespace: `NamespaceMetadata.Labels` and `NamespaceMetadata.Annotations` (`map[string]string`). Same binding as Go templates. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
 | `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |

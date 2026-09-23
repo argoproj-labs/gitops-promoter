@@ -1185,6 +1185,111 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
+	Context("When hydrator notes land without a webhook", func() {
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+
+		getCTP := func(g Gomega, branch string) promoterv1alpha1.ChangeTransferPolicy {
+			var ctp promoterv1alpha1.ChangeTransferPolicy
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, branch)),
+				Namespace: promotionStrategy.Namespace,
+			}, &ctp)
+			g.Expect(err).To(Succeed())
+			return ctp
+		}
+
+		BeforeEach(func() {
+			By("Creating the resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			_, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-note-enqueue", "default")
+			for i := range promotionStrategy.Spec.Environments {
+				promotionStrategy.Spec.Environments[i].AutoMerge = new(false)
+			}
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should enqueue a noteless sibling CTP after another environment records the note", func() {
+			By("Waiting for ChangeTransferPolicies to exist")
+			Eventually(func(g Gomega) {
+				g.Expect(getCTP(g, testBranchDevelopment).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(getCTP(g, testBranchStaging).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(getCTP(g, testBranchProduction).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+			drySha, err := makeDryCommit(ctx, gitPath, "dry commit for missing-note enqueue")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Pushing hydrated commits and firing branch-push webhooks without git notes")
+			type hydratedBranch struct {
+				gitPath     string
+				hydratedSha string
+			}
+			hydrated := make([]hydratedBranch, 0, 3)
+			for _, branch := range []string{testBranchDevelopmentNext, testBranchStagingNext, testBranchProductionNext} {
+				gp, cloneErr := cloneTestRepo(ctx, gitRepo)
+				Expect(cloneErr).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gp) })
+				beforeSha, hydratedSha, pushErr := pushHydratedBranch(ctx, gp, branch, drySha, "hydrate for missing-note enqueue")
+				Expect(pushErr).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, branch)
+				hydrated = append(hydrated, hydratedBranch{gitPath: gp, hydratedSha: hydratedSha})
+			}
+
+			By("Waiting until proposed dry SHAs catch the hydration and no environment has a note yet")
+			Eventually(func(g Gomega) {
+				dev := getCTP(g, testBranchDevelopment)
+				staging := getCTP(g, testBranchStaging)
+				prod := getCTP(g, testBranchProduction)
+				g.Expect(dev.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(staging.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(prod.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(dev.Status.Proposed.Note).To(BeNil())
+				g.Expect(staging.Status.Proposed.Note).To(BeNil())
+				g.Expect(prod.Status.Proposed.Note).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing hydrator notes with no webhook")
+			for _, h := range hydrated {
+				Expect(pushGitNoteWithRetry(ctx, h.gitPath, h.hydratedSha, drySha)).To(Succeed())
+			}
+
+			By("Nudging only development so it records the hydrator note and wakes the PromotionStrategy")
+			devName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment))
+			enqueueCTP(promotionStrategy.Namespace, devName)
+
+			By("Expecting the PromotionStrategy to enqueue the noteless siblings")
+			Eventually(func(g Gomega) {
+				dev := getCTP(g, testBranchDevelopment)
+				staging := getCTP(g, testBranchStaging)
+				prod := getCTP(g, testBranchProduction)
+				g.Expect(dev.Status.Proposed.Note).NotTo(BeNil())
+				g.Expect(dev.Status.Proposed.Note.DrySha).To(Equal(drySha))
+				g.Expect(staging.Status.Proposed.Note).NotTo(BeNil(), "staging should be nudged by enqueueOutOfSyncCTPs")
+				g.Expect(staging.Status.Proposed.Note.DrySha).To(Equal(drySha))
+				g.Expect(prod.Status.Proposed.Note).NotTo(BeNil(), "production should be nudged by enqueueOutOfSyncCTPs")
+				g.Expect(prod.Status.Proposed.Note.DrySha).To(Equal(drySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When reconciling a resource with activePath configured", func() {
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
@@ -5930,6 +6035,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// would wait for timers to fire, but timers would block waiting for the lock that won't
 	// release until the test completes.
 	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
+		promotionStrategyUID := types.UID("11111111-1111-1111-1111-111111111111")
+
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
@@ -6003,7 +6110,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// A lone environment's own effective dry SHA is the target by definition, even
 			// when its note disagrees with its hydrator.metadata file (a no-op hydration).
 			// There is no sibling to catch up with and nothing a refetch could change.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeLaggingCTP("lonely-ctp"),
 			})
 
@@ -6020,7 +6127,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			note := func() *promoterv1alpha1.HydratorMetadata {
 				return &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}
 			}
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("dev-ctp", "abc123", note(), metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("prod-ctp", "abc123", note(), metav1.Now()),
 			})
@@ -6035,7 +6142,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// lagging environment still reports abc123. The laggard is the environment
 			// with something to fetch — it must be the one selected, not the sibling that
 			// already has the note.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("lagging-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now()),
 			})
@@ -6054,14 +6161,80 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
 
 			// Repeated owner-watch loops with the identical disagreement do not enqueue
 			// again immediately (they defer to the single scheduled retry).
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
+		})
+
+		It("should enqueue a noteless environment after detecting a note-based hydrator", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			// Both environments resolve to the same effective SHA. The note on qal proves
+			// this PromotionStrategy uses a note-based hydrator, so prd's absent note means
+			// it has not observed the note push and needs a reconcile.
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("prd-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute))),
+				makeCTPWithShas("qal-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.Now()),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"prd-ctp"}))
+		})
+
+		It("should remember note-based hydration by PromotionStrategy UID", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			note := func() *promoterv1alpha1.HydratorMetadata {
+				return &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}
+			}
+			prd := makeCTPWithShas("prd-ctp", "abc123", note(), metav1.NewTime(time.Now().Add(-time.Minute)))
+			qal := makeCTPWithShas("qal-ctp", "abc123", note(), metav1.Now())
+
+			reconciler.enqueueOutOfSyncCTPs(
+				ctx,
+				promotionStrategyUID,
+				[]*promoterv1alpha1.ChangeTransferPolicy{prd, qal},
+			)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+
+			// The current snapshot no longer contains prd's note, but the process-lifetime
+			// marker proves this PromotionStrategy uses note-based hydration.
+			prd.Status.Proposed.Note = nil
+			reconciler.enqueueOutOfSyncCTPs(
+				ctx,
+				promotionStrategyUID,
+				[]*promoterv1alpha1.ChangeTransferPolicy{prd},
+			)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"prd-ctp"}))
+		})
+
+		It("should not enqueue noteless environments before detecting note-based hydration", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("dev-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute))),
+				makeCTPWithShas("prd-ctp", "abc123", nil, metav1.Now()),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+		})
+
+		It("should track note-based hydration independently per PromotionStrategy", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			otherPromotionStrategyUID := types.UID("22222222-2222-2222-2222-222222222222")
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("marked-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.Now()),
+			})
+			reconciler.enqueueOutOfSyncCTPs(ctx, otherPromotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("other-dev-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute))),
+				makeCTPWithShas("other-prd-ctp", "abc123", nil, metav1.Now()),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
 		})
 
 		It("should enqueue a lagging CTP on first call", func() {
@@ -6072,7 +6245,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 
 			enqueueMutex.Lock()
 			Expect(*enqueuedCTPs).To(HaveLen(1))
@@ -6093,9 +6266,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// One call enqueues immediately and auto-chains threshold-spaced delayed
 			// retries. Repeats within the rate-limit window do not enqueue again or
 			// arm duplicate chains.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			for range 3 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
@@ -6110,7 +6283,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// Convergence stops the chain. A tick already in flight may still fire once;
 			// after that, lastDisagreement is cleared and further ticks are no-ops.
 			lagging.Status.Proposed.Note.DrySha = "abc123"
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			time.Sleep(reconciler.enqueueThreshold)
 			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
 			Consistently(func() int {
@@ -6126,7 +6299,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
 			// First call enqueues for disagreement (old123 vs abc123) and arms a retry chain.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
@@ -6135,7 +6308,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// no matter how many owner-watch loops repeat it.
 			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
@@ -6150,7 +6323,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// Convergence stops the replacement chain. A tick already in flight may still
 			// fire once; after that, further ticks are no-ops.
 			lagging.Status.Proposed.Note.DrySha = "abc123"
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			time.Sleep(reconciler.enqueueThreshold)
 			stoppedAt := len(enqueuedNames(enqueuedCTPs, enqueueMutex))
 			Consistently(func() int {
@@ -6165,12 +6338,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The lagging environment's note catches up to the batch target.
 			lagging.Status.Proposed.Note.DrySha = "abc123"
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 
 			// Without cancellation the auto-chain would keep enqueueing on the threshold.
 			Consistently(func() []string {
@@ -6189,13 +6362,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 
 			// First call - both lagging CTPs should enqueue
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 
 			// Second call immediately - both disagreements are unchanged and within the
 			// rate-limit window, so neither enqueues immediately (each defers to a single
 			// scheduled delayed retry instead, tracked independently per CTP).
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
 
@@ -6206,14 +6379,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			ctp2 := makeLaggingCTP("ctp-2")
 
 			// First call - enqueue ctp-1 only
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1"}))
 
 			// Immediately call again with both CTPs: ctp-1 is inside its rate-limit
 			// window, so it does not enqueue immediately (it defers to a scheduled
 			// delayed retry); ctp-2 has never been enqueued and goes through right away.
 			time.Sleep(100 * time.Millisecond)
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
+			reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
 
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})

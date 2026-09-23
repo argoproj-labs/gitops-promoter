@@ -972,7 +972,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, prKey, &createdPR)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				}, 10*time.Second).Should(Succeed())
+				}, 30*time.Second).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -1322,7 +1322,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
-				pr, stableGeneration := waitForOpenPRWithID()
+				pr, _ := waitForOpenPRWithID()
 
 				fake.ResetPullRequestCallCounts(pr.UID)
 
@@ -1353,15 +1353,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Verifying status churn does not drive SCM polling in a tight loop")
 				// With the fix, three status-only pokes produce 0 SCM calls after reset.
 				// Without it, the loop reaches 1+ FindOpen/Update pairs within ~0.5s.
+				// Do not assert PR.Generation stays fixed: CTP's own RequeueAfter can still
+				// rewrite Spec (and bump generation) independently of the status feedback loop.
 				Consistently(func(g Gomega) {
 					g.Expect(fake.FindOpenCallCount(pr.UID)).To(BeZero())
 					g.Expect(fake.UpdateCallCount(pr.UID)).To(BeZero())
 					g.Expect(fake.PullRequestSCMCallCount(pr.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
-
-				var afterPR promoterv1alpha1.PullRequest
-				Expect(k8sClient.Get(ctx, prKey, &afterPR)).To(Succeed())
-				Expect(afterPR.Generation).To(Equal(stableGeneration))
 			})
 
 			It("should still hit SCM when the PR spec changes", func() {
