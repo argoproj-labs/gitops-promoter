@@ -326,7 +326,11 @@ describe('enrichFromCRD / enrichFromEnvironments - widened context', () => {
   it('populates proposedHydratedSha from the hydrated commit, not the dry commit, on the live view', () => {
     const environment = {
       branch: BRANCH,
-      active: { dry: { sha: 'active-dry' }, hydrated: { sha: 'active-hydrated' }, commitStatuses: [] },
+      active: {
+        dry: { sha: 'active-dry' },
+        hydrated: { sha: 'active-hydrated' },
+        commitStatuses: [],
+      },
       proposed: {
         dry: { sha: 'proposed-dry' },
         hydrated: { sha: 'proposed-hydrated' },

@@ -56,10 +56,10 @@ const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistr
  * check cannot substitute for.
  */
 function isValidRowPlugin(plugin: RowPlugin): boolean {
-  if (typeof plugin?.rowHeader !== 'function') {
+  if (typeof plugin.rowHeader !== 'function') {
     console.error(
       'Ignoring plugin registration: rowHeader must be a function component, got',
-      plugin?.rowHeader,
+      plugin.rowHeader,
     );
     return false;
   }

@@ -70,7 +70,11 @@ describe('useCommitStatusRowPlugin', () => {
     container.remove();
   });
 
-  const render = (props: { kind?: string; apiVersion?: string; annotations?: Record<string, string> }) => {
+  const render = (props: {
+    kind?: string;
+    apiVersion?: string;
+    annotations?: Record<string, string>;
+  }) => {
     root = createRoot(container);
     act(() => {
       root.render(React.createElement(Probe, props));

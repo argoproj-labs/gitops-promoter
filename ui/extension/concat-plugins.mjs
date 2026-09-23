@@ -24,7 +24,6 @@ export function buildAppendedPlugins(pluginsDir) {
     // is a SyntaxError here, not a runtime throw, so the try/catch below it can't
     // catch it once concatenated - it would take down the whole extension bundle.
     try {
-      // eslint-disable-next-line no-new-func
       new Function(content);
     } catch (e) {
       console.warn(`Skipping plugin ${entry.name}: failed syntax validation (${e.message})`);
@@ -37,7 +36,10 @@ export function buildAppendedPlugins(pluginsDir) {
   return appended;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
+) {
   const pluginsDir = path.resolve(process.cwd(), '../plugins');
   const outputFile = path.resolve(process.cwd(), 'dist/extension-promoter.js');
 
