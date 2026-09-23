@@ -322,4 +322,46 @@ describe('enrichFromCRD / enrichFromEnvironments - widened context', () => {
     expect(details.activeChecks[0].promotionStrategy).toBeUndefined();
     expect(details.activeChecks[0].environment).toBe(environment);
   });
+
+  it('populates proposedHydratedSha from the hydrated commit, not the dry commit, on the live view', () => {
+    const environment = {
+      branch: BRANCH,
+      active: { dry: { sha: 'active-dry' }, hydrated: { sha: 'active-hydrated' }, commitStatuses: [] },
+      proposed: {
+        dry: { sha: 'proposed-dry' },
+        hydrated: { sha: 'proposed-hydrated' },
+        commitStatuses: [{ key: 'gate', phase: 'success' }],
+      },
+      lastHealthyDryShas: [],
+    } as unknown as Environment;
+
+    const [details] = enrichFromEnvironments([environment]);
+
+    expect(details.proposedChecks[0].proposedDrySha).toBe('proposed-dry');
+    expect(details.proposedChecks[0].proposedHydratedSha).toBe('proposed-hydrated');
+  });
+
+  it('populates proposedHydratedSha from history when viewing a historical index', () => {
+    const environment = {
+      branch: BRANCH,
+      active: { dry: {}, hydrated: {}, commitStatuses: [] },
+      proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+      history: [
+        {},
+        {
+          active: { dry: {}, hydrated: {}, commitStatuses: [] },
+          proposed: {
+            hydrated: { sha: 'history-proposed-hydrated' },
+            commitStatuses: [{ key: 'gate', phase: 'success' }],
+          },
+        },
+      ],
+      lastHealthyDryShas: [],
+    } as unknown as Environment;
+
+    const [details] = enrichFromEnvironments([environment], 1);
+
+    expect(details.proposedChecks[0].proposedDrySha).toBeUndefined();
+    expect(details.proposedChecks[0].proposedHydratedSha).toBe('history-proposed-hydrated');
+  });
 });

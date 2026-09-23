@@ -250,7 +250,7 @@ function getEnvDetails(
     activeDrySha: activeCommitInfo.sha,
     activeHydratedSha: activeHistory.hydrated?.sha,
     proposedDrySha: index > 0 ? undefined : proposed.dry?.sha,
-    proposedHydratedSha: proposedDry.sha,
+    proposedHydratedSha: index > 0 ? proposedDry.sha : proposed.hydrated?.sha,
   };
 
   // Use active field for current view, history field for history view
