@@ -2,6 +2,7 @@ import React from 'react';
 
 interface PluginErrorBoundaryProps {
   pluginKind?: string;
+  fallback?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -10,7 +11,9 @@ interface PluginErrorBoundaryState {
 }
 
 // getDerivedStateFromError/componentDidCatch have no hooks equivalent, so this
-// must be a class component.
+// must be a class component. Callers should key this component on plugin
+// identity (e.g. `check.kind`) so a plugin swap remounts the boundary and
+// clears any latched error state, rather than staying stuck on the fallback.
 export class PluginErrorBoundary extends React.Component<
   PluginErrorBoundaryProps,
   PluginErrorBoundaryState
@@ -30,7 +33,7 @@ export class PluginErrorBoundary extends React.Component<
 
   render(): React.ReactNode {
     if (this.state.hasError) {
-      return null;
+      return this.props.fallback ?? null;
     }
     return this.props.children;
   }

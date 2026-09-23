@@ -36,7 +36,7 @@ describe('PluginErrorBoundary', () => {
     expect(container.textContent).toBe('ok');
   });
 
-  it('renders the fallback instead of children when a child throws during render', () => {
+  it('renders null when a child throws and no fallback is provided', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     root = createRoot(container);
@@ -45,6 +45,55 @@ describe('PluginErrorBoundary', () => {
     });
 
     expect(container.textContent).toBe('');
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('renders the fallback instead of null when a child throws during render', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    root = createRoot(container);
+    act(() => {
+      root.render(
+        React.createElement(PluginErrorBoundary, {
+          fallback: React.createElement('span', null, 'default row'),
+          children: React.createElement(Boom),
+        }),
+      );
+    });
+
+    expect(container.textContent).toBe('default row');
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('clears the error state and renders normally when remounted via a key change', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    root = createRoot(container);
+    act(() => {
+      root.render(
+        React.createElement(PluginErrorBoundary, {
+          key: 'a',
+          fallback: React.createElement('span', null, 'default row'),
+          children: React.createElement(Boom),
+        }),
+      );
+    });
+    expect(container.textContent).toBe('default row');
+
+    // Simulating a plugin swap: a different `key` remounts the boundary,
+    // clearing `hasError` so a subsequently working plugin isn't stuck
+    // behind a stale error latched by the previous plugin.
+    act(() => {
+      root.render(
+        React.createElement(PluginErrorBoundary, {
+          key: 'b',
+          fallback: React.createElement('span', null, 'default row'),
+          children: React.createElement('span', null, 'ok'),
+        }),
+      );
+    });
+
+    expect(container.textContent).toBe('ok');
     consoleErrorSpy.mockRestore();
   });
 

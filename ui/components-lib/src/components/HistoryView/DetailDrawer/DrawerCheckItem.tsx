@@ -6,6 +6,27 @@ import type { HealthKey } from '../types';
 import { HEALTH_LABELS } from '../presentation';
 import { StatusIcon, StatusType } from '../../StatusIcon';
 
+const DefaultCheckRow: React.FC<{ check: Check }> = ({ check }) => (
+  <>
+    <span className="hp-sr-only">
+      {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
+    </span>
+    <span className="hp-drawer__check-key">{check.name}</span>
+    {check.description && <span className="hp-drawer__check-desc">{check.description}</span>}
+    {check.url && (
+      <a
+        href={check.url}
+        target="_blank"
+        rel="noreferrer"
+        className="hp-drawer__check-link"
+        aria-label={`View details for ${check.name}, opens in new tab`}
+      >
+        View details
+      </a>
+    )}
+  </>
+);
+
 export const DrawerCheckItem: React.FC<{
   check: Check;
   isExpanded: boolean;
@@ -45,37 +66,22 @@ export const DrawerCheckItem: React.FC<{
           </button>
         )}
         {Plugin && manager ? (
-          <PluginErrorBoundary pluginKind={check.kind}>
+          <PluginErrorBoundary
+            key={check.kind}
+            pluginKind={check.kind}
+            fallback={<DefaultCheckRow check={check} />}
+          >
             <Plugin.rowHeader check={check} manager={manager} />
           </PluginErrorBoundary>
         ) : (
-          <>
-            <span className="hp-sr-only">
-              {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
-            </span>
-            <span className="hp-drawer__check-key">{check.name}</span>
-            {check.description && (
-              <span className="hp-drawer__check-desc">{check.description}</span>
-            )}
-            {check.url && (
-              <a
-                href={check.url}
-                target="_blank"
-                rel="noreferrer"
-                className="hp-drawer__check-link"
-                aria-label={`View details for ${check.name}, opens in new tab`}
-              >
-                View details
-              </a>
-            )}
-          </>
+          <DefaultCheckRow check={check} />
         )}
       </div>
       {RowContent && manager && (
         // Stays mounted while collapsed (hidden is CSS-only, not an unmount), so a
         // plugin's timers/effects keep running even when the panel isn't visible.
         <div id={panelId} className="hp-drawer__check-panel" hidden={!isExpanded}>
-          <PluginErrorBoundary pluginKind={check.kind}>
+          <PluginErrorBoundary key={check.kind} pluginKind={check.kind} fallback={null}>
             <RowContent check={check} manager={manager} />
           </PluginErrorBoundary>
         </div>
