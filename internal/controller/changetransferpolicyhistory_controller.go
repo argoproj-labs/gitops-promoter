@@ -148,15 +148,16 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
-	// Fetch git notes: history entries are built from the promotion-history notes ref when present.
-	err = gitOperations.FetchNotes(ctx)
+	// Sync the active branch and git notes refs in one remote round trip: history entries are built from
+	// the promotion-history notes ref when present, and GetBranchSha below reuses the synced branch SHA.
+	err = gitOperations.SyncRefs(ctx, ctph.Spec.ActiveBranch)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to sync git refs: %w", err)
 	}
 
-	// Fetch the active branch (or skip the fetch when a live ls-remote confirms the remote tip still
-	// matches the newest history entry). GetRevListFirstParent requires the branch commits to be present
-	// in the local clone.
+	// Resolve the active branch tip. SyncRefs above already fetched it if it changed, so this normally
+	// needs no remote calls. GetRevListFirstParent requires the branch commits to be present in the
+	// local clone.
 	lastSeenSha := ""
 	if len(ctph.Status.History) > 0 {
 		lastSeenSha = ctph.Status.History[0].Active.Hydrated.Sha

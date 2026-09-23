@@ -174,10 +174,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
-	// Fetch git notes for hydrator metadata (used to track hydration completion)
-	err = gitOperations.FetchNotes(ctx)
+	// Bring both branches and the git notes refs (hydrator metadata, promotion history) up to date in one
+	// remote round trip, fetching only what changed. The branch SHAs it resolves are reused by every
+	// GetBranchSha call in this reconcile.
+	err = gitOperations.SyncRefs(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to sync git refs: %w", err)
 	}
 
 	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced. This must run after
@@ -412,11 +414,10 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	// to be made concurrency-safe for a single identity first; today its EnvironmentOperations methods share one
 	// on-disk clone and must be called sequentially (see the internal/git package documentation).
 
-	// GetBranchSha skips the network fetch for a branch when a live ls-remote confirms its remote
-	// SHA still matches what we observed last reconcile - the commit is then guaranteed already
-	// present in this identity's clone. In the common steady state (nothing changed since the last
-	// reconcile) this avoids paying for a full fetch on either branch. A failed probe (for example a
-	// branch not existing yet) just falls back to a real fetch, exactly as before.
+	// Both branches were already brought up to date by SyncRefs at the start of the reconcile, so
+	// GetBranchSha normally answers from that result without touching the remote. A branch SyncRefs
+	// could not resolve (for example one that does not exist yet) takes GetBranchSha's own
+	// ls-remote/fetch path, which reports the missing branch.
 	proposedSha, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ProposedBranch, ctp.Status.Proposed.Hydrated.Sha)
 	if err != nil {
 		// If the proposed branch doesn't exist, it's likely because the hydrator hasn't run yet
@@ -934,10 +935,9 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 		return nil
 	}
 
-	// writePromotionHistoryNote reads from origin/<activeBranch>, and the blob-less clone may not hold
-	// the merge commit yet: calculateStatus only fetches the branch later in this reconcile. GetBranchSha
-	// skips the fetch when a live ls-remote confirms the remote tip still matches
-	// Status.Active.Hydrated.Sha from a prior reconcile (same cache as calculateStatus).
+	// writePromotionHistoryNote reads from origin/<activeBranch>, so the merge commit must be in the
+	// blob-less clone. SyncRefs already brought the active branch up to date at the start of this
+	// reconcile, so GetBranchSha normally answers from that result with no remote calls.
 	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil {
 		return fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
 	}

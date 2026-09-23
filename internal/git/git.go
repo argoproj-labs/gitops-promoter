@@ -96,11 +96,14 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
-	blobs    map[string]blobObject
-	commits  map[string]commitObject
-	identity string
+	gap     scms.GitOperationsProvider
+	gitRepo *v1alpha1.GitRepository
+	blobs   map[string]blobObject
+	commits map[string]commitObject
+	// syncedBranchShas holds origin/<branch> SHAs brought up to date by SyncRefs. GetBranchSha serves
+	// these without touching the remote again; pushes to a branch drop its entry.
+	syncedBranchShas map[string]string
+	identity         string
 }
 
 // HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.
@@ -143,11 +146,12 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
-		blobs:    make(map[string]blobObject),
-		commits:  make(map[string]commitObject),
+		gap:              gap,
+		gitRepo:          gitRepo,
+		identity:         identity,
+		blobs:            make(map[string]blobObject),
+		commits:          make(map[string]commitObject),
+		syncedBranchShas: make(map[string]string),
 	}
 }
 
@@ -258,6 +262,9 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 // the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
 // nothing to compare against.
 //
+// A branch already brought up to date by SyncRefs on this EnvironmentOperations is answered from
+// that result with no git calls at all.
+//
 // Hydrator dry metadata for the tip is not read here; callers that need it should prefetch the tip
 // (for example via LoadCommitAndMetadataBlobs) and use GetShaMetadataFromFile.
 //
@@ -265,6 +272,11 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 // index/worktree/HEAD.
 func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKnownHydratedSha string) (string, error) {
 	logger := log.FromContext(ctx)
+
+	if sha, ok := g.syncedBranchShas[branch]; ok {
+		logger.V(4).Info("Got branch sha from SyncRefs", "branch", branch, "sha", sha)
+		return sha, nil
+	}
 
 	skipFetch := false
 	if lastKnownHydratedSha != "" {
@@ -605,6 +617,8 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	commitSha = strings.TrimSpace(commitSha)
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// The remote branch moves (or may have moved) with this push, so a SHA remembered by SyncRefs is stale.
+	delete(g.syncedBranchShas, proposedBranch)
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
@@ -691,6 +705,8 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	commitSha = strings.TrimSpace(commitSha)
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// The remote branch moves (or may have moved) with this push, so a SHA remembered by SyncRefs is stale.
+	delete(g.syncedBranchShas, proposedBranch)
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
@@ -804,6 +820,150 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil
+}
+
+// SyncRefs brings origin/<branch> for each given branch, and both notes refs (the same refs FetchNotes
+// fetches), up to date with the remote using as few remote round trips as possible:
+//
+//  1. One ls-remote reads the remote SHA of every ref.
+//  2. One local for-each-ref reads the clone's copy of the same refs.
+//  3. One fetch pulls only the refs whose SHAs differ. In the steady state nothing differs and no fetch
+//     runs at all.
+//
+// Branch SHAs resolved here are remembered, so later GetBranchSha calls on this EnvironmentOperations
+// for those branches need no git calls. A branch missing on the remote is left alone (not fetched, not
+// remembered), so GetBranchSha still reports it with its usual error. A notes ref missing on the remote
+// is skipped, matching FetchNotes. If the ls-remote probe fails, SyncRefs falls back to FetchNotes and
+// remembers nothing, so callers behave exactly as they would without it.
+//
+// Read-only: updates remote-tracking and notes refs only; never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) SyncRefs(ctx context.Context, branches ...string) error {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// remoteRefs[i] is fetched into localRefs[i].
+	remoteRefs := make([]string, 0, len(branches)+2)
+	localRefs := make([]string, 0, len(branches)+2)
+	for _, branch := range branches {
+		remoteRefs = append(remoteRefs, "refs/heads/"+branch)
+		localRefs = append(localRefs, "refs/remotes/origin/"+branch)
+	}
+	for _, ref := range []string{HydratorNotesRef, PromoterHistoryNotesRef} {
+		remoteRefs = append(remoteRefs, ref)
+		localRefs = append(localRefs, ref)
+	}
+
+	remoteShas, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, remoteRefs...)
+	if err != nil {
+		logger.V(4).Info("ls-remote probe failed, falling back to fetching notes unconditionally", "error", err)
+		return g.FetchNotes(ctx)
+	}
+
+	localShas, err := g.localRefShas(ctx, localRefs...)
+	if err != nil {
+		return err
+	}
+
+	refspecs := make([]string, 0, len(remoteRefs))
+	fetchedBranches := make([]string, 0, len(branches))
+	for i, remoteRef := range remoteRefs {
+		remoteSha, ok := remoteShas[remoteRef]
+		if !ok {
+			continue
+		}
+		branch := ""
+		if i < len(branches) {
+			branch = branches[i]
+		}
+		if localShas[localRefs[i]] == remoteSha {
+			if branch != "" {
+				g.syncedBranchShas[branch] = remoteSha
+			}
+			continue
+		}
+		refspecs = append(refspecs, "+"+remoteRef+":"+localRefs[i])
+		if branch != "" {
+			fetchedBranches = append(fetchedBranches, branch)
+		}
+	}
+
+	if len(refspecs) == 0 {
+		logger.V(4).Info("All refs unchanged on remote, skipping fetch", "branches", branches)
+		return nil
+	}
+
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, append([]string{"fetch", "origin"}, refspecs...)...)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not fetch refs", "refspecs", refspecs, "gitError", stderr)
+		return fmt.Errorf("failed to fetch refs %v: %w", refspecs, err)
+	}
+	logger.V(4).Info("Fetched changed refs", "refspecs", refspecs)
+
+	if len(fetchedBranches) == 0 {
+		return nil
+	}
+
+	// A branch may have moved again between the ls-remote and the fetch. Later operations (merge-tree,
+	// the merges) read origin/<branch>, so remember what the fetch actually stored, not the probe's SHA.
+	fetchedRefs := make([]string, len(fetchedBranches))
+	for i, branch := range fetchedBranches {
+		fetchedRefs[i] = "refs/remotes/origin/" + branch
+	}
+	fetchedShas, err := g.localRefShas(ctx, fetchedRefs...)
+	if err != nil {
+		return err
+	}
+	for i, branch := range fetchedBranches {
+		if sha := fetchedShas[fetchedRefs[i]]; sha != "" {
+			g.syncedBranchShas[branch] = sha
+		}
+	}
+	return nil
+}
+
+// lsRemoteRefs returns the remote SHA for each of the given fully-qualified refs that exists on the
+// remote. Refs missing on the remote are simply absent from the result.
+func lsRemoteRefs(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, refs ...string) (map[string]string, error) {
+	start := time.Now()
+	args := append([]string{"ls-remote", gap.GetGitHttpsRepoUrl(*gitRepo)}, refs...)
+	stdout, stderr, err := runCmd(ctx, gap, "", args...)
+	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("failed to ls-remote refs %v: %w (stderr: %s)", refs, err, stderr)
+	}
+	return parseRefShas(stdout, refs), nil
+}
+
+// localRefShas returns the clone's SHA for each of the given fully-qualified refs that exists locally.
+func (g *EnvironmentOperations) localRefShas(ctx context.Context, refs ...string) (map[string]string, error) {
+	stdout, stderr, err := g.runCmd(ctx, g.ClonePath(), append([]string{"for-each-ref", "--format=%(objectname)\t%(refname)"}, refs...)...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local refs %v: %w (stderr: %s)", refs, err, stderr)
+	}
+	return parseRefShas(stdout, refs), nil
+}
+
+// parseRefShas parses "<sha>\t<ref>" lines, keeping only exact matches for the wanted refs.
+// ls-remote and for-each-ref treat their arguments as patterns rather than exact names, so any
+// other ref a pattern happens to match is ignored.
+func parseRefShas(output string, wanted []string) map[string]string {
+	want := make(map[string]bool, len(wanted))
+	for _, ref := range wanted {
+		want[ref] = true
+	}
+	shas := make(map[string]string, len(wanted))
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		sha, ref, found := strings.Cut(line, "\t")
+		if found && want[ref] {
+			shas[ref] = sha
+		}
+	}
+	return shas
 }
 
 // GetHydratorNote reads the hydrator git note for a given commit SHA.

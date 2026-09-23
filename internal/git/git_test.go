@@ -224,6 +224,124 @@ var _ = Describe("GetBranchSha skip-fetch behavior", func() {
 	})
 })
 
+var _ = Describe("SyncRefs", func() {
+	var tempRepoDir string
+	var workDir string
+	var branch string
+	var g *git.EnvironmentOperations
+
+	pushCommit := func(content string) string {
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(content), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "commit "+content)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+		sha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(sha)
+	}
+
+	breakOrigin := func() {
+		// fetch uses the clone's configured origin; ls-remote uses gap.GetGitHttpsRepoUrl, which still
+		// points at the real repo. A fetch after this fails, while the ls-remote probe keeps working.
+		_, err := runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	newOps := func() *git.EnvironmentOperations {
+		// A fresh EnvironmentOperations per "reconcile", sharing the same identity and therefore clone.
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		return git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: tempRepoDir}, "default/sync-refs-test")
+	}
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", "-b", "main")
+		Expect(err).NotTo(HaveOccurred())
+		branch = "main"
+		pushCommit(`{"drySha": "dry-sha-1"}`)
+
+		g = newOps()
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+	})
+
+	AfterEach(func() {
+		Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		Expect(os.RemoveAll(workDir)).To(Succeed())
+	})
+
+	It("skips the fetch when nothing changed and serves GetBranchSha without the remote", func() {
+		Expect(g.SyncRefs(GinkgoT().Context(), branch)).To(Succeed())
+		baseline, err := g.GetBranchSha(GinkgoT().Context(), branch, "")
+		Expect(err).NotTo(HaveOccurred())
+
+		breakOrigin()
+
+		g = newOps()
+		Expect(g.SyncRefs(GinkgoT().Context(), branch)).To(Succeed(), "an unchanged remote must not trigger a fetch against the broken origin")
+		sha, err := g.GetBranchSha(GinkgoT().Context(), branch, "")
+		Expect(err).NotTo(HaveOccurred(), "an empty lastKnownHydratedSha would normally force a fetch; the synced SHA must be served instead")
+		Expect(sha).To(Equal(baseline))
+	})
+
+	It("fetches a changed branch and changed notes in one step", func() {
+		Expect(g.SyncRefs(GinkgoT().Context(), branch)).To(Succeed())
+
+		newSha := pushCommit(`{"drySha": "dry-sha-2"}`)
+		_, err := runGitCmd(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", `{"drySha":"dry-sha-2"}`, newSha)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", git.HydratorNotesRef+":"+git.HydratorNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+
+		g = newOps()
+		Expect(g.SyncRefs(GinkgoT().Context(), branch)).To(Succeed())
+		sha, err := g.GetBranchSha(GinkgoT().Context(), branch, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sha).To(Equal(newSha))
+
+		note, err := g.GetHydratorNote(GinkgoT().Context(), newSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note).NotTo(BeNil())
+		Expect(note.DrySha).To(Equal("dry-sha-2"))
+	})
+
+	It("leaves a branch missing on the remote to GetBranchSha's usual error", func() {
+		Expect(g.SyncRefs(GinkgoT().Context(), branch, "does-not-exist-next")).To(Succeed())
+
+		_, err := g.GetBranchSha(GinkgoT().Context(), "does-not-exist-next", "")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("couldn't find remote ref"))
+
+		sha, err := g.GetBranchSha(GinkgoT().Context(), branch, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sha).NotTo(BeEmpty())
+	})
+})
+
 var _ = Describe("LsRemote", func() {
 	var tempRepoDir string
 	var workDir string
