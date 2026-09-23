@@ -42,6 +42,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -107,8 +108,13 @@ type PromotionStrategyReconciler struct {
 
 	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
-	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
-	enqueueStateMutex sync.Mutex
+	enqueueStates map[client.ObjectKey]*ctpEnqueueState
+
+	// noteBasedHydratorPromotionStrategies is a process-lifetime set of PromotionStrategy
+	// UIDs that have exposed a non-empty Proposed.Note.DrySha on any environment.
+	// Presence means noteless sibling CTPs should be reconciled to fetch their notes.
+	noteBasedHydratorPromotionStrategies sync.Map
+	enqueueStateMutex                    sync.Mutex
 
 	// enqueueThreshold is the minimum spacing between enqueues of the same CTP.
 	// The zero value means the production default (defaultEnqueueThreshold); tests
@@ -208,7 +214,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
 	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ctps)
+	r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -451,6 +457,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
 //
+// Once any environment reports a non-empty Note.DrySha, the PromotionStrategy UID
+// is remembered for the lifetime of this controller process as using a note-based
+// hydrator. From then on, any sibling without a proposed note is also out of sync,
+// even when its Proposed.Dry.Sha fallback equals the batch target.
+//
 // Target selection: the target is the effective dry SHA of the CTP with the newest
 // proposed hydrated commit — the environment with the freshest knowledge of hydrator
 // output. Using the effective (note-preferred) SHA rather than the hydrator.metadata file
@@ -465,7 +476,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // plus a chained series of threshold-spaced delayed retries that continue until the
 // gap changes or the CTP converges. A changed disagreement (a fetched note, a new
 // target) starts a fresh chain and is nudged promptly again.
-func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(
+	ctx context.Context,
+	promotionStrategyUID types.UID,
+	ctps []*promoterv1alpha1.ChangeTransferPolicy,
+) {
 	if len(ctps) == 0 {
 		return
 	}
@@ -488,6 +503,20 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		}
 		return ctp.Status.Proposed.Dry.Sha
 	}
+	getProposedNoteDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+		if ctp.Status.Proposed.Note == nil {
+			return ""
+		}
+		return ctp.Status.Proposed.Note.DrySha
+	}
+
+	for _, ctp := range ctps {
+		if getProposedNoteDrySha(ctp) != "" {
+			r.noteBasedHydratorPromotionStrategies.Store(promotionStrategyUID, struct{}{})
+			break
+		}
+	}
+	_, usesNoteBasedHydrator := r.noteBasedHydratorPromotionStrategies.Load(promotionStrategyUID)
 
 	// Find the newest effective proposed dry SHA — from the CTP with the newest proposed
 	// hydrated commit. CTPs whose own effective proposed dry SHA doesn't match need to
@@ -516,7 +545,11 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	// of the same disagreement to one enqueue per threshold.
 	for _, ctp := range ctps {
 		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
-		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha {
+		proposedNoteMissing := usesNoteBasedHydrator && getProposedNoteDrySha(ctp) == ""
+		// Matching effective SHAs is not enough once this PromotionStrategy has used
+		// notes: Proposed.Dry.Sha can equal the target while Proposed.Note is still
+		// unset, so the CTP has not actually fetched the hydrator note.
+		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha && !proposedNoteMissing {
 			r.markConverged(client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name})
 			continue
 		}
@@ -525,6 +558,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
 			"ctpEffectiveProposedDrySha", ctpEffectiveProposedDrySha,
 			"newestEffectiveProposedDrySha", newestEffectiveProposedDrySha,
+			"proposedNoteMissing", proposedNoteMissing,
 		))
 		r.handleRateLimitedEnqueue(ctxWithLog, ctp, ctpDisagreement{
 			ctpEffectiveProposedDrySha:    ctpEffectiveProposedDrySha,
