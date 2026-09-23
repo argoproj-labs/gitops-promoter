@@ -1185,6 +1185,111 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
+	Context("When hydrator notes land without a webhook", func() {
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+
+		getCTP := func(g Gomega, branch string) promoterv1alpha1.ChangeTransferPolicy {
+			var ctp promoterv1alpha1.ChangeTransferPolicy
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, branch)),
+				Namespace: promotionStrategy.Namespace,
+			}, &ctp)
+			g.Expect(err).To(Succeed())
+			return ctp
+		}
+
+		BeforeEach(func() {
+			By("Creating the resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			_, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-note-enqueue", "default")
+			for i := range promotionStrategy.Spec.Environments {
+				promotionStrategy.Spec.Environments[i].AutoMerge = new(false)
+			}
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should enqueue a noteless sibling CTP after another environment records the note", func() {
+			By("Waiting for ChangeTransferPolicies to exist")
+			Eventually(func(g Gomega) {
+				g.Expect(getCTP(g, testBranchDevelopment).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(getCTP(g, testBranchStaging).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(getCTP(g, testBranchProduction).Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+			drySha, err := makeDryCommit(ctx, gitPath, "dry commit for missing-note enqueue")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Pushing hydrated commits and firing branch-push webhooks without git notes")
+			type hydratedBranch struct {
+				gitPath     string
+				hydratedSha string
+			}
+			hydrated := make([]hydratedBranch, 0, 3)
+			for _, branch := range []string{testBranchDevelopmentNext, testBranchStagingNext, testBranchProductionNext} {
+				gp, cloneErr := cloneTestRepo(ctx, gitRepo)
+				Expect(cloneErr).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gp) })
+				beforeSha, hydratedSha, pushErr := pushHydratedBranch(ctx, gp, branch, drySha, "hydrate for missing-note enqueue")
+				Expect(pushErr).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, branch)
+				hydrated = append(hydrated, hydratedBranch{gitPath: gp, hydratedSha: hydratedSha})
+			}
+
+			By("Waiting until proposed dry SHAs catch the hydration and no environment has a note yet")
+			Eventually(func(g Gomega) {
+				dev := getCTP(g, testBranchDevelopment)
+				staging := getCTP(g, testBranchStaging)
+				prod := getCTP(g, testBranchProduction)
+				g.Expect(dev.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(staging.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(prod.Status.Proposed.Dry.Sha).To(Equal(drySha))
+				g.Expect(dev.Status.Proposed.Note).To(BeNil())
+				g.Expect(staging.Status.Proposed.Note).To(BeNil())
+				g.Expect(prod.Status.Proposed.Note).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing hydrator notes with no webhook")
+			for _, h := range hydrated {
+				Expect(pushGitNoteWithRetry(ctx, h.gitPath, h.hydratedSha, drySha)).To(Succeed())
+			}
+
+			By("Nudging only development so it records the hydrator note and wakes the PromotionStrategy")
+			devName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment))
+			enqueueCTP(promotionStrategy.Namespace, devName)
+
+			By("Expecting the PromotionStrategy to enqueue the noteless siblings")
+			Eventually(func(g Gomega) {
+				dev := getCTP(g, testBranchDevelopment)
+				staging := getCTP(g, testBranchStaging)
+				prod := getCTP(g, testBranchProduction)
+				g.Expect(dev.Status.Proposed.Note).NotTo(BeNil())
+				g.Expect(dev.Status.Proposed.Note.DrySha).To(Equal(drySha))
+				g.Expect(staging.Status.Proposed.Note).NotTo(BeNil(), "staging should be nudged by enqueueOutOfSyncCTPs")
+				g.Expect(staging.Status.Proposed.Note.DrySha).To(Equal(drySha))
+				g.Expect(prod.Status.Proposed.Note).NotTo(BeNil(), "production should be nudged by enqueueOutOfSyncCTPs")
+				g.Expect(prod.Status.Proposed.Note.DrySha).To(Equal(drySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When reconciling a resource with activePath configured", func() {
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
