@@ -148,12 +148,6 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
-	// Fetch git notes: history entries are built from the promotion-history notes ref when present.
-	err = gitOperations.FetchNotes(ctx)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
-	}
-
 	// Fetch the active branch (or skip the fetch when a live ls-remote confirms the remote tip still
 	// matches the newest history entry). GetRevListFirstParent requires the branch commits to be present
 	// in the local clone.
@@ -171,6 +165,13 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 	if shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
 		logger.V(4).Info("skipping history recalculation, newest history entry describes the fetched active tip")
 		return ctrl.Result{RequeueAfter: requeueDuration}, nil
+	}
+
+	// Fetch git notes: history entries are built from the promotion-history notes ref when present.
+	// Only needed for a rebuild, so this runs after the skip guard.
+	err = gitOperations.FetchNotes(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
 	}
 
 	history, err := calculateHistory(ctx, ctph.Spec.ActiveBranch, ctph.Spec.ActivePath, gitOperations)
