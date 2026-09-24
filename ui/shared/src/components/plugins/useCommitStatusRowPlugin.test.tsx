@@ -67,6 +67,7 @@ describe('useCommitStatusRowPlugin', () => {
 
   afterEach(() => {
     root?.unmount();
+    root = undefined as unknown as ReturnType<typeof createRoot>;
     container.remove();
   });
 
@@ -75,7 +76,7 @@ describe('useCommitStatusRowPlugin', () => {
     apiVersion?: string;
     annotations?: Record<string, string>;
   }) => {
-    root = createRoot(container);
+    root ??= createRoot(container);
     act(() => {
       root.render(React.createElement(Probe, props));
     });
