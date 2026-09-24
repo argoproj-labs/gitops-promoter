@@ -98,11 +98,8 @@ type CommitConfiguration struct {
 	Message string `json:"message"`
 }
 
-// PullRequestStatus defines the observed state of PullRequest
+// PullRequestStatus defines the observed state of PullRequest.
 type PullRequestStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -110,12 +107,12 @@ type PullRequestStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// ID the id of the pull request
+	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
-	// State of the merge request closed/merged/open
+	// State is the state of the pull request. Empty before the controller observes an SCM state; otherwise closed, merged, open, merged-or-closed, or unknown.
 	// +kubebuilder:validation:Enum="";closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
-	// PRCreationTime the time the PR was created
+	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
@@ -156,7 +153,7 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
 	AppliedLabels []string `json:"appliedLabels,omitempty"`
 
-	// Conditions Represents the observations of the current state.
+	// Conditions represent the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -193,7 +190,7 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// PullRequest is the Schema for the pullrequests API
+// PullRequest is a thin wrapper around the SCM's pull request API.
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1

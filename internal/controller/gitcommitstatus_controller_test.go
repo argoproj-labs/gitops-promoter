@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"os"
 	"strings"
 	"time"
@@ -36,6 +37,18 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+//go:embed testdata/GitCommitStatus.yaml
+var testGitCommitStatusYAML string
+
+var _ = Describe("GitCommitStatus Controller testdata", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the GitCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testGitCommitStatusYAML, &promoterv1alpha1.GitCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+})
 
 // This Ordered suite shares one PromotionStrategy. Each spec must use a distinct
 // spec.key (and matching proposed key on that strategy) so ChangeTransferPolicy
