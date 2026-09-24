@@ -7,6 +7,7 @@ var (
 	GitBin               = gitBin
 	ParseCommitLogOutput = parseCommitLogOutput
 	ParseCatFileBatch    = parseCatFileBatch
+	ParseNotesLogOutput  = parseNotesLogOutput
 	FullObjectID         = fullObjectID
 )
 

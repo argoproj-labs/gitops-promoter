@@ -484,3 +484,22 @@ func BenchmarkCatFilePrefetchedReads(b *testing.B) {
 		}
 	}
 }
+
+var _ = Describe("parseNotesLogOutput", func() {
+	It("maps each commit to its raw note and keeps commits without a note", func() {
+		notes, err := git.ParseNotesLogOutput("abc\x00{\"a\":[\"b\"]}\n\x00def\x00")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notes).To(Equal(map[string]string{"abc": "{\"a\":[\"b\"]}\n", "def": ""}))
+	})
+
+	It("returns no records for empty output", func() {
+		notes, err := git.ParseNotesLogOutput("")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notes).To(BeEmpty())
+	})
+
+	It("rejects output that does not divide into whole records", func() {
+		_, err := git.ParseNotesLogOutput("abc")
+		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 2 fields")))
+	})
+})
