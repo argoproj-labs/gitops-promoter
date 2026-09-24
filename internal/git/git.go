@@ -563,7 +563,10 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	repoPath := g.ClonePath()
 
 	// The result only depends on the two tip commits, so it is memoized per repository and commit
-	// pair: a promotion waiting on its gates is reconciled many times against the same tips. Resolve
+	// pair. CTP calls this from gitMergeStrategyOurs on every reconcile where proposed ≠ active —
+	// an open promotion waiting on gates, webhooks, or the periodic requeue, often with unchanged
+	// tips. The first check still runs merge-tree; later reconciles in this process do not. Fully
+	// synced envs never get here (the controller skips when the SHAs are equal). Resolve
 	// origin/<branch> to SHAs and pass those to merge-tree so the cached answer is for exactly the
 	// commits that were checked.
 	activeRev, proposedRev := "origin/"+activeBranch, "origin/"+proposedBranch
