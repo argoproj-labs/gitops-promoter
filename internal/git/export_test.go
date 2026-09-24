@@ -7,5 +7,9 @@ var (
 	GitBin               = gitBin
 	ParseCommitLogOutput = parseCommitLogOutput
 	ParseCatFileBatch    = parseCatFileBatch
+	ParseNotesLogOutput  = parseNotesLogOutput
 	FullObjectID         = fullObjectID
 )
+
+// Trailers exposes the parsed trailers of a commitObject to package git_test.
+func (c commitObject) Trailers() map[string][]string { return c.trailers }

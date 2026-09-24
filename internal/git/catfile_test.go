@@ -18,7 +18,11 @@ import (
 // logRecord assembles one `git log -z --pretty=format:` record as git would emit it. Fields and
 // records share the same NUL separator, so records are joined with it too.
 func logRecord(sha, author, commitTime, subject, body, message string) string {
-	return strings.Join([]string{sha, author, commitTime, subject, body, message}, "\x00")
+	return logRecordWithTrailers(sha, author, commitTime, subject, body, message, "")
+}
+
+func logRecordWithTrailers(sha, author, commitTime, subject, body, message, trailers string) string {
+	return strings.Join([]string{sha, author, commitTime, subject, body, message, trailers}, "\x00")
 }
 
 var _ = Describe("parseCommitLogOutput", func() {
@@ -78,7 +82,24 @@ var _ = Describe("parseCommitLogOutput", func() {
 
 	It("rejects output that does not divide into whole records", func() {
 		_, err := git.ParseCommitLogOutput("abc123\x00Alice")
-		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 6 fields")))
+		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 7 fields")))
+	})
+
+	It("parses the trailers field into a map with repeated keys", func() {
+		results, err := git.ParseCommitLogOutput(logRecordWithTrailers("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "", "s\n",
+			"Signed-off-by: A\nSigned-off-by: B\nPromoter-Description: \"a: b\"\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(results["abc123"].Trailers()).To(Equal(map[string][]string{
+			"Signed-off-by":        {"A", "B"},
+			"Promoter-Description": {`"a: b"`},
+		}))
+	})
+
+	It("returns an empty, non-nil trailer map for a commit without trailers", func() {
+		results, err := git.ParseCommitLogOutput(logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "", "s\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(results["abc123"].Trailers()).NotTo(BeNil())
+		Expect(results["abc123"].Trailers()).To(BeEmpty())
 	})
 
 	It("rejects an unparsable committer time", func() {
@@ -466,3 +487,22 @@ func BenchmarkCatFilePrefetchedReads(b *testing.B) {
 		}
 	}
 }
+
+var _ = Describe("parseNotesLogOutput", func() {
+	It("maps each commit to its raw note and keeps commits without a note", func() {
+		notes, err := git.ParseNotesLogOutput("abc\x00{\"a\":[\"b\"]}\n\x00def\x00")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notes).To(Equal(map[string]string{"abc": "{\"a\":[\"b\"]}\n", "def": ""}))
+	})
+
+	It("returns no records for empty output", func() {
+		notes, err := git.ParseNotesLogOutput("")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notes).To(BeEmpty())
+	})
+
+	It("rejects output that does not divide into whole records", func() {
+		_, err := git.ParseNotesLogOutput("abc")
+		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 2 fields")))
+	})
+})
