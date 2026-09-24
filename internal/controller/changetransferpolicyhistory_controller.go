@@ -355,6 +355,9 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 	if err := gitOperations.LoadCommitAndMetadataBlobs(ctx, activePath, shaListActive...); err != nil {
 		return nil, fmt.Errorf("failed to prefetch history commit objects: %w", err)
 	}
+	if err := gitOperations.LoadHistoryNotes(ctx, shaListActive...); err != nil {
+		return nil, fmt.Errorf("failed to prefetch history notes: %w", err)
+	}
 
 	// Each active commit has a corresponding proposed commit. Get those shas so we can preload them.
 	var proposedHistoryShas []string

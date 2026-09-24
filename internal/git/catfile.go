@@ -81,6 +81,71 @@ func (g *EnvironmentOperations) LoadCommitAndMetadataBlobs(ctx context.Context, 
 	return nil
 }
 
+// LoadHistoryNotes prefetches the promotion-history notes (PromoterHistoryNotesRef) of the given
+// commits into this instance's per-reconcile cache with a single git log, so later GetHistoryNote
+// calls are served from memory instead of spawning git notes show once per commit. Requires FetchNotes
+// to have run and the commits to be present in the clone.
+//
+// Prefetch is best-effort: git log fails the whole batch when any SHA is missing, in which case
+// GetHistoryNote reads each note individually as before.
+func (g *EnvironmentOperations) LoadHistoryNotes(ctx context.Context, shas ...string) error {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	revisions := make([]string, 0, len(shas))
+	seen := make(map[string]struct{}, len(shas))
+	for _, sha := range shas {
+		key := strings.ToLower(sha)
+		if _, ok := g.historyNotes[key]; ok {
+			continue
+		}
+		if _, ok := seen[key]; ok || !fullObjectID.MatchString(key) {
+			continue
+		}
+		seen[key] = struct{}{}
+		revisions = append(revisions, key)
+	}
+	if len(revisions) == 0 {
+		return nil
+	}
+
+	// --no-notes drops any notes refs configured for display so only the history ref is printed.
+	stdin := strings.NewReader(strings.Join(revisions, "\n") + "\n")
+	stdout, _, err := runCmdWithEnvAndStdin(ctx, g.gap, gitPath, nil, stdin,
+		"log", "--no-walk=unsorted", "--stdin", "-z", "--no-notes", "--notes="+PromoterHistoryNotesRef, "--pretty=format:%H%x00%N")
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("failed to prefetch history notes, falling back to individual lookups", "error", err)
+		return nil
+	}
+
+	notes, err := parseNotesLogOutput(stdout)
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("failed to parse history notes, falling back to individual lookups", "error", err)
+		return nil
+	}
+	maps.Copy(g.historyNotes, notes)
+	return nil
+}
+
+// parseNotesLogOutput parses git log -z --pretty=format:%H%x00%N output into raw note text by commit
+// SHA, with "" for commits that have no note.
+func parseNotesLogOutput(stdout string) (map[string]string, error) {
+	if stdout == "" {
+		return map[string]string{}, nil
+	}
+	fields := strings.Split(stdout, commitFieldSep)
+	if len(fields)%2 != 0 {
+		return nil, fmt.Errorf("expected a multiple of 2 fields in git log notes output, got %d", len(fields))
+	}
+	notes := make(map[string]string, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		notes[fields[i]] = fields[i+1]
+	}
+	return notes, nil
+}
+
 func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (commitObject, error) {
 	// git resolves uppercase revisions but emits %H lowercase, so cache keys are always lowercase.
 	key := strings.ToLower(sha)
