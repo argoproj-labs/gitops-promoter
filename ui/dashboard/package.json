@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "vite preview",
-    "build:embed": "npm run build && (cp ../plugins/plugin*.js dist/ 2>/dev/null || true) && mkdir -p ../web/static && cp -r dist/* ../web/static/",
+    "build:embed": "npm run build && node embed-plugins.mjs",
     "test": "vitest run --coverage"
   },
   "devDependencies": {
