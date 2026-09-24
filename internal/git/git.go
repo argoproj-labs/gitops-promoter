@@ -78,6 +78,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -353,7 +354,9 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 	if obj.Missing {
 		// cat-file --batch reports both "path absent from tree" and "unknown SHA" as missing.
 		// Only degrade when the commit itself exists; unknown revisions must stay errors.
-		if g.CommitExists(ctx, sha) {
+		// A commit already in the per-reconcile cache is known to exist without spawning git.
+		_, cached := g.commits[strings.ToLower(sha)]
+		if cached || g.CommitExists(ctx, sha) {
 			logger.V(4).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
 			return v1alpha1.CommitShaState{}, nil
 		}
@@ -559,13 +562,35 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	logger := log.FromContext(ctx)
 	repoPath := g.ClonePath()
 
+	// The result only depends on the two tip commits, so it is memoized per repository and commit
+	// pair: a promotion waiting on its gates is reconciled many times against the same tips. Resolve
+	// origin/<branch> to SHAs and pass those to merge-tree so the cached answer is for exactly the
+	// commits that were checked.
+	activeRev, proposedRev := "origin/"+activeBranch, "origin/"+proposedBranch
+	var key conflictKey
+	if repoPath != "" {
+		activeSha, _, activeErr := g.runCmd(ctx, repoPath, "rev-parse", "--verify", activeRev)
+		proposedSha, _, proposedErr := g.runCmd(ctx, repoPath, "rev-parse", "--verify", proposedRev)
+		if activeErr == nil && proposedErr == nil {
+			activeRev, proposedRev = strings.TrimSpace(activeSha), strings.TrimSpace(proposedSha)
+			if activeRev != "" && proposedRev != "" {
+				key = conflictKey{repoURL: g.gap.GetGitHttpsRepoUrl(*g.gitRepo), activeSha: activeRev, proposedSha: proposedRev}
+				if conflict, ok := conflicts.get(key); ok {
+					logger.V(4).Info("Using cached merge-tree result", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "conflict", conflict)
+					return conflict, nil
+				}
+			}
+		}
+	}
+
 	// Use git merge-tree --write-tree to perform a stateless merge check
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", activeRev, proposedRev)
 	if err != nil {
 		// Exit code 1 with conflict info in stderr means conflicts were detected
 		if strings.Contains(stdout, "CONFLICT") {
 			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			conflicts.put(key, true)
 			return true, nil
 		}
 		// Some other error occurred
@@ -575,7 +600,50 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 
 	// Exit code 0 means clean merge - stdout contains the resulting tree SHA
 	logger.V(4).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
+	conflicts.put(key, false)
 	return false, nil
+}
+
+// conflictKey identifies one merge-tree conflict check: the repository and the two commits merged.
+type conflictKey struct {
+	repoURL     string
+	activeSha   string
+	proposedSha string
+}
+
+// maxCachedConflicts bounds the process-wide merge-tree result cache. Each entry is a few hundred
+// bytes; the cache is simply reset when full since stale commit pairs are never asked about again.
+const maxCachedConflicts = 4096
+
+// conflictCache memoizes merge-tree conflict results by commit pair. It is shared by every
+// EnvironmentOperations in the process and is concurrency-safe.
+type conflictCache struct {
+	results map[conflictKey]bool
+	mu      sync.Mutex
+}
+
+var conflicts = &conflictCache{results: make(map[conflictKey]bool)}
+
+func (c *conflictCache) get(key conflictKey) (bool, bool) {
+	if key == (conflictKey{}) {
+		return false, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conflict, ok := c.results[key]
+	return conflict, ok
+}
+
+func (c *conflictCache) put(key conflictKey, conflict bool) {
+	if key == (conflictKey{}) {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.results) >= maxCachedConflicts {
+		clear(c.results)
+	}
+	c.results[key] = conflict
 }
 
 // MergeWithOursStrategy merges the active branch into the proposed branch using the "ours" strategy
