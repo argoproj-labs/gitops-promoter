@@ -83,8 +83,15 @@ const DetailDrawer: React.FC<{
   const failingChecks = cell.commitStatuses.filter((s) => s.phase === 'failure');
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
+  const environment = promotionStrategy?.status?.environments?.find((e) => e.branch === branch);
+  const dry = row.dryShaFull || undefined;
+  const hydratedSha = cell.hydrated?.sha;
   const checks = getChecks([...failingChecks, ...pendingChecks, ...passingChecks], branch, {
     promotionStrategy,
+    environment,
+    ...(cell.isProposed
+      ? { proposedDrySha: dry, proposedHydratedSha: hydratedSha }
+      : { activeDrySha: dry, activeHydratedSha: hydratedSha }),
   });
 
   const checksLabel = cell.isProposed ? 'Proposed' : 'Active';
