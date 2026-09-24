@@ -562,9 +562,10 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 		// that keeps its tree and records both branch tips as parents. That commit establishes
 		// the merge-base required by the subsequent pull request.
 		//
-		// NOTE: we're intentionally taking on the risk of blowing away someone's unrelated
+		// NOTE: we're intentionally taking on the risk of blowing away someone's unrelated 
 		// proposed branch contents when adopted by Promoter. While that's always a possibility,
-		// the liklihood that we're making a
+		// the likelihood that we're making a mistake is higher with two branches that don't
+		// even share a history.
 		if strings.Contains(stderr, "refusing to merge unrelated histories") {
 			logger.Info("Unrelated branch histories detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 			return true, nil
