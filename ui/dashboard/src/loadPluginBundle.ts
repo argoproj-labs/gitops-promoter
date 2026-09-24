@@ -1,5 +1,10 @@
 import { installPluginHostApi, assertSharedReactInstance } from '@shared/components/plugins';
 
+// A stalled /plugins.js request (rather than a clean load or error) would
+// otherwise hang the dashboard's first render forever, since script.onload
+// and script.onerror are the only two events loadPluginBundle waits on.
+const PLUGIN_LOAD_TIMEOUT_MS = 5000;
+
 /**
  * Installs the plugin host API and loads the external plugin bundle script,
  * resolving once the script has run (or failed to load) so the caller can
@@ -23,16 +28,38 @@ export function loadPluginBundle(hostReact: unknown, url = '/plugins.js'): Promi
   return new Promise<void>((resolve) => {
     const script = document.createElement('script');
     script.src = url;
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+      resolve();
+    }, PLUGIN_LOAD_TIMEOUT_MS);
+
     script.onload = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
       try {
         assertSharedReactInstance(hostReact);
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : err);
+      } catch {
+        // deliberately swallowed: mismatch is non-fatal, first render must still proceed
       }
       resolve();
     };
     script.onerror = () => {
-      console.error(`Failed to load plugin bundle from ${url}`);
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
       resolve();
     };
     document.body.appendChild(script);

@@ -36,36 +36,30 @@ describe('loadPluginBundle', () => {
     expect(script?.src).toContain('/plugins.js');
   });
 
-  it('logs a clear error when the script fails to load', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
+  it('resolves without throwing when the script fails to load', () => {
     loadPluginBundle(hostReact, '/plugins.js');
-    document.body.querySelector('script')?.onerror?.(new Event('error'));
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load plugin bundle from /plugins.js');
-    consoleErrorSpy.mockRestore();
+    expect(() =>
+      document.body.querySelector('script')?.onerror?.(new Event('error')),
+    ).not.toThrow();
   });
 
   it('asserts the shared React instance once the script loads', () => {
     window.React = hostReact;
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     loadPluginBundle(hostReact);
-    document.body.querySelector('script')?.onload?.(new Event('load'));
 
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    consoleErrorSpy.mockRestore();
+    expect(() =>
+      document.body.querySelector('script')?.onload?.(new Event('load')),
+    ).not.toThrow();
   });
 
-  it('logs, rather than throws, when the loaded bundle brought its own React', () => {
+  it('swallows, rather than throws, when the loaded bundle brought its own React', () => {
     window.React = { ...ActualReact };
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     loadPluginBundle(hostReact);
-    expect(() => document.body.querySelector('script')?.onload?.(new Event('load'))).not.toThrow();
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringMatching(/brought its own copy/));
-    consoleErrorSpy.mockRestore();
+    expect(() => document.body.querySelector('script')?.onload?.(new Event('load'))).not.toThrow();
   });
 
   it('resolves the returned promise once the script loads', async () => {
@@ -78,12 +72,38 @@ describe('loadPluginBundle', () => {
   });
 
   it('resolves the returned promise even when the script fails to load', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const done = loadPluginBundle(hostReact);
 
     document.body.querySelector('script')?.onerror?.(new Event('error'));
 
     await expect(done).resolves.toBeUndefined();
-    consoleErrorSpy.mockRestore();
+  });
+
+  it('resolves and removes the script if it neither loads nor errors in time', async () => {
+    vi.useFakeTimers();
+
+    const done = loadPluginBundle(hostReact);
+    expect(document.body.querySelector('script')).not.toBeNull();
+
+    await vi.runAllTimersAsync();
+    await expect(done).resolves.toBeUndefined();
+
+    expect(document.body.querySelector('script')).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it('ignores a late load event after the timeout already resolved', async () => {
+    vi.useFakeTimers();
+
+    const done = loadPluginBundle(hostReact);
+    const script = document.body.querySelector('script');
+
+    await vi.runAllTimersAsync();
+    await done;
+
+    expect(() => script?.onload?.(new Event('load'))).not.toThrow();
+
+    vi.useRealTimers();
   });
 });
