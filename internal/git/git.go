@@ -571,18 +571,19 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	// commits that were checked.
 	activeRev, proposedRev := "origin/"+activeBranch, "origin/"+proposedBranch
 	var key conflictKey
+	var activeSha, proposedSha string
+	var activeErr, proposedErr error
 	if repoPath != "" {
-		activeSha, _, activeErr := g.runCmd(ctx, repoPath, "rev-parse", "--verify", activeRev)
-		proposedSha, _, proposedErr := g.runCmd(ctx, repoPath, "rev-parse", "--verify", proposedRev)
-		if activeErr == nil && proposedErr == nil {
-			activeRev, proposedRev = strings.TrimSpace(activeSha), strings.TrimSpace(proposedSha)
-			if activeRev != "" && proposedRev != "" {
-				key = conflictKey{repoURL: g.gap.GetGitHttpsRepoUrl(*g.gitRepo), activeSha: activeRev, proposedSha: proposedRev}
-				if conflict, ok := conflicts.get(key); ok {
-					logger.V(4).Info("Using cached merge-tree result", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "conflict", conflict)
-					return conflict, nil
-				}
-			}
+		activeSha, _, activeErr = g.runCmd(ctx, repoPath, "rev-parse", "--verify", activeRev)
+		proposedSha, _, proposedErr = g.runCmd(ctx, repoPath, "rev-parse", "--verify", proposedRev)
+	}
+	activeSha, proposedSha = strings.TrimSpace(activeSha), strings.TrimSpace(proposedSha)
+	if activeErr == nil && proposedErr == nil && activeSha != "" && proposedSha != "" {
+		activeRev, proposedRev = activeSha, proposedSha
+		key = conflictKey{repoURL: g.gap.GetGitHttpsRepoUrl(*g.gitRepo), activeSha: activeRev, proposedSha: proposedRev}
+		if conflict, ok := conflicts.get(key); ok {
+			logger.V(4).Info("Using cached merge-tree result", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "conflict", conflict)
+			return conflict, nil
 		}
 	}
 
