@@ -1043,13 +1043,20 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		return nil, nil
 	}
 
-	// The walk is for ours-merge tips that advance past the hydrated commit without a note of
-	// their own. Only ancestors that carry a note are worth reading. notes list reads the notes
-	// tree alone (no note blobs, which a blob-less clone would fetch lazily), so this avoids a
-	// git notes show per ancestor and skips the walk when none have a note (hydrators that never
-	// write them, or the notes ref not pushed yet). A delayed note on the proposed tip is not
-	// this path: GetHydratorNote(startSha) already ran, and the next reconcile after FetchNotes
-	// sees it.
+	// The walk is for ours-merge tips that have no note of their own. One merge on top of a
+	// noted hydrated parent still costs a notes list and does not save a notes show.
+	//
+	// It saves work in two noteless situations:
+	//   - Noteless hydrators (hydrator.metadata on the tip, empty notes ref): the old code
+	//     rev-list'd and notes-show'd up to 31 ancestors that cannot have notes.
+	//   - Several first-parent commits in a row with no note before the matching one, e.g.
+	//     repeated ours-merges after reverts (or other noteless commits) on active. Each of
+	//     those used to be a notes show miss; notes list skips them.
+	//
+	// notes list reads the notes tree alone (no note blobs, which a blob-less clone would
+	// fetch lazily). When the list is empty we skip the walk. A delayed note on the proposed
+	// tip is not this path: GetHydratorNote(startSha) already ran; the next FetchNotes
+	// reconcile hits it there.
 	noted, err := g.notedObjects(ctx, HydratorNotesRef)
 	if err != nil {
 		return nil, err
