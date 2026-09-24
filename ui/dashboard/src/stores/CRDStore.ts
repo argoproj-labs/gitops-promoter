@@ -1,45 +1,18 @@
 import { create } from 'zustand';
-import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
-import { environmentsFromBundle } from '@shared/utils/environments';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
-import type { PromotionStrategy, CommitStatusManagerBundle } from '@shared/utils/PSData';
+import { enrichFromCRD } from '@shared/utils/PSData';
+import { mergePromotionStrategyFromBundle } from '@shared/utils/bundleToUI';
+import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { PromotionStrategyDetails } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
 }
 
-function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
-  return {
-    timedCommitStatuses: bundle.timedCommitStatuses,
-    gitCommitStatuses: bundle.gitCommitStatuses,
-    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
-    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
-    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
-  };
-}
-
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
-  const ps = bundle.promotionStrategy;
-  const environments = environmentsFromBundle(
-    ps.spec,
-    bundle.changeTransferPolicies ?? [],
-    bundle.changeTransferPolicyHistories ?? [],
-  );
-  const psWithEnvironments = {
-    ...ps,
-    metadata: {
-      ...ps.metadata,
-      name: bundle.metadata.name,
-      namespace: bundle.metadata.namespace,
-    },
-    status: { ...ps.status, environments },
-  } as PromotionStrategy;
-  sortStrategyCommitStatuses(psWithEnvironments);
-  const merged = mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
+  const promotionStrategy = mergePromotionStrategyFromBundle(bundle);
   return {
-    ...merged,
-    enriched: enrichFromCRD(merged),
+    ...promotionStrategy,
+    enriched: enrichFromCRD(promotionStrategy, 0),
   } as T;
 }
 

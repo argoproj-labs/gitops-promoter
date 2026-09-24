@@ -460,6 +460,7 @@ func runController(
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var port int
+	var pluginsDir string
 
 	cmd := &cobra.Command{
 		Use:   "dashboard",
@@ -493,6 +494,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			ctx := ctrl.SetupSignalHandler()
 
 			ws := webserver.NewWebServer(mgr)
+			ws.PluginsDir = pluginsDir
 
 			// The dashboard watches the aggregated PromotionStrategyDetails bundle via
 			// the controller-runtime manager cache and forwards each bundle over SSE.
@@ -528,6 +530,8 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 	// Add default port flag
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
+	cmd.Flags().StringVar(&pluginsDir, "plugins-dir", "/tmp/plugins",
+		"Directory containing external UI plugin bundles (.js files) to serve at /plugins.js")
 	return cmd
 }
 

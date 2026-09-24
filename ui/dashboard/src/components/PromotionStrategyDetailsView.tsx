@@ -11,7 +11,7 @@ export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsView
 }) => {
   const environments = strategy.status?.environments || [];
 
-  return <Card environments={environments} />;
+  return <Card environments={environments} promotionStrategy={strategy} />;
 };
 
 export default PromotionStrategyDetailsView;
