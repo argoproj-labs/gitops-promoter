@@ -2,8 +2,10 @@ package azuredevops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
@@ -19,6 +21,18 @@ import (
 )
 
 const azureDevopsDomain = "dev.azure.com"
+
+// pullRequestStatusTimeout bounds best-effort PR status mirroring so a slow
+// Azure DevOps API cannot stall CommitStatus reconciliation.
+const pullRequestStatusTimeout = 30 * time.Second
+
+// azdoGitClient is the Azure DevOps git API surface used for commit and PR statuses.
+type azdoGitClient interface {
+	CreateCommitStatus(context.Context, git.CreateCommitStatusArgs) (*git.GitStatus, error)
+	CreatePullRequestStatus(context.Context, git.CreatePullRequestStatusArgs) (*git.GitPullRequestStatus, error)
+	GetPullRequests(context.Context, git.GetPullRequestsArgs) (*[]git.GitPullRequest, error)
+	GetPullRequestIterations(context.Context, git.GetPullRequestIterationsArgs) (*[]git.GitPullRequestIteration, error)
+}
 
 // CommitStatus implements the scms.CommitStatusProvider interface for Azure DevOps.
 type CommitStatus struct {
@@ -68,21 +82,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 		return nil, fmt.Errorf("failed to create Git client: %w", err)
 	}
 
-	// Map GitOps Promoter status phase to Azure DevOps status state
-	var state git.GitStatusState
-	//revive:disable
-	switch commitStatus.Spec.Phase {
-	case v1alpha1.CommitPhasePending:
-		state = git.GitStatusStateValues.Pending
-	case v1alpha1.CommitPhaseSuccess:
-		state = git.GitStatusStateValues.Succeeded
-	case v1alpha1.CommitPhaseFailure:
-		state = git.GitStatusStateValues.Failed
-	default:
-		state = git.GitStatusStateValues.Pending
-	}
-
-	// Create Git commit status
+	state := mapPhaseToAzureDevOpsState(commitStatus.Spec.Phase)
 	genre := "promoter"
 
 	if commitStatus.Spec.Url == "" {
@@ -99,8 +99,6 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	}
 
 	start := time.Now()
-	// Create the status using Azure DevOps REST API
-	// Repository identifier should be the repository name for Azure DevOps
 	createdStatus, err := gitClient.CreateCommitStatus(ctx, git.CreateCommitStatusArgs{
 		CommitId:                &commitStatus.Spec.Sha,
 		RepositoryId:            &gitRepo.Spec.AzureDevOps.Name,
@@ -128,7 +126,202 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	commitStatus.Status.Phase = mapAzureDevOpsStateToPhase(*createdStatus.State)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 
+	// Azure DevOps does not show commit statuses on pull requests. Best-effort mirror
+	// the status onto the iteration of any open PR whose head is this SHA. This must
+	// never make the CommitStatus reconciliation fail: active SHAs commonly have no
+	// PR, and the PR APIs may be unavailable or temporarily inconsistent.
+	prCtx, cancel := context.WithTimeout(ctx, pullRequestStatusTimeout)
+	defer cancel()
+	cs.setPullRequestStatusBestEffort(prCtx, gitClient, gitRepo, commitStatus)
+
 	return commitStatus, nil
+}
+
+func (cs CommitStatus) setPullRequestStatusBestEffort(
+	ctx context.Context,
+	gitClient azdoGitClient,
+	gitRepo *v1alpha1.GitRepository,
+	commitStatus *v1alpha1.CommitStatus,
+) {
+	logger := log.FromContext(ctx)
+
+	prIDs, err := cs.openPullRequestIDsForSHA(ctx, gitClient, gitRepo, commitStatus.Spec.Sha)
+	if err != nil {
+		logger.V(4).Info("Skipping Azure DevOps PR status: failed to list pull requests", "error", err)
+		return
+	}
+
+	for _, prID := range prIDs {
+		iterationID, err := cs.iterationIDForSHA(ctx, gitClient, gitRepo, prID, commitStatus.Spec.Sha)
+		if err != nil {
+			logger.V(4).Info("Skipping Azure DevOps PR status: failed to find iteration", "pullRequestID", prID, "error", err)
+			continue
+		}
+		if iterationID == 0 {
+			logger.V(4).Info("Skipping Azure DevOps PR status: no iteration matches SHA", "pullRequestID", prID, "sha", commitStatus.Spec.Sha)
+			continue
+		}
+
+		if err := cs.createPullRequestStatus(ctx, gitClient, gitRepo, commitStatus, prID, iterationID); err != nil {
+			logger.V(4).Info("Skipping Azure DevOps PR status: create failed", "pullRequestID", prID, "iterationID", iterationID, "error", err)
+		}
+	}
+}
+
+// openPullRequestIDsForSHA returns the IDs of active pull requests whose source branch head is sha.
+func (cs CommitStatus) openPullRequestIDsForSHA(
+	ctx context.Context,
+	gitClient azdoGitClient,
+	gitRepo *v1alpha1.GitRepository,
+	sha string,
+) ([]int, error) {
+	searchCriteria := git.GitPullRequestSearchCriteria{
+		Status: &git.PullRequestStatusValues.Active,
+	}
+
+	start := time.Now()
+	pullRequests, err := gitClient.GetPullRequests(ctx, git.GetPullRequestsArgs{
+		RepositoryId:   &gitRepo.Spec.AzureDevOps.Name,
+		Project:        &gitRepo.Spec.AzureDevOps.Project,
+		SearchCriteria: &searchCriteria,
+	})
+	statusCode := 200
+	if err != nil {
+		if sc, ok := azureDevOpsHTTPStatusCode(err); ok {
+			statusCode = sc
+		} else {
+			statusCode = 500
+		}
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		return nil, fmt.Errorf("failed to list pull requests: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+
+	if pullRequests == nil {
+		return nil, nil
+	}
+
+	var prIDs []int
+	for i := range *pullRequests {
+		pr := (*pullRequests)[i]
+		if pr.PullRequestId == nil || pr.LastMergeSourceCommit == nil || pr.LastMergeSourceCommit.CommitId == nil {
+			continue
+		}
+		if strings.EqualFold(*pr.LastMergeSourceCommit.CommitId, sha) {
+			prIDs = append(prIDs, *pr.PullRequestId)
+		}
+	}
+	return prIDs, nil
+}
+
+func (cs CommitStatus) iterationIDForSHA(
+	ctx context.Context,
+	gitClient azdoGitClient,
+	gitRepo *v1alpha1.GitRepository,
+	prID int,
+	sha string,
+) (int, error) {
+	start := time.Now()
+	iterations, err := gitClient.GetPullRequestIterations(ctx, git.GetPullRequestIterationsArgs{
+		RepositoryId:  &gitRepo.Spec.AzureDevOps.Name,
+		PullRequestId: &prID,
+		Project:       &gitRepo.Spec.AzureDevOps.Project,
+	})
+	statusCode := 200
+	if err != nil {
+		if sc, ok := azureDevOpsHTTPStatusCode(err); ok {
+			statusCode = sc
+		} else {
+			statusCode = 500
+		}
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		return 0, fmt.Errorf("failed to list pull request iterations: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+
+	if iterations == nil {
+		return 0, nil
+	}
+	return iterationIDMatchingSHA(*iterations, sha), nil
+}
+
+func (cs CommitStatus) createPullRequestStatus(
+	ctx context.Context,
+	gitClient azdoGitClient,
+	gitRepo *v1alpha1.GitRepository,
+	commitStatus *v1alpha1.CommitStatus,
+	prID int,
+	iterationID int,
+) error {
+	logger := log.FromContext(ctx)
+	state := mapPhaseToAzureDevOpsState(commitStatus.Spec.Phase)
+	genre := "promoter"
+	prStatus := git.GitPullRequestStatus{
+		Context: &git.GitStatusContext{
+			Name:  &commitStatus.Spec.Name,
+			Genre: &genre,
+		},
+		State:       &state,
+		Description: &commitStatus.Spec.Description,
+		TargetUrl:   &commitStatus.Spec.Url,
+		IterationId: &iterationID,
+	}
+
+	start := time.Now()
+	created, err := gitClient.CreatePullRequestStatus(ctx, git.CreatePullRequestStatusArgs{
+		Status:        &prStatus,
+		RepositoryId:  &gitRepo.Spec.AzureDevOps.Name,
+		PullRequestId: &prID,
+		Project:       &gitRepo.Spec.AzureDevOps.Project,
+	})
+	statusCode := 201
+	if err != nil {
+		if sc, ok := azureDevOpsHTTPStatusCode(err); ok {
+			statusCode = sc
+		} else {
+			statusCode = 500
+		}
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+		return fmt.Errorf("failed to create pull request status: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+
+	if created == nil || created.Id == nil {
+		return errors.New("azure DevOps pull request status response missing id")
+	}
+
+	logger.V(4).Info("Azure DevOps pull request status created",
+		"pullRequestID", prID,
+		"iterationID", iterationID,
+		"statusId", *created.Id)
+	return nil
+}
+
+func iterationIDMatchingSHA(iterations []git.GitPullRequestIteration, sha string) int {
+	latest := 0
+	for i := range iterations {
+		iter := iterations[i]
+		if iter.Id == nil || iter.SourceRefCommit == nil || iter.SourceRefCommit.CommitId == nil {
+			continue
+		}
+		if strings.EqualFold(*iter.SourceRefCommit.CommitId, sha) && *iter.Id > latest {
+			latest = *iter.Id
+		}
+	}
+	return latest
+}
+
+func mapPhaseToAzureDevOpsState(phase v1alpha1.CommitStatusPhase) git.GitStatusState {
+	switch phase { //revive:disable
+	case v1alpha1.CommitPhasePending:
+		return git.GitStatusStateValues.Pending
+	case v1alpha1.CommitPhaseSuccess:
+		return git.GitStatusStateValues.Succeeded
+	case v1alpha1.CommitPhaseFailure:
+		return git.GitStatusStateValues.Failed
+	default:
+		return git.GitStatusStateValues.Pending
+	}
 }
 
 // mapAzureDevOpsStateToPhase maps Azure DevOps GitStatusState to GitOps Promoter CommitStatusPhase
