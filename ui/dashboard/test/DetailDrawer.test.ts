@@ -4,12 +4,8 @@ import { createRoot } from 'react-dom/client';
 import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
 import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
-import {
-  getCommitStatusRowPlugin,
-  registerCommitStatusRowPlugin,
-} from '@shared/components/plugins';
 import type { CommitStatusContext } from '@shared/components/plugins';
-import { unregisterCommitStatusRowPlugin } from '@shared/components/plugins/registry';
+import { withStubCommitStatusRowPlugin } from '@shared/components/plugins/registry';
 
 const timedManager: CommitStatusManager = {
   spec: {
@@ -137,16 +133,14 @@ describe('DetailDrawer commit-status plugins', () => {
     expect(container.querySelector('.hp-drawer__check-panel')).toBeNull();
   });
 
-  it('renders a toggle that expands a plugin rowContent panel', () => {
+  it('renders a toggle that expands a plugin rowContent panel', async () => {
     const stub = {
       rowHeader: ({ check }: CommitStatusContext) => React.createElement('span', null, check.name),
       rowContent: ({ check }: CommitStatusContext) =>
         React.createElement('span', null, `details for ${check.name}`),
     };
-    const previous = getCommitStatusRowPlugin('GitCommitStatus');
-    registerCommitStatusRowPlugin(stub, 'GitCommitStatus');
 
-    try {
+    await withStubCommitStatusRowPlugin(stub, 'GitCommitStatus', () => {
       render(
         makeCell([
           {
@@ -172,12 +166,6 @@ describe('DetailDrawer commit-status plugins', () => {
       const expandedPanel = container.querySelector('.hp-drawer__check-panel') as HTMLDivElement;
       expect(expandedPanel.hidden).toBe(false);
       expect(expandedPanel.textContent).toContain('details for gate');
-    } finally {
-      if (previous) {
-        registerCommitStatusRowPlugin(previous, 'GitCommitStatus');
-      } else {
-        unregisterCommitStatusRowPlugin('GitCommitStatus');
-      }
-    }
+    });
   });
 });

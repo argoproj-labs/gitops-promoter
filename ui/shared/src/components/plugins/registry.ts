@@ -248,15 +248,34 @@ export function resetPluginRegistry(): void {
 }
 
 /**
- * Removes a single GVK registration, leaving every other registration
- * (including built-in plugins registered at module load) untouched. Intended
- * for tests that swap in a stub plugin and need to restore the prior state
- * without wiping the whole registry via `resetPluginRegistry`.
+ * Registers `stub` for a GVK for the duration of `body`, then always restores
+ * whatever was registered there before - re-registering it if there was one,
+ * or removing the stub entirely if there wasn't - even if `body` throws.
+ *
+ * Exists so a test that swaps in a stub plugin can't accidentally delete a
+ * real prior registration (e.g. a built-in plugin) instead of restoring it:
+ * that decision is made here, once, rather than left to each call site to
+ * get right via its own `if (previous) { register } else { unregister }`.
+ * Intended for tests; not a substitute for `resetPluginRegistry` when a test
+ * needs a clean registry rather than a scoped swap.
  */
-export function unregisterCommitStatusRowPlugin(
+export async function withStubCommitStatusRowPlugin<T>(
+  stub: RowPlugin,
   kind: string,
+  body: () => T | Promise<T>,
   group: string = PROMOTER_GROUP,
   version: string = ANY_VERSION,
-): void {
-  plugins.delete(registryKey(group, version, kind));
+): Promise<T> {
+  const key = registryKey(group, version, kind);
+  const previous = plugins.get(key);
+  registerCommitStatusRowPlugin(stub, kind, group, version);
+  try {
+    return await body();
+  } finally {
+    if (previous) {
+      plugins.set(key, previous);
+    } else {
+      plugins.delete(key);
+    }
+  }
 }
