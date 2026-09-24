@@ -1729,6 +1729,131 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"the SCM to merge a sha origin no longer has on the source branch")
 			})
 		})
+
+		// Reproduction of hydrator + pre-created -next (e.g. SCM branch protection creating
+		// the proposed ref from the default branch) leaving active and proposed with no
+		// merge-base. Argo CD CheckoutOrOrphan initializes the missing sync/active branch as
+		// an empty orphan, then CheckoutOrNew checks out the already-existing proposed
+		// branch instead of branching it from active. git merge-tree then fails with
+		// "fatal: refusing to merge unrelated histories".
+		Context("When active and proposed branches have unrelated histories", func() {
+			var name string
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-unrelated-histories", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = new(true)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			It("establishes a merge-base and promotes onto the orphaned active branch", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Initializing the active branch as an empty hydrator orphan, independent of the default branch")
+				_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "Initial commit for "+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "--force", "origin", testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Creating the proposed branch from the default branch (as branch-protection bootstrap does) and hydrating onto it")
+				defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+				Expect(err).NotTo(HaveOccurred())
+				defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchDevelopmentNext, "origin/"+defaultBranch)
+				Expect(err).NotTo(HaveOccurred())
+				const proposedDrySha = "aabbccddeeff00112233445566778899aabbccdd"
+				Expect(os.WriteFile(path.Join(gitPath, "README.md"), []byte("from default branch\n"), 0o644)).To(Succeed())
+				Expect(os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("{\"side\": \"proposed\"}\n"), 0o644)).To(Succeed())
+				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"),
+					fmt.Appendf(nil, "{\"drySha\": %q}", proposedDrySha), 0o644)).To(Succeed())
+				_, err = runGitCmd(ctx, gitPath, "add", "README.md", "manifests-fake.yaml", "hydrator.metadata")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "proposed hydrated commit")
+				Expect(err).NotTo(HaveOccurred())
+				hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "--force", "origin", testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pushGitNote(ctx, gitPath, strings.TrimSpace(hydratedSha), proposedDrySha)).To(Succeed())
+
+				By("Confirming git merge-tree refuses the two branches the same way as production")
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "merge-tree", "--write-tree", "origin/"+testBranchDevelopment, "origin/"+testBranchDevelopmentNext)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("unrelated histories"))
+
+				By("Creating the CTP so its first reconcile sees the unrelated histories")
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				By("Waiting for Promoter to join the histories and promote onto active")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue), ready.Message)
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(proposedDrySha),
+						"active branch should be promoted to the proposed dry SHA after unrelated histories are joined")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				mergeBase, err := runGitCmd(ctx, gitPath, "merge-base", "origin/"+testBranchDevelopment, "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(mergeBase)).NotTo(BeEmpty())
+
+				By("Hydrating and promoting a subsequent change over the repaired history")
+				secondDrySha, err := makeDryCommit(ctx, gitPath, "second dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				beforeSha, _, err := pushHydratedBranch(ctx, gitPath, testBranchDevelopmentNext, secondDrySha, "second hydrated commit")
+				Expect(err).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, testBranchDevelopmentNext)
+
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue), ready.Message)
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(secondDrySha),
+						"the next ordinary promotion should succeed after the unrelated histories are repaired")
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
 	})
 })
 

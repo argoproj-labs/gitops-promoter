@@ -512,6 +512,29 @@ var _ = Describe("HasConflict", func() {
 		Expect(hasConflict).To(BeTrue())
 	})
 
+	It("returns true when active and proposed have unrelated histories", func() {
+		_, err := runGitCmd(workDir, "checkout", "--orphan", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "rm", "-rf", "--ignore-unmatch", ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "--allow-empty", "-m", "orphaned active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+
+		createBranch("proposed", map[string]string{
+			"apps/app-one/config.yaml": "version: proposed\n",
+		}, "proposed from default")
+
+		prepareEnvOps()
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeTrue())
+	})
+
 	It("returns true when disjoint app paths share modifications to root hydrator.metadata", func() {
 		createBranch("active", map[string]string{
 			"apps/app-one/config.yaml": "version: active\n",

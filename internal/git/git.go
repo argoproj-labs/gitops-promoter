@@ -557,7 +557,19 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
 	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
 	if err != nil {
-		// Exit code 1 with conflict info in stderr means conflicts were detected
+		// Unrelated histories cannot be inspected by merge-tree, but they need the same
+		// resolution as a content conflict: create an ours-style merge commit on proposed
+		// that keeps its tree and records both branch tips as parents. That commit establishes
+		// the merge-base required by the subsequent pull request.
+		//
+		// NOTE: we're intentionally taking on the risk of blowing away someone's unrelated
+		// proposed branch contents when adopted by Promoter. While that's always a possibility,
+		// the liklihood that we're making a
+		if strings.Contains(stderr, "refusing to merge unrelated histories") {
+			logger.Info("Unrelated branch histories detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			return true, nil
+		}
+		// Exit code 1 with conflict info means conflicts were detected.
 		if strings.Contains(stdout, "CONFLICT") {
 			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 			return true, nil
