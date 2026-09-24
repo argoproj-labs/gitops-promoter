@@ -130,7 +130,7 @@ var _ = Describe("httpPlugins", func() {
 		Expect(w.Body.String()).NotTo(ContainSubstring("not js"))
 	})
 
-	It("skips a malformed plugin file without failing the whole bundle", func() {
+	It("concatenates a malformed plugin file as-is, same as ArgoCD's /extensions.js", func() {
 		dir := GinkgoT().TempDir()
 		Expect(os.WriteFile(filepath.Join(dir, "plugin-good.js"), []byte("console.log('good')"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(dir, "plugin-broken.js"), []byte("console.log('broken'"), 0o644)).To(Succeed())
@@ -139,10 +139,16 @@ var _ = Describe("httpPlugins", func() {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/plugins.js", nil))
 
+		// There is no JS parser available to pre-validate syntax (see
+		// concat-plugins.mjs's new Function() check, which has no Go
+		// equivalent here), so - matching ArgoCD's own serveExtensions
+		// handler - a malformed file is concatenated as-is rather than
+		// skipped. The per-file try/catch wrapper only guards runtime
+		// errors; a syntax error still fails to parse the whole response.
 		Expect(w.Code).To(Equal(http.StatusOK))
 		body := w.Body.String()
 		Expect(body).To(ContainSubstring("good"))
-		Expect(body).NotTo(ContainSubstring("broken"))
+		Expect(body).To(ContainSubstring("broken"))
 	})
 
 	It("includes plugin files embedded into the dashboard's build output alongside PluginsDir", func() {

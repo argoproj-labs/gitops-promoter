@@ -328,38 +328,6 @@ func isPluginFilename(name string) bool {
 	return strings.HasPrefix(name, "plugin") && strings.HasSuffix(name, ".js")
 }
 
-// looksLikeValidJS is a heuristic, not a real parse: Go has no JS parser in its
-// standard library, and this repo does not vendor one (no goja/esbuild/otto), so
-// buildPluginsBundle cannot syntax-check a bundle the way concat-plugins.mjs does
-// with new Function(). It only catches the crudest breakage - empty/truncated
-// files and unbalanced braces/parens/brackets - not real syntax errors. Its job
-// is to keep one obviously-broken file from being concatenated into the shared
-// bundle string; try/catch around each plugin at runtime still guards actual
-// runtime throws.
-func looksLikeValidJS(content []byte) bool {
-	if len(strings.TrimSpace(string(content))) == 0 {
-		return false
-	}
-
-	depth := map[rune]int{'{': 0, '(': 0, '[': 0}
-	pairs := map[rune]rune{'}': '{', ')': '(', ']': '['}
-	for _, r := range string(content) {
-		if _, ok := depth[r]; ok {
-			depth[r]++
-			continue
-		}
-		if open, ok := pairs[r]; ok {
-			depth[open]--
-		}
-	}
-	for _, count := range depth {
-		if count != 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // writePluginFile appends one plugin bundle's contents to body, wrapped in its own
 // try/catch so a broken plugin doesn't take down the others in the response.
 func writePluginFile(body *bytes.Buffer, source string, content []byte) {
@@ -396,10 +364,6 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to read embedded plugin file: %w", err)
 			}
-			if !looksLikeValidJS(content) {
-				logger.Info("skipping embedded plugin file: failed heuristic syntax check", "file", entry.Name())
-				continue
-			}
 			writePluginFile(&body, entry.Name(), content)
 		}
 	}
@@ -426,11 +390,6 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to read plugin file: %w", err)
-		}
-
-		if !looksLikeValidJS(content) {
-			logger.Info("skipping plugin file: failed heuristic syntax check", "file", entry.Name())
-			continue
 		}
 
 		writePluginFile(&body, filePath, content)
