@@ -339,5 +339,19 @@ describe('commit status row plugin registry', () => {
 
       expect(getCommitStatusRowPlugin('TimedCommitStatus')?.rowContent).toBe(fwdContent);
     });
+
+    it('rejects a rendered element passed where a component type belongs', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const element = React.createElement(headerA);
+
+      registerCommitStatusRowPlugin(
+        { rowHeader: element as unknown as RowPlugin['rowHeader'] },
+        'TimedCommitStatus',
+      );
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
   });
 });

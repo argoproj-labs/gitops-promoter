@@ -49,14 +49,28 @@ const plugins = new Map<string, CommitStatusRowPluginRegistration>();
 const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistration>();
 
 /**
+ * `$$typeof` symbols for the two wrapper objects React.memo/React.forwardRef
+ * return in place of a plain function. A *rendered element* (e.g. `<Foo/>`)
+ * also carries a `$$typeof` (`react.element`), so checking for the field's
+ * mere presence would wrongly accept an element passed where a component
+ * type belongs; check for these two specific symbols instead.
+ */
+const COMPONENT_WRAPPER_TYPES = new Set([Symbol.for('react.memo'), Symbol.for('react.forward_ref')]);
+
+/**
  * A plain function component, or the object React.memo/React.forwardRef wrap
- * one in (identifiable by their `$$typeof` symbol) — both are valid values for
- * `rowHeader`/`rowContent`, and neither is `typeof value === 'function'`.
+ * one in — both are valid values for `rowHeader`/`rowContent`, and neither is
+ * `typeof value === 'function'`.
  */
 function isComponentLike(value: unknown): boolean {
+  if (typeof value === 'function') {
+    return true;
+  }
   return (
-    typeof value === 'function' ||
-    (typeof value === 'object' && value !== null && '$$typeof' in value)
+    typeof value === 'object' &&
+    value !== null &&
+    '$$typeof' in value &&
+    COMPONENT_WRAPPER_TYPES.has((value as { $$typeof: symbol }).$$typeof)
   );
 }
 
