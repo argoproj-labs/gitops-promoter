@@ -182,6 +182,34 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(BeNil())
 	})
 
+	It("FetchNotes only fetches notes refs that moved on the remote", func() {
+		ctx := GinkgoT().Context()
+		g := newEnvOps("default/fetch-skip")
+
+		_, err := runGitCmd(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-m", `{"drySha":"abc"}`, shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", git.HydratorNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+
+		By("breaking the clone's origin so any real fetch fails, while ls-remote still reaches the remote through gap")
+		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("nothing moved: no fetch is attempted, from a fresh probe or from a snapshot")
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+
+		By("a notes ref that moved on the remote is fetched")
+		_, err = runGitCmd(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-m", `{"drySha":"def"}`, shaTwo)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", git.HydratorNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		Expect(g.FetchNotes(ctx)).To(MatchError(ContainSubstring("failed to fetch git notes")))
+	})
+
 	It("LoadHistoryNotes serves GetHistoryNote from one batch and SetHistoryNote invalidates it", func() {
 		ctx := GinkgoT().Context()
 		_, err := runGitCmd(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m", `{"Pull-request-id":["1"]}`, shaOne)

@@ -148,9 +148,14 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
-	// Fetch the active branch (or skip the fetch when a live ls-remote confirms the remote tip still
-	// matches the newest history entry). GetRevListFirstParent requires the branch commits to be present
-	// in the local clone.
+	// A single ls-remote records the remote tips of the active branch and both notes refs, so the
+	// GetBranchSha and FetchNotes calls below only fetch what moved. On failure they probe on their own.
+	if err := gitOperations.SnapshotRemoteRefs(ctx, ctph.Spec.ActiveBranch); err != nil {
+		logger.V(4).Info("failed to snapshot remote refs, falling back to per-ref probes", "error", err)
+	}
+
+	// Fetch the active branch (or skip the fetch when the snapshot shows the local copy already matches
+	// the remote tip). GetRevListFirstParent requires the branch commits to be present in the local clone.
 	lastSeenSha := ""
 	if len(ctph.Status.History) > 0 {
 		lastSeenSha = ctph.Status.History[0].Active.Hydrated.Sha
