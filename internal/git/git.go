@@ -1048,30 +1048,29 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
 		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
 	}
-	stdout := stdoutBuf.String()
-
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string][]string)
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		if strings.Contains(line, ":") {
-			key, value, found := strings.Cut(line, ":")
-			if found {
-				trimmedKey := strings.TrimSpace(key)
-				trimmedValue := strings.TrimSpace(value)
-				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
-			} else {
-				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
-			}
-		}
-	}
+	trailers := parseTrailerLines(stdoutBuf.String())
 	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
 	return trailers, nil
 }
 
-// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
+// parseTrailerLines turns trailer lines ("Key: value", as printed by git interpret-trailers
+// --only-trailers or the %(trailers:only) log format) into a map where each key can have multiple
+// values. Lines without a colon are skipped. The result is never nil.
+func parseTrailerLines(output string) map[string][]string {
+	trailers := make(map[string][]string)
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		trimmedKey := strings.TrimSpace(key)
+		trailers[trimmedKey] = append(trailers[trimmedKey], strings.TrimSpace(value))
+	}
+	return trailers
+}
+
+// GetTrailers retrieves the trailers of the given commit, as git interpret-trailers --only-trailers would
+// parse them from its message. They are extracted in the same batched git log that loads the commit.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
