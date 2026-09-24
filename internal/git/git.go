@@ -96,10 +96,15 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
-	blobs    map[string]blobObject
-	commits  map[string]commitObject
+	gap     scms.GitOperationsProvider
+	gitRepo *v1alpha1.GitRepository
+	blobs   map[string]blobObject
+	commits map[string]commitObject
+
+	// historyNotes caches raw promotion-history notes by lowercase commit SHA, filled by
+	// LoadHistoryNotes. "" records a commit without a note. Cleared whenever the notes ref changes.
+	historyNotes map[string]string
+
 	identity string
 }
 
@@ -143,11 +148,12 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
-		blobs:    make(map[string]blobObject),
-		commits:  make(map[string]commitObject),
+		gap:          gap,
+		gitRepo:      gitRepo,
+		identity:     identity,
+		blobs:        make(map[string]blobObject),
+		commits:      make(map[string]commitObject),
+		historyNotes: make(map[string]string),
 	}
 }
 
@@ -801,6 +807,9 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		return fmt.Errorf("failed to fetch git notes for ref %q: %w", ref, err)
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
+	if ref == PromoterHistoryNotesRef {
+		clear(g.historyNotes)
+	}
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil
@@ -850,15 +859,24 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
-	if err != nil {
-		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
-		if strings.Contains(strings.ToLower(stderr), "no note found") {
-			logger.V(4).Info("No history note found for commit", "sha", sha)
-			return nil, nil
+	stdout, ok := g.historyNotes[strings.ToLower(sha)]
+	if !ok {
+		var stderr string
+		var err error
+		stdout, stderr, err = g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
+		if err != nil {
+			// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+			if strings.Contains(strings.ToLower(stderr), "no note found") {
+				logger.V(4).Info("No history note found for commit", "sha", sha)
+				return nil, nil
+			}
+			logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
+			return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
 		}
-		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
-		return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		logger.V(4).Info("No history note found for commit", "sha", sha)
+		return nil, nil
 	}
 
 	var trailers map[string][]string
@@ -908,6 +926,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 
 		// -f overwrites an existing note, which keeps retried reconciles idempotent.
 		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
+		clear(g.historyNotes)
 		if err != nil {
 			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
 			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
