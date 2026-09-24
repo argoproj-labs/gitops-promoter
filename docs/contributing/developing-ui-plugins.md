@@ -114,6 +114,8 @@ A plugin bundle is a plain script-tag-loadable `.js` file, `library: {type: 'win
 
 ```js
 // webpack.config.js
+const path = require("node:path");
+
 module.exports = {
   entry: "./src/index.tsx",
   output: {
