@@ -49,21 +49,43 @@ const plugins = new Map<string, CommitStatusRowPluginRegistration>();
 const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistration>();
 
 /**
- * Rejects a registration whose `rowHeader` isn't callable. This is the only
+ * A plain function component, or the object React.memo/React.forwardRef wrap
+ * one in (identifiable by their `$$typeof` symbol) — both are valid values for
+ * `rowHeader`/`rowContent`, and neither is `typeof value === 'function'`.
+ */
+function isComponentLike(value: unknown): boolean {
+  return (
+    typeof value === 'function' ||
+    (typeof value === 'object' && value !== null && '$$typeof' in value)
+  );
+}
+
+/**
+ * Rejects a registration whose `rowHeader` isn't a component. This is the only
  * shape check performed here — a `rowHeader` that renders something reasonable
  * to a JSX call site but throws or misbehaves once rendered is caught later by
  * `PluginErrorBoundary`, which is a render-time concern this registry-time
  * check cannot substitute for.
+ *
+ * `plugin` is typed loosely because it crosses from untyped, plain-JS external
+ * plugin bundles (see developing-ui-plugins.md) into this typed registry -
+ * `RowPlugin` describes the intended shape, not a runtime guarantee. `null`/
+ * `undefined` must be rejected here rather than throwing, so one malformed
+ * registration in a concatenated bundle doesn't abort the rest of that script.
  */
-function isValidRowPlugin(plugin: RowPlugin): boolean {
-  if (typeof plugin.rowHeader !== 'function') {
+function isValidRowPlugin(plugin: RowPlugin | null | undefined): plugin is RowPlugin {
+  if (typeof plugin !== 'object' || plugin === null) {
+    console.error('Ignoring plugin registration: plugin must be an object, got', plugin);
+    return false;
+  }
+  if (!isComponentLike(plugin.rowHeader)) {
     console.error(
       'Ignoring plugin registration: rowHeader must be a function component, got',
       plugin.rowHeader,
     );
     return false;
   }
-  if (plugin.rowContent !== undefined && typeof plugin.rowContent !== 'function') {
+  if (plugin.rowContent !== undefined && !isComponentLike(plugin.rowContent)) {
     console.error(
       'Ignoring plugin registration: rowContent must be a function component when provided, got',
       plugin.rowContent,
@@ -85,7 +107,7 @@ function isValidRowPlugin(plugin: RowPlugin): boolean {
  * disappearing.
  */
 export function registerCommitStatusRowPlugin(
-  plugin: RowPlugin,
+  plugin: RowPlugin | null | undefined,
   kind: string,
   group: string = PROMOTER_GROUP,
   version: string = ANY_VERSION,
@@ -110,7 +132,7 @@ export function registerCommitStatusRowPlugin(
  * earlier one, and omitting `version` matches any version.
  */
 export function registerCommitStatusRowPluginByAnnotation(
-  plugin: RowPlugin,
+  plugin: RowPlugin | null | undefined,
   kind: string,
   annotationKey: string,
   annotationValue: string,

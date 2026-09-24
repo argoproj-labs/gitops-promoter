@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import React from 'react';
 import {
   ANY_VERSION,
   PROMOTER_GROUP,
@@ -296,6 +297,47 @@ describe('commit status row plugin registry', () => {
 
       expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBe(pluginA);
       consoleErrorSpy.mockRestore();
+    });
+
+    it('ignores an undefined plugin without throwing', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => registerCommitStatusRowPlugin(undefined, 'TimedCommitStatus')).not.toThrow();
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('ignores a null plugin without throwing', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => registerCommitStatusRowPlugin(null, 'TimedCommitStatus')).not.toThrow();
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('accepts memo/forwardRef components', () => {
+    it('registers a plugin whose rowHeader is a React.memo component', () => {
+      const memoHeader = React.memo(headerA);
+
+      registerCommitStatusRowPlugin({ rowHeader: memoHeader }, 'TimedCommitStatus');
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')?.rowHeader).toBe(memoHeader);
+    });
+
+    it('registers a plugin whose rowContent is a React.forwardRef component', () => {
+      const fwdContent = React.forwardRef(() => null);
+
+      registerCommitStatusRowPlugin(
+        { rowHeader: headerA, rowContent: fwdContent as unknown as RowPlugin['rowContent'] },
+        'TimedCommitStatus',
+      );
+
+      expect(getCommitStatusRowPlugin('TimedCommitStatus')?.rowContent).toBe(fwdContent);
     });
   });
 });
