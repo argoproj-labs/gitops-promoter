@@ -9,6 +9,7 @@ import {
   registerCommitStatusRowPlugin,
 } from '@shared/components/plugins';
 import type { CommitStatusContext } from '@shared/components/plugins';
+import { unregisterCommitStatusRowPlugin } from '@shared/components/plugins/registry';
 
 const timedManager: CommitStatusManager = {
   spec: {
@@ -174,6 +175,8 @@ describe('DetailDrawer commit-status plugins', () => {
     } finally {
       if (previous) {
         registerCommitStatusRowPlugin(previous, 'GitCommitStatus');
+      } else {
+        unregisterCommitStatusRowPlugin('GitCommitStatus');
       }
     }
   });

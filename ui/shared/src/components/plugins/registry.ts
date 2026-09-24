@@ -210,3 +210,17 @@ export function resetPluginRegistry(): void {
   plugins.clear();
   annotationPlugins.clear();
 }
+
+/**
+ * Removes a single GVK registration, leaving every other registration
+ * (including built-in plugins registered at module load) untouched. Intended
+ * for tests that swap in a stub plugin and need to restore the prior state
+ * without wiping the whole registry via `resetPluginRegistry`.
+ */
+export function unregisterCommitStatusRowPlugin(
+  kind: string,
+  group: string = PROMOTER_GROUP,
+  version: string = ANY_VERSION,
+): void {
+  plugins.delete(registryKey(group, version, kind));
+}
