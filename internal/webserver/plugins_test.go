@@ -199,19 +199,15 @@ var _ = Describe("httpPlugins", func() {
 		Expect(etagA).NotTo(Equal(etagB))
 	})
 
-	It("fails to build the bundle when a directory is named plugin*.js", func() {
+	It("skips a directory named plugin*.js without failing the bundle", func() {
 		dir := GinkgoT().TempDir()
 		Expect(os.Mkdir(filepath.Join(dir, "plugin-oops.js"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(dir, "plugin-good.js"), []byte("console.log('good')"), 0o644)).To(Succeed())
 
 		ws := &WebServer{PluginsDir: dir}
-		_, _, err := ws.buildPluginsBundle()
+		body, _, err := ws.buildPluginsBundle()
 
-		// Documents current behavior (REVIEW.md §3): a directory or unreadable
-		// file named plugin*.js aborts the whole bundle build (and, via
-		// StartDashboard, dashboard startup) rather than being skipped with a
-		// log like a malformed-content file is. This is a known, undecided
-		// design gap, not the intended behavior.
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("is a directory"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(body)).To(ContainSubstring("good"))
 	})
 })

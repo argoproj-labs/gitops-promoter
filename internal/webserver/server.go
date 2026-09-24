@@ -360,9 +360,14 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 			if !isPluginFilename(entry.Name()) {
 				continue
 			}
+			if entry.IsDir() {
+				logger.Info("skipping embedded plugin entry: not a file", "file", entry.Name())
+				continue
+			}
 			content, err := fs.ReadFile(ws.distFS, entry.Name())
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to read embedded plugin file: %w", err)
+				logger.Info("skipping embedded plugin file: failed to read", "file", entry.Name(), "error", err)
+				continue
 			}
 			writePluginFile(&body, entry.Name(), content)
 		}
@@ -386,10 +391,16 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 			continue
 		}
 
+		if entry.IsDir() {
+			logger.Info("skipping plugin entry: not a file", "file", entry.Name())
+			continue
+		}
+
 		filePath := filepath.Join(ws.PluginsDir, entry.Name())
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to read plugin file: %w", err)
+			logger.Info("skipping plugin file: failed to read", "file", entry.Name(), "error", err)
+			continue
 		}
 
 		writePluginFile(&body, filePath, content)
