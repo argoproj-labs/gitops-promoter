@@ -55,7 +55,10 @@ const annotationPlugins = new Map<string, CommitStatusRowPluginAnnotationRegistr
  * mere presence would wrongly accept an element passed where a component
  * type belongs; check for these two specific symbols instead.
  */
-const COMPONENT_WRAPPER_TYPES = new Set([Symbol.for('react.memo'), Symbol.for('react.forward_ref')]);
+const COMPONENT_WRAPPER_TYPES = new Set([
+  Symbol.for('react.memo'),
+  Symbol.for('react.forward_ref'),
+]);
 
 /**
  * A plain function component, or the object React.memo/React.forwardRef wrap

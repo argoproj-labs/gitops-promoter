@@ -49,9 +49,7 @@ describe('loadPluginBundle', () => {
 
     loadPluginBundle(hostReact);
 
-    expect(() =>
-      document.body.querySelector('script')?.onload?.(new Event('load')),
-    ).not.toThrow();
+    expect(() => document.body.querySelector('script')?.onload?.(new Event('load'))).not.toThrow();
   });
 
   it('swallows, rather than throws, when the loaded bundle brought its own React', () => {
