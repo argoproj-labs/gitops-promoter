@@ -148,12 +148,6 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
 	}
 
-	// Fetch git notes: history entries are built from the promotion-history notes ref when present.
-	err = gitOperations.FetchNotes(ctx)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
-	}
-
 	// Fetch the active branch (or skip the fetch when a live ls-remote confirms the remote tip still
 	// matches the newest history entry). GetRevListFirstParent requires the branch commits to be present
 	// in the local clone.
@@ -344,6 +338,12 @@ func shouldSkipHistoryRecalculation(history []promoterv1alpha1.History, activeSh
 // re-writing git history or pushing a number of commits greater than the max history limit.
 func calculateHistory(ctx context.Context, activeBranch, activePath string, gitOperations *git.EnvironmentOperations) ([]promoterv1alpha1.History, error) {
 	logger := log.FromContext(ctx)
+
+	// History entries are built from the promotion-history notes ref when present. Fetching here
+	// keeps notes I/O on the rebuild path only (Reconcile's skip guards never call this).
+	if err := gitOperations.FetchNotes(ctx); err != nil {
+		return nil, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
 
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, promoterv1alpha1.MaxPromotionHistory)
 	if err != nil {
