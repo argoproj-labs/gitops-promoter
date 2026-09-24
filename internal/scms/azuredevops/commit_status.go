@@ -2,6 +2,7 @@ package azuredevops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ import (
 )
 
 const azureDevopsDomain = "dev.azure.com"
+
+// pullRequestStatusTimeout bounds best-effort PR status mirroring so a slow
+// Azure DevOps API cannot stall CommitStatus reconciliation.
+const pullRequestStatusTimeout = 30 * time.Second
 
 // azdoGitClient is the Azure DevOps git API surface used for commit and PR statuses.
 type azdoGitClient interface {
@@ -125,7 +130,9 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	// the status onto the iteration of any open PR whose head is this SHA. This must
 	// never make the CommitStatus reconciliation fail: active SHAs commonly have no
 	// PR, and the PR APIs may be unavailable or temporarily inconsistent.
-	cs.setPullRequestStatusBestEffort(ctx, gitClient, gitRepo, commitStatus)
+	prCtx, cancel := context.WithTimeout(ctx, pullRequestStatusTimeout)
+	defer cancel()
+	cs.setPullRequestStatusBestEffort(prCtx, gitClient, gitRepo, commitStatus)
 
 	return commitStatus, nil
 }
@@ -280,7 +287,7 @@ func (cs CommitStatus) createPullRequestStatus(
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if created == nil || created.Id == nil {
-		return fmt.Errorf("azure DevOps pull request status response missing id")
+		return errors.New("azure DevOps pull request status response missing id")
 	}
 
 	logger.V(4).Info("Azure DevOps pull request status created",
@@ -291,16 +298,17 @@ func (cs CommitStatus) createPullRequestStatus(
 }
 
 func iterationIDMatchingSHA(iterations []git.GitPullRequestIteration, sha string) int {
+	latest := 0
 	for i := range iterations {
 		iter := iterations[i]
 		if iter.Id == nil || iter.SourceRefCommit == nil || iter.SourceRefCommit.CommitId == nil {
 			continue
 		}
-		if strings.EqualFold(*iter.SourceRefCommit.CommitId, sha) {
-			return *iter.Id
+		if strings.EqualFold(*iter.SourceRefCommit.CommitId, sha) && *iter.Id > latest {
+			latest = *iter.Id
 		}
 	}
-	return 0
+	return latest
 }
 
 func mapPhaseToAzureDevOpsState(phase v1alpha1.CommitStatusPhase) git.GitStatusState {

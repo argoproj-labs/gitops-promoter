@@ -11,15 +11,15 @@ import (
 )
 
 type fakeAzdoGitClient struct {
-	pullRequests           []git.GitPullRequest
+	lastPullRequestStatus  git.CreatePullRequestStatusArgs
 	pullRequestErr         error
-	iterations             []git.GitPullRequestIteration
 	iterationErr           error
 	pullRequestStatusErr   error
+	pullRequests           []git.GitPullRequest
+	iterations             []git.GitPullRequestIteration
 	pullRequestCalls       int
 	iterationCalls         int
 	pullRequestStatusCalls int
-	lastPullRequestStatus  git.CreatePullRequestStatusArgs
 }
 
 func (f *fakeAzdoGitClient) CreateCommitStatus(context.Context, git.CreateCommitStatusArgs) (*git.GitStatus, error) {
@@ -87,6 +87,7 @@ func TestSetPullRequestStatusBestEffort(t *testing.T) {
 	t.Parallel()
 
 	iterationID := 7
+	staleIterationID := 1
 	iterationSHA := testSHA
 	otherSHA := "0000000000000000000000000000000000000000"
 	gitClient := &fakeAzdoGitClient{
@@ -94,10 +95,16 @@ func TestSetPullRequestStatusBestEffort(t *testing.T) {
 			openPullRequest(41, otherSHA),
 			openPullRequest(42, testSHA),
 		},
-		iterations: []git.GitPullRequestIteration{{
-			Id:              &iterationID,
-			SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
-		}},
+		iterations: []git.GitPullRequestIteration{
+			{
+				Id:              &staleIterationID,
+				SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
+			},
+			{
+				Id:              &iterationID,
+				SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
+			},
+		},
 	}
 
 	commitStatus := testCommitStatus(v1alpha1.CommitPhaseSuccess)
@@ -135,14 +142,14 @@ func TestSetPullRequestStatusBestEffortIgnoresFailuresAndMissingPRs(t *testing.T
 	noMatch := &fakeAzdoGitClient{pullRequests: []git.GitPullRequest{openPullRequest(41, "0000000000000000000000000000000000000000")}}
 	provider.setPullRequestStatusBestEffort(context.Background(), noMatch, repo, commitStatus)
 	if noMatch.iterationCalls != 0 || noMatch.pullRequestStatusCalls != 0 {
-		t.Fatalf("unexpected Azure DevOps calls without a matching PR")
+		t.Fatal("unexpected Azure DevOps calls without a matching PR")
 	}
 
 	// A failed PR listing is swallowed.
 	listFailure := &fakeAzdoGitClient{pullRequestErr: errors.New("temporary failure")}
 	provider.setPullRequestStatusBestEffort(context.Background(), listFailure, repo, commitStatus)
 	if listFailure.iterationCalls != 0 || listFailure.pullRequestStatusCalls != 0 {
-		t.Fatalf("unexpected Azure DevOps calls after a failed listing")
+		t.Fatal("unexpected Azure DevOps calls after a failed listing")
 	}
 
 	// A failed iteration lookup is swallowed too.
