@@ -998,6 +998,31 @@ func (g *EnvironmentOperations) CommitExists(ctx context.Context, sha string) bo
 	return err == nil
 }
 
+// notedObjects returns the set of object SHAs that have a note in the given notes ref, without reading
+// any note contents. A missing notes ref yields an empty set.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) notedObjects(ctx context.Context, ref string) (map[string]struct{}, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+ref, "list")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list notes in %q: %w (stderr: %s)", ref, err, stderr)
+	}
+
+	noted := make(map[string]struct{})
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		// Each line is "<note blob> <annotated object>".
+		if _, object, found := strings.Cut(line, " "); found {
+			noted[object] = struct{}{}
+		}
+	}
+	return noted, nil
+}
+
 // FindMatchingHydratorNote returns the hydrator note for startSha, or — when the tip has
 // no note — the first note on a first-parent ancestor whose DrySha equals expectedDrySha.
 // A note on the branch tip is always preferred, including note-only hydrator updates where
@@ -1018,6 +1043,28 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		return nil, nil
 	}
 
+	// The walk is for ours-merge tips that have no note of their own. One merge on top of a
+	// noted hydrated parent still costs a notes list and does not save a notes show.
+	//
+	// It saves work in two noteless situations:
+	//   - Noteless hydrators (hydrator.metadata on the tip, empty notes ref): the old code
+	//     rev-list'd and notes-show'd up to 31 ancestors that cannot have notes.
+	//   - Several first-parent commits in a row with no note before the matching one, e.g.
+	//     repeated ours-merges after reverts (or other noteless commits) on active. Each of
+	//     those used to be a notes show miss; notes list skips them.
+	//
+	// notes list reads the notes tree alone (no note blobs, which a blob-less clone would
+	// fetch lazily). When the list is empty we skip the walk. A delayed note on the proposed
+	// tip is not this path: GetHydratorNote(startSha) already ran; the next FetchNotes
+	// reconcile hits it there.
+	noted, err := g.notedObjects(ctx, HydratorNotesRef)
+	if err != nil {
+		return nil, err
+	}
+	if len(noted) == 0 {
+		return nil, nil
+	}
+
 	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
 	if err != nil {
 		return nil, err
@@ -1026,6 +1073,9 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 	logger := log.FromContext(ctx)
 	for _, sha := range shas {
 		if sha == startSha {
+			continue
+		}
+		if _, ok := noted[sha]; !ok {
 			continue
 		}
 		note, err := g.GetHydratorNote(ctx, sha)
