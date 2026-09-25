@@ -7398,10 +7398,12 @@ spec:
                 type: array
               environments:
                 description: |-
-                  Environments defines the list of environments to gate. Only listed environments are gated;
-                  unlisted environments default to success (24/7 open). Each environment inherits global
-                  allow/exclude windows and may add its own. An environment with no per-environment windows
-                  is valid when global windows are defined.
+                  Environments defines the list of environments to gate. A PromotionStrategy
+                  environment that requires spec.key (top-level or per-environment proposed or
+                  active commit statuses) must appear here; otherwise reconciliation fails with
+                  Ready=False. Extra listed environments are allowed. Each environment inherits
+                  global allow/exclude windows and may add its own. An environment with no
+                  per-environment windows is valid when global windows are defined.
                 items:
                   description: ScheduledEnvironment defines the window configuration
                     for a single environment.
@@ -8066,6 +8068,11 @@ spec:
             description: spec defines the desired state of TimedCommitStatus
             properties:
               environments:
+                description: |-
+                  Environments is the list of branches this soak gate covers. A PromotionStrategy
+                  environment that requires spec.key (top-level or per-environment proposed or
+                  active commit statuses) must appear here; otherwise reconciliation fails with
+                  Ready=False. Extra listed environments are allowed.
                 items:
                   description: TimedCommitStatusEnvironments defines the branch/environment
                     and duration to wait before reporting the gate as success.

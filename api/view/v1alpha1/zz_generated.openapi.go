@@ -5501,7 +5501,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Environments defines the list of environments to gate. Only listed environments are gated; unlisted environments default to success (24/7 open). Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined.",
+							Description: "Environments defines the list of environments to gate. A PromotionStrategy environment that requires spec.key (top-level or per-environment proposed or active commit statuses) must appear here; otherwise reconciliation fails with Ready=False. Extra listed environments are allowed. Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -6245,7 +6245,8 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 					},
 					"environments": {
 						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
+							Description: "Environments is the list of branches this soak gate covers. A PromotionStrategy environment that requires spec.key (top-level or per-environment proposed or active commit statuses) must appear here; otherwise reconciliation fails with Ready=False. Extra listed environments are allowed.",
+							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{

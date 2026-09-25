@@ -17,6 +17,10 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+	"slices"
+	"strings"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
@@ -54,4 +58,55 @@ func GetApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key strin
 		}
 	}
 	return applicable
+}
+
+// ValidateGateEnvironmentList reports a configuration error when listed gate
+// branches are absent from the PromotionStrategy, or when the PromotionStrategy
+// requires key for an environment the gate does not list. Extra listed
+// environments that exist on the PromotionStrategy but do not require key are
+// allowed.
+func ValidateGateEnvironmentList(ps *promoterv1alpha1.PromotionStrategy, key string, listed []string) error {
+	psBranches := make(map[string]struct{}, len(ps.Spec.Environments))
+	for _, env := range ps.Spec.Environments {
+		psBranches[env.Branch] = struct{}{}
+	}
+
+	listedSet := make(map[string]struct{}, len(listed))
+	var unknown []string
+	for _, branch := range listed {
+		listedSet[branch] = struct{}{}
+		if _, ok := psBranches[branch]; !ok {
+			unknown = append(unknown, branch)
+		}
+	}
+	slices.Sort(unknown)
+
+	seenRequired := make(map[string]struct{})
+	var missing []string
+	for _, reportOn := range []string{constants.CommitRefProposed, constants.CommitRefActive} {
+		for _, env := range GetApplicableEnvironments(ps, key, reportOn) {
+			if _, ok := seenRequired[env.Branch]; ok {
+				continue
+			}
+			seenRequired[env.Branch] = struct{}{}
+			if _, ok := listedSet[env.Branch]; !ok {
+				missing = append(missing, env.Branch)
+			}
+		}
+	}
+	slices.Sort(missing)
+
+	switch {
+	case len(unknown) > 0 && len(missing) > 0:
+		return fmt.Errorf("branches not found in PromotionStrategy %q: %s; PromotionStrategy requires key %q for environments not listed on this resource: %s",
+			ps.Name, strings.Join(unknown, ", "), key, strings.Join(missing, ", "))
+	case len(unknown) > 0:
+		return fmt.Errorf("branches not found in PromotionStrategy %q: %s",
+			ps.Name, strings.Join(unknown, ", "))
+	case len(missing) > 0:
+		return fmt.Errorf("PromotionStrategy %q requires key %q for environments not listed on this resource: %s",
+			ps.Name, key, strings.Join(missing, ", "))
+	default:
+		return nil
+	}
 }
