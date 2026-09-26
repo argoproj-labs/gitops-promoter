@@ -63,11 +63,14 @@ function buildEnvColumn(
   };
 }
 
-// While a RevertCommit holds the environment, only an open pull request belongs on the proposed
-// commit. status.pullRequest otherwise keeps the last one that merged, which is not this commit's.
+// While a RevertCommit holds the environment, status.pullRequest is the promotion that landed
+// the commit the revert moved off the active branch. That merged pull request belongs on the
+// reverted commit. An open one belongs on a newer proposed commit that is waiting out the hold.
+// A merged pull request on any other proposed commit is a previous promotion, not this commit's.
 function heldPullRequest(env: StatusEnvironment): PullRequest | undefined {
   if (!env.revertCommit) return env.pullRequest;
-  return env.pullRequest?.state === 'open' ? env.pullRequest : undefined;
+  if (env.pullRequest?.state === 'open' || proposedIsReverted(env)) return env.pullRequest;
+  return undefined;
 }
 
 function getRow(
@@ -187,7 +190,16 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
           ? 'failed'
           : 'was-here';
 
-    const row = getRow(rowsById, commit, '', entry.pullRequest, restoreKey ?? undefined);
+    // A restore copies the restored version's history note, so its pull request id is that
+    // earlier promotion's, not a pull request that created the restore. Leave it off this row;
+    // the promotion that the revert moved off the branch is attached to the reverted commit.
+    const row = getRow(
+      rowsById,
+      commit,
+      '',
+      restoreKey ? undefined : entry.pullRequest,
+      restoreKey ?? undefined,
+    );
     if (!row) return;
     if (restoreKey) applyRestoreIdentity(row, entry);
 
@@ -211,7 +223,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       references: toReferenceCommits(commit),
       commitStatuses: statuses,
       health,
-      pullRequest: entry.pullRequest,
+      pullRequest: restoreKey ? undefined : entry.pullRequest,
       restoredFrom: entry.restoredFrom,
       noopNote: isNoop
         ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
@@ -354,7 +366,10 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (env.active?.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const row = getRow(rowsById, env.active.dry, '', env.pullRequest, activeRestoreKey);
+      // The restore commit is written directly onto the active branch, so the policy's current
+      // pull request is not its. That pull request stays on the commit it promoted.
+      const livePullRequest = activeRestore ? undefined : env.pullRequest;
+      const row = getRow(rowsById, env.active.dry, '', livePullRequest, activeRestoreKey);
       if (row) {
         if (activeRestore) applyRestoreIdentity(row, activeRestore);
         const kind: CellKind = health === 'failure' ? 'failed' : 'live';
@@ -365,7 +380,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           references: toReferenceCommits(env.active.dry),
           commitStatuses: statuses,
           health,
-          pullRequest: env.pullRequest,
+          pullRequest: livePullRequest,
           isLive: true,
           // A live restore outranks the history entry that describes it, so the restore's
           // marker and timestamp have to be carried here or they are lost and the row

@@ -23,17 +23,19 @@ export function displayKind(kind: CellKind): DisplayCellKind {
 
 /**
  * Pill and badge text for a cell. `compact` shortens the empty kinds for the drawer's
- * per-environment list.
+ * per-environment list. A proposed commit that a RevertCommit moved off the active branch is
+ * labeled REVERTED rather than PROPOSED, since it will not be promoted.
  */
 export function cellKindLabel(
-  cell: Pick<CellState, 'kind' | 'isProposed'>,
+  cell: Pick<CellState, 'kind' | 'isProposed' | 'revertedByRevertCommit'>,
   compact = false,
 ): string {
   switch (displayKind(cell.kind)) {
     case 'live':
       return 'LIVE';
     case 'in-flight':
-      return cell.isProposed ? 'PROPOSED' : 'PR OPEN';
+      if (cell.isProposed) return cell.revertedByRevertCommit ? 'REVERTED' : 'PROPOSED';
+      return 'PR OPEN';
     case 'was-here':
       return 'REPLACED';
     case 'failed':

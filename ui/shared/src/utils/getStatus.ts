@@ -1,4 +1,5 @@
 import type { Environment, PromotionPhase, PromotionStrategy, Check } from '../types/promotion';
+import { proposedIsReverted } from './environments';
 
 // Health status for proposed/active checks
 export function getHealthStatus(checks: Check[]): 'success' | 'failure' | 'pending' | 'unknown' {
@@ -33,6 +34,13 @@ export function getEnvironmentStatus(
   }
 
   if (proposedSha === activeSha) {
+    return 'promoted';
+  }
+
+  // After a RevertCommit restores the active branch, the proposed branch still points at the
+  // commit that was reverted. That is not a new change waiting to promote; the environment is
+  // settled until a newer commit arrives.
+  if (proposedIsReverted(env)) {
     return 'promoted';
   }
 

@@ -185,13 +185,10 @@ describe('buildMatrix restore rows', () => {
     return strategy;
   };
 
-  it('marks the reverted commit as held and drops the last merged pull request', () => {
+  it('puts the merged pull request on the reverted commit, not the live restore', () => {
     const reverted = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    const strategy = heldStrategy(
-      reverted,
-      { id: '3017', url: 'https://github.com/org/repo/pull/3017', state: 'merged' },
-      reverted,
-    );
+    const merged = { id: '3018', url: 'https://github.com/org/repo/pull/3018', state: 'merged' };
+    const strategy = heldStrategy(reverted, merged, reverted);
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === reverted)!.cells[BRANCH]!;
@@ -199,8 +196,13 @@ describe('buildMatrix restore rows', () => {
     expect(cell.isProposed).toBe(true);
     expect(cell.revertCommit).toBe('revert-staging');
     expect(cell.revertedByRevertCommit).toBe(true);
-    expect(cell.pullRequest).toBeUndefined();
-    expect(envs[0]!.proposedPR).toBeUndefined();
+    expect(cell.pullRequest?.id).toBe('3018');
+    expect(envs[0]!.proposedPR?.id).toBe('3018');
+
+    const restore = rows.find((r) => r.restoredFrom)!.cells[BRANCH]!;
+    expect(restore.kind).toBe('live');
+    expect(restore.pullRequest).toBeUndefined();
+    expect(rows.find((r) => r.restoredFrom)!.prId).toBeUndefined();
   });
 
   it('keeps the open pull request on a newer commit held by the RevertCommit', () => {
@@ -214,6 +216,25 @@ describe('buildMatrix restore rows', () => {
     expect(cell.revertedByRevertCommit).toBe(false);
     expect(cell.pullRequest?.id).toBe('3020');
     expect(envs[0]!.proposedPR?.id).toBe('3020');
+    expect(rows.find((r) => r.restoredFrom)!.cells[BRANCH]!.pullRequest).toBeUndefined();
+  });
+
+  it('drops a merged pull request that is not the reverted commit and keeps it off the restore', () => {
+    const newer = 'cccccccccccccccccccccccccccccccccccccccc';
+    const strategy = heldStrategy(
+      newer,
+      { id: '3018', url: 'https://github.com/org/repo/pull/3018', state: 'merged' },
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+
+    const { rows, envs } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
+    expect(cell.revertedByRevertCommit).toBe(false);
+    expect(cell.pullRequest).toBeUndefined();
+    expect(envs[0]!.proposedPR).toBeUndefined();
+    const restoreRow = rows.find((r) => r.restoredFrom)!;
+    expect(restoreRow.cells[BRANCH]!.pullRequest).toBeUndefined();
+    expect(restoreRow.prId).toBeUndefined();
   });
 });
 

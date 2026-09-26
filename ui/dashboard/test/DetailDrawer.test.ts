@@ -371,6 +371,21 @@ describe('DetailDrawer restore command', () => {
     expect(container.querySelector('.hp-drawer__pr')?.textContent).toContain('3020');
   });
 
+  it('labels the proposed commit REVERTED when it is the one the RevertCommit reverted', () => {
+    render(
+      makeCell([], {
+        kind: 'in-flight',
+        health: 'pending',
+        isProposed: true,
+        revertCommit: 'revert-staging',
+        revertedByRevertCommit: true,
+      }),
+    );
+    const badge = container.querySelector('.hp-drawer__kind--held');
+    expect(badge?.textContent).toContain('REVERTED');
+    expect(badge?.textContent).not.toContain('PROPOSED');
+  });
+
   it('labels a superseded restore cell REPLACED in the badge and the environment list', () => {
     render(
       makeCell([], {
@@ -408,6 +423,12 @@ describe('cellKindLabel', () => {
   it('gives every kind a label, with compact forms for the empty kinds', () => {
     expect(cellKindLabel({ kind: 'live' })).toBe('LIVE');
     expect(cellKindLabel({ kind: 'in-flight', isProposed: true })).toBe('PROPOSED');
+    expect(
+      cellKindLabel({ kind: 'in-flight', isProposed: true, revertedByRevertCommit: true }),
+    ).toBe('REVERTED');
+    expect(
+      cellKindLabel({ kind: 'in-flight', isProposed: true, revertedByRevertCommit: false }),
+    ).toBe('PROPOSED');
     expect(cellKindLabel({ kind: 'in-flight' })).toBe('PR OPEN');
     expect(cellKindLabel({ kind: 'was-here' })).toBe('REPLACED');
     expect(cellKindLabel({ kind: 'restored' })).toBe('REPLACED');
