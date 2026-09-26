@@ -171,6 +171,204 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			It("does not open a pull request for the dry SHA that was reverted", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Promoting one commit so it is the active dry SHA")
+				blockedDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				restoreTo, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				restoreTo = strings.TrimSpace(restoreTo)
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(true)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting until that promotion has merged and its pull request is gone")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(blockedDrySha))
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				proposedTip, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				proposedTip = strings.TrimSpace(proposedTip)
+
+				By("Restoring active to the previous commit")
+				rc := &promoterv1alpha1.RevertCommit{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
+					Spec: promoterv1alpha1.RevertCommitSpec{
+						ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: name},
+						Sha:                     restoreTo,
+					},
+				}
+				Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+				rcKey := types.NamespacedName{Name: rc.Name, Namespace: "default"}
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, rcKey, rc)).To(Succeed())
+					g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
+					g.Expect(rc.Status.BlockedDrySha).To(Equal(blockedDrySha))
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(blockedDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Leaving no pull request open: the proposed tip is already contained in active")
+				Consistently(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				stillProposed, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(stillProposed)).To(Equal(proposedTip))
+
+				By("Hydrating a new dry SHA, which opens a pull request but does not auto-merge")
+				laterDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "a later dry commit", "")
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Consistently(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				By("Deleting the RevertCommit, which allows the new dry SHA to auto-merge")
+				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(laterDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("keeps an open pull request for a later proposed dry SHA when active is reverted", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Promoting one commit so it is the active dry SHA")
+				revertedDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				restoreTo, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				restoreTo = strings.TrimSpace(restoreTo)
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(true)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(revertedDrySha))
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Opening a pull request for a later proposed commit and leaving auto-merge off")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(false)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				laterDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "a later dry commit", "")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Spec.State).NotTo(Equal(promoterv1alpha1.PullRequestClosed))
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Restoring the active branch, which does not close that pull request")
+				rc := &promoterv1alpha1.RevertCommit{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
+					Spec: promoterv1alpha1.RevertCommitSpec{
+						ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: name},
+						Sha:                     restoreTo,
+					},
+				}
+				Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())
+					g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
+					g.Expect(rc.Status.BlockedDrySha).To(Equal(revertedDrySha))
+					g.Expect(rc.Status.BlockedDrySha).NotTo(Equal(laterDrySha))
+					// The open pull request is for a later dry SHA, so it stays open. Auto-merge is
+					// still held until the RevertCommit is deleted.
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(revertedDrySha))
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Consistently(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Spec.State).NotTo(Equal(promoterv1alpha1.PullRequestClosed))
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				By("Leaving that pull request open, and not auto-merging it while the RevertCommit exists")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(true)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Consistently(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Spec.State).NotTo(Equal(promoterv1alpha1.PullRequestClosed))
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(laterDrySha))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				By("Deleting the RevertCommit so the later dry SHA can auto-merge")
+				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(laterDrySha))
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 
 		Context("When using commit status checks", func() {
@@ -2858,6 +3056,28 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(entry.PullRequest.ID).To(Equal("88"), "the note must win over the commit message trailers")
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
 	})
+
+	It("reads the restored-from trailer so a manual restore is distinguishable from a promotion", func() {
+		// The dashboard's restore snippet copies the restored version's note and stamps this
+		// trailer onto it. Without it the entry is identical to the original promotion and the
+		// UI silently folds the restore into that version's existing row.
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["77"],"`+constants.TrailerRestoredFrom+`":["`+commitSha+`"]}`, commitSha)
+		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.RestoredFrom).To(Equal(commitSha))
+	})
+
+	It("leaves restoredFrom empty for an ordinary promotion", func() {
+		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.RestoredFrom).To(BeEmpty())
+	})
 })
 
 var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", func() {
@@ -3357,7 +3577,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(livePR.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
@@ -3373,7 +3593,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(livePR.DeletionTimestamp.IsZero()).To(BeFalse())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
@@ -3388,7 +3608,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(k8sClient.Status().Update(ctx, &livePR)).To(Succeed())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))

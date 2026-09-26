@@ -1881,6 +1881,15 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoredFrom:
+                      description: |-
+                        RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+                        pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+                        tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+                        pull request and commit status fields are copied from the restored version and describe the original
+                        promotion, not the restore.
+                      maxLength: 40
+                      type: string
                   type: object
                 maxItems: 20
                 type: array
@@ -7266,10 +7275,30 @@ spec:
     singular: revertcommit
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.changeTransferPolicyRef.name
+      name: ChangeTransferPolicy
+      type: string
+    - jsonPath: .spec.sha
+      name: Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.activeSha
+      name: Active Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RevertCommit is the Schema for the revertcommits API
+        description: |-
+          RevertCommit restores one environment's active branch to a previously hydrated commit and records
+          the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+          Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
+          policy's namespace can restore that environment, and the controller's git credentials perform the push.
+          The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
         properties:
           apiVersion:
             description: |-
@@ -7289,15 +7318,148 @@ spec:
           metadata:
             type: object
           spec:
-            description: RevertCommitSpec defines the desired state of RevertCommit
+            description: RevertCommitSpec defines the desired state of RevertCommit.
             properties:
-              foo:
-                description: Foo is an example field of RevertCommit. Edit revertcommit_types.go
-                  to remove/update
+              changeTransferPolicyRef:
+                description: |-
+                  ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
+                  The policy supplies the repository, the active and proposed branches, and activePath.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              sha:
+                description: |-
+                  Sha is the hydrated commit to restore onto the active branch. The controller writes a new
+                  commit (the commit's tree, or only activePath when the policy sets one) parented on the
+                  current active tip and records a promotion-history note with Promoter-restored-from.
+                  The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
+                  a promotion pull request that would put the active branch's dry SHA back. A pull request
+                  for a different proposed dry SHA may open, but nothing is auto-merged while this
+                  RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA.
+                  The restore runs once per spec.sha. Later promotions are left alone.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
+            required:
+            - changeTransferPolicyRef
+            - sha
             type: object
           status:
-            description: RevertCommitStatus defines the observed state of RevertCommit
+            description: RevertCommitStatus defines the observed state of RevertCommit.
+            properties:
+              activeSha:
+                description: ActiveSha is the commit on the active branch after a
+                  successful restore.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              blockedDrySha:
+                description: |-
+                  BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
+                  moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
+                  proposed dry SHA still equals this value, so the reverted change is not put back. A different
+                  proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
+                  exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to
+                  allow auto-merge, including of this dry SHA.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+              restoredFrom:
+                description: |-
+                  RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller
+                  does not restore again, so a later promotion is not overwritten on resync.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
             type: object
         type: object
     served: true
@@ -9194,6 +9356,7 @@ rules:
   - promotionstrategies
   - changetransferpolicyhistories
   - changetransferpolicies
+  - revertcommits
   - pullrequests
   - commitstatuses
   - argocdcommitstatuses
@@ -9668,7 +9831,6 @@ rules:
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
-  - revertcommits
   - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
@@ -9707,6 +9869,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - revertcommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -9771,6 +9934,15 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - revertcommits
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

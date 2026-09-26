@@ -339,12 +339,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 </span>
                 {visibleEnvs.map((env, i) => (
                   <span key={env.branch} className="hp-matrix__head-env">
-                    {i > 0 && (
-                      <span className="hp-matrix__head-connector" aria-hidden="true">
-                        <FaArrowRight />
-                      </span>
-                    )}
-                    <span className="hp-matrix__head-pill">{env.branch}</span>
+                    <span className="hp-matrix__head-pill-row">
+                      {i > 0 && (
+                        <span className="hp-matrix__head-connector" aria-hidden="true">
+                          <FaArrowRight />
+                        </span>
+                      )}
+                      <span className="hp-matrix__head-pill">{env.branch}</span>
+                    </span>
                   </span>
                 ))}
               </div>
@@ -366,6 +368,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     <div className="hp-row__subject" title={row.subject}>
                       {row.subject}
                     </div>
+                    {row.restoreSubject && (
+                      <div className="hp-row__restore-line" title={row.restoreSubject}>
+                        {row.restoreSubject}
+                        {row.restoreShaShort && (
+                          <span className="hp-row__restore-sha">{row.restoreShaShort}</span>
+                        )}
+                      </div>
+                    )}
                     <div className="hp-row__meta">
                       {row.repoUrl && row.dryShaFull ? (
                         <a
@@ -456,6 +466,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           row={selectedRow}
           cell={selectedCell}
           branch={selected?.branch ?? null}
+          namespace={namespace}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}

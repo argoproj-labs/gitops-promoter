@@ -1052,6 +1052,8 @@ export type components = {
             proposed?: components["schemas"]["CommitBranchStateHistoryProposed"];
             /** @description PullRequest is the state of the pull request that promoted this change. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
+            /** @description RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields are copied from the restored version and describe the original promotion, not the restore. */
+            restoredFrom?: string;
         };
         /** @description HydratorMetadata contains metadata about the hydrated commit. This is extracted from the git note or metadata file. */
         HydratorMetadata: {
@@ -1365,6 +1367,8 @@ export type components = {
             promotionStrategy: components["schemas"]["PromotionStrategy"];
             /** @description PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             pullRequests?: components["schemas"]["PullRequest"][];
+            /** @description RevertCommits are the RevertCommits whose spec.changeTransferPolicyRef names one of the ChangeTransferPolicies above. While one exists for an environment, its promotions are not auto-merged. */
+            revertCommits?: components["schemas"]["RevertCommit"][];
             /** @description ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy. */
             scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
             /** @description ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
@@ -1551,6 +1555,50 @@ export type components = {
              * @default {}
              */
             output: components["schemas"]["OutputSpec"];
+        };
+        /** @description RevertCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertCommit in the policy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts. */
+        RevertCommit: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /** @default {} */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /** @default {} */
+            spec?: components["schemas"]["RevertCommitSpec"];
+            /** @default {} */
+            status?: components["schemas"]["RevertCommitStatus"];
+        };
+        /** @description RevertCommitSpec defines the desired state of RevertCommit. */
+        RevertCommitSpec: {
+            /**
+             * @description ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored. The policy supplies the repository, the active and proposed branches, and activePath.
+             * @default {}
+             */
+            changeTransferPolicyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description Sha is the hydrated commit to restore onto the active branch. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA. The restore runs once per spec.sha. Later promotions are left alone.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description RevertCommitStatus defines the observed state of RevertCommit. */
+        RevertCommitStatus: {
+            /** @description ActiveSha is the commit on the active branch after a successful restore. */
+            activeSha?: string;
+            /** @description BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to allow auto-merge, including of this dry SHA. */
+            blockedDrySha?: string;
+            /** @description Conditions represent the latest available observations of an object's state. */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+            /** @description RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync. */
+            restoredFrom?: string;
         };
         /** @description RevisionReference contains a reference to a some information that is related in some way to another commit. For now, it supports only references to a commit. In the future, it may support other types of references. */
         RevisionReference: {

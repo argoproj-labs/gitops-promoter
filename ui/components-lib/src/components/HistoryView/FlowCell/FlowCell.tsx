@@ -6,6 +6,7 @@ import type { CellState, CommitRow } from '../types';
 import { commitKey } from '../helpers';
 import { CELL_KIND_LABELS, cellPillTooltip } from '../presentation';
 import Tooltip from '../Tooltip/Tooltip';
+import { revertHoldTooltip } from '@shared/utils/environments';
 
 const FlowCell: React.FC<{
   cell: CellState;
@@ -44,14 +45,27 @@ const FlowCell: React.FC<{
 
   const time = cell.at ? timeAgo(cell.at) : '';
   const exact = cell.at ? formatDate(cell.at) : '';
+  // A restore is a second row for the same dry commit; it should look like any other
+  // replaced cell. The revert subject on the row header is the restore signal.
+  const visualKind = cell.kind === 'restored' ? 'was-here' : cell.kind;
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
-  const prId = cell.pullRequest?.id ?? rowForCell?.prId;
-  const prUrl = cell.pullRequest?.url ?? rowForCell?.prUrl;
+  const held = cell.revertCommit;
+  // A held cell never borrows the row's PR: that is the earlier promotion of this dry SHA.
+  const prId = held ? cell.pullRequest?.id : (cell.pullRequest?.id ?? rowForCell?.prId);
+  const prUrl = held ? cell.pullRequest?.url : (cell.pullRequest?.url ?? rowForCell?.prUrl);
+  const pillTooltip = held
+    ? revertHoldTooltip(held, !!cell.revertedByRevertCommit)
+    : cellPillTooltip(cell, branch);
 
   return (
     <div
-      className={['cell', `cell--${cell.kind}`, isSelected ? 'cell--selected' : '']
+      className={[
+        'cell',
+        `cell--${visualKind}`,
+        held ? 'cell--held' : '',
+        isSelected ? 'cell--selected' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
       role="button"
@@ -64,25 +78,27 @@ const FlowCell: React.FC<{
         }
       }}
       aria-label={`${
-        cell.kind === 'in-flight'
+        visualKind === 'in-flight'
           ? cell.isProposed
             ? 'Proposed'
             : 'PR open'
-          : CELL_KIND_LABELS[cell.kind]
+          : CELL_KIND_LABELS[visualKind]
       } in ${branch}`}
     >
       <div className="cell__top">
-        {cell.kind === 'was-here' && cell.liveDurationMs != null ? (
+        {visualKind === 'was-here' && cell.liveDurationMs != null ? (
           <Tooltip label={cellPillTooltip(cell, branch)}>
             <span className="cell__live-for">live for {formatDuration(cell.liveDurationMs)}</span>
           </Tooltip>
         ) : (
-          <Tooltip label={cellPillTooltip(cell, branch)}>
-            <span className={`cell__pill cell__pill--${cell.kind}`}>
-              {cell.kind === 'live' && 'LIVE'}
-              {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'REPLACED'}
-              {cell.kind === 'failed' && 'FAILED'}
+          <Tooltip label={pillTooltip}>
+            <span
+              className={`cell__pill cell__pill--${visualKind}${held ? ' cell__pill--held' : ''}`}
+            >
+              {visualKind === 'live' && 'LIVE'}
+              {visualKind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
+              {visualKind === 'was-here' && 'REPLACED'}
+              {visualKind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && (
                 <>
                   <FaBan aria-hidden="true" /> NO-OP
@@ -132,7 +148,7 @@ const FlowCell: React.FC<{
         {cell.kind === 'no-op' && (
           <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>
         )}
-        {cell.kind === 'was-here' &&
+        {visualKind === 'was-here' &&
           cell.supersededById &&
           onJumpToRow &&
           rowsById.get(cell.supersededById) && (

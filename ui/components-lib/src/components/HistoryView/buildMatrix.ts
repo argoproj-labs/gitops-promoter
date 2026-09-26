@@ -9,6 +9,7 @@ import type {
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
+import { proposedIsReverted } from '@shared/utils/environments';
 
 /**
  * Pull the upstream code commits registered on a dry commit into `ReferenceCommit[]`,
@@ -44,9 +45,11 @@ function buildEnvColumn(
   const proposedSha = env.proposed?.dry?.sha;
   const proposedDistinct =
     env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
+  const pr = heldPullRequest(env);
 
   return {
     branch: env.branch,
+    changeTransferPolicyName: env.changeTransferPolicyName,
     autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
     color: LANE_COLORS[i % LANE_COLORS.length]!,
     liveCommit: env.active?.dry,
@@ -55,8 +58,15 @@ function buildEnvColumn(
     proposedCommit: proposedDistinct,
     proposedStatuses: proposedDistinct ? proposedStatuses : [],
     proposedHealth: proposedDistinct ? healthFromStatuses(proposedStatuses) : 'unknown',
-    proposedPR: proposedDistinct ? env.pullRequest : undefined,
+    proposedPR: proposedDistinct ? pr : undefined,
   };
+}
+
+// While a RevertCommit holds the environment, only an open pull request belongs on the proposed
+// commit. status.pullRequest otherwise keeps the last one that merged, which is not this commit's.
+function heldPullRequest(env: StatusEnvironment): PullRequest | undefined {
+  if (!env.revertCommit) return env.pullRequest;
+  return env.pullRequest?.state === 'open' ? env.pullRequest : undefined;
 }
 
 function getRow(
@@ -64,8 +74,9 @@ function getRow(
   commit: Commit | undefined,
   repoUrlFallback: string,
   pr?: PullRequest,
+  keyOverride?: string,
 ): CommitRow | null {
-  const key = commitKey(commit);
+  const key = keyOverride ?? commitKey(commit);
   if (!key || !commit) return null;
   let row = rowsById.get(key);
   if (!row) {
@@ -101,9 +112,10 @@ function getRow(
 }
 
 const cellRank: Record<CellKind, number> = {
-  live: 6,
-  'in-flight': 5,
-  failed: 4,
+  live: 7,
+  'in-flight': 6,
+  failed: 5,
+  restored: 4,
   'was-here': 3,
   'no-op': 2,
   'unknown-history': 1,
@@ -126,6 +138,36 @@ function wentLiveAt(entry: HistoryEntry | undefined): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
+/**
+ * Row key for a restore entry, or null when the entry is an ordinary promotion.
+ *
+ * A restore reuses the restored version's tree, so its dry sha repeats the row the
+ * original promotion already owns. Keying by the restore's own hydrated sha gives it
+ * a distinct row instead of silently re-marking that older one.
+ */
+function restoreRowKey(entry: HistoryEntry | undefined): string | null {
+  const hydratedSha = entry?.active?.hydrated?.sha;
+  if (!entry?.restoredFrom || !hydratedSha) return null;
+  return `restore:${hydratedSha.slice(0, 7)}`;
+}
+
+/**
+ * Mark a restore row and attach the revert commit that produced it.
+ *
+ * The row deliberately keeps the restored version's dry identity — same subject, same
+ * dry sha as the original promotion's row — because two rows carrying identical dry
+ * data is what shows the branch moved back to an earlier version. The revert commit's
+ * own subject (`Revert <branch> to <sha>`) rides alongside as secondary detail so the
+ * newer of the two rows is identifiable as the restore.
+ */
+function applyRestoreIdentity(row: CommitRow, entry: HistoryEntry) {
+  row.restoredFrom = entry.restoredFrom;
+  const hydrated = entry.active?.hydrated;
+  row.restoreSubject = (hydrated?.subject ?? '').trim() || undefined;
+  row.restoreShaShort = hydrated?.sha ? shortSha(hydrated.sha) : undefined;
+  row.restoreAuthor = hydrated?.author ? extractNameOnly(hydrated.author) : undefined;
+}
+
 function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
   const branch = env.branch;
   const history = env.history ?? [];
@@ -136,10 +178,18 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
     const health = healthFromStatuses(statuses);
     const olderSha = history[idx + 1]?.active?.dry?.sha;
     const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
-    const kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
+    const restoreKey = restoreRowKey(entry);
+    const kind: CellKind = restoreKey
+      ? 'restored'
+      : isNoop
+        ? 'no-op'
+        : health === 'failure'
+          ? 'failed'
+          : 'was-here';
 
-    const row = getRow(rowsById, commit, '', entry.pullRequest);
+    const row = getRow(rowsById, commit, '', entry.pullRequest, restoreKey ?? undefined);
     if (!row) return;
+    if (restoreKey) applyRestoreIdentity(row, entry);
 
     const supersededById =
       idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
@@ -162,13 +212,19 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       commitStatuses: statuses,
       health,
       pullRequest: entry.pullRequest,
+      restoredFrom: entry.restoredFrom,
       noopNote: isNoop
         ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
         : undefined,
       supersededById,
       liveDurationMs,
       replacedAt: replacedAtRaw,
-      at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
+      // A restore's dry commit predates the restore itself, so its own timestamp would
+      // sort the row back next to the original promotion. The note records the restore
+      // time as the merge time, which is what places the row at the top.
+      at: restoreKey
+        ? (entry.pullRequest?.prMergeTime ?? commit.commitTime ?? undefined)
+        : (commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined),
     });
   });
 }
@@ -227,6 +283,10 @@ function finalizeRow(
     ? Math.min(...times.filter((t) => t > 0), ...(times.includes(0) ? [Infinity] : []))
     : 0;
   if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
+  // A restore row's dry commit is older than the restore, and the row header reports
+  // earliestAt as when the commit was "introduced". For a restore the meaningful time
+  // is the restore itself, so collapse the range onto it.
+  if (row.restoredFrom) row.earliestAt = row.freshestAt;
 
   const rowCommitAt = row.freshestAt;
 
@@ -261,7 +321,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
   envs: EnvColumn[];
   rows: CommitRow[];
 } {
-  const envs = (strategy.status?.environments ?? []).filter(envHasContent);
+  const envs: StatusEnvironment[] = (strategy.status?.environments ?? []).filter(envHasContent);
 
   const specByBranch = new Map<string, { autoMerge?: boolean }>();
   for (const e of strategy.spec.environments ?? []) specByBranch.set(e.branch, e);
@@ -276,11 +336,27 @@ export function buildMatrix(strategy: PromotionStrategy): {
     const proposedSha = env.proposed?.dry?.sha;
     const proposedIsDistinct = !!proposedSha && proposedSha !== liveSha;
 
+    // When the active tip is itself a restore commit, the live cell belongs on that
+    // restore's row. Keying it by dry sha instead would light up the original
+    // promotion's row and leave the restore row looking superseded.
+    const restoreByHydrated = new Map<string, HistoryEntry>();
+    for (const entry of env.history ?? []) {
+      const hydratedSha = entry.active?.hydrated?.sha;
+      if (restoreRowKey(entry) && hydratedSha) restoreByHydrated.set(hydratedSha, entry);
+    }
+    const activeRestore = env.active?.hydrated?.sha
+      ? restoreByHydrated.get(env.active.hydrated.sha)
+      : undefined;
+    const activeRestoreKey = activeRestore
+      ? (restoreRowKey(activeRestore) ?? undefined)
+      : undefined;
+
     if (env.active?.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const row = getRow(rowsById, env.active.dry, '', env.pullRequest);
+      const row = getRow(rowsById, env.active.dry, '', env.pullRequest, activeRestoreKey);
       if (row) {
+        if (activeRestore) applyRestoreIdentity(row, activeRestore);
         const kind: CellKind = health === 'failure' ? 'failed' : 'live';
         setCell(row, branch, {
           kind,
@@ -290,7 +366,13 @@ export function buildMatrix(strategy: PromotionStrategy): {
           commitStatuses: statuses,
           health,
           pullRequest: env.pullRequest,
-          at: env.active.dry.commitTime ?? undefined,
+          // A live restore outranks the history entry that describes it, so the restore's
+          // marker and timestamp have to be carried here or they are lost and the row
+          // sorts by the restored version's original (older) commit time.
+          restoredFrom: activeRestore?.restoredFrom,
+          at: activeRestore
+            ? (activeRestore.pullRequest?.prMergeTime ?? env.active.dry.commitTime ?? undefined)
+            : (env.active.dry.commitTime ?? undefined),
         });
       }
     }
@@ -298,9 +380,11 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (proposedIsDistinct && env.proposed?.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const row = getRow(rowsById, env.proposed.dry, '', env.pullRequest);
+      const heldName = env.revertCommit?.name;
+      const pullRequest = heldPullRequest(env);
+      const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
       if (row) {
-        const kind: CellKind = health === 'failure' ? 'failed' : 'in-flight';
+        const kind: CellKind = !heldName && health === 'failure' ? 'failed' : 'in-flight';
         setCell(row, branch, {
           kind,
           commit: env.proposed.dry,
@@ -308,8 +392,10 @@ export function buildMatrix(strategy: PromotionStrategy): {
           references: toReferenceCommits(env.proposed.dry),
           commitStatuses: statuses,
           health,
-          pullRequest: env.pullRequest,
+          pullRequest,
           isProposed: true,
+          revertCommit: heldName,
+          revertedByRevertCommit: heldName ? proposedIsReverted(env) : undefined,
           at: env.proposed.dry.commitTime ?? undefined,
         });
       }

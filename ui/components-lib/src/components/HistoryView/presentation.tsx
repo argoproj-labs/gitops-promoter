@@ -13,6 +13,7 @@ export const CELL_KIND_LABELS: Record<CellKind, string> = {
   live: 'Live',
   'in-flight': 'In flight',
   'was-here': 'Was here',
+  restored: 'Restored',
   failed: 'Failed',
   'no-op': 'No-op',
   'no-changes': 'No changes',
@@ -36,6 +37,10 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
       return cell.replacedAt
         ? `Replaced on ${formatDate(cell.replacedAt)}`
         : `Was live in ${branch}, since replaced by a newer commit`;
+    case 'restored':
+      return `${branch} was manually restored to this version${
+        cell.restoredFrom ? ` (${cell.restoredFrom.slice(0, 7)})` : ''
+      }, not promoted`;
     case 'failed':
       return `Checks failed in ${branch}`;
     case 'no-op':

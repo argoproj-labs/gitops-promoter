@@ -45,6 +45,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.RevertCommits != nil {
+		in, out := &in.RevertCommits, &out.RevertCommits
+		*out = make([]apiv1alpha1.RevertCommit, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.PullRequests != nil {
 		in, out := &in.PullRequests, &out.PullRequests
 		*out = make([]apiv1alpha1.PullRequest, len(*in))

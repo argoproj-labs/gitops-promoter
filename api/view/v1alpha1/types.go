@@ -47,6 +47,11 @@ type PromotionStrategyDetails struct {
 	// PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).
 	ChangeTransferPolicyHistories []promoterv1alpha1.ChangeTransferPolicyHistory `json:"changeTransferPolicyHistories,omitempty"`
 
+	// RevertCommits are the RevertCommits whose spec.changeTransferPolicyRef names one of the
+	// ChangeTransferPolicies above. While one exists for an environment, its promotions are not
+	// auto-merged.
+	RevertCommits []promoterv1alpha1.RevertCommit `json:"revertCommits,omitempty"`
+
 	// PullRequests are the PullRequests associated with the PromotionStrategy
 	// (selected by the promoter.argoproj.io/promotion-strategy label).
 	PullRequests []promoterv1alpha1.PullRequest `json:"pullRequests,omitempty"`

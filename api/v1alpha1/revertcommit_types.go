@@ -24,23 +24,108 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RevertCommitSpec defines the desired state of RevertCommit
+// RevertCommitSpec defines the desired state of RevertCommit.
 type RevertCommitSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
+	// The policy supplies the repository, the active and proposed branches, and activePath.
+	// +kubebuilder:validation:Required
+	ChangeTransferPolicyRef ObjectReference `json:"changeTransferPolicyRef"`
 
-	// Foo is an example field of RevertCommit. Edit revertcommit_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Sha is the hydrated commit to restore onto the active branch. The controller writes a new
+	// commit (the commit's tree, or only activePath when the policy sets one) parented on the
+	// current active tip and records a promotion-history note with Promoter-restored-from.
+	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
+	// a promotion pull request that would put the active branch's dry SHA back. A pull request
+	// for a different proposed dry SHA may open, but nothing is auto-merged while this
+	// RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA.
+	// The restore runs once per spec.sha. Later promotions are left alone.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
 }
 
-// RevertCommitStatus defines the observed state of RevertCommit
-type RevertCommitStatus struct{}
+// RevertCommitStatus defines the observed state of RevertCommit.
+type RevertCommitStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// ActiveSha is the commit on the active branch after a successful restore.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	ActiveSha string `json:"activeSha,omitempty"`
+
+	// BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
+	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
+	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
+	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
+	// exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to
+	// allow auto-merge, including of this dry SHA.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	BlockedDrySha string `json:"blockedDrySha,omitempty"`
+
+	// RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller
+	// does not restore again, so a later promotion is not overwritten on resync.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	RestoredFrom string `json:"restoredFrom,omitempty"`
+
+	// Conditions represent the latest available observations of an object's state.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
+}
+
+// GetConditions returns the conditions of the RevertCommit.
+func (r *RevertCommit) GetConditions() *[]metav1.Condition {
+	return &r.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (r *RevertCommit) SetObservedGeneration(generation int64) {
+	r.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (r *RevertCommit) SetStatusInstanceID(v *string) {
+	r.Status.InstanceID = v
+}
 
 // +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// RevertCommit is the Schema for the revertcommits API
+// RevertCommit restores one environment's active branch to a previously hydrated commit and records
+// the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+// Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
+// policy's namespace can restore that environment, and the controller's git credentials perform the push.
+// The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
+// +kubebuilder:printcolumn:name="ChangeTransferPolicy",type=string,JSONPath=`.spec.changeTransferPolicyRef.name`
+// +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.spec.sha`,priority=1
+// +kubebuilder:printcolumn:name="Active Sha",type=string,JSONPath=`.status.activeSha`,priority=1
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type RevertCommit struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

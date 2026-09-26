@@ -25,8 +25,14 @@ $success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
 $failure-ink: #c0392b; // white-on 5.4:1
 $pending-ink: #0b78a6; // white-on 4.9:1
 
+// Manual restore (a human moved the branch, no promotion PR). Amber reads as an
+// unusual event without implying failure. 5.5:1 both on white and white-on-fill.
+$restored-ink: #9a5a0f;
+
 $success-soft: rgba(45, 153, 96, 0.12);
 $success-border: rgba(18, 128, 90, 0.55);
+$restored-soft: rgba(154, 90, 15, 0.12);
+$restored-border: rgba(154, 90, 15, 0.55);
 $failure-soft: rgba(220, 67, 67, 0.1);
 $failure-border: rgba(192, 57, 43, 0.55);
 $pending-soft: rgba(13, 173, 234, 0.14);

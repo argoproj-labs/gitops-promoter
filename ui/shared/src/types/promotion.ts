@@ -23,7 +23,18 @@ export type PromotionStrategy = PromotionStrategyResource;
  */
 export type Environment = components['schemas']['EnvironmentStatus'] & {
   history?: History[];
+  /** metadata.name of the ChangeTransferPolicy for this environment, when the bundle has one. */
+  changeTransferPolicyName?: string;
+  /** RevertCommit holding this environment in its reverted state, from the bundle. */
+  revertCommit?: EnvironmentRevertCommit;
 };
+
+/** The parts of a RevertCommit the UI needs to explain why a promotion is held. */
+export interface EnvironmentRevertCommit {
+  name: string;
+  /** Dry SHA the RevertCommit moved off the active branch. */
+  blockedDrySha?: string;
+}
 
 export type History = components['schemas']['History'];
 
@@ -149,6 +160,10 @@ export interface EnrichedEnvDetails {
   proposedChecks: Check[];
   proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
+  /** RevertCommit holding the environment; unset in history views. */
+  revertCommit?: string;
+  /** True when the proposed commit is the one that RevertCommit reverted. */
+  proposedIsReverted?: boolean;
 
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;

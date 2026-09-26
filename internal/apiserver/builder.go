@@ -96,6 +96,23 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
 
+	// RevertCommits carry no PromotionStrategy label; they name their ChangeTransferPolicy.
+	ctpNames := make(map[string]struct{}, len(ctpList.Items))
+	for i := range ctpList.Items {
+		ctpNames[ctpList.Items[i].Name] = struct{}{}
+	}
+	rcList := &promoterv1alpha1.RevertCommitList{}
+	if err := reader.List(ctx, rcList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list RevertCommits: %w", err)
+	}
+	var revertCommits []promoterv1alpha1.RevertCommit
+	for i := range rcList.Items {
+		if _, ok := ctpNames[rcList.Items[i].Spec.ChangeTransferPolicyRef.Name]; ok {
+			revertCommits = append(revertCommits, rcList.Items[i])
+		}
+	}
+	bundle.RevertCommits = revertCommits
+
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list PullRequests: %w", err)

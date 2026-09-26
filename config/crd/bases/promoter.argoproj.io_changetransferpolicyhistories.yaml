@@ -661,6 +661,15 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoredFrom:
+                      description: |-
+                        RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+                        pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+                        tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+                        pull request and commit status fields are copied from the restored version and describe the original
+                        promotion, not the restore.
+                      maxLength: 40
+                      type: string
                   type: object
                 maxItems: 20
                 type: array

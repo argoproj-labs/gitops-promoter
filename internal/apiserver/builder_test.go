@@ -105,6 +105,21 @@ func seedObjects() []client.Object {
 			ObjectMeta: psLabeledMeta("dev-ctph"),
 			Spec:       promoterv1alpha1.ChangeTransferPolicyHistorySpec{ActiveBranch: "environment/dev"},
 		},
+		&promoterv1alpha1.RevertCommit{
+			ObjectMeta: objectMeta("dev-revert"),
+			Spec: promoterv1alpha1.RevertCommitSpec{
+				ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: "dev-ctp"},
+				Sha:                     "abcdef1234567890abcdef1234567890abcdef12",
+			},
+		},
+		// A RevertCommit for a ChangeTransferPolicy outside this PS; must be excluded.
+		&promoterv1alpha1.RevertCommit{
+			ObjectMeta: objectMeta("other-revert"),
+			Spec: promoterv1alpha1.RevertCommitSpec{
+				ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: "other-ctp"},
+				Sha:                     "abcdef1234567890abcdef1234567890abcdef12",
+			},
+		},
 		&promoterv1alpha1.PullRequest{ObjectMeta: psLabeledMeta("dev-pr")},
 		&promoterv1alpha1.CommitStatus{ObjectMeta: psLabeledMeta("dev-cs")},
 		// Managers that reference the PS by spec.promotionStrategyRef.name.
@@ -183,6 +198,10 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.ChangeTransferPolicyHistories[0].Name).To(Equal("dev-ctph"))
 		Expect(bundle.PullRequests).To(HaveLen(1))
 		Expect(bundle.CommitStatuses).To(HaveLen(1))
+
+		By("selecting RevertCommits by the ChangeTransferPolicy they name")
+		Expect(bundle.RevertCommits).To(HaveLen(1))
+		Expect(bundle.RevertCommits[0].Name).To(Equal("dev-revert"))
 
 		By("filtering managers by promotionStrategyRef.name")
 		Expect(bundle.ArgoCDCommitStatuses).To(HaveLen(1))

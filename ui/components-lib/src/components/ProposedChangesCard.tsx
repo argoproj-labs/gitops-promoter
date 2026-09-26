@@ -10,6 +10,8 @@ import {
   PrTooltip,
   ReferenceCommit,
 } from '@shared/types/promotion';
+import Tooltip from './HistoryView/Tooltip/Tooltip';
+import { revertHoldTooltip } from '@shared/utils/environments';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
@@ -23,6 +25,10 @@ export interface ProposedChangesCardProps {
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
+  /** RevertCommit holding the environment; the banner turns red and explains the hold. */
+  revertCommit?: string;
+  /** True when the proposed commit is the one that RevertCommit reverted. */
+  proposedIsReverted?: boolean;
 }
 
 function progressMessage(
@@ -56,24 +62,33 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   prUrl,
   prNumber,
   prTooltip,
+  revertCommit,
+  proposedIsReverted = false,
 }) => {
   const message = progressMessage(healthSummary, checks);
+  const banner = (
+    <div className={`promote-banner${revertCommit ? ' promote-banner--held' : ''}`}>
+      <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
+        <path
+          d="M1 6 L8 1 L15 6"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="promote-banner__label">Pushing to Active</span>
+    </div>
+  );
 
   return (
     <div className="proposed-changes-card">
       <div className="promote-flow" aria-hidden="true" />
-      <div className="promote-banner">
-        <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
-          <path
-            d="M1 6 L8 1 L15 6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="promote-banner__label">Pushing to Active</span>
-      </div>
+      {revertCommit ? (
+        <Tooltip label={revertHoldTooltip(revertCommit, proposedIsReverted)}>{banner}</Tooltip>
+      ) : (
+        banner
+      )}
 
       <div className="proposed-changes-card__header">
         <div className="proposed-changes-card__header-row">

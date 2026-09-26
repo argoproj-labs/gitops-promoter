@@ -227,6 +227,11 @@ $extension-wrapper-gap: 20px;
     z-index: 2;
   }
 
+  .proposed-changes-card .promote-banner--held {
+    background: $argo-failed;
+    box-shadow: 0 1px 4px rgba(233, 109, 118, 0.45);
+  }
+
   .proposed-changes-card .promote-banner__icon {
     width: 14px;
     height: 8px;

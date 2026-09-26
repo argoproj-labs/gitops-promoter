@@ -44,7 +44,6 @@ rules:
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
-  - revertcommits
   - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
@@ -83,6 +82,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - revertcommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -147,3 +147,12 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - revertcommits
+  verbs:
+  - get
+  - list
+  - patch
+  - watch

@@ -1,0 +1,20 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: RevertCommit
+metadata:
+  name: example-revert
+spec:
+  changeTransferPolicyRef:
+    name: example-change-transfer-policy
+  sha: "abcdef1234567890abcdef1234567890abcdef12"
+status:
+  observedGeneration: 123
+  activeSha: "1111111111111111111111111111111111111111"
+  blockedDrySha: "3333333333333333333333333333333333333333"
+  restoredFrom: "abcdef1234567890abcdef1234567890abcdef12"
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess
+      status: "True"
+      observedGeneration: 123
