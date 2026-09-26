@@ -240,217 +240,290 @@ var _ = Describe("RevertCommit Controller", func() {
 
 	Context("When a PromotionStrategy owns the policy", func() {
 		It("restores one environment after a real promotion and holds the next one", func() {
-			ctx := context.Background()
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "revert-ps", "default")
-			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+			s := setupRestoredPromotionStrategy()
 
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			declareDependentsSuccessfulGate(promotionStrategy)
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
-			DeferCleanup(func() {
-				_ = k8sClient.Delete(ctx, promotionStrategy)
-				_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: "default"},
-				})
-				_ = k8sClient.Delete(ctx, gitRepo)
-				_ = k8sClient.Delete(ctx, scmProvider)
-				_ = k8sClient.Delete(ctx, scmSecret)
-			})
+			s.mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
+			s.mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+			activeSha := s.mustRun("rev-parse", "origin/"+testBranchDevelopment)
+			Expect(activeSha).To(Equal(s.rc.Status.ActiveSha))
+			Expect(s.mustRun("rev-parse", activeSha+"^")).To(Equal(s.rolledOff))
+			Expect(s.mustRun("rev-parse", activeSha+"^{tree}")).To(Equal(s.mustRun("rev-parse", s.restoreTo+"^{tree}")))
+			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(s.proposedTip))
 
-			ctpKey := func(branch string) types.NamespacedName {
-				return types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, branch)),
-					Namespace: "default",
-				}
-			}
-			devKey := ctpKey(testBranchDevelopment)
-			stagingKey := ctpKey(testBranchStaging)
-			prodKey := ctpKey(testBranchProduction)
-
-			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
-			By("Waiting for the PromotionStrategy to create a ChangeTransferPolicy per environment")
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
-				g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
-				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
-				g.Expect(ctpDev.OwnerReferences).To(HaveLen(1))
-				g.Expect(ctpDev.OwnerReferences[0].Name).To(Equal(promotionStrategy.Name))
-				g.Expect(ctpDev.OwnerReferences[0].Kind).To(Equal("PromotionStrategy"))
-				g.Expect(k8sClient.Get(ctx, stagingKey, &ctpStaging)).To(Succeed())
-				g.Expect(k8sClient.Get(ctx, prodKey, &ctpProd)).To(Succeed())
-				g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
-				g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
-				g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			gitPath, err := os.MkdirTemp("", "revert-ps-*")
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
-
-			mustRun := func(args ...string) string {
-				GinkgoHelper()
-				out, err := runGitCmd(ctx, gitPath, args...)
-				Expect(err).NotTo(HaveOccurred())
-				return strings.TrimSpace(out)
-			}
-			mustRun("clone", testGitRepoCloneURL(gitRepo), ".")
-			mustRun("config", "user.name", "testuser")
-			mustRun("config", "user.email", "testemail@test.com")
-			mustRun("config", "commit.gpgsign", "false")
-
-			hydrate := func(message string) string {
-				GinkgoHelper()
-				dir, err := os.MkdirTemp("", "revert-ps-hydrate-*")
-				Expect(err).NotTo(HaveOccurred())
-				DeferCleanup(func() { _ = os.RemoveAll(dir) })
-				drySha, _ := makeChangeAndHydrateRepo(dir, gitRepo, message, "")
-				return drySha
-			}
-
-			waitUntilActiveDry := func(drySha string) {
-				GinkgoHelper()
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
-					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
-					g.Expect(k8sClient.Get(ctx, stagingKey, &ctpStaging)).To(Succeed())
-					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha))
-					g.Expect(k8sClient.Get(ctx, prodKey, &ctpProd)).To(Succeed())
-					g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(drySha))
-				}, constants.EventuallyTimeout).Should(Succeed())
-			}
-
-			By("Promoting a first commit so the restore target carries a real history note")
-			drySha1 := hydrate("first promotion")
-			var restoreTo string
-			var firstNote map[string][]string
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
-				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
-				restoreTo = ctpDev.Status.Active.Hydrated.Sha
-				g.Expect(restoreTo).NotTo(BeEmpty())
-				_, err := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
-				g.Expect(err).NotTo(HaveOccurred())
-				firstNote, err = fetchPromotionHistoryNote(gitPath, restoreTo)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(firstNote[constants.TrailerPullRequestID]).NotTo(BeEmpty())
-				g.Expect(firstNote[constants.TrailerPullRequestMergeTime]).NotTo(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-			waitUntilActiveDry(drySha1)
-
-			By("Promoting a second commit, which is the dry SHA the restore will block")
-			drySha2 := hydrate("second promotion")
-			waitUntilActiveDry(drySha2)
-
-			mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
-			rolledOff := mustRun("rev-parse", "origin/"+testBranchDevelopment)
-			proposedTip := mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)
-			Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
-			Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(rolledOff))
-			Expect(rolledOff).NotTo(Equal(restoreTo))
-
-			By("Restoring development to the first promotion")
-			rcName := name + "-rc"
-			rc := &promoterv1alpha1.RevertCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: "default"},
-				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctpDev.Name},
-					Sha:                     restoreTo,
-				},
-			}
-			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
-
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, rc)).To(Succeed())
-				cond := meta.FindStatusCondition(rc.Status.Conditions, string(promoterConditions.Ready))
-				g.Expect(cond).NotTo(BeNil())
-				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-				g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
-				g.Expect(rc.Status.ActiveSha).NotTo(BeEmpty())
-				g.Expect(rc.Status.BlockedDrySha).To(Equal(drySha2))
-				g.Expect(rc.OwnerReferences).To(HaveLen(1))
-				g.Expect(rc.OwnerReferences[0].Name).To(Equal(ctpDev.Name))
-				g.Expect(rc.OwnerReferences[0].UID).To(Equal(ctpDev.UID))
-				g.Expect(rc.OwnerReferences[0].Controller).To(HaveValue(BeTrue()))
-
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: "default"}, promotionStrategy)).To(Succeed())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				for _, env := range promotionStrategy.Status.Environments {
-					switch env.Branch {
-					case testBranchDevelopment:
-						g.Expect(env.Active.Dry.Sha).To(Equal(drySha1))
-					case testBranchStaging, testBranchProduction:
-						g.Expect(env.Active.Dry.Sha).To(Equal(drySha2))
-					default:
-						g.Expect(env.Branch).To(BeElementOf(testBranchDevelopment, testBranchStaging, testBranchProduction))
-					}
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
-			mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
-			activeSha := mustRun("rev-parse", "origin/"+testBranchDevelopment)
-			Expect(activeSha).To(Equal(rc.Status.ActiveSha))
-			Expect(mustRun("rev-parse", activeSha+"^")).To(Equal(rolledOff))
-			Expect(mustRun("rev-parse", activeSha+"^{tree}")).To(Equal(mustRun("rev-parse", restoreTo+"^{tree}")))
-			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(proposedTip))
-
-			rawNote := mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
+			rawNote := s.mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
 			var got map[string][]string
 			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
-			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{restoreTo}))
-			Expect(got[constants.TrailerPullRequestID]).To(Equal(firstNote[constants.TrailerPullRequestID]))
-			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal(firstNote[constants.TrailerPullRequestMergeTime]))
+			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{s.restoreTo}))
+			Expect(got[constants.TrailerPullRequestID]).To(Equal(s.firstNote[constants.TrailerPullRequestID]))
+			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal(s.firstNote[constants.TrailerPullRequestMergeTime]))
 
 			By("Leaving no pull request open: the reverted dry SHA is already contained in active")
-			prKey := types.NamespacedName{
-				Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
-					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch)),
-				Namespace: "default",
-			}
+			prKey := s.developmentPRKey()
 			Consistently(func(g Gomega) {
-				err := k8sClient.Get(ctx, prKey, &promoterv1alpha1.PullRequest{})
+				err := k8sClient.Get(s.ctx, prKey, &promoterv1alpha1.PullRequest{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("Hydrating a later dry SHA, which opens a development pull request but does not auto-merge")
-			laterDrySha := hydrate("a later dry commit")
+			laterDrySha := s.hydrate("a later dry commit")
 			var pr promoterv1alpha1.PullRequest
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
-				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
-				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+				g.Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
+				g.Expect(k8sClient.Get(s.ctx, prKey, &pr)).To(Succeed())
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(k8sClient.Get(s.ctx, prKey, &pr)).To(Succeed())
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: "default"}, promotionStrategy)).To(Succeed())
-				for _, env := range promotionStrategy.Status.Environments {
-					switch env.Branch {
-					case testBranchDevelopment:
-						g.Expect(env.Active.Dry.Sha).To(Equal(drySha1))
-					case testBranchStaging, testBranchProduction:
-						g.Expect(env.Active.Dry.Sha).To(Equal(drySha2))
-					default:
-						g.Expect(env.Branch).To(BeElementOf(testBranchDevelopment, testBranchStaging, testBranchProduction))
-					}
-				}
+				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("Deleting the RevertCommit so the later dry SHA can promote through every environment")
-			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+			Expect(k8sClient.Delete(s.ctx, s.rc)).To(Succeed())
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: "default"}, promotionStrategy)).To(Succeed())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				for _, env := range promotionStrategy.Status.Environments {
+				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				g.Expect(s.promotionStrategy.Status.Environments).To(HaveLen(3))
+				for _, env := range s.promotionStrategy.Status.Environments {
 					g.Expect(env.Active.Dry.Sha).To(Equal(laterDrySha))
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("does not promote the reverted dry SHA after the RevertCommit is deleted", func() {
+			s := setupRestoredPromotionStrategy()
+
+			By("Confirming the proposed branch is still the reverted dry SHA")
+			Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+			Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(s.drySha2))
+			Expect(s.ctpDev.Status.Active.Dry.Sha).To(Equal(s.drySha1))
+
+			By("Deleting the RevertCommit without hydrating a new proposed commit")
+			Expect(k8sClient.Delete(s.ctx, s.rc)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(s.ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Leaving that dry SHA unpromoted, because the proposed commit is already contained in the restore")
+			prKey := s.developmentPRKey()
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(s.ctx, prKey, &promoterv1alpha1.PullRequest{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				g.Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+				g.Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(s.drySha2))
+				g.Expect(s.ctpDev.Status.Active.Dry.Sha).To(Equal(s.drySha1))
+				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+			s.mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
+			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopment)).To(Equal(s.rc.Status.ActiveSha))
+			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(s.proposedTip))
+		})
 	})
 })
+
+// restoredPromotionStrategy is a PromotionStrategy whose development environment has been promoted
+// twice and then restored to the first promotion. drySha2 is the dry SHA the restore moved off
+// development; staging and production are still running it. The proposed branch was left in place,
+// so it still carries drySha2 and that commit is an ancestor of the restore commit.
+type restoredPromotionStrategy struct {
+	ctx               context.Context
+	gitRepo           *promoterv1alpha1.GitRepository
+	promotionStrategy *promoterv1alpha1.PromotionStrategy
+	ctpDev            promoterv1alpha1.ChangeTransferPolicy
+	devKey            types.NamespacedName
+	mustRun           func(args ...string) string
+	hydrate           func(message string) string
+	drySha1           string
+	drySha2           string
+	restoreTo         string
+	firstNote         map[string][]string
+	rolledOff         string
+	proposedTip       string
+	rc                *promoterv1alpha1.RevertCommit
+}
+
+func (s restoredPromotionStrategy) developmentPRKey() types.NamespacedName {
+	return types.NamespacedName{
+		Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
+			s.gitRepo.Spec.Fake.Owner, s.gitRepo.Spec.Fake.Name, s.ctpDev.Spec.ProposedBranch, s.ctpDev.Spec.ActiveBranch)),
+		Namespace: "default",
+	}
+}
+
+func expectPromotionStrategyActiveDry(g Gomega, ps *promoterv1alpha1.PromotionStrategy, development, others string) {
+	g.Expect(ps.Status.Environments).To(HaveLen(3))
+	for _, env := range ps.Status.Environments {
+		switch env.Branch {
+		case testBranchDevelopment:
+			g.Expect(env.Active.Dry.Sha).To(Equal(development))
+		case testBranchStaging, testBranchProduction:
+			g.Expect(env.Active.Dry.Sha).To(Equal(others))
+		default:
+			g.Expect(env.Branch).To(BeElementOf(testBranchDevelopment, testBranchStaging, testBranchProduction))
+		}
+	}
+}
+
+func setupRestoredPromotionStrategy() restoredPromotionStrategy {
+	GinkgoHelper()
+	ctx := context.Background()
+	name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "revert-ps", "default")
+	setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+	Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+	Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+	Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+	declareDependentsSuccessfulGate(promotionStrategy)
+	Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+	createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+	DeferCleanup(func() {
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+		_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: "default"},
+		})
+		_ = k8sClient.Delete(ctx, gitRepo)
+		_ = k8sClient.Delete(ctx, scmProvider)
+		_ = k8sClient.Delete(ctx, scmSecret)
+	})
+
+	ctpKey := func(branch string) types.NamespacedName {
+		return types.NamespacedName{
+			Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, branch)),
+			Namespace: "default",
+		}
+	}
+	devKey := ctpKey(testBranchDevelopment)
+	stagingKey := ctpKey(testBranchStaging)
+	prodKey := ctpKey(testBranchProduction)
+
+	var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
+	By("Waiting for the PromotionStrategy to create a ChangeTransferPolicy per environment")
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
+		g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+		g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
+		g.Expect(ctpDev.OwnerReferences).To(HaveLen(1))
+		g.Expect(ctpDev.OwnerReferences[0].Name).To(Equal(promotionStrategy.Name))
+		g.Expect(ctpDev.OwnerReferences[0].Kind).To(Equal("PromotionStrategy"))
+		g.Expect(k8sClient.Get(ctx, stagingKey, &ctpStaging)).To(Succeed())
+		g.Expect(k8sClient.Get(ctx, prodKey, &ctpProd)).To(Succeed())
+		g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+		g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+		g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(BeEmpty())
+	}, constants.EventuallyTimeout).Should(Succeed())
+
+	gitPath, err := os.MkdirTemp("", "revert-ps-*")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+	mustRun := func(args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, gitPath, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+	mustRun("clone", testGitRepoCloneURL(gitRepo), ".")
+	mustRun("config", "user.name", "testuser")
+	mustRun("config", "user.email", "testemail@test.com")
+	mustRun("config", "commit.gpgsign", "false")
+
+	hydrate := func(message string) string {
+		GinkgoHelper()
+		dir, err := os.MkdirTemp("", "revert-ps-hydrate-*")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = os.RemoveAll(dir) })
+		drySha, _ := makeChangeAndHydrateRepo(dir, gitRepo, message, "")
+		return drySha
+	}
+
+	waitUntilActiveDry := func(drySha string) {
+		GinkgoHelper()
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
+			g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
+			g.Expect(k8sClient.Get(ctx, stagingKey, &ctpStaging)).To(Succeed())
+			g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha))
+			g.Expect(k8sClient.Get(ctx, prodKey, &ctpProd)).To(Succeed())
+			g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(drySha))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	}
+
+	By("Promoting a first commit so the restore target carries a real history note")
+	drySha1 := hydrate("first promotion")
+	var restoreTo string
+	var firstNote map[string][]string
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
+		g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+		restoreTo = ctpDev.Status.Active.Hydrated.Sha
+		g.Expect(restoreTo).NotTo(BeEmpty())
+		_, err := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+		g.Expect(err).NotTo(HaveOccurred())
+		firstNote, err = fetchPromotionHistoryNote(gitPath, restoreTo)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(firstNote[constants.TrailerPullRequestID]).NotTo(BeEmpty())
+		g.Expect(firstNote[constants.TrailerPullRequestMergeTime]).NotTo(BeEmpty())
+	}, constants.EventuallyTimeout).Should(Succeed())
+	waitUntilActiveDry(drySha1)
+
+	By("Promoting a second commit, which is the dry SHA the restore will block")
+	drySha2 := hydrate("second promotion")
+	waitUntilActiveDry(drySha2)
+
+	mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
+	rolledOff := mustRun("rev-parse", "origin/"+testBranchDevelopment)
+	proposedTip := mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)
+	Expect(k8sClient.Get(ctx, devKey, &ctpDev)).To(Succeed())
+	Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(rolledOff))
+	Expect(rolledOff).NotTo(Equal(restoreTo))
+
+	By("Restoring development to the first promotion")
+	rc := &promoterv1alpha1.RevertCommit{
+		ObjectMeta: metav1.ObjectMeta{Name: name + "-rc", Namespace: "default"},
+		Spec: promoterv1alpha1.RevertCommitSpec{
+			ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctpDev.Name},
+			Sha:                     restoreTo,
+		},
+	}
+	Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+	DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())
+		cond := meta.FindStatusCondition(rc.Status.Conditions, string(promoterConditions.Ready))
+		g.Expect(cond).NotTo(BeNil())
+		g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
+		g.Expect(rc.Status.ActiveSha).NotTo(BeEmpty())
+		g.Expect(rc.Status.BlockedDrySha).To(Equal(drySha2))
+		g.Expect(rc.OwnerReferences).To(HaveLen(1))
+		g.Expect(rc.OwnerReferences[0].Name).To(Equal(ctpDev.Name))
+		g.Expect(rc.OwnerReferences[0].UID).To(Equal(ctpDev.UID))
+		g.Expect(rc.OwnerReferences[0].Controller).To(HaveValue(BeTrue()))
+
+		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+		expectPromotionStrategyActiveDry(g, promotionStrategy, drySha1, drySha2)
+	}, constants.EventuallyTimeout).Should(Succeed())
+
+	return restoredPromotionStrategy{
+		ctx:               ctx,
+		gitRepo:           gitRepo,
+		promotionStrategy: promotionStrategy,
+		ctpDev:            ctpDev,
+		devKey:            devKey,
+		mustRun:           mustRun,
+		hydrate:           hydrate,
+		drySha1:           drySha1,
+		drySha2:           drySha2,
+		restoreTo:         restoreTo,
+		firstNote:         firstNote,
+		rolledOff:         rolledOff,
+		proposedTip:       proposedTip,
+		rc:                rc,
+	}
+}
