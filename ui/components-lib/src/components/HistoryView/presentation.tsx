@@ -14,8 +14,7 @@ export type DisplayCellKind = Exclude<CellKind, 'restored'>;
 
 /**
  * The kind a cell is drawn as. A superseded restore is a second row for an earlier dry commit
- * and looks like any other replaced cell; the revert subject on its row and the drawer's
- * "Restored, not promoted" section are what mark it as a restore.
+ * and looks like any other replaced cell; the revert subject on its row is what marks it as a restore.
  */
 export function displayKind(kind: CellKind): DisplayCellKind {
   return kind === 'restored' ? 'was-here' : kind;

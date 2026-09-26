@@ -3,16 +3,18 @@ import { INSTANCE_ID_LABEL } from '@shared/utils/environments';
 
 /**
  * Whether the detail drawer should offer a command that restores this version.
- * Only past active versions (was-here / historical failed, plus a superseded
- * restore) with a hydrated SHA. The live and proposed cells can also be `failed`,
- * but restoring either is not a rollback: the live one is already on the branch,
- * and the proposed one was never promoted, so restoring it would skip its gates.
+ * Only past active versions (was-here / historical failed) with a hydrated SHA.
+ * A cell that carries Promoter-restored-from (`restoredFrom`) is itself a restore,
+ * and the controller refuses to restore to it. The live and proposed cells can also
+ * be `failed`, but restoring either is not a rollback: the live one is already on
+ * the branch, and the proposed one was never promoted, so restoring it would skip
+ * its gates.
  */
 export function canShowRevertCommand(
-  cell: Pick<CellState, 'kind' | 'hydrated' | 'isLive' | 'isProposed'>,
+  cell: Pick<CellState, 'kind' | 'hydrated' | 'isLive' | 'isProposed' | 'restoredFrom'>,
 ): boolean {
-  if (!cell.hydrated?.sha || cell.isLive || cell.isProposed) return false;
-  return cell.kind === 'was-here' || cell.kind === 'failed' || cell.kind === 'restored';
+  if (!cell.hydrated?.sha || cell.isLive || cell.isProposed || cell.restoredFrom) return false;
+  return cell.kind === 'was-here' || cell.kind === 'failed';
 }
 
 /** DNS-1123 label: lowercase, hyphens for everything else, no leading or trailing hyphen. */

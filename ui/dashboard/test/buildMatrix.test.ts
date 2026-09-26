@@ -190,7 +190,10 @@ describe('buildMatrix restore rows', () => {
 
     const { rows } = buildMatrix(strategy);
     const restoreRow = rows.find((r) => r.restoredFrom)!;
-    expect(restoreRow.cells[BRANCH]!.kind).toBe('restored');
+    const cell = restoreRow.cells[BRANCH]!;
+    expect(cell.kind).toBe('restored');
+    expect(cell.restoredFrom).toBe(OLD_HYDRATED);
+    expect(canShowRevertCommand(cell)).toBe(false);
   });
 
   const heldStrategy = (

@@ -406,25 +406,6 @@ const DetailDrawer: React.FC<{
           </div>
         )}
 
-        {cell.restoredFrom && (
-          <div className="hp-drawer__section hp-drawer__section--muted">
-            <h3>Restored, not promoted</h3>
-            <p>
-              Someone moved {branch} back to <code>{cell.restoredFrom.slice(0, 7)}</code> by pushing
-              a revert commit
-              {row.restoreShaShort && (
-                <>
-                  , <code>{row.restoreShaShort}</code>
-                </>
-              )}
-              {row.restoreSubject && <> — “{row.restoreSubject}”</>}. This row repeats the dry
-              commit of the version that was put back, so the identical row further down is that
-              version's original promotion. The pull request and checks shown here were copied from
-              it and describe that promotion, not this restore.
-            </p>
-          </div>
-        )}
-
         {revertCommand && (
           <div className="hp-drawer__section">
             <div className="hp-drawer__restore-header">
@@ -432,14 +413,6 @@ const DetailDrawer: React.FC<{
               <CopyCommandButton command={revertCommand} />
             </div>
             <pre className="hp-drawer__command">{revertCommand}</pre>
-            <p className="hp-drawer__restore-note">
-              Applies a RevertCommit for this environment. The controller restores the active branch
-              to this hydrated commit and does not open a promotion pull request that would put that
-              active branch&apos;s dry commit back. A commit that carries Promoter-restored-from is itself
-              a restore and is refused. A pull request already open for a different proposed commit
-              stays open and is not auto-merged. Push a new commit on the proposed branch. Delete the
-              RevertCommit to leave the reverted state. Paste into bash, zsh, or fish.
-            </p>
           </div>
         )}
 

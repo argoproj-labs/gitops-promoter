@@ -144,14 +144,23 @@ describe('revertCommand helpers', () => {
     expect(name.endsWith('-abcdef0')).toBe(true);
   });
 
-  it('shows the command for was-here, failed, and superseded restore cells with a hydrated sha', () => {
+  it('shows the command for was-here and failed cells with a hydrated sha', () => {
     const hydrated = { sha: HYDRATED_SHA };
     expect(canShowRevertCommand({ kind: 'was-here', hydrated })).toBe(true);
     expect(canShowRevertCommand({ kind: 'failed', hydrated })).toBe(true);
-    expect(canShowRevertCommand({ kind: 'restored', hydrated })).toBe(true);
     expect(canShowRevertCommand({ kind: 'live', hydrated })).toBe(false);
     expect(canShowRevertCommand({ kind: 'in-flight', hydrated })).toBe(false);
     expect(canShowRevertCommand({ kind: 'was-here' })).toBe(false);
+  });
+
+  it('hides the command when the cell carries Promoter-restored-from', () => {
+    const hydrated = { sha: HYDRATED_SHA };
+    expect(
+      canShowRevertCommand({ kind: 'restored', hydrated, restoredFrom: 'abc1234' }),
+    ).toBe(false);
+    expect(
+      canShowRevertCommand({ kind: 'was-here', hydrated, restoredFrom: 'abc1234' }),
+    ).toBe(false);
   });
 
   it('hides the command on failed live and proposed cells', () => {
@@ -339,8 +348,7 @@ describe('DetailDrawer restore command', () => {
     expect(command?.textContent).toContain(`sha: ${HYDRATED_SHA}`);
     expect(command?.textContent).not.toContain('git ');
     expect(container.textContent).toContain('Restore this version on production');
-    expect(container.textContent).toContain('does not open a promotion pull request');
-    expect(container.textContent).toContain('Delete the RevertCommit');
+    expect(container.querySelector('.hp-drawer__restore-note')).toBeNull();
   });
 
   it('hides the restore section for live cells', () => {
@@ -402,6 +410,9 @@ describe('DetailDrawer restore command', () => {
     const pill = container.querySelector('.hp-drawer__presence .cell__pill');
     expect(pill?.textContent).toBe('REPLACED');
     expect(pill?.classList.contains('cell__pill--was-here')).toBe(true);
+    expect(container.querySelector('.hp-drawer__command')).toBeNull();
+    expect(container.textContent).not.toContain('Restore this version');
+    expect(container.textContent).not.toContain('Restored, not promoted');
   });
 
   it('hides the restore section for in-flight / proposed cells', () => {
