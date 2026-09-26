@@ -63,7 +63,8 @@ its owner, so deleting the policy removes its RevertCommits.
 
 The restore is a new commit on top of the active branch, not a force-push, and runs once. `status.blockedDrySha`
 records the dry SHA that was live before the restore; the ChangeTransferPolicy will not open a pull request for it. No
-promotion is auto-merged while the RevertCommit exists. See [Rolling Back an Environment](advanced-usage/rolling-back.md)
+promotion is auto-merged while the RevertCommit exists. A commit that carries `Promoter-restored-from` cannot
+be restored to. That trailer is on the restore commit only. See [Rolling Back an Environment](advanced-usage/rolling-back.md)
 for the full workflow.
 
 ```yaml

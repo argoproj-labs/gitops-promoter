@@ -1130,7 +1130,9 @@ type RestoreResult struct {
 // this call observed. The notes push is a normal push.
 //
 // targetSha must be the active tip or one of its ancestors; anything else is refused, so only a
-// version that was on the active branch before can be restored.
+// version that was on the active branch before can be restored. A commit that carries
+// Promoter-restored-from is itself a restore and is refused. The commit a restore moved off does
+// not carry that trailer, so it can be restored again.
 //
 // Operates on the object DB only. Requires CloneRepo to have run. Fetches the active branch and
 // both notes refs (hydrator.metadata and promoter.history).
@@ -1160,6 +1162,12 @@ type RestoreResult struct {
 //	git notes --ref=refs/notes/promoter.history show <activeTip>               # only when trees are equal
 //	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message
 //	git interpret-trailers --only-trailers < message                           # fallback: trailers
+//
+//	# otherwise, refuse a target that carries Promoter-restored-from. That trailer is written on the
+//	# restore commit only. The commit the restore moved off keeps its own note and stays eligible.
+//	git notes --ref=refs/notes/promoter.history show <target>                     # Promoter-restored-from?
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <target>        # fallback: message
+//	git interpret-trailers --only-trailers < message                              # fallback: trailers
 //
 //	# otherwise create the restore commit, note, and push (note first).
 //	# SetHistoryNote re-fetches before add, and retries that fetch/add/push up to 3 times.
@@ -1219,6 +1227,9 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 
 	restoreSha := activeTip
 	if !already {
+		if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
+			return RestoreResult{}, err
+		}
 		short := targetSha
 		if len(short) > 7 {
 			short = short[:7]
@@ -1370,6 +1381,20 @@ func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, so
 		return "", fmt.Errorf("failed to write tree: %w (stderr: %s)", err, stderr)
 	}
 	return strings.TrimSpace(treeSha), nil
+}
+
+// refuseRestoreTarget rejects a target whose promotion-history note or commit message carries
+// Promoter-restored-from. That trailer is written only on the restore commit this function creates.
+// The commit the restore moved off of keeps the note it already had, so it does not match here.
+func (g *EnvironmentOperations) refuseRestoreTarget(ctx context.Context, targetSha string) error {
+	restore, err := g.CommitIsRestore(ctx, targetSha)
+	if err != nil {
+		return fmt.Errorf("failed to check whether %q is a restore commit: %w", targetSha, err)
+	}
+	if restore {
+		return fmt.Errorf("commit %q carries %s and cannot be restored to", targetSha, constants.TrailerRestoredFrom)
+	}
+	return nil
 }
 
 // ensureInHistory makes sure sha is a commit that the active branch already contains: its tip

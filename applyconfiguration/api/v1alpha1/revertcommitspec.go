@@ -31,7 +31,8 @@ type RevertCommitSpecApplyConfiguration struct {
 	// The policy supplies the repository, the active and proposed branches, and activePath.
 	ChangeTransferPolicyRef *ObjectReferenceApplyConfiguration `json:"changeTransferPolicyRef,omitempty"`
 	// Sha is the hydrated commit to restore onto the active branch. It must already be in the active
-	// branch's history (the tip or one of its ancestors); any other commit is refused. The
+	// branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
+	// carries Promoter-restored-from is itself a restore and is refused. The
 	// controller writes a new commit (the commit's tree, or only activePath when the policy sets
 	// one) parented on the current active tip and records a promotion-history note with
 	// Promoter-restored-from. When the active branch already has that content, nothing is written.

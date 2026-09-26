@@ -140,6 +140,51 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "show", restored.ActiveSha+":other.txt"))).To(Equal("keep"))
 	})
 
+	It("refuses a commit that carries Promoter-restored-from", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		v2 := commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		mustGit(workDir, "fetch", "origin", "environment/development")
+		mustGit(workDir, "checkout", "-B", "environment/development", "origin/environment/development")
+		v3 := commitFile("version.txt", "v3\n", "version v3")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		_, err = g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", restored.ActiveSha)
+		Expect(err).To(MatchError(ContainSubstring(constants.TrailerRestoredFrom)))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development"))).To(Equal(v3))
+
+		// The commit the restore moved off does not carry the trailer, so it stays eligible.
+		movedOff, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v2)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", movedOff.ActiveSha+"^{tree}"))).To(Equal(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", v2+"^{tree}"))))
+	})
+
+	It("restores the commit a restore just moved off while that restore is still the tip", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		v2 := commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		undone, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v2)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", undone.ActiveSha+"^"))).To(Equal(restored.ActiveSha))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", undone.ActiveSha+"^{tree}"))).To(Equal(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", v2+"^{tree}"))))
+	})
+
 	It("refuses a target that was never on the active branch", func() {
 		v1 := commitFile("version.txt", "v1\n", "version v1")
 		mustGit(workDir, "branch", "-M", "environment/development")

@@ -435,10 +435,10 @@ const DetailDrawer: React.FC<{
             <p className="hp-drawer__restore-note">
               Applies a RevertCommit for this environment. The controller restores the active branch
               to this hydrated commit and does not open a promotion pull request that would put that
-              active branch&apos;s dry commit back. A pull request already open for a different
-              proposed commit stays open and is not auto-merged. Push a new commit on the proposed
-              branch. Delete the RevertCommit to leave the reverted state. Paste into bash, zsh, or
-              fish.
+              active branch&apos;s dry commit back. A commit that carries Promoter-restored-from is itself
+              a restore and is refused. A pull request already open for a different proposed commit
+              stays open and is not auto-merged. Push a new commit on the proposed branch. Delete the
+              RevertCommit to leave the reverted state. Paste into bash, zsh, or fish.
             </p>
           </div>
         )}
