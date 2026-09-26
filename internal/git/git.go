@@ -1257,18 +1257,39 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 	return RestoreResult{ActiveSha: restoreSha, BlockedDrySha: activeMeta.Sha}, nil
 }
 
-// hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
-// promotion-history note or, when it has none, from its commit trailers.
-func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targetSha string) (bool, error) {
+// promotionTrailers returns the promotion-history note for sha, or the commit message trailers when
+// that note is absent. Commit-message trailers are parsed at most once per cached commit.
+func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	trailers, err := g.GetHistoryNote(ctx, sha)
 	if err != nil {
-		return false, fmt.Errorf("read promotion-history note for %q: %w", sha, err)
+		return nil, fmt.Errorf("read promotion-history note for %q: %w", sha, err)
 	}
 	if len(trailers) == 0 {
 		trailers, err = g.GetTrailers(ctx, sha)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
+	}
+	return trailers, nil
+}
+
+// CommitIsRestore reports whether sha is a commit written by a RevertCommit restore. The marker is
+// Promoter-restored-from on the promotion-history note, or on the commit trailers when the commit
+// has no note.
+func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string) (bool, error) {
+	trailers, err := g.promotionTrailers(ctx, sha)
+	if err != nil {
+		return false, err
+	}
+	return len(trailers[constants.TrailerRestoredFrom]) > 0, nil
+}
+
+// hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
+// promotion-history note or, when it has none, from its commit trailers.
+func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targetSha string) (bool, error) {
+	trailers, err := g.promotionTrailers(ctx, sha)
+	if err != nil {
+		return false, err
 	}
 	values := trailers[constants.TrailerRestoredFrom]
 	return len(values) > 0 && values[0] == targetSha, nil

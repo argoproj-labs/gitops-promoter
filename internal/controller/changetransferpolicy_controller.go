@@ -295,6 +295,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaDryActive,
 		constants.TrailerShaDryProposed,
 		constants.TrailerMergeCommitSnapshotMismatch,
+		constants.TrailerRestoredFrom,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -1591,9 +1592,10 @@ func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoter
 // so the proposed SHA can already be contained in active. Creating a pull request then is rejected
 // by the SCM ("No commits between <branch> and <branch>-next"). That can only happen after a
 // restore, so the ancestor check runs only while a RevertCommit references this policy or the
-// active tip is a restore commit. The second case keeps the check after the RevertCommit is
-// deleted: the reverted dry SHA stays unproposed until the hydrator writes a new commit to the
-// proposed branch.
+// active tip is a restore commit. A restore commit carries Promoter-restored-from on its
+// promotion-history note, or on its commit trailers when it has no note. The second case keeps
+// the check after the RevertCommit is deleted: the reverted dry SHA stays unproposed until the
+// hydrator writes a new commit to the proposed branch.
 func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -1609,8 +1611,14 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 		return true, nil
 	}
 
-	if len(reverts) == 0 && !activeTipIsRestore(ctp) {
-		return false, nil
+	if len(reverts) == 0 {
+		restore, err := gitOperations.CommitIsRestore(ctx, ctp.Status.Active.Hydrated.Sha)
+		if err != nil {
+			return false, fmt.Errorf("failed to check whether the active branch %q tip is a restore commit: %w", ctp.Spec.ActiveBranch, err)
+		}
+		if !restore {
+			return false, nil
+		}
 	}
 	contained, err := gitOperations.CommitIsAncestor(ctx, ctp.Status.Proposed.Hydrated.Sha, ctp.Status.Active.Hydrated.Sha)
 	if err != nil {
@@ -1623,17 +1631,6 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 			"active", ctp.Status.Active.Hydrated.Sha)
 	}
 	return contained, nil
-}
-
-// activeTipIsRestore reports whether the active branch tip is a commit written by a RevertCommit
-// restore, identified by the Promoter-restored-from trailer in its message body.
-func activeTipIsRestore(ctp *promoterv1alpha1.ChangeTransferPolicy) bool {
-	for line := range strings.SplitSeq(ctp.Status.Active.Hydrated.Body, "\n") {
-		if strings.HasPrefix(line, constants.TrailerRestoredFrom+":") {
-			return true
-		}
-	}
-	return false
 }
 
 // revertCommitsForPolicy lists live RevertCommits that reference this policy.

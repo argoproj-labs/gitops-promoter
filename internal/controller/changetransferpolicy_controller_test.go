@@ -3508,6 +3508,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		// from the CTP must be non-empty for SSA to accept them.
 		ctp.UID = types.UID("11111111-1111-1111-1111-111111111111")
 		ctp.Status.Active.Dry.Sha = strings.Repeat("c", 40)
+		ctp.Status.Active.Hydrated.Sha = originalMergeSha
 		ctp.Status.Proposed.Dry.Sha = strings.Repeat("d", 40)
 		ctp.Status.Proposed.Hydrated.Sha = strings.Repeat("b", 40)
 
@@ -3541,9 +3542,11 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			Scheme:      k8sClient.Scheme(),
 			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
 		}
-		// Never cloned. These specs have no RevertCommit and no restore commit, so the restore
-		// ancestor check is not reached; if it were, the missing clone would fail the call.
-		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/" + name}, "default/"+name)
+		// No RevertCommit, and the active tip is an ordinary commit, so the restore-marker read
+		// returns false and the ancestor check is not reached.
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: gitPath}, "default/"+name)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 	})
 
 	AfterEach(func() {
@@ -3562,6 +3565,9 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		if gitOps != nil {
+			_ = gitOps.RemoveClone()
+		}
 		_ = os.RemoveAll(gitPath)
 	})
 
@@ -3690,74 +3696,215 @@ var _ = Describe("commit status description trailers", func() {
 })
 
 var _ = Describe("skipPullRequestAfterRevert", func() {
-	const (
-		activeHydrated   = "1111111111111111111111111111111111111111"
-		proposedHydrated = "2222222222222222222222222222222222222222"
-		proposedDry      = "3333333333333333333333333333333333333333"
-		restoredSha      = "4444444444444444444444444444444444444444"
-	)
-
-	var (
-		ctx    context.Context
-		ctp    *promoterv1alpha1.ChangeTransferPolicy
-		gitOps *git.EnvironmentOperations
-	)
-
-	BeforeEach(func() {
-		ctx = context.Background()
-		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "skip-after-revert", Namespace: "default"},
-			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
-		}
-		ctp.Status.Active.Hydrated.Sha = activeHydrated
-		ctp.Status.Proposed.Hydrated.Sha = proposedHydrated
-		ctp.Status.Proposed.Dry.Sha = proposedDry
-		// Never cloned, so CommitIsAncestor fails if it runs. An error therefore proves the
-		// ancestor check was reached, and a clean result proves it was skipped.
-		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
-		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert")
-	})
+	const proposedDry = "3333333333333333333333333333333333333333"
 
 	reconcilerWith := func(objs ...ctrlclient.Object) *ChangeTransferPolicyReconciler {
 		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(objs...).Build()
 		return &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(100)}
 	}
 
-	revertCommit := func() *promoterv1alpha1.RevertCommit {
-		return &promoterv1alpha1.RevertCommit{
+	It("blocks without touching git while a RevertCommit's restore is still pending", func() {
+		ctx := context.Background()
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "skip-after-revert", Namespace: "default"},
+			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+		}
+		ctp.Status.Proposed.Dry.Sha = proposedDry
+		// Never cloned. Reaching CommitIsAncestor or the restore-marker read would fail this call.
+		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
+		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
+		rc := &promoterv1alpha1.RevertCommit{
 			ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
 			Spec: promoterv1alpha1.RevertCommitSpec{
 				ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
-				Sha:                     restoredSha,
+				Sha:                     "4444444444444444444444444444444444444444",
 			},
 		}
-	}
 
-	It("skips the ancestor check when no RevertCommit exists and the active tip is not a restore", func() {
-		ctp.Status.Active.Hydrated.Body = "Some ordinary promotion body"
-		skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(skip).To(BeFalse())
-	})
-
-	It("runs the ancestor check when the active tip is a restore commit, even with no RevertCommit left", func() {
-		ctp.Status.Active.Hydrated.Body = constants.TrailerRestoredFrom + ": " + restoredSha
-		_, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
-		Expect(err).To(MatchError(ContainSubstring("contained in active branch")))
-	})
-
-	It("runs the ancestor check while a RevertCommit references the policy", func() {
-		rc := revertCommit()
-		rc.Status.RestoredFrom = restoredSha
-		rc.Status.ActiveSha = activeHydrated
-		rc.Status.BlockedDrySha = "5555555555555555555555555555555555555555"
-		_, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
-		Expect(err).To(MatchError(ContainSubstring("contained in active branch")))
-	})
-
-	It("blocks without touching git while a RevertCommit's restore is still pending", func() {
-		skip, err := reconcilerWith(revertCommit()).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+		skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(skip).To(BeTrue())
+	})
+
+	// The ancestor decision and the restore marker both come from the clone. parentSha is an
+	// ancestor of activeSha; sideSha is not. A status body that merely contains the trailer is
+	// not a restore: the marker is the history note, then the commit trailers.
+	Context("when the active tip is read from git", func() {
+		var (
+			ctx       context.Context
+			bareDir   string
+			workDir   string
+			branch    string
+			parentSha string
+			activeSha string
+			sideSha   string
+			ctp       *promoterv1alpha1.ChangeTransferPolicy
+			gitOps    *git.EnvironmentOperations
+		)
+
+		mustRunGit := func(dir string, args ...string) string {
+			GinkgoHelper()
+			out, err := runGitCmd(ctx, dir, args...)
+			Expect(err).NotTo(HaveOccurred())
+			return strings.TrimSpace(out)
+		}
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			var err error
+			bareDir, err = os.MkdirTemp("", "skip-revert-bare-*")
+			Expect(err).NotTo(HaveOccurred())
+			mustRunGit(bareDir, "init", "--bare")
+
+			workDir, err = os.MkdirTemp("", "skip-revert-work-*")
+			Expect(err).NotTo(HaveOccurred())
+			mustRunGit(workDir, "clone", bareDir, ".")
+			mustRunGit(workDir, "config", "user.name", "Test User")
+			mustRunGit(workDir, "config", "user.email", "test@example.com")
+			mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+			Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("parent"), 0o644)).To(Succeed())
+			mustRunGit(workDir, "add", "-A")
+			mustRunGit(workDir, "commit", "-m", "parent")
+			parentSha = mustRunGit(workDir, "rev-parse", "HEAD")
+			branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+
+			mustRunGit(workDir, "checkout", "-b", "side")
+			Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("side"), 0o644)).To(Succeed())
+			mustRunGit(workDir, "add", "-A")
+			mustRunGit(workDir, "commit", "-m", "side")
+			sideSha = mustRunGit(workDir, "rev-parse", "HEAD")
+
+			mustRunGit(workDir, "checkout", branch)
+			Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("active"), 0o644)).To(Succeed())
+			mustRunGit(workDir, "add", "-A")
+			mustRunGit(workDir, "commit", "-m", "active")
+			activeSha = mustRunGit(workDir, "rev-parse", "HEAD")
+
+			mustRunGit(workDir, "push", "-u", "origin", branch)
+			mustRunGit(workDir, "push", "origin", "side")
+
+			gitRepo := &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{Name: "skip-revert-repo", Namespace: "default"},
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "skip-revert-repo"},
+				},
+			}
+			gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/skip-revert-"+activeSha)
+			Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+			Expect(gitOps.FetchBranch(ctx, "side")).To(Succeed())
+			Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+			ctp = &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "skip-after-revert", Namespace: "default"},
+				Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
+			}
+			ctp.Status.Active.Hydrated.Sha = activeSha
+			ctp.Status.Proposed.Hydrated.Sha = parentSha
+			ctp.Status.Proposed.Dry.Sha = proposedDry
+		})
+
+		AfterEach(func() {
+			if gitOps != nil {
+				_ = gitOps.RemoveClone()
+			}
+			_ = os.RemoveAll(bareDir)
+			_ = os.RemoveAll(workDir)
+		})
+
+		pushNote := func(sha, payload string) {
+			GinkgoHelper()
+			mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", payload, sha)
+			mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+			Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+		}
+
+		It("does not skip when the active tip is an ordinary commit, even if proposed is already contained", func() {
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
+
+		It("ignores a restore trailer in the status body when the commit itself is not a restore", func() {
+			ctp.Status.Active.Hydrated.Body = constants.TrailerRestoredFrom + ": " + parentSha
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
+
+		It("skips when the history note marks the active tip as a restore and proposed is contained", func() {
+			pushNote(activeSha, fmt.Sprintf(`{"%s":["%s"]}`, constants.TrailerRestoredFrom, parentSha))
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeTrue())
+		})
+
+		It("does not skip a restore tip when proposed is not contained in active", func() {
+			pushNote(activeSha, fmt.Sprintf(`{"%s":["%s"]}`, constants.TrailerRestoredFrom, parentSha))
+			ctp.Status.Proposed.Hydrated.Sha = sideSha
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
+
+		It("falls back to commit message trailers when the active tip has no history note", func() {
+			msg := fmt.Sprintf("Revert %s\n\n%s: %s\n", branch, constants.TrailerRestoredFrom, parentSha)
+			mustRunGit(workDir, "commit", "--allow-empty", "-m", msg)
+			restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "push", "origin", "HEAD:"+branch)
+			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+			ctp.Status.Active.Hydrated.Sha = restoreSha
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeTrue())
+		})
+
+		It("trusts a history note without the restore marker over a commit message and status body that have it", func() {
+			msg := fmt.Sprintf("Revert %s\n\n%s: %s\n", branch, constants.TrailerRestoredFrom, parentSha)
+			mustRunGit(workDir, "commit", "--allow-empty", "-m", msg)
+			restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "push", "origin", "HEAD:"+branch)
+			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+			pushNote(restoreSha, `{"`+constants.TrailerPullRequestID+`":["1"]}`)
+
+			ctp.Status.Active.Hydrated.Sha = restoreSha
+			ctp.Status.Active.Hydrated.Body = constants.TrailerRestoredFrom + ": " + parentSha
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
+
+		It("skips when a RevertCommit references the policy and proposed is contained, even if the tip is not a restore", func() {
+			rc := &promoterv1alpha1.RevertCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
+				Spec: promoterv1alpha1.RevertCommitSpec{
+					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
+					Sha:                     parentSha,
+				},
+			}
+			rc.Status.RestoredFrom = parentSha
+			rc.Status.BlockedDrySha = "5555555555555555555555555555555555555555"
+			skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeTrue())
+		})
+
+		It("does not skip when a RevertCommit references the policy but proposed is not contained", func() {
+			ctp.Status.Proposed.Hydrated.Sha = sideSha
+			rc := &promoterv1alpha1.RevertCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
+				Spec: promoterv1alpha1.RevertCommitSpec{
+					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
+					Sha:                     parentSha,
+				},
+			}
+			rc.Status.RestoredFrom = parentSha
+			rc.Status.BlockedDrySha = "5555555555555555555555555555555555555555"
+			skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
 	})
 })
