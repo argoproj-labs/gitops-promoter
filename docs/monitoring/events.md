@@ -53,6 +53,14 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | PullRequestCreateFailed              | Creating the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.     |
 | Warning    | PullRequestMergeFailed               | Merging the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.      |
 
+## RevertCommit
+
+[RevertCommits](../crd-specs.md#revertcommit) may produce the following events:
+
+| Event Type | Event Reason | Description |
+|------------|--------------|-------------|
+| Normal     | Restored     | The active branch was restored to `spec.sha`. The message names the branch and the new restore commit. |
+
 ## TimedCommitStatus
 
 [TimedCommitStatuses](../crd-specs.md#timedcommitstatus) may produce the following events:

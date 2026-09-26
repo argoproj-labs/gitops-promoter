@@ -135,6 +135,39 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "show", restored.ActiveSha+":other.txt"))).To(Equal("keep"))
 	})
 
+	It("fetches a target commit that is not in the clone yet", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development-next")
+
+		g := newOps()
+
+		// Pushed after the clone, to a ref the restore does not fetch.
+		mustGit(workDir, "checkout", "-b", "elsewhere")
+		target := commitFile("version.txt", "elsewhere\n", "elsewhere")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/elsewhere")
+		mustGit(workDir, "checkout", "environment/development")
+
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", target)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", restored.ActiveSha+"^"))).To(Equal(v1))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "show", restored.ActiveSha+":version.txt"))).To(Equal("elsewhere"))
+	})
+
+	It("returns an error when the target is not a commit", func() {
+		sha := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development-next")
+		tree := strings.TrimSpace(mustGit(workDir, "rev-parse", sha+"^{tree}"))
+
+		g := newOps()
+		_, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", tree)
+		Expect(err).To(MatchError(ContainSubstring("is not a commit")))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development"))).To(Equal(sha))
+	})
+
 	It("returns an error when the target commit does not exist", func() {
 		sha := commitFile("version.txt", "v1\n", "version v1")
 		mustGit(workDir, "branch", "-M", "environment/development")

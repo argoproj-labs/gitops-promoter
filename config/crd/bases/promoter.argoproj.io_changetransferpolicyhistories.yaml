@@ -668,7 +668,9 @@ spec:
                         tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
                         pull request and commit status fields are copied from the restored version and describe the original
                         promotion, not the restore.
-                      maxLength: 40
+                      maxLength: 64
+                      minLength: 40
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                   type: object
                 maxItems: 20

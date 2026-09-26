@@ -50,6 +50,7 @@ function buildEnvColumn(
   return {
     branch: env.branch,
     changeTransferPolicyName: env.changeTransferPolicyName,
+    instanceId: env.instanceId,
     autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
     color: LANE_COLORS[i % LANE_COLORS.length]!,
     liveCommit: env.active?.dry,
@@ -165,7 +166,6 @@ function applyRestoreIdentity(row: CommitRow, entry: HistoryEntry) {
   const hydrated = entry.active?.hydrated;
   row.restoreSubject = (hydrated?.subject ?? '').trim() || undefined;
   row.restoreShaShort = hydrated?.sha ? shortSha(hydrated.sha) : undefined;
-  row.restoreAuthor = hydrated?.author ? extractNameOnly(hydrated.author) : undefined;
 }
 
 function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
@@ -366,6 +366,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           commitStatuses: statuses,
           health,
           pullRequest: env.pullRequest,
+          isLive: true,
           // A live restore outranks the history entry that describes it, so the restore's
           // marker and timestamp have to be carried here or they are lost and the row
           // sorts by the restored version's original (older) commit time.

@@ -8,6 +8,7 @@ import {
   canShowRevertCommand,
   revertCommitResourceName,
 } from '@lib/components/HistoryView/revertCommand';
+import { cellKindLabel } from '@lib/components/HistoryView/presentation';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { CommitStatusContext } from '@shared/components/plugins';
@@ -101,6 +102,27 @@ describe('revertCommand helpers', () => {
     expect(cmd).not.toContain('git ');
   });
 
+  it("labels the RevertCommit with the policy's instance id so a non-default install sees it", () => {
+    const cmd = buildRevertCommitApplyCommand({
+      namespace: 'promoter-system',
+      changeTransferPolicyName: CTP_NAME,
+      instanceId: '123',
+      branch: 'environment/staging',
+      sha: HYDRATED_SHA,
+    });
+
+    // Quoted so a numeric-looking id stays a string label value.
+    expect(cmd).toContain(
+      [
+        '  namespace: promoter-system',
+        '  labels:',
+        '    promoter.argoproj.io/instance-id: "123"',
+        'spec:',
+      ].join('\n'),
+    );
+    expect(cmd.split('\n').slice(1, -1).join('\n')).not.toContain("'");
+  });
+
   it('wraps the apply in one POSIX sh command accepted by bash, zsh, and fish', () => {
     const cmd = buildRevertCommitApplyCommand({
       namespace: 'promoter-system',
@@ -123,12 +145,19 @@ describe('revertCommand helpers', () => {
   });
 
   it('shows the command for was-here, failed, and superseded restore cells with a hydrated sha', () => {
-    expect(canShowRevertCommand('was-here', HYDRATED_SHA)).toBe(true);
-    expect(canShowRevertCommand('failed', HYDRATED_SHA)).toBe(true);
-    expect(canShowRevertCommand('restored', HYDRATED_SHA)).toBe(true);
-    expect(canShowRevertCommand('live', HYDRATED_SHA)).toBe(false);
-    expect(canShowRevertCommand('in-flight', HYDRATED_SHA)).toBe(false);
-    expect(canShowRevertCommand('was-here', undefined)).toBe(false);
+    const hydrated = { sha: HYDRATED_SHA };
+    expect(canShowRevertCommand({ kind: 'was-here', hydrated })).toBe(true);
+    expect(canShowRevertCommand({ kind: 'failed', hydrated })).toBe(true);
+    expect(canShowRevertCommand({ kind: 'restored', hydrated })).toBe(true);
+    expect(canShowRevertCommand({ kind: 'live', hydrated })).toBe(false);
+    expect(canShowRevertCommand({ kind: 'in-flight', hydrated })).toBe(false);
+    expect(canShowRevertCommand({ kind: 'was-here' })).toBe(false);
+  });
+
+  it('hides the command on failed live and proposed cells', () => {
+    const hydrated = { sha: HYDRATED_SHA };
+    expect(canShowRevertCommand({ kind: 'failed', hydrated, isLive: true })).toBe(false);
+    expect(canShowRevertCommand({ kind: 'failed', hydrated, isProposed: true })).toBe(false);
   });
 });
 
@@ -342,6 +371,24 @@ describe('DetailDrawer restore command', () => {
     expect(container.querySelector('.hp-drawer__pr')?.textContent).toContain('3020');
   });
 
+  it('labels a superseded restore cell REPLACED in the badge and the environment list', () => {
+    render(
+      makeCell([], {
+        kind: 'restored',
+        health: 'success',
+        hydrated: { sha: HYDRATED_SHA },
+        restoredFrom: HYDRATED_SHA,
+      }),
+    );
+
+    const badge = container.querySelector('.hp-drawer__kind');
+    expect(badge?.textContent).toBe('REPLACED');
+    expect(badge?.classList.contains('hp-drawer__kind--was-here')).toBe(true);
+    const pill = container.querySelector('.hp-drawer__presence .cell__pill');
+    expect(pill?.textContent).toBe('REPLACED');
+    expect(pill?.classList.contains('cell__pill--was-here')).toBe(true);
+  });
+
   it('hides the restore section for in-flight / proposed cells', () => {
     render(
       makeCell([], {
@@ -354,5 +401,21 @@ describe('DetailDrawer restore command', () => {
 
     expect(container.querySelector('.hp-drawer__command')).toBeNull();
     expect(container.textContent).not.toContain('Restore this version');
+  });
+});
+
+describe('cellKindLabel', () => {
+  it('gives every kind a label, with compact forms for the empty kinds', () => {
+    expect(cellKindLabel({ kind: 'live' })).toBe('LIVE');
+    expect(cellKindLabel({ kind: 'in-flight', isProposed: true })).toBe('PROPOSED');
+    expect(cellKindLabel({ kind: 'in-flight' })).toBe('PR OPEN');
+    expect(cellKindLabel({ kind: 'was-here' })).toBe('REPLACED');
+    expect(cellKindLabel({ kind: 'restored' })).toBe('REPLACED');
+    expect(cellKindLabel({ kind: 'failed' })).toBe('FAILED');
+    expect(cellKindLabel({ kind: 'no-op' })).toBe('NO-OP');
+    expect(cellKindLabel({ kind: 'no-changes' })).toBe('NO CHANGES');
+    expect(cellKindLabel({ kind: 'no-changes' }, true)).toBe('—');
+    expect(cellKindLabel({ kind: 'unknown-history' })).toBe('HISTORY UNAVAILABLE');
+    expect(cellKindLabel({ kind: 'unknown-history' }, true)).toBe('?');
   });
 });

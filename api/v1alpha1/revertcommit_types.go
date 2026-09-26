@@ -24,7 +24,11 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RevertCommitSpec defines the desired state of RevertCommit.
+// RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+// once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
+// existing RevertCommit at a different sha or policy would lose track of what it reverted. To
+// restore something else, create a new RevertCommit.
+// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertCommit to restore a different commit or policy"
 type RevertCommitSpec struct {
 	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
 	// The policy supplies the repository, the active and proposed branches, and activePath.
@@ -37,8 +41,9 @@ type RevertCommitSpec struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA.
-	// The restore runs once per spec.sha. Later promotions are left alone.
+	// RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+	// reverted change again; see status.blockedDrySha.
+	// The restore runs once. Later promotions are left alone.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64
@@ -66,16 +71,20 @@ type RevertCommitStatus struct {
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
 	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
 	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
-	// exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to
-	// allow auto-merge, including of this dry SHA.
+	// exists. Empty when that active tip had no hydrator.metadata. Deleting the RevertCommit lifts
+	// this block, but a promotion pull request only opens when the proposed branch has a commit the
+	// active branch does not already contain. The restore commit is parented on the tip it moved
+	// off of, so when that tip already contains the proposed commit (a merge-commit promotion),
+	// this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.
 	// +optional
 	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	BlockedDrySha string `json:"blockedDrySha,omitempty"`
 
-	// RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller
-	// does not restore again, so a later promotion is not overwritten on resync.
+	// RestoredFrom is the spec.sha this status applied. It is written in the same status update as
+	// activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha
+	// the controller does not restore again, so a later promotion is not overwritten on resync.
 	// +optional
 	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64

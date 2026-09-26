@@ -22,7 +22,10 @@ package v1alpha1
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// RevertCommitSpec defines the desired state of RevertCommit.
+// RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+// once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
+// existing RevertCommit at a different sha or policy would lose track of what it reverted. To
+// restore something else, create a new RevertCommit.
 type RevertCommitSpecApplyConfiguration struct {
 	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
 	// The policy supplies the repository, the active and proposed branches, and activePath.
@@ -33,8 +36,9 @@ type RevertCommitSpecApplyConfiguration struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA.
-	// The restore runs once per spec.sha. Later promotions are left alone.
+	// RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+	// reverted change again; see status.blockedDrySha.
+	// The restore runs once. Later promotions are left alone.
 	Sha *string `json:"sha,omitempty"`
 }
 

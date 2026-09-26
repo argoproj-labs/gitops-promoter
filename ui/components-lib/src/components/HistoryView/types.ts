@@ -30,6 +30,8 @@ export interface CellState {
   health: HealthKey;
   pullRequest?: PullRequest;
   isProposed?: boolean;
+  /** True for the cell describing the environment's current active commit. */
+  isLive?: boolean;
   /** RevertCommit holding this environment. The proposed cell turns red and shows only an open pull request. */
   revertCommit?: string;
   /** True when this proposed commit is the one that RevertCommit reverted. */
@@ -47,6 +49,8 @@ export interface EnvColumn {
   branch: string;
   /** ChangeTransferPolicy that owns this environment, when the bundle includes one. */
   changeTransferPolicyName?: string;
+  /** Instance-id label of that ChangeTransferPolicy; unset for the default install. */
+  instanceId?: string;
   autoMerge: boolean;
   color: string;
   liveCommit?: Commit;
@@ -88,8 +92,6 @@ export interface CommitRow {
   restoreSubject?: string;
   /** Short sha of the revert commit on the active branch. */
   restoreShaShort?: string;
-  /** Who pushed the revert, which is rarely the restored commit's author. */
-  restoreAuthor?: string;
   repoUrl: string;
   freshestAt: number;
   earliestAt: number;

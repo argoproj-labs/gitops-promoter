@@ -5273,7 +5273,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref comm
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommitSpec defines the desired state of RevertCommit.",
+				Description: "RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha or policy would lose track of what it reverted. To restore something else, create a new RevertCommit.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"changeTransferPolicyRef": {
@@ -5285,7 +5285,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref comm
 					},
 					"sha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Sha is the hydrated commit to restore onto the active branch. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA. The restore runs once per spec.sha. Later promotions are left alone.",
+							Description: "Sha is the hydrated commit to restore onto the active branch. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Deleting it lifts that hold but does not by itself propose the reverted change again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -5323,14 +5323,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref co
 					},
 					"blockedDrySha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to allow auto-merge, including of this dry SHA.",
+							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit exists. Empty when that active tip had no hydrator.metadata. Deleting the RevertCommit lifts this block, but a promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"restoredFrom": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync.",
+							Description: "RestoredFrom is the spec.sha this status applied. It is written in the same status update as activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

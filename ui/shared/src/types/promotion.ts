@@ -25,6 +25,11 @@ export type Environment = components['schemas']['EnvironmentStatus'] & {
   history?: History[];
   /** metadata.name of the ChangeTransferPolicy for this environment, when the bundle has one. */
   changeTransferPolicyName?: string;
+  /**
+   * The ChangeTransferPolicy's promoter.argoproj.io/instance-id label. Resources created for this
+   * environment need the same label, or a non-default install's controller never sees them.
+   */
+  instanceId?: string;
   /** RevertCommit holding this environment in its reverted state, from the bundle. */
   revertCommit?: EnvironmentRevertCommit;
 };

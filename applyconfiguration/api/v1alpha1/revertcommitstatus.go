@@ -37,11 +37,15 @@ type RevertCommitStatusApplyConfiguration struct {
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
 	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
 	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
-	// exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to
-	// allow auto-merge, including of this dry SHA.
+	// exists. Empty when that active tip had no hydrator.metadata. Deleting the RevertCommit lifts
+	// this block, but a promotion pull request only opens when the proposed branch has a commit the
+	// active branch does not already contain. The restore commit is parented on the tip it moved
+	// off of, so when that tip already contains the proposed commit (a merge-commit promotion),
+	// this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.
 	BlockedDrySha *string `json:"blockedDrySha,omitempty"`
-	// RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller
-	// does not restore again, so a later promotion is not overwritten on resync.
+	// RestoredFrom is the spec.sha this status applied. It is written in the same status update as
+	// activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha
+	// the controller does not restore again, so a later promotion is not overwritten on resync.
 	RestoredFrom *string `json:"restoredFrom,omitempty"`
 	// Conditions represent the latest available observations of an object's state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`

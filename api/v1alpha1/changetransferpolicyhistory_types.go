@@ -107,7 +107,9 @@ type History struct {
 	// pull request and commit status fields are copied from the restored version and describe the original
 	// promotion, not the restore.
 	// +optional
-	// +kubebuilder:validation:MaxLength=40
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	RestoredFrom string `json:"restoredFrom,omitempty"`
 }
 

@@ -13,7 +13,10 @@ const spec = {
 
 const ctps = [
   {
-    metadata: { name: 'strategy-environment-prod-abcd' },
+    metadata: {
+      name: 'strategy-environment-prod-abcd',
+      labels: { 'promoter.argoproj.io/instance-id': 'team-a' },
+    },
     spec: { activeBranch: 'environment/prod' },
     status: {
       active: { dry: { sha: 'prod-active' }, hydrated: {} },
@@ -64,6 +67,8 @@ describe('environmentsFromBundle', () => {
     expect(proposedIsReverted(envs[1])).toBe(true);
     expect(envs[1].changeTransferPolicyName).toBe('strategy-environment-prod-abcd');
     expect(envs[0].changeTransferPolicyName).toBeUndefined();
+    expect(envs[1].instanceId).toBe('team-a');
+    expect(envs[0].instanceId).toBeUndefined();
   });
 
   it('projects history from the ChangeTransferPolicyHistory resources', () => {

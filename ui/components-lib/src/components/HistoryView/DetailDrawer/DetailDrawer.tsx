@@ -14,7 +14,13 @@ import { getChecks } from '@shared/utils/PSData';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS } from '../presentation';
+import {
+  DRAWER_MIN_WIDTH,
+  DRAWER_MAX_WIDTH,
+  HEALTH_LABELS,
+  cellKindLabel,
+  displayKind,
+} from '../presentation';
 import { isEmptyCellKind } from '../helpers';
 import { buildRevertCommitApplyCommand, canShowRevertCommand } from '../revertCommand';
 import { revertHoldTooltip } from '@shared/utils/environments';
@@ -193,19 +199,29 @@ const DetailDrawer: React.FC<{
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
 
-  const changeTransferPolicyName = envs.find(
-    (env) => env.branch === branch,
-  )?.changeTransferPolicyName;
-  const showRevert = canShowRevertCommand(cell.kind, hydrated?.sha);
+  const env = envs.find((e) => e.branch === branch);
+  const changeTransferPolicyName = env?.changeTransferPolicyName;
+  const showRevert = canShowRevertCommand(cell);
   const revertCommand =
     showRevert && hydrated?.sha && namespace && changeTransferPolicyName
       ? buildRevertCommitApplyCommand({
           namespace,
           changeTransferPolicyName,
+          instanceId: env?.instanceId,
           branch,
           sha: hydrated.sha,
         })
       : null;
+
+  const kindBadge = (
+    <span
+      className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
+        cell.revertCommit ? ' hp-drawer__kind--held' : ''
+      }`}
+    >
+      {cellKindLabel(cell)}
+    </span>
+  );
 
   return (
     <aside
@@ -251,22 +267,10 @@ const DetailDrawer: React.FC<{
           <div className="hp-drawer__badges">
             {cell.revertCommit ? (
               <Tooltip label={revertHoldTooltip(cell.revertCommit, !!cell.revertedByRevertCommit)}>
-                <span
-                  className={`hp-drawer__kind hp-drawer__kind--${cell.kind} hp-drawer__kind--held`}
-                >
-                  {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                </span>
+                {kindBadge}
               </Tooltip>
             ) : (
-              <span className={`hp-drawer__kind hp-drawer__kind--${cell.kind}`}>
-                {cell.kind === 'live' && 'LIVE'}
-                {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                {cell.kind === 'was-here' && 'REPLACED'}
-                {cell.kind === 'failed' && 'FAILED'}
-                {cell.kind === 'no-op' && 'NO-OP'}
-                {cell.kind === 'no-changes' && 'NO CHANGES'}
-                {cell.kind === 'unknown-history' && 'HISTORY UNAVAILABLE'}
-              </span>
+              kindBadge
             )}
             <span className="hp-drawer__branch">{branch}</span>
           </div>
@@ -461,25 +465,15 @@ const DetailDrawer: React.FC<{
               const c = row.cells[e.branch];
               const isHere = e.branch === branch;
               const selectable = !isHere && !isEmptyCellKind(c.kind);
+              const pillKind = displayKind(c.kind);
               const pill = (
                 <span
-                  className={`cell__pill cell__pill--${c.kind}${c.revertCommit ? ' cell__pill--held' : ''}`}
+                  className={`cell__pill cell__pill--${pillKind}${c.revertCommit ? ' cell__pill--held' : ''}`}
                 >
-                  {c.kind === 'live' && 'LIVE'}
-                  {c.kind === 'in-flight' && (c.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                  {c.kind === 'was-here' && 'REPLACED'}
-                  {c.kind === 'failed' && (
-                    <>
-                      <FaTimesCircle aria-hidden="true" /> FAILED
-                    </>
-                  )}
-                  {c.kind === 'no-op' && (
-                    <>
-                      <FaBan aria-hidden="true" /> NO-OP
-                    </>
-                  )}
-                  {c.kind === 'no-changes' && '—'}
-                  {c.kind === 'unknown-history' && '?'}
+                  {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
+                  {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
+                  {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
+                  {cellKindLabel(c, true)}
                 </span>
               );
               const inner = (

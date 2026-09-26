@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -67,6 +69,58 @@ var _ = Describe("RevertCommit Controller", func() {
 				g.Expect(cond).NotTo(BeNil())
 				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 				g.Expect(cond.Message).To(ContainSubstring("does-not-exist"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When the spec is updated", func() {
+		It("rejects changes to spec.sha and spec.changeTransferPolicyRef", func() {
+			ctx := context.Background()
+			name := "revert-immutable-" + utils.KubeSafeUniqueName(randomString(10))
+			rc := &promoterv1alpha1.RevertCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Spec: promoterv1alpha1.RevertCommitSpec{
+					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                     "abcdef1234567890abcdef1234567890abcdef12",
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+			key := types.NamespacedName{Name: name, Namespace: "default"}
+
+			// The controller patches ownerReferences and status right after create, so retry
+			// resourceVersion conflicts until the update reaches the validation rule.
+			updateSpec := func(mutate func(*promoterv1alpha1.RevertCommitSpec)) error {
+				return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					var live promoterv1alpha1.RevertCommit
+					Expect(k8sClient.Get(ctx, key, &live)).To(Succeed())
+					mutate(&live.Spec)
+					if err := k8sClient.Update(ctx, &live); err != nil {
+						return fmt.Errorf("update RevertCommit spec: %w", err)
+					}
+					return nil
+				})
+			}
+
+			err := updateSpec(func(spec *promoterv1alpha1.RevertCommitSpec) {
+				spec.Sha = "1234567890abcdef1234567890abcdef12345678"
+			})
+			Expect(err).To(MatchError(ContainSubstring("spec is immutable")))
+
+			err = updateSpec(func(spec *promoterv1alpha1.RevertCommitSpec) {
+				spec.ChangeTransferPolicyRef.Name = "another-policy"
+			})
+			Expect(err).To(MatchError(ContainSubstring("spec is immutable")))
+
+			By("still allowing metadata changes")
+			Eventually(func(g Gomega) {
+				var live promoterv1alpha1.RevertCommit
+				g.Expect(k8sClient.Get(ctx, key, &live)).To(Succeed())
+				if live.Labels == nil {
+					live.Labels = map[string]string{}
+				}
+				live.Labels["example"] = "value"
+				g.Expect(k8sClient.Update(ctx, &live)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

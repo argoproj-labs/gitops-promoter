@@ -111,7 +111,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 			revertCommits = append(revertCommits, rcList.Items[i])
 		}
 	}
-	bundle.RevertCommits = revertCommits
+	bundle.RevertCommits = nilIfEmpty(revertCommits)
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {

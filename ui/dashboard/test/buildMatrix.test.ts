@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildMatrix } from '@lib/components/HistoryView/buildMatrix';
+import { canShowRevertCommand } from '@lib/components/HistoryView/revertCommand';
 import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 const BRANCH = 'environments/development';
@@ -213,5 +214,43 @@ describe('buildMatrix restore rows', () => {
     expect(cell.revertedByRevertCommit).toBe(false);
     expect(cell.pullRequest?.id).toBe('3020');
     expect(envs[0]!.proposedPR?.id).toBe('3020');
+  });
+});
+
+describe('buildMatrix restore command eligibility', () => {
+  const failing = [{ key: 'ci', phase: 'failure' }];
+
+  it('offers the restore command on a past active version', () => {
+    const { rows } = buildMatrix(strategyWithHistory(false));
+    const cell = rows.find((r) => r.dryShaFull === OLD_DRY)!.cells[BRANCH]!;
+    expect(cell.kind).toBe('was-here');
+    expect(canShowRevertCommand(cell)).toBe(true);
+  });
+
+  it('does not offer it on a failing live commit', () => {
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.active.commitStatuses = failing as Environment['active']['commitStatuses'];
+
+    const { rows } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
+    expect(cell.kind).toBe('failed');
+    expect(canShowRevertCommand(cell)).toBe(false);
+  });
+
+  it('does not offer it on a failing proposed commit, which was never promoted', () => {
+    const proposedDry = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.proposed = {
+      dry: dryCommit(proposedDry, 'chore: bump version to v1.0.2006', '2026-09-25T16:00:00Z'),
+      hydrated: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      commitStatuses: failing,
+    } as unknown as Environment['proposed'];
+
+    const { rows } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.dryShaFull === proposedDry)!.cells[BRANCH]!;
+    expect(cell.kind).toBe('failed');
+    expect(canShowRevertCommand(cell)).toBe(false);
   });
 });

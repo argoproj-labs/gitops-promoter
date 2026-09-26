@@ -4,7 +4,7 @@ import { GoGitPullRequest } from 'react-icons/go';
 import { timeAgo, formatDate, formatDuration } from '@shared/utils/util';
 import type { CellState, CommitRow } from '../types';
 import { commitKey } from '../helpers';
-import { CELL_KIND_LABELS, cellPillTooltip } from '../presentation';
+import { CELL_KIND_LABELS, cellKindLabel, cellPillTooltip, displayKind } from '../presentation';
 import Tooltip from '../Tooltip/Tooltip';
 import { revertHoldTooltip } from '@shared/utils/environments';
 
@@ -45,9 +45,7 @@ const FlowCell: React.FC<{
 
   const time = cell.at ? timeAgo(cell.at) : '';
   const exact = cell.at ? formatDate(cell.at) : '';
-  // A restore is a second row for the same dry commit; it should look like any other
-  // replaced cell. The revert subject on the row header is the restore signal.
-  const visualKind = cell.kind === 'restored' ? 'was-here' : cell.kind;
+  const visualKind = displayKind(cell.kind);
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
   const held = cell.revertCommit;
@@ -95,15 +93,12 @@ const FlowCell: React.FC<{
             <span
               className={`cell__pill cell__pill--${visualKind}${held ? ' cell__pill--held' : ''}`}
             >
-              {visualKind === 'live' && 'LIVE'}
-              {visualKind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {visualKind === 'was-here' && 'REPLACED'}
-              {visualKind === 'failed' && 'FAILED'}
-              {cell.kind === 'no-op' && (
+              {visualKind === 'no-op' && (
                 <>
-                  <FaBan aria-hidden="true" /> NO-OP
+                  <FaBan aria-hidden="true" />{' '}
                 </>
               )}
+              {cellKindLabel(cell)}
             </span>
           </Tooltip>
         )}

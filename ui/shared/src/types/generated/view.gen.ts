@@ -1569,7 +1569,7 @@ export type components = {
             /** @default {} */
             status?: components["schemas"]["RevertCommitStatus"];
         };
-        /** @description RevertCommitSpec defines the desired state of RevertCommit. */
+        /** @description RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha or policy would lose track of what it reverted. To restore something else, create a new RevertCommit. */
         RevertCommitSpec: {
             /**
              * @description ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored. The policy supplies the repository, the active and proposed branches, and activePath.
@@ -1577,7 +1577,7 @@ export type components = {
              */
             changeTransferPolicyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /**
-             * @description Sha is the hydrated commit to restore onto the active branch. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Delete it to allow auto-merge, including of the reverted dry SHA. The restore runs once per spec.sha. Later promotions are left alone.
+             * @description Sha is the hydrated commit to restore onto the active branch. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Deleting it lifts that hold but does not by itself propose the reverted change again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.
              * @default
              */
             sha: string;
@@ -1586,7 +1586,7 @@ export type components = {
         RevertCommitStatus: {
             /** @description ActiveSha is the commit on the active branch after a successful restore. */
             activeSha?: string;
-            /** @description BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit exists. Empty when that active tip had no hydrator.metadata. Delete the RevertCommit to allow auto-merge, including of this dry SHA. */
+            /** @description BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit exists. Empty when that active tip had no hydrator.metadata. Deleting the RevertCommit lifts this block, but a promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch. */
             blockedDrySha?: string;
             /** @description Conditions represent the latest available observations of an object's state. */
             conditions?: components["schemas"]["Condition"][];
@@ -1597,7 +1597,7 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
-            /** @description RestoredFrom is the spec.sha this status applied. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync. */
+            /** @description RestoredFrom is the spec.sha this status applied. It is written in the same status update as activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync. */
             restoredFrom?: string;
         };
         /** @description RevisionReference contains a reference to a some information that is related in some way to another commit. For now, it supports only references to a commit. In the future, it may support other types of references. */

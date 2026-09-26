@@ -1,13 +1,18 @@
-import type { CellKind } from './types';
+import type { CellState } from './types';
+import { INSTANCE_ID_LABEL } from '@shared/utils/environments';
 
 /**
  * Whether the detail drawer should offer a command that restores this version.
  * Only past active versions (was-here / historical failed, plus a superseded
- * restore) with a hydrated SHA.
+ * restore) with a hydrated SHA. The live and proposed cells can also be `failed`,
+ * but restoring either is not a rollback: the live one is already on the branch,
+ * and the proposed one was never promoted, so restoring it would skip its gates.
  */
-export function canShowRevertCommand(kind: CellKind, hydratedSha?: string): boolean {
-  if (!hydratedSha) return false;
-  return kind === 'was-here' || kind === 'failed' || kind === 'restored';
+export function canShowRevertCommand(
+  cell: Pick<CellState, 'kind' | 'hydrated' | 'isLive' | 'isProposed'>,
+): boolean {
+  if (!cell.hydrated?.sha || cell.isLive || cell.isProposed) return false;
+  return cell.kind === 'was-here' || cell.kind === 'failed' || cell.kind === 'restored';
 }
 
 /** DNS-1123 label: lowercase, hyphens for everything else, no leading or trailing hyphen. */
@@ -38,6 +43,11 @@ export function revertCommitResourceName(branch: string, sha: string): string {
 export interface RevertCommitApplyInput {
   namespace: string;
   changeTransferPolicyName: string;
+  /**
+   * The ChangeTransferPolicy's instance-id label. A non-default install only watches resources
+   * carrying its instance id, so the RevertCommit must carry the same one.
+   */
+  instanceId?: string;
   branch: string;
   sha: string;
 }
@@ -46,8 +56,9 @@ export interface RevertCommitApplyInput {
  * `kubectl apply` of a RevertCommit for this environment and hydrated commit.
  *
  * Wrapped in `sh -c` so the heredoc is accepted when pasted into bash, zsh, or fish.
- * Creating the resource restores the active branch; deleting it lets the promotion
- * pull request merge again.
+ * Creating the resource restores the active branch; deleting it lets promotion pull
+ * requests auto-merge again. The reverted change itself may not be proposed again until
+ * a new commit lands on the proposed branch.
  */
 export function buildRevertCommitApplyCommand(input: RevertCommitApplyInput): string {
   const name = revertCommitResourceName(input.branch, input.sha);
@@ -57,6 +68,7 @@ export function buildRevertCommitApplyCommand(input: RevertCommitApplyInput): st
     'metadata:',
     `  name: ${name}`,
     `  namespace: ${input.namespace}`,
+    ...(input.instanceId ? ['  labels:', `    ${INSTANCE_ID_LABEL}: "${input.instanceId}"`] : []),
     'spec:',
     '  changeTransferPolicyRef:',
     `    name: ${input.changeTransferPolicyName}`,

@@ -5,6 +5,9 @@ import type {
   RevertCommit,
 } from '../types/view';
 
+/** Label a GitOps Promoter install stamps on the resources it owns (api/v1alpha1 InstanceIDLabel). */
+export const INSTANCE_ID_LABEL = 'promoter.argoproj.io/instance-id';
+
 /**
  * Reconstruct the per-environment status the UI renders. The bundle does not carry the
  * PromotionStrategy status (it was a duplicate aggregation); instead the environment list is
@@ -48,6 +51,7 @@ export function environmentsFromBundle(
     return {
       branch: env.branch,
       changeTransferPolicyName: ctpName,
+      instanceId: ctp?.metadata?.labels?.[INSTANCE_ID_LABEL],
       active: status.active ?? { dry: {}, hydrated: {} },
       proposed: status.proposed ?? { dry: {}, hydrated: {} },
       pullRequest: status.pullRequest,
