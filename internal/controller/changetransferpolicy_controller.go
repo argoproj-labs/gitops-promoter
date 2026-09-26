@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"reflect"
 	"strings"
@@ -1189,9 +1190,7 @@ func (r *ChangeTransferPolicyReconciler) upsertChangeTransferPolicyHistory(ctx c
 	}
 
 	ctphLabels := make(map[string]string, len(ctp.Labels)+1)
-	for k, v := range ctp.Labels {
-		ctphLabels[k] = v
-	}
+	maps.Copy(ctphLabels, ctp.Labels)
 	ctphLabels[promoterv1alpha1.ChangeTransferPolicyLabel] = utils.KubeSafeLabel(ctp.Name)
 	ctphLabels = utils.StampInstanceIDLabel(ctphLabels)
 

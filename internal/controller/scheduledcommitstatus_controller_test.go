@@ -69,7 +69,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		By("Cleaning up test resources")
 		if promotionStrategy != nil {
 			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
+				Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace,
 			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
@@ -430,7 +430,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		AfterEach(func() {
 			_ = k8sClient.Delete(keyCtx, keyPwcs)
 			_ = k8sClient.Delete(keyCtx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Name: keyPS.Name, Namespace: keyPS.Namespace},
+				Name: keyPS.Name, Namespace: keyPS.Namespace,
 			})
 			_ = k8sClient.Delete(keyCtx, keyPS)
 			_ = k8sClient.Delete(keyCtx, keyGitRepo)
@@ -546,7 +546,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 		}
 		if promotionStrategy != nil {
 			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
+				Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace,
 			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
