@@ -1118,8 +1118,9 @@ type RestoreResult struct {
 //
 // The active update is a new commit parented on the current tip, not a reset, so history stays
 // fast-forwardable. The commit message and the promotion-history note both carry
-// Promoter-restored-from set to targetSha; the note is copied from targetSha with that key and
-// Pull-request-merge-time overwritten. The note is pushed before the branch.
+// Promoter-restored-from set to targetSha; the note is copied from targetSha with only that key
+// added, so its Pull-request-merge-time stays the original promotion's. The restore's own time is
+// the restore commit's commit time. The note is pushed before the branch.
 //
 // A repeat call is a no-op when the active tip already has the restore marker for targetSha and
 // the matching tree. When the active tip already has the matching tree without that marker, the
@@ -1282,7 +1283,6 @@ func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha
 		trailers = map[string][]string{}
 	}
 	trailers[constants.TrailerRestoredFrom] = []string{targetSha}
-	trailers[constants.TrailerPullRequestMergeTime] = []string{time.Now().UTC().Format(time.RFC3339)}
 	if err := g.SetHistoryNote(ctx, restoreSha, trailers); err != nil {
 		return fmt.Errorf("write restore note for %q: %w", restoreSha, err)
 	}

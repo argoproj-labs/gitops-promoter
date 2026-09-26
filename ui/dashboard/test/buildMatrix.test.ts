@@ -52,19 +52,21 @@ function strategyWithHistory(restored: boolean): PromotionStrategy {
   const restoreEntry = {
     active: {
       dry: dryCommit(OLD_DRY, 'chore: bump version to v1.0.1993', '2026-09-17T17:24:26Z'),
+      // The restore commit itself; its commit time is when the restore was written.
       hydrated: {
         sha: RESTORE_HYDRATED,
         subject: `Revert ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
         author: 'Zach Aller <zach@example.com>',
+        commitTime: '2026-09-25T12:53:44Z',
       },
       commitStatuses: [],
     },
-    // Copied verbatim from the restored version, then re-stamped with the restore time.
+    // Copied verbatim from the restored version, including its original merge time.
     pullRequest: {
       id: '2957',
       url: 'https://github.com/org/repo/pull/2957',
       state: 'merged',
-      prMergeTime: '2026-09-25T12:53:44Z',
+      prMergeTime: '2026-09-17T18:00:00Z',
     },
     restoredFrom: OLD_HYDRATED,
   };
@@ -83,6 +85,7 @@ function strategyWithHistory(restored: boolean): PromotionStrategy {
             sha: RESTORE_HYDRATED,
             subject: `Revert ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
             author: 'Zach Aller <zach@example.com>',
+            commitTime: '2026-09-25T12:53:44Z',
           }
         : { sha: NEW_HYDRATED },
       commitStatuses: [],
@@ -136,10 +139,32 @@ describe('buildMatrix restore rows', () => {
     expect(originalRow.restoreSubject).toBeUndefined();
   });
 
-  it('sorts the restore row to the top using the restore time, not the dry commit time', () => {
+  it('sorts the restore row to the top using the restore commit time, not the copied merge time', () => {
     const { rows } = buildMatrix(strategyWithHistory(true));
     expect(rows[0]!.restoredFrom).toBe(OLD_HYDRATED);
     expect(rows[0]!.freshestAt).toBe(new Date('2026-09-25T12:53:44Z').getTime());
+    expect(rows[0]!.cells[BRANCH]!.at).toBe('2026-09-25T12:53:44Z');
+  });
+
+  it('measures how long the replaced version was live up to the restore time', () => {
+    const { rows } = buildMatrix(strategyWithHistory(true));
+    const replaced = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
+    expect(replaced.replacedAt).toBe('2026-09-25T12:53:44Z');
+    expect(replaced.liveDurationMs).toBe(
+      new Date('2026-09-25T12:53:44Z').getTime() - new Date('2026-09-24T21:33:41Z').getTime(),
+    );
+  });
+
+  it('falls back to the merge time for a restore entry without a commit time', () => {
+    const strategy = strategyWithHistory(true);
+    const env = strategy.status!.environments![0] as Environment;
+    const restore = env.history![0]!;
+    delete restore.active!.hydrated!.commitTime;
+    restore.pullRequest = { ...restore.pullRequest, prMergeTime: '2026-09-25T10:00:00Z' };
+
+    const { rows } = buildMatrix(strategy);
+    expect(rows[0]!.restoredFrom).toBe(OLD_HYDRATED);
+    expect(rows[0]!.cells[BRANCH]!.at).toBe('2026-09-25T10:00:00Z');
   });
 
   it('puts the live cell on the restore row and leaves the original superseded', () => {

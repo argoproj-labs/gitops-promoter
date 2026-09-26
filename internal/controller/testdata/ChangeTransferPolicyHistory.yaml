@@ -63,18 +63,23 @@ status:
         mergedTargetSha: "4444444444444444444444444444444444444444"
       mergeCommitSnapshotMismatch: true
     # A manual restore of the active branch rather than a merged promotion. The tree (and so active.dry)
-    # repeats the version named by restoredFrom; the pull request and commit statuses are copied from that
-    # version and describe the original promotion, not the restore.
+    # repeats the version named by restoredFrom; the pull request (including prMergeTime) and commit statuses
+    # are copied from that version and describe the original promotion, not the restore. active.hydrated is the
+    # restore commit itself, so its commitTime is when the restore was written.
     - active:
         dry:
           sha: "1111111111111111111111111111111111111111"
+        hydrated:
+          sha: "5555555555555555555555555555555555555555"
+          commitTime: 2023-09-03T01:00:00Z
+          subject: Revert environment/dev to 4444444
       proposed:
         hydrated:
           sha: "2222222222222222222222222222222222222222"
       pullRequest:
         id: "848"
         state: merged
-        prMergeTime: 2023-09-03T01:00:00Z
+        prMergeTime: 2023-09-02T01:00:00Z
         url: https://github.com/org/repo/pull/848
         mergedTargetSha: "5555555555555555555555555555555555555555"
       restoredFrom: "4444444444444444444444444444444444444444"

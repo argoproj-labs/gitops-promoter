@@ -8,7 +8,10 @@ live and you need the previous version back now, before a fix can go through the
 
 1. **Restore.** The controller writes a new commit on top of the active branch whose content is the chosen hydrated
    commit: the whole tree, or only `activePath` when the ChangeTransferPolicy sets one. It is an ordinary commit, not a
-   force-push, so the branch history stays intact. The proposed branch is not touched.
+   force-push, so the branch history stays intact. The proposed branch is not touched. The restore commit gets a copy
+   of the chosen version's [promotion-history note](../debugging/git-trailers.md) with `Promoter-restored-from` added.
+   The copied pull request details, including `Pull-request-merge-time`, still describe that version's original
+   promotion.
 2. **Block.** The dry SHA that was live before the restore is recorded in `status.blockedDrySha`. The
    ChangeTransferPolicy will not open a promotion pull request for it.
 3. **Hold.** While the RevertCommit exists, nothing is auto-merged into that environment. A pull request for a
@@ -46,9 +49,10 @@ spec:
 ```
 
 When `status.activeSha` is set and the Ready condition is `True`, the environment is running the restored version. The
-restore also shows up in the environment's promotion history, marked as a restore. A `sha` that is not in the active
-branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and
-the Ready condition is `False` with the reason.
+restore also shows up in the environment's promotion history, marked by `restoredFrom`. The restore's time is the
+restore commit's commit time, `active.hydrated.commitTime`; its `pullRequest.prMergeTime` is the original promotion's.
+A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an
+unmerged pull request) is refused, and the Ready condition is `False` with the reason.
 
 > [!NOTE]
 > Creating a RevertCommit is the authorization boundary: anyone who can create one in the ChangeTransferPolicy's

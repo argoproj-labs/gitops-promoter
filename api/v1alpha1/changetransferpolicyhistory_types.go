@@ -104,8 +104,9 @@ type History struct {
 	// RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
 	// pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
 	// tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
-	// pull request and commit status fields are copied from the restored version and describe the original
-	// promotion, not the restore.
+	// pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+	// version and describe the original promotion, not the restore. active.hydrated is the restore commit
+	// itself, so active.hydrated.commitTime is when the restore was written.
 	// +optional
 	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -103,7 +104,11 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1}))
 		Expect(got[constants.TrailerPullRequestID]).To(Equal([]string{"9"}))
-		Expect(got[constants.TrailerPullRequestMergeTime]).NotTo(Equal([]string{"2020-01-01T00:00:00Z"}))
+		Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal([]string{"2020-01-01T00:00:00Z"}), "the original promotion's merge time is kept")
+
+		restoreMeta, err := g.GetShaMetadataFromGit(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(restoreMeta.CommitTime.Time).To(BeTemporally("~", time.Now(), time.Minute), "the restore commit's own time is the restore time")
 
 		again, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
 		Expect(err).NotTo(HaveOccurred())

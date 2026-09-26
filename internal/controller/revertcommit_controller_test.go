@@ -232,7 +232,7 @@ var _ = Describe("RevertCommit Controller", func() {
 			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
 			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1Sha}))
 			Expect(got[constants.TrailerPullRequestID]).To(Equal([]string{"9"}))
-			Expect(got[constants.TrailerPullRequestMergeTime]).NotTo(Equal([]string{"2020-01-01T00:00:00Z"}))
+			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal([]string{"2020-01-01T00:00:00Z"}))
 		})
 	})
 })

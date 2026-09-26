@@ -135,8 +135,18 @@ function setCell(row: CommitRow, branch: string, next: CellState) {
 
 type HistoryEntry = NonNullable<StatusEnvironment['history']>[number];
 
+/**
+ * When the entry's commit landed on the active branch. A restore keeps the restored version's
+ * pull request, merge time included, so its own time is the restore commit's commit time.
+ */
+function landedAtRaw(entry: HistoryEntry | undefined): string | undefined {
+  const restoreTime = entry?.restoredFrom ? entry.active?.hydrated?.commitTime : undefined;
+  if (restoreTime) return restoreTime;
+  return entry?.pullRequest?.prMergeTime ?? entry?.active?.dry?.commitTime ?? undefined;
+}
+
 function wentLiveAt(entry: HistoryEntry | undefined): number | null {
-  const raw = entry?.pullRequest?.prMergeTime ?? entry?.active?.dry?.commitTime;
+  const raw = landedAtRaw(entry);
   if (!raw) return null;
   const t = new Date(raw).getTime();
   return Number.isFinite(t) ? t : null;
@@ -209,8 +219,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
     const wentLive = wentLiveAt(entry);
     const replacer = idx > 0 ? history[idx - 1] : undefined;
     const replacedAt = wentLiveAt(replacer);
-    const replacedAtRaw =
-      replacer?.pullRequest?.prMergeTime ?? replacer?.active?.dry?.commitTime ?? undefined;
+    const replacedAtRaw = landedAtRaw(replacer);
     const liveDurationMs =
       wentLive != null && replacedAt != null && replacedAt > wentLive
         ? replacedAt - wentLive
@@ -232,10 +241,10 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       liveDurationMs,
       replacedAt: replacedAtRaw,
       // A restore's dry commit predates the restore itself, so its own timestamp would
-      // sort the row back next to the original promotion. The note records the restore
-      // time as the merge time, which is what places the row at the top.
+      // sort the row back next to the original promotion. The restore's time is what
+      // places the row at the top.
       at: restoreKey
-        ? (entry.pullRequest?.prMergeTime ?? commit.commitTime ?? undefined)
+        ? landedAtRaw(entry)
         : (commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined),
     });
   });
@@ -386,9 +395,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           // marker and timestamp have to be carried here or they are lost and the row
           // sorts by the restored version's original (older) commit time.
           restoredFrom: activeRestore?.restoredFrom,
-          at: activeRestore
-            ? (activeRestore.pullRequest?.prMergeTime ?? env.active.dry.commitTime ?? undefined)
-            : (env.active.dry.commitTime ?? undefined),
+          at: activeRestore ? landedAtRaw(activeRestore) : (env.active.dry.commitTime ?? undefined),
         });
       }
     }

@@ -3062,7 +3062,9 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		// trailer onto it. Without it the entry is identical to the original promotion and the
 		// UI silently folds the restore into that version's existing row.
 		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m",
-			`{"`+constants.TrailerPullRequestID+`":["77"],"`+constants.TrailerRestoredFrom+`":["`+commitSha+`"]}`, commitSha)
+			`{"`+constants.TrailerPullRequestID+`":["77"],"`+
+				constants.TrailerPullRequestMergeTime+`":["2020-01-01T00:00:00Z"],"`+
+				constants.TrailerRestoredFrom+`":["`+commitSha+`"]}`, commitSha)
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
@@ -3070,6 +3072,11 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
+		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
+			"the original promotion's merge time is kept on a restore entry")
+		committed := strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha))
+		Expect(entry.Active.Hydrated.CommitTime.Format(time.RFC3339)).To(Equal(committed),
+			"the entry's own commit time is what readers use as the restore time")
 	})
 
 	It("leaves restoredFrom empty for an ordinary promotion", func() {
