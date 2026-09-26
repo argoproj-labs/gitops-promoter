@@ -1126,20 +1126,20 @@ type RestoreResult struct {
 // the matching tree. When the active tip already has the matching tree without that marker, the
 // branch is running that version already: nothing is written, nothing moved off the branch, and
 // the result is Unchanged with an empty BlockedDrySha. Blocking the live dry SHA there would hold
-// back the version the caller asked for. Pushes use --force-with-lease against the tip this call
-// observed.
+// back the version the caller asked for. The branch push uses --force-with-lease against the tip
+// this call observed. The notes push is a normal push.
 //
 // targetSha must be the active tip or one of its ancestors; anything else is refused, so only a
 // version that was on the active branch before can be restored.
 //
 // Operates on the object DB only. Requires CloneRepo to have run. Fetches the active branch and
-// the promotion-history notes ref.
+// both notes refs (hydrator.metadata and promoter.history).
 //
 // The git commands run, in order (A = activeBranch, T = targetSha):
 //
 //	git fetch origin A                      && git rev-parse origin/A          # activeTip
 //	git cat-file -e T^{commit}                                                 # T must be a commit
-//	git merge-base --is-ancestor T <activeTip>                                 # ...already on A
+//	git merge-base --is-ancestor T <activeTip>                                 # skipped when T is activeTip
 //	git fetch origin +refs/notes/hydrator.metadata:refs/notes/hydrator.metadata
 //	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
 //
@@ -1152,26 +1152,30 @@ type RestoreResult struct {
 //	git read-tree --prefix=<activePath>/ T:<activePath>
 //	git write-tree
 //
-//	# nothing to change? compare activeTip^{tree} with that tree; when equal, look for
-//	# Promoter-restored-from: T in the history note, falling back to the commit trailers.
+//	# nothing to change? compare activeTip^{tree} with that tree. When equal, look for
+//	# Promoter-restored-from: T on the history note. Commit trailers are read only when that note
+//	# is absent, empty, or not valid JSON; a note that parses and merely lacks the key is kept.
 //	# Equal tree with the marker: repeat call. Equal tree without it: Unchanged, return here.
 //	git rev-parse --verify <activeTip>^{tree}
-//	git notes --ref=refs/notes/promoter.history show <activeTip>
+//	git notes --ref=refs/notes/promoter.history show <activeTip>               # only when trees are equal
 //	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message
 //	git interpret-trailers --only-trailers < message                           # fallback: trailers
 //
-//	# otherwise create the restore commit, note, and push (note first)
+//	# otherwise create the restore commit, note, and push (note first).
+//	# SetHistoryNote re-fetches before add, and retries that fetch/add/push up to 3 times.
 //	git commit-tree <tree> -p <activeTip> -m 'Revert A to <T[:7]>
 //
 //	Promoter-restored-from: T'
 //	git notes --ref=refs/notes/promoter.history show T                         # copy T's note
+//	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
 //	git notes --ref=refs/notes/promoter.history add -f -m '<json>' <restoreSha>
 //	git push origin refs/notes/promoter.history:refs/notes/promoter.history
 //	git push --force-with-lease=refs/heads/A:<activeTip> origin <restoreSha>:refs/heads/A
 //
-//	# dry SHA that was on active; on a repeat call activeTip is the restore commit, so use its parent
+//	# dry SHA that was on active; on a repeat call activeTip is the restore commit, so use its parent.
+//	# The blob is hydrator.metadata, or <activePath>/hydrator.metadata when activePath is set.
 //	git log -1 --format=%P <activeTip>                                         # repeat call only
-//	git cat-file --batch <<< '<rolledBack>:<activePath>/hydrator.metadata'     # .drySha -> BlockedDrySha
+//	git cat-file --batch <<< '<rolledBack>:<path>/hydrator.metadata'           # .drySha -> BlockedDrySha
 //	git cat-file -e <rolledBack>^{commit}                                      # only if that blob is missing
 func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeBranch, activePath, targetSha string) (RestoreResult, error) {
 	logger := log.FromContext(ctx)
@@ -1257,8 +1261,9 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 	return RestoreResult{ActiveSha: restoreSha, BlockedDrySha: activeMeta.Sha}, nil
 }
 
-// promotionTrailers returns the promotion-history note for sha, or the commit message trailers when
-// that note is absent. Commit-message trailers are parsed at most once per cached commit.
+// promotionTrailers returns the promotion-history note for sha. Commit-message trailers are used
+// only when that note is absent, empty, or not valid JSON, and are parsed at most once per cached
+// commit. A note that parses is returned as-is, even when it lacks a particular key.
 func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	trailers, err := g.GetHistoryNote(ctx, sha)
 	if err != nil {
@@ -1274,8 +1279,8 @@ func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha strin
 }
 
 // CommitIsRestore reports whether sha is a commit written by a RevertCommit restore. The marker is
-// Promoter-restored-from on the promotion-history note, or on the commit trailers when the commit
-// has no note.
+// Promoter-restored-from on the promotion-history note, or on the commit trailers when that note is
+// absent, empty, or not valid JSON.
 func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string) (bool, error) {
 	trailers, err := g.promotionTrailers(ctx, sha)
 	if err != nil {
@@ -1285,7 +1290,8 @@ func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string)
 }
 
 // hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
-// promotion-history note or, when it has none, from its commit trailers.
+// promotion-history note or, when that note is absent, empty, or not valid JSON, from its commit
+// trailers.
 func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targetSha string) (bool, error) {
 	trailers, err := g.promotionTrailers(ctx, sha)
 	if err != nil {
