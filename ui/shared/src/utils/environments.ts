@@ -33,7 +33,7 @@ export function environmentsFromBundle(
 
   const revertsByPolicy = new Map<string, EnvironmentRevertCommit>();
   for (const rc of revertCommits) {
-    const policy = rc.spec?.changeTransferPolicyRef?.name;
+    const policy = rc.spec?.changeTransferPolicyRef.name;
     const name = rc.metadata?.name;
     if (!policy || !name || rc.metadata?.deletionTimestamp) continue;
     if (!revertsByPolicy.has(policy)) {
@@ -71,5 +71,5 @@ export function revertHoldTooltip(name: string, reverted: boolean): string {
 /** Whether the environment's current proposed commit is the one its RevertCommit reverted. */
 export function proposedIsReverted(env: Environment): boolean {
   const blocked = env.revertCommit?.blockedDrySha;
-  return !!blocked && blocked === env.proposed?.dry?.sha;
+  return !!blocked && blocked === env.proposed.dry?.sha;
 }
