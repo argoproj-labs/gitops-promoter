@@ -66,10 +66,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 		// The DependentsSuccessfulCommitStatus produces the ordering gate CommitStatus declared above.
 		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: "default",
-			},
+			Name:      name,
+			Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 					Name: name,

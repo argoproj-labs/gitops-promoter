@@ -4002,7 +4002,7 @@ func createDependentsSuccessfulCommitStatus(ctx context.Context, ps *promoterv1a
 		dcsName = ps.Name
 	}
 	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: dcsName, Namespace: ps.Namespace},
+		Name: dcsName, Namespace: ps.Namespace,
 		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -4101,7 +4101,7 @@ var _ = Describe("PromotionStrategy orderCommitStatusRef resolution", func() {
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Name: name, Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other-ps"},
 				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,

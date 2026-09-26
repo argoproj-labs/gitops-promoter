@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -39,7 +38,7 @@ var _ = Describe("removeUnreferencedSecretFinalizers", func() {
 	)
 
 	secret := func(name string) *v1.Secret {
-		return &v1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Finalizers: []string{finalizer}}}
+		return &v1.Secret{Name: name, Namespace: ns, Finalizers: []string{finalizer}}
 	}
 
 	It("keeps cleaning up the other Secrets when one update fails", func() {
