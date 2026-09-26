@@ -63,6 +63,9 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
+          // status.pullRequest keeps the last merged one; under a RevertCommit only an open one is this commit's.
+          const heldWithoutOpenPr = !!env.revertCommit && env.prTooltip?.status !== 'opened';
+
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
@@ -117,9 +120,11 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
-                      prUrl={env.prUrl}
-                      prNumber={env.prNumber?.toString()}
+                      prUrl={heldWithoutOpenPr ? null : env.prUrl}
+                      prNumber={heldWithoutOpenPr ? undefined : env.prNumber?.toString()}
                       prTooltip={env.prTooltip}
+                      revertCommit={env.revertCommit}
+                      proposedIsReverted={env.proposedIsReverted}
                     />
                   ) : null}
                 </div>

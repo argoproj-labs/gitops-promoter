@@ -29,12 +29,16 @@ import (
 // RevertCommitApplyConfiguration represents a declarative configuration of the RevertCommit type for use
 // with apply.
 //
-// RevertCommit is the Schema for the revertcommits API
+// RevertCommit restores one environment's active branch to a previously hydrated commit and records
+// the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+// Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
+// policy's namespace can restore that environment, and the controller's git credentials perform the push.
+// The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
 type RevertCommitApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *RevertCommitSpecApplyConfiguration `json:"spec,omitempty"`
-	Status                           *apiv1alpha1.RevertCommitStatus     `json:"status,omitempty"`
+	Spec                             *RevertCommitSpecApplyConfiguration   `json:"spec,omitempty"`
+	Status                           *RevertCommitStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // RevertCommit constructs a declarative configuration of the RevertCommit type for use with
@@ -260,8 +264,8 @@ func (b *RevertCommitApplyConfiguration) WithSpec(value *RevertCommitSpecApplyCo
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithStatus(value apiv1alpha1.RevertCommitStatus) *RevertCommitApplyConfiguration {
-	b.Status = &value
+func (b *RevertCommitApplyConfiguration) WithStatus(value *RevertCommitStatusApplyConfiguration) *RevertCommitApplyConfiguration {
+	b.Status = value
 	return b
 }
 

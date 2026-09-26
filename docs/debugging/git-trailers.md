@@ -24,6 +24,7 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 | `Commit-status-active-<key>-url` | Gate detail link. Ignored unless `http://` or `https://`. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-active-<key>-description` | Gate description, **JSON-encoded** so it survives multi-line and quoted text. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-proposed-<key>-*` | Same three suffixes for gates on the proposed branch. | `status.history[].proposed.commitStatuses[]` |
+| `Promoter-restored-from` | The hydrated SHA a [RevertCommit](../advanced-usage/rolling-back.md) restored the active branch to. Written to both the restore commit's message and its note, and marks the entry as a restore rather than a merged pull request. The other trailers in that note are copied from the restored version's note and describe its original promotion. | `status.history[].restoredFrom` |
 | `Promoter-merge-commit-snapshot-mismatch` | `true` when snapshot proposed dry SHA disagreed with hydrator metadata on the merge commit and the note was corrected. Written **only** to the note. | `status.history[].mergeCommitSnapshotMismatch` |
 
 > [!NOTE]
@@ -88,7 +89,7 @@ git notes --ref=promoter.history show <merge-commit-sha> | jq '.["Sha-dry-propos
 ```
 
 > [!TIP]
-> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block. `Pull-request-merge-time` is not on the strip list and can still appear there.
+> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block. `Pull-request-merge-time` and `Promoter-restored-from` are not on the strip list and can still appear there; the ChangeTransferPolicy controller reads `Promoter-restored-from` from that body to recognize a restore commit.
 
 ## Related
 

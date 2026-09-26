@@ -213,6 +213,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RevertCommitApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
 		return &apiv1alpha1.RevertCommitSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitStatus"):
+		return &apiv1alpha1.RevertCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevisionReference"):
 		return &apiv1alpha1.RevisionReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatus"):

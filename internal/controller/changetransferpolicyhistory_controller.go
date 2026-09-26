@@ -420,6 +420,7 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
+	historyEntry.RestoredFrom = getFirstTrailerValue(activeTrailers, constants.TrailerRestoredFrom)
 	// The note is written on the merged target sha and history walks first-parent commits of the active
 	// branch, so the entry's own sha is that commit; no trailer records it.
 	historyEntry.PullRequest.MergedTargetSha = sha

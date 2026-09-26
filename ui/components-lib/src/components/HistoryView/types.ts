@@ -12,6 +12,7 @@ export type CellKind =
   | 'live'
   | 'in-flight'
   | 'was-here'
+  | 'restored'
   | 'failed'
   | 'no-op'
   | 'no-changes'
@@ -29,6 +30,14 @@ export interface CellState {
   health: HealthKey;
   pullRequest?: PullRequest;
   isProposed?: boolean;
+  /** True for the cell describing the environment's current active commit. */
+  isLive?: boolean;
+  /** RevertCommit holding this environment. The proposed cell turns red and shows only an open pull request. */
+  revertCommit?: string;
+  /** True when this proposed commit is the one that RevertCommit reverted. */
+  revertedByRevertCommit?: boolean;
+  /** Hydrated sha this cell's commit was restored to, when it came from a manual restore. */
+  restoredFrom?: string;
   noopNote?: string;
   supersededById?: string;
   at?: string;
@@ -38,6 +47,10 @@ export interface CellState {
 
 export interface EnvColumn {
   branch: string;
+  /** ChangeTransferPolicy that owns this environment, when the bundle includes one. */
+  changeTransferPolicyName?: string;
+  /** Instance-id label of that ChangeTransferPolicy; unset for the default install. */
+  instanceId?: string;
   autoMerge: boolean;
   color: string;
   liveCommit?: Commit;
@@ -69,6 +82,16 @@ export interface CommitRow {
   prUrl?: string;
   refShaShort?: string;
   refUrl?: string;
+  /**
+   * Hydrated sha the active branch was restored to. Set only on rows built from a
+   * restore entry, which share a dry sha with the original promotion's row and are
+   * keyed by hydrated sha to keep the two distinct.
+   */
+  restoredFrom?: string;
+  /** Subject of the revert commit itself, e.g. `Revert environments/development to 66ac6bf`. */
+  restoreSubject?: string;
+  /** Short sha of the revert commit on the active branch. */
+  restoreShaShort?: string;
   repoUrl: string;
   freshestAt: number;
   earliestAt: number;

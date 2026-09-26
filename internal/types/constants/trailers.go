@@ -23,6 +23,10 @@ const (
 	TrailerPullRequestTargetBranch = "Pull-request-target-branch"
 	// TrailerPullRequestUrl is the trailer key used to store the URL of the pull request.
 	TrailerPullRequestUrl = "Pull-request-url"
+	// TrailerRestoredFrom marks a promotion-history note written by a manual restore rather than by a merged
+	// pull request. Its value is the hydrated SHA the active branch was restored to. The restore copies the
+	// note from that SHA, so without this marker the entry is indistinguishable from the original promotion.
+	TrailerRestoredFrom = "Promoter-restored-from"
 	// TrailerShaDryActive is the trailer key used to store the SHA of the active dry commit.
 	TrailerShaDryActive = "Sha-dry-active"
 	// TrailerShaDryProposed is the trailer key used to store the SHA of the proposed dry commit.

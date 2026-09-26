@@ -25,6 +25,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
     ps.spec,
     bundle.changeTransferPolicies ?? [],
     bundle.changeTransferPolicyHistories ?? [],
+    bundle.revertCommits ?? [],
   );
   const psWithEnvironments = {
     ...ps,

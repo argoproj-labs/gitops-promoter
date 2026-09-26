@@ -62,3 +62,19 @@ status:
         url: https://github.com/org/repo/pull/848
         mergedTargetSha: "4444444444444444444444444444444444444444"
       mergeCommitSnapshotMismatch: true
+    # A manual restore of the active branch rather than a merged promotion. The tree (and so active.dry)
+    # repeats the version named by restoredFrom; the pull request and commit statuses are copied from that
+    # version and describe the original promotion, not the restore.
+    - active:
+        dry:
+          sha: "1111111111111111111111111111111111111111"
+      proposed:
+        hydrated:
+          sha: "2222222222222222222222222222222222222222"
+      pullRequest:
+        id: "848"
+        state: merged
+        prMergeTime: 2023-09-03T01:00:00Z
+        url: https://github.com/org/repo/pull/848
+        mergedTargetSha: "5555555555555555555555555555555555555555"
+      restoredFrom: "4444444444444444444444444444444444444444"

@@ -20,7 +20,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
-| RevertCommit | v1alpha1 | 0 | 0.00% |
+| RevertCommit | v1alpha1 | 2 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 21 | 0.00% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
@@ -249,7 +249,10 @@ Source: `promoter.argoproj.io_revertcommits.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec` | 2 | 0.00% | `self == oldSelf` |
+| **Total** | **2** | **0.00%** | |
 
 #### ScheduledCommitStatus
 

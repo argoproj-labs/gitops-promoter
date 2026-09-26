@@ -22,10 +22,24 @@ package v1alpha1
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// RevertCommitSpec defines the desired state of RevertCommit
+// RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+// once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
+// existing RevertCommit at a different sha or policy would lose track of what it reverted. To
+// restore something else, create a new RevertCommit.
 type RevertCommitSpecApplyConfiguration struct {
-	// Foo is an example field of RevertCommit. Edit revertcommit_types.go to remove/update
-	Foo *string `json:"foo,omitempty"`
+	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
+	// The policy supplies the repository, the active and proposed branches, and activePath.
+	ChangeTransferPolicyRef *ObjectReferenceApplyConfiguration `json:"changeTransferPolicyRef,omitempty"`
+	// Sha is the hydrated commit to restore onto the active branch. The controller writes a new
+	// commit (the commit's tree, or only activePath when the policy sets one) parented on the
+	// current active tip and records a promotion-history note with Promoter-restored-from.
+	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
+	// a promotion pull request that would put the active branch's dry SHA back. A pull request
+	// for a different proposed dry SHA may open, but nothing is auto-merged while this
+	// RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+	// reverted change again; see status.blockedDrySha.
+	// The restore runs once. Later promotions are left alone.
+	Sha *string `json:"sha,omitempty"`
 }
 
 // RevertCommitSpecApplyConfiguration constructs a declarative configuration of the RevertCommitSpec type for use with
@@ -34,10 +48,18 @@ func RevertCommitSpec() *RevertCommitSpecApplyConfiguration {
 	return &RevertCommitSpecApplyConfiguration{}
 }
 
-// WithFoo sets the Foo field in the declarative configuration to the given value
+// WithChangeTransferPolicyRef sets the ChangeTransferPolicyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Foo field is set to the value of the last call.
-func (b *RevertCommitSpecApplyConfiguration) WithFoo(value string) *RevertCommitSpecApplyConfiguration {
-	b.Foo = &value
+// If called multiple times, the ChangeTransferPolicyRef field is set to the value of the last call.
+func (b *RevertCommitSpecApplyConfiguration) WithChangeTransferPolicyRef(value *ObjectReferenceApplyConfiguration) *RevertCommitSpecApplyConfiguration {
+	b.ChangeTransferPolicyRef = value
+	return b
+}
+
+// WithSha sets the Sha field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Sha field is set to the value of the last call.
+func (b *RevertCommitSpecApplyConfiguration) WithSha(value string) *RevertCommitSpecApplyConfiguration {
+	b.Sha = &value
 	return b
 }

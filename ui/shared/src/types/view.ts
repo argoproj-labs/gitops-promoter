@@ -32,6 +32,9 @@ export type ChangeTransferPolicy = Schemas['ChangeTransferPolicy'];
 /** Embedded in PromotionStrategyDetails.changeTransferPolicyHistories. */
 export type ChangeTransferPolicyHistory = Schemas['ChangeTransferPolicyHistory'];
 
+/** Embedded in PromotionStrategyDetails.revertCommits. */
+export type RevertCommit = Schemas['RevertCommit'];
+
 /** Embedded in PromotionStrategyDetails (and list responses). */
 export type PullRequestResource = Schemas['PullRequest'];
 

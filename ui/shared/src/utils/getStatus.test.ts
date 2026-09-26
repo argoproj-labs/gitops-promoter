@@ -68,6 +68,18 @@ describe('getEnvironmentStatus', () => {
     ).toBe('failure');
   });
 
+  it('is promoted when the differing proposed commit is the one a RevertCommit reverted', () => {
+    const reverted = env({ activeSha: 'abc', proposedSha: 'def', proposedPhases: ['failure'] });
+    reverted.revertCommit = { name: 'revert-staging', blockedDrySha: 'def' };
+    expect(getEnvironmentStatus(reverted)).toBe('promoted');
+  });
+
+  it('is still pending when a RevertCommit holds a newer proposed commit', () => {
+    const held = env({ activeSha: 'abc', proposedSha: 'ghi' });
+    held.revertCommit = { name: 'revert-staging', blockedDrySha: 'def' };
+    expect(getEnvironmentStatus(held)).toBe('pending');
+  });
+
   it('is unknown when proposed dry SHA is missing', () => {
     expect(getEnvironmentStatus(env({ activeSha: 'abc' }))).toBe('unknown');
   });
