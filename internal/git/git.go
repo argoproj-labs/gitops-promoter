@@ -1227,26 +1227,8 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 
 	restoreSha := activeTip
 	if !already {
-		if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
-			return RestoreResult{}, err
-		}
-		short := targetSha
-		if len(short) > 7 {
-			short = short[:7]
-		}
-		message := fmt.Sprintf("Revert %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, targetSha)
-		restoreSha, err = g.commitTree(ctx, wantTree, []string{activeTip}, message)
+		restoreSha, err = g.createRestoreCommit(ctx, activeBranch, activeTip, targetSha, wantTree)
 		if err != nil {
-			return RestoreResult{}, fmt.Errorf("failed to create restore commit for %q: %w", activeBranch, err)
-		}
-		// Note first, then branch. If the branch push then loses to a concurrent update, the note
-		// is left on a commit that never lands, which nothing reads; the retry writes a new
-		// restore commit and note. The other order could leave a restore on the active branch
-		// with no note, and history would lose the pull request and checks copied from targetSha.
-		if err := g.writeRestoreNote(ctx, restoreSha, targetSha); err != nil {
-			return RestoreResult{}, err
-		}
-		if err := g.pushCommitWithLease(ctx, restoreSha, activeBranch, activeTip); err != nil {
 			return RestoreResult{}, err
 		}
 		logger.Info("Restored active branch", "branch", activeBranch, "from", targetSha, "commit", restoreSha)
@@ -1270,6 +1252,34 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 	}
 
 	return RestoreResult{ActiveSha: restoreSha, BlockedDrySha: activeMeta.Sha}, nil
+}
+
+// createRestoreCommit commits the restore tree, writes its history note, and pushes it onto
+// activeBranch, leased against activeTip.
+func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeBranch, activeTip, targetSha, wantTree string) (string, error) {
+	if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
+		return "", err
+	}
+	short := targetSha
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	message := fmt.Sprintf("Revert %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, targetSha)
+	restoreSha, err := g.commitTree(ctx, wantTree, []string{activeTip}, message)
+	if err != nil {
+		return "", fmt.Errorf("failed to create restore commit for %q: %w", activeBranch, err)
+	}
+	// Note first, then branch. If the branch push then loses to a concurrent update, the note
+	// is left on a commit that never lands, which nothing reads; the retry writes a new
+	// restore commit and note. The other order could leave a restore on the active branch
+	// with no note, and history would lose the pull request and checks copied from targetSha.
+	if err := g.writeRestoreNote(ctx, restoreSha, targetSha); err != nil {
+		return "", err
+	}
+	if err := g.pushCommitWithLease(ctx, restoreSha, activeBranch, activeTip); err != nil {
+		return "", err
+	}
+	return restoreSha, nil
 }
 
 // promotionTrailers returns the promotion-history note for sha. Commit-message trailers are used

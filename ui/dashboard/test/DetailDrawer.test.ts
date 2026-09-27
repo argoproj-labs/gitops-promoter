@@ -155,12 +155,12 @@ describe('revertCommand helpers', () => {
 
   it('hides the command when the cell carries Promoter-restored-from', () => {
     const hydrated = { sha: HYDRATED_SHA };
-    expect(
-      canShowRevertCommand({ kind: 'restored', hydrated, restoredFrom: 'abc1234' }),
-    ).toBe(false);
-    expect(
-      canShowRevertCommand({ kind: 'was-here', hydrated, restoredFrom: 'abc1234' }),
-    ).toBe(false);
+    expect(canShowRevertCommand({ kind: 'restored', hydrated, restoredFrom: 'abc1234' })).toBe(
+      false,
+    );
+    expect(canShowRevertCommand({ kind: 'was-here', hydrated, restoredFrom: 'abc1234' })).toBe(
+      false,
+    );
   });
 
   it('hides the command on failed live and proposed cells', () => {

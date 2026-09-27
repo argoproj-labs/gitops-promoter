@@ -240,6 +240,7 @@ var _ = Describe("RevertCommit Controller", func() {
 
 	Context("When a PromotionStrategy owns the policy", func() {
 		It("restores one environment after a real promotion and holds the next one", func() {
+			ctx := context.Background()
 			s := setupRestoredPromotionStrategy()
 
 			s.mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
@@ -260,7 +261,7 @@ var _ = Describe("RevertCommit Controller", func() {
 			By("Leaving no pull request open: the reverted dry SHA is already contained in active")
 			prKey := s.developmentPRKey()
 			Consistently(func(g Gomega) {
-				err := k8sClient.Get(s.ctx, prKey, &promoterv1alpha1.PullRequest{})
+				err := k8sClient.Get(ctx, prKey, &promoterv1alpha1.PullRequest{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
@@ -268,23 +269,23 @@ var _ = Describe("RevertCommit Controller", func() {
 			laterDrySha := s.hydrate("a later dry commit")
 			var pr promoterv1alpha1.PullRequest
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, s.devKey, &s.ctpDev)).To(Succeed())
 				g.Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
-				g.Expect(k8sClient.Get(s.ctx, prKey, &pr)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(k8sClient.Get(s.ctx, prKey, &pr)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
 				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("Deleting the RevertCommit so the later dry SHA can promote through every environment")
-			Expect(k8sClient.Delete(s.ctx, s.rc)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
 				g.Expect(s.promotionStrategy.Status.Environments).To(HaveLen(3))
 				for _, env := range s.promotionStrategy.Status.Environments {
 					g.Expect(env.Active.Dry.Sha).To(Equal(laterDrySha))
@@ -293,29 +294,30 @@ var _ = Describe("RevertCommit Controller", func() {
 		})
 
 		It("does not promote the reverted dry SHA after the RevertCommit is deleted", func() {
+			ctx := context.Background()
 			s := setupRestoredPromotionStrategy()
 
 			By("Confirming the proposed branch is still the reverted dry SHA")
-			Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+			Expect(k8sClient.Get(ctx, s.devKey, &s.ctpDev)).To(Succeed())
 			Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(s.drySha2))
 			Expect(s.ctpDev.Status.Active.Dry.Sha).To(Equal(s.drySha1))
 
 			By("Deleting the RevertCommit without hydrating a new proposed commit")
-			Expect(k8sClient.Delete(s.ctx, s.rc)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(s.ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertCommit{})
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Leaving that dry SHA unpromoted, because the proposed commit is already contained in the restore")
 			prKey := s.developmentPRKey()
 			Consistently(func(g Gomega) {
-				err := k8sClient.Get(s.ctx, prKey, &promoterv1alpha1.PullRequest{})
+				err := k8sClient.Get(ctx, prKey, &promoterv1alpha1.PullRequest{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				g.Expect(k8sClient.Get(s.ctx, s.devKey, &s.ctpDev)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, s.devKey, &s.ctpDev)).To(Succeed())
 				g.Expect(s.ctpDev.Status.Proposed.Dry.Sha).To(Equal(s.drySha2))
 				g.Expect(s.ctpDev.Status.Active.Dry.Sha).To(Equal(s.drySha1))
-				g.Expect(k8sClient.Get(s.ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
 				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
@@ -332,7 +334,6 @@ var _ = Describe("RevertCommit Controller", func() {
 // so it still carries drySha2 and that commit is an ancestor of the restore commit.
 type restoredPromotionStrategy struct {
 	ctpDev            promoterv1alpha1.ChangeTransferPolicy
-	ctx               context.Context
 	hydrate           func(message string) string
 	promotionStrategy *promoterv1alpha1.PromotionStrategy
 	mustRun           func(args ...string) string
@@ -464,7 +465,7 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 		g.Expect(restoreTo).NotTo(BeEmpty())
 		_, err := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
 		g.Expect(err).NotTo(HaveOccurred())
-		firstNote, err = fetchPromotionHistoryNote(gitPath, restoreTo)
+		firstNote, err = fetchPromotionHistoryNote(ctx, gitPath, restoreTo)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(firstNote[constants.TrailerPullRequestID]).NotTo(BeEmpty())
 		g.Expect(firstNote[constants.TrailerPullRequestMergeTime]).NotTo(BeEmpty())
@@ -511,7 +512,6 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 	}, constants.EventuallyTimeout).Should(Succeed())
 
 	return restoredPromotionStrategy{
-		ctx:               ctx,
 		gitRepo:           gitRepo,
 		promotionStrategy: promotionStrategy,
 		ctpDev:            ctpDev,

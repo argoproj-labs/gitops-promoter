@@ -1315,7 +1315,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(err).NotTo(HaveOccurred())
 					mergeCommitSha = strings.TrimSpace(out)
 
-					note, err := fetchPromotionHistoryNote(gitPath, mergeCommitSha)
+					note, err := fetchPromotionHistoryNote(ctx, gitPath, mergeCommitSha)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
 					g.Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{mergeSha}))
@@ -1383,7 +1383,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("Verifying the history note exists on the squash commit")
 				Eventually(func(g Gomega) {
-					note, err := fetchPromotionHistoryNote(gitPath, squashSha)
+					note, err := fetchPromotionHistoryNote(ctx, gitPath, squashSha)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
 					g.Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{mergeSha}))
@@ -1450,10 +1450,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				proposedHead = strings.TrimSpace(proposedHead)
 				Expect(proposedHead).ToNot(Equal(activeHead))
 				seedPromotionHistoryNote(gitPath, proposedHead)
-				_, err = fetchPromotionHistoryNote(gitPath, proposedHead)
+				_, err = fetchPromotionHistoryNote(ctx, gitPath, proposedHead)
 				Expect(err).NotTo(HaveOccurred(), "the seeded note must be readable, otherwise the check below is vacuous")
 
-				_, err = fetchPromotionHistoryNote(gitPath, activeHead)
+				_, err = fetchPromotionHistoryNote(ctx, gitPath, activeHead)
 				Expect(err).To(MatchError(ContainSubstring("no note found")),
 					"a closed-not-merged PR must leave the merge target without a history note")
 			})
@@ -2949,7 +2949,7 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 
 // fetchPromotionHistoryNote fetches the promotion-history notes ref into the given clone and returns the
 // parsed note for sha. Errors when the notes ref does not exist on the remote or no note exists for sha.
-func fetchPromotionHistoryNote(gitPath, sha string) (map[string][]string, error) {
+func fetchPromotionHistoryNote(ctx context.Context, gitPath, sha string) (map[string][]string, error) {
 	if _, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef); err != nil {
 		return nil, err
 	}
@@ -3211,7 +3211,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Verifying the note on the merge commit uses the merged dry sha, not the stale snapshot")
-		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
+		note, err := fetchPromotionHistoryNote(ctx, workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}), "the dry sha must be corrected to what actually merged")
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p2Sha}), "the hydrated sha must be the merge commit's second parent")
@@ -3237,7 +3237,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
 		Expect(err).NotTo(HaveOccurred())
 
-		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
+		note, err := fetchPromotionHistoryNote(ctx, workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}))
 		Expect(note).ToNot(HaveKey(constants.TrailerMergeCommitSnapshotMismatch))
@@ -3412,7 +3412,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).To(Equal(squashSha))
 
 		By("Verifying the note is on the remote with the PR's trailers")
-		note, err := fetchPromotionHistoryNote(workDir, squashSha)
+		note, err := fetchPromotionHistoryNote(ctx, workDir, squashSha)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{proposedSha}))
@@ -3446,7 +3446,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(enqueuedCTPH).To(BeEmpty())
-		_, err = fetchPromotionHistoryNote(workDir, squashSha)
+		_, err = fetchPromotionHistoryNote(ctx, workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist yet")
 	})
 
@@ -3456,7 +3456,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(enqueuedCTPH).To(BeEmpty())
-		_, err = fetchPromotionHistoryNote(workDir, squashSha)
+		_, err = fetchPromotionHistoryNote(ctx, workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist")
 	})
 })
