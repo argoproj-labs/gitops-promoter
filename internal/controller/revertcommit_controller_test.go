@@ -331,20 +331,20 @@ var _ = Describe("RevertCommit Controller", func() {
 // development; staging and production are still running it. The proposed branch was left in place,
 // so it still carries drySha2 and that commit is an ancestor of the restore commit.
 type restoredPromotionStrategy struct {
-	ctx               context.Context
-	gitRepo           *promoterv1alpha1.GitRepository
-	promotionStrategy *promoterv1alpha1.PromotionStrategy
 	ctpDev            promoterv1alpha1.ChangeTransferPolicy
-	devKey            types.NamespacedName
-	mustRun           func(args ...string) string
+	ctx               context.Context
 	hydrate           func(message string) string
+	promotionStrategy *promoterv1alpha1.PromotionStrategy
+	mustRun           func(args ...string) string
+	gitRepo           *promoterv1alpha1.GitRepository
+	firstNote         map[string][]string
+	rc                *promoterv1alpha1.RevertCommit
+	devKey            types.NamespacedName
 	drySha1           string
 	drySha2           string
 	restoreTo         string
-	firstNote         map[string][]string
 	rolledOff         string
 	proposedTip       string
-	rc                *promoterv1alpha1.RevertCommit
 }
 
 func (s restoredPromotionStrategy) developmentPRKey() types.NamespacedName {
