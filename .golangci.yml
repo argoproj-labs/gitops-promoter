@@ -138,6 +138,8 @@ linters:
           disabled: true
         - name: line-length-limit
           disabled: true # Monitors are wide.
+        - name: multiline-if-init
+          disabled: true # Splitting every multi-line call out of an if is noisier than the check.
         - name: unhandled-error
           disabled: true # This is handled by errcheck.
         - name: unused-receiver

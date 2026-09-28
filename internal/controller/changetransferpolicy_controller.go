@@ -772,7 +772,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		"prName", pr.Items[0].Name,
 		"prState", pr.Items[0].Status.State,
 		"prID", pr.Items[0].Status.ID,
-		"prDeletionTimestamp", pr.Items[0].DeletionTimestamp,
+		"prDeletionTimestamp", metaTimeString(pr.Items[0].DeletionTimestamp),
 		"specState", pr.Items[0].Spec.State,
 		"statusState", pr.Items[0].Status.State,
 		"hasCTPFinalizer", controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
@@ -1397,7 +1397,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	if prExists && (pullRequestStatusFreezesSpec(existingPR) || !existingPR.DeletionTimestamp.IsZero()) {
 		logger.V(4).Info("Skipping PullRequest apply because the existing PullRequest has terminal status or is terminating",
 			"pullRequest", existingPR.Name, "statusState", existingPR.Status.State,
-			"deletionTimestamp", existingPR.DeletionTimestamp)
+			"deletionTimestamp", metaTimeString(existingPR.DeletionTimestamp))
 		return existingPR, nil
 	}
 
@@ -1794,4 +1794,13 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			return false
 		},
 	}
+}
+
+// metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time
+// implements fmt.Stringer, and calling String on it panics.
+func metaTimeString(t *metav1.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.String()
 }
