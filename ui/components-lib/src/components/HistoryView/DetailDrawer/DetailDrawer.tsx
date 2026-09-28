@@ -1,6 +1,6 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import {
   timeAgo,
@@ -224,6 +224,9 @@ const DetailDrawer: React.FC<{
           : ''
       }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
     >
+      {cell.revertCommit && !cell.revertedByRevertCommit && (
+        <GoBlocked className="hp-drawer__kind__stop" aria-hidden="true" />
+      )}
       {cellKindLabel(cell)}
     </span>
   );
@@ -457,6 +460,9 @@ const DetailDrawer: React.FC<{
                   {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
                   {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
                   {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
+                  {c.revertCommit && !c.revertedByRevertCommit && (
+                    <GoBlocked className="cell__pill__stop" aria-hidden="true" />
+                  )}
                   {cellKindLabel(c, true)}
                 </span>
               );

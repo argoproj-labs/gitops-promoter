@@ -227,9 +227,12 @@ $extension-wrapper-gap: 20px;
     z-index: 2;
   }
 
+  // Same blue as an ordinary proposed badge. The blocked mark carries the hold, in the
+  // same red as the history pill ($held-stop).
   .proposed-changes-card .promote-banner--held {
-    background: $argo-failed;
-    box-shadow: 0 1px 4px rgba(233, 109, 118, 0.45);
+    background: $argo-running;
+    box-shadow: 0 1px 4px rgba(13, 173, 234, 0.45);
+    color: #ff5a4e;
   }
 
   .proposed-changes-card .promote-banner__icon {
@@ -238,6 +241,15 @@ $extension-wrapper-gap: 20px;
     margin: 0;
     transform: rotate(-90deg);
     animation: promote-banner-pulse 2s ease-in-out infinite;
+  }
+
+  .proposed-changes-card .promote-banner__icon--blocked {
+    width: 16px;
+    height: 16px;
+    transform: none;
+    animation: none;
+    stroke-width: 1.4;
+    overflow: visible;
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -159,7 +159,17 @@
     background: $pending-ink;
   }
   &--held {
-    background: $failure-ink;
+    background: $pending-ink;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  svg#{&}__stop {
+    color: $held-stop;
+    font-size: 14px;
+    margin: -2px 0;
+    stroke-width: 1.4;
+    overflow: visible;
   }
   &--reverted {
     background: $text-secondary;

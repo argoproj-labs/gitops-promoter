@@ -32,7 +32,7 @@ export interface CellState {
   isProposed?: boolean;
   /** True for the cell describing the environment's current active commit. */
   isLive?: boolean;
-  /** RevertCommit holding this environment. The proposed cell turns red and shows only an open pull request. */
+  /** RevertCommit holding this environment. The proposed pill gets a stop sign and the cell shows only an open pull request. */
   revertCommit?: string;
   /** True when this proposed commit is the one that RevertCommit reverted. */
   revertedByRevertCommit?: boolean;

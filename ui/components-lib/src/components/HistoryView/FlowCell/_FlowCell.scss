@@ -70,11 +70,13 @@
     background: $pending-ink;
   }
 }
+// A proposed commit held by a RevertCommit keeps the in-flight blue; the stop sign in
+// its pill is what says it will not auto-merge.
 .cell--held {
-  background: $failure-soft;
-  border-color: $failure-border;
+  background: $pending-soft;
+  border-color: $pending-border;
   &::before {
-    background: $failure-ink;
+    background: $pending-ink;
   }
 }
 // The proposed commit a RevertCommit moved off the active branch. It is settled, not failing,
@@ -187,13 +189,22 @@
     color: #fff;
   }
   &--held {
-    background: $failure-ink;
+    background: $pending-ink;
     color: #fff;
   }
   &--reverted {
     background: $bg-surface;
     color: $text-secondary;
     border: 1px solid $stroke-strong;
+  }
+  // Beats the `svg { font-size: 9px }` above. The blocked mark sits straight on the blue
+  // fill; the stroke thickens the octicon's 1.5px lines so they hold up at this size.
+  svg#{&}__stop {
+    color: $held-stop;
+    font-size: 13px;
+    margin: -2px 0;
+    stroke-width: 1.4;
+    overflow: visible;
   }
   &--failed {
     background: $failure-ink;

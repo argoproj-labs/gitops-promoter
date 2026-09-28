@@ -86,6 +86,15 @@
     animation: promote-banner-bob 2s ease-in-out infinite;
   }
 
+  .promote-banner__icon--blocked {
+    width: 14px;
+    height: 14px;
+    margin-right: 0;
+    animation: none;
+    stroke-width: 1.4;
+    overflow: visible;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .promote-banner__icon,
     .promote-flow::before {

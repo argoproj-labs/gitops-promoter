@@ -10,6 +10,7 @@ import {
   PrTooltip,
   ReferenceCommit,
 } from '@shared/types/promotion';
+import { GoBlocked } from 'react-icons/go';
 import Tooltip from './HistoryView/Tooltip/Tooltip';
 import { revertHoldTooltip } from '@shared/utils/environments';
 import './ProposedChangesCard.scss';
@@ -25,7 +26,7 @@ export interface ProposedChangesCardProps {
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
-  /** RevertCommit holding the environment; the banner turns red and explains the hold. */
+  /** RevertCommit holding the environment; the banner shows a blocked mark and explains the hold. */
   revertCommit?: string;
   /** True when the proposed commit is the one that RevertCommit reverted. */
   proposedIsReverted?: boolean;
@@ -68,15 +69,22 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   const message = progressMessage(healthSummary, checks);
   const banner = (
     <div className={`promote-banner${revertCommit ? ' promote-banner--held' : ''}`}>
-      <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
-        <path
-          d="M1 6 L8 1 L15 6"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      {revertCommit ? (
+        <GoBlocked
+          className="promote-banner__icon promote-banner__icon--blocked"
+          aria-hidden="true"
         />
-      </svg>
+      ) : (
+        <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
+          <path
+            d="M1 6 L8 1 L15 6"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
       <span className="promote-banner__label">Pushing to Active</span>
     </div>
   );

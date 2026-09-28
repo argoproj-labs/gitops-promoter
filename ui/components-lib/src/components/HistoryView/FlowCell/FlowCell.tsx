@@ -1,6 +1,6 @@
 import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitCommit, GoGitPullRequest } from 'react-icons/go';
+import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
 import { timeAgo, formatDate, formatDuration, getCommitUrl } from '@shared/utils/util';
 import type { CellState, CommitRow } from '../types';
 import { commitKey, shortSha } from '../helpers';
@@ -113,6 +113,9 @@ const FlowCell: React.FC<{
                 <>
                   <FaBan aria-hidden="true" />{' '}
                 </>
+              )}
+              {held && !cell.revertedByRevertCommit && (
+                <GoBlocked className="cell__pill__stop" aria-hidden="true" />
               )}
               {cellKindLabel(cell)}
             </span>
