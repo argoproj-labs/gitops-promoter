@@ -14,7 +14,8 @@ export const INSTANCE_ID_LABEL = 'promoter.argoproj.io/instance-id';
  * built from the embedded ChangeTransferPolicies, one per environment keyed by
  * spec.activeBranch, in the order declared by the PromotionStrategy spec. Promotion history is
  * sourced from the per-environment ChangeTransferPolicyHistory resources, keyed the same way.
- * RevertCommits are matched to an environment by the ChangeTransferPolicy they name.
+ * RevertCommits are matched to an environment by spec.branch. The bundle is already one
+ * PromotionStrategy, so the branch is unique within it.
  */
 export function environmentsFromBundle(
   spec: PromotionStrategy['spec'],
@@ -34,13 +35,13 @@ export function environmentsFromBundle(
     if (branch) historiesByBranch.set(branch, ctph);
   }
 
-  const revertsByPolicy = new Map<string, EnvironmentRevertCommit>();
+  const revertsByBranch = new Map<string, EnvironmentRevertCommit>();
   for (const rc of revertCommits) {
-    const policy = rc.spec?.changeTransferPolicyRef.name;
+    const branch = rc.spec?.branch;
     const name = rc.metadata?.name;
-    if (!policy || !name || rc.metadata?.deletionTimestamp) continue;
-    if (!revertsByPolicy.has(policy)) {
-      revertsByPolicy.set(policy, { name, blockedDrySha: rc.status?.blockedDrySha });
+    if (!branch || !name || rc.metadata?.deletionTimestamp) continue;
+    if (!revertsByBranch.has(branch)) {
+      revertsByBranch.set(branch, { name, blockedDrySha: rc.status?.blockedDrySha });
     }
   }
 
@@ -55,7 +56,7 @@ export function environmentsFromBundle(
       active: status.active ?? { dry: {}, hydrated: {} },
       proposed: status.proposed ?? { dry: {}, hydrated: {} },
       pullRequest: status.pullRequest,
-      revertCommit: ctpName ? revertsByPolicy.get(ctpName) : undefined,
+      revertCommit: revertsByBranch.get(env.branch),
       history: historiesByBranch.get(env.branch)?.status?.history,
       lastHealthyDryShas: [],
     };

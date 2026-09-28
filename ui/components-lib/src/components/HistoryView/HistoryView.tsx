@@ -467,6 +467,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           cell={selectedCell}
           branch={selected?.branch ?? null}
           namespace={namespace}
+          promotionStrategyName={name}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}

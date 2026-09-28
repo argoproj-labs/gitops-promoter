@@ -96,18 +96,14 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
 
-	// RevertCommits carry no PromotionStrategy label; they name their ChangeTransferPolicy.
-	ctpNames := make(map[string]struct{}, len(ctpList.Items))
-	for i := range ctpList.Items {
-		ctpNames[ctpList.Items[i].Name] = struct{}{}
-	}
+	// RevertCommits name the PromotionStrategy directly.
 	rcList := &promoterv1alpha1.RevertCommitList{}
 	if err := reader.List(ctx, rcList, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list RevertCommits: %w", err)
 	}
 	var revertCommits []promoterv1alpha1.RevertCommit
 	for i := range rcList.Items {
-		if _, ok := ctpNames[rcList.Items[i].Spec.ChangeTransferPolicyRef.Name]; ok {
+		if rcList.Items[i].Spec.PromotionStrategyRef.Name == name {
 			revertCommits = append(revertCommits, rcList.Items[i])
 		}
 	}

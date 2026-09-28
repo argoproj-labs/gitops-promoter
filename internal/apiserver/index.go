@@ -244,7 +244,7 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 	case *promoterv1alpha1.ChangeTransferPolicyHistory:
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.RevertCommit:
-		return p.keysForChangeTransferPolicy(ctx, o.Namespace, o.Spec.ChangeTransferPolicyRef.Name)
+		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.PullRequest:
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.CommitStatus:
@@ -280,22 +280,6 @@ func keyFromRef(namespace, name string) []types.NamespacedName {
 		return nil
 	}
 	return []types.NamespacedName{{Namespace: namespace, Name: name}}
-}
-
-// keysForChangeTransferPolicy returns the PromotionStrategy key of the named
-// ChangeTransferPolicy, read from its promotion-strategy label.
-func (p *BundleProvider) keysForChangeTransferPolicy(ctx context.Context, namespace, name string) []types.NamespacedName {
-	if name == "" {
-		return nil
-	}
-	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
-	if err := p.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ctp); err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "failed to get ChangeTransferPolicy for RevertCommit mapping", "namespace", namespace, "name", name)
-		}
-		return nil
-	}
-	return keyFromLabel(namespace, ctp.Labels)
 }
 
 // keysReferencingGitRepository returns PromotionStrategy keys in a namespace whose

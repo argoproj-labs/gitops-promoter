@@ -56,10 +56,11 @@ promotions. PullRequests carry promotion-strategy, change-transfer-policy, and e
 ### RevertCommit
 
 A RevertCommit restores one environment's active branch to a previously promoted hydrated commit and holds promotion
-for that environment until it is deleted. `spec.changeTransferPolicyRef` names the environment's ChangeTransferPolicy,
-which supplies the repository, branches, and `activePath`; `spec.sha` is the hydrated commit to restore. The spec is
-immutable, so restoring something else means creating a new RevertCommit. The controller makes the ChangeTransferPolicy
-its owner, so deleting the policy removes its RevertCommits.
+for that environment until it is deleted. `spec.promotionStrategyRef` names the PromotionStrategy and `spec.branch`
+names the environment; the controller resolves those to the environment's ChangeTransferPolicy, which supplies the
+repository, branches, and `activePath`. `spec.sha` is the hydrated commit to restore. The spec is immutable, so
+restoring something else means creating a new RevertCommit. The controller makes the ChangeTransferPolicy its owner,
+so deleting the policy removes its RevertCommits.
 
 The restore is a new commit on top of the active branch, not a force-push, and runs once. `status.blockedDrySha`
 records the dry SHA that was live before the restore; the ChangeTransferPolicy will not open a pull request for it. No

@@ -58,20 +58,22 @@ type RevertCommitReconciler struct {
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
-// Reconcile makes the referenced ChangeTransferPolicy the owner of this RevertCommit and restores
-// the policy's active branch to spec.sha exactly once. A successful status (status.restoredFrom ==
-// spec.sha) is not repeated, so a later promotion is not overwritten when this resource is
-// reconciled again. A spec.sha that carries Promoter-restored-from is refused. status.blockedDrySha is the dry SHA that was on the active branch; the
-// ChangeTransferPolicy does not open a pull request that would put it back. A pull request for a
-// different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists.
-// Deleting it lifts both holds, but does not by itself propose the reverted dry SHA again: see
-// ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
+// Reconcile resolves spec.promotionStrategyRef and spec.branch to that environment's
+// ChangeTransferPolicy, makes the policy the owner of this RevertCommit, and restores the policy's
+// active branch to spec.sha exactly once. A successful status (status.restoredFrom == spec.sha) is
+// not repeated, so a later promotion is not overwritten when this resource is reconciled again. A
+// spec.sha that carries Promoter-restored-from is refused. status.blockedDrySha is the dry SHA that
+// was on the active branch; the ChangeTransferPolicy does not open a pull request that would put it
+// back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while
+// this RevertCommit exists. Deleting it lifts both holds, but does not by itself propose the
+// reverted dry SHA again: see ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
 func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling RevertCommit")
@@ -101,9 +103,9 @@ func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: rc.Namespace, Name: rc.Spec.ChangeTransferPolicyRef.Name}, ctp); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", rc.Spec.ChangeTransferPolicyRef.Name, err)
+	ctp, err := r.resolveChangeTransferPolicy(ctx, &rc)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Owner reference first, before any git work: it ties the gate to the policy for garbage collection
@@ -161,6 +163,33 @@ func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.Recorder.Eventf(&rc, nil, "Normal", "Restored", "Restoring", "Restored %s to %s as %s", ctp.Spec.ActiveBranch, rc.Spec.Sha, restored.ActiveSha)
 	}
 	return ctrl.Result{}, nil
+}
+
+// resolveChangeTransferPolicy loads the PromotionStrategy and the ChangeTransferPolicy the strategy
+// controller created for spec.branch.
+func (r *RevertCommitReconciler) resolveChangeTransferPolicy(ctx context.Context, rc *promoterv1alpha1.RevertCommit) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+	ps := &promoterv1alpha1.PromotionStrategy{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: rc.Namespace, Name: rc.Spec.PromotionStrategyRef.Name}, ps); err != nil {
+		return nil, fmt.Errorf("failed to get PromotionStrategy %q: %w", rc.Spec.PromotionStrategyRef.Name, err)
+	}
+	if !strategyHasBranch(ps, rc.Spec.Branch) {
+		return nil, fmt.Errorf("branch %q is not an environment on PromotionStrategy %q", rc.Spec.Branch, ps.Name)
+	}
+	ctpName := utils.ChangeTransferPolicyNameForEnvironment(ps.Name, rc.Spec.Branch)
+	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: rc.Namespace, Name: ctpName}, ctp); err != nil {
+		return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q for PromotionStrategy %q branch %q: %w", ctpName, ps.Name, rc.Spec.Branch, err)
+	}
+	return ctp, nil
+}
+
+func strategyHasBranch(ps *promoterv1alpha1.PromotionStrategy, branch string) bool {
+	for i := range ps.Spec.Environments {
+		if ps.Spec.Environments[i].Branch == branch {
+			return true
+		}
+	}
+	return false
 }
 
 // applyOwnerReference makes the ChangeTransferPolicy the controller owner of the RevertCommit via

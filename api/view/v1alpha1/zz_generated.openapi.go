@@ -5178,7 +5178,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref common.R
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertCommit in the policy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.",
+				Description: "RevertCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5273,14 +5273,22 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref comm
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha or policy would lose track of what it reverted. To restore something else, create a new RevertCommit.",
+				Description: "RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha, strategy, or branch would lose track of what it reverted. To restore something else, create a new RevertCommit.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
-					"changeTransferPolicyRef": {
+					"promotionStrategyRef": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored. The policy supplies the repository, the active and proposed branches, and activePath.",
+							Description: "PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch on that PromotionStrategy to restore. The controller resolves it to the ChangeTransferPolicy the strategy created for this branch, which supplies the repository, the active and proposed branches, and activePath.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"sha": {
@@ -5292,7 +5300,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref comm
 						},
 					},
 				},
-				Required: []string{"changeTransferPolicyRef", "sha"},
+				Required: []string{"promotionStrategyRef", "branch", "sha"},
 			},
 		},
 		Dependencies: []string{
@@ -7148,7 +7156,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 					},
 					"revertCommits": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RevertCommits are the RevertCommits whose spec.changeTransferPolicyRef names one of the ChangeTransferPolicies above. While one exists for an environment, its promotions are not auto-merged.",
+							Description: "RevertCommits are the RevertCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{

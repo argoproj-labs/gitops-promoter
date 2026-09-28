@@ -69,6 +69,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	Context("When reconciling a resource", func() {
 		Context("When no commit status checks are configured", func() {
 			var name string
+			var revertStrategyName string
 			var gitRepo *promoterv1alpha1.GitRepository
 			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
 			var typeNamespacedName types.NamespacedName
@@ -80,13 +81,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-without-commit-checks", "default")
 
-				typeNamespacedName = types.NamespacedName{
-					Name:      name,
-					Namespace: "default", // TODO(user):Modify as needed
-				}
-
+				revertStrategyName = name + "-ps"
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(revertStrategyName, testBranchDevelopment)
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      changeTransferPolicy.Name,
+					Namespace: "default", // TODO(user):Modify as needed
+				}
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 				changeTransferPolicy.Spec.AutoMerge = new(false)
 
@@ -210,11 +213,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				proposedTip = strings.TrimSpace(proposedTip)
 
 				By("Restoring active to the previous commit")
+				ps := promotionStrategyForRevert(revertStrategyName, "default", gitRepo.Name, testBranchDevelopment)
+				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RevertCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
 					Spec: promoterv1alpha1.RevertCommitSpec{
-						ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: name},
-						Sha:                     restoreTo,
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+						Branch:               testBranchDevelopment,
+						Sha:                  restoreTo,
 					},
 				}
 				Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -316,11 +323,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Restoring the active branch, which does not close that pull request")
+				ps := promotionStrategyForRevert(revertStrategyName, "default", gitRepo.Name, testBranchDevelopment)
+				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RevertCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
 					Spec: promoterv1alpha1.RevertCommitSpec{
-						ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: name},
-						Sha:                     restoreTo,
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+						Branch:               testBranchDevelopment,
+						Sha:                  restoreTo,
 					},
 				}
 				Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -3706,8 +3717,11 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 	It("blocks without touching git while a RevertCommit's restore is still pending", func() {
 		ctx := context.Background()
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "skip-after-revert", Namespace: "default"},
-			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", "environment/dev"),
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		}
 		ctp.Status.Proposed.Dry.Sha = proposedDry
 		// Never cloned. Reaching CommitIsAncestor or the restore-marker read would fail this call.
@@ -3716,8 +3730,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		rc := &promoterv1alpha1.RevertCommit{
 			ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
 			Spec: promoterv1alpha1.RevertCommitSpec{
-				ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
-				Sha:                     "4444444444444444444444444444444444444444",
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
+				Branch:               "environment/dev",
+				Sha:                  "4444444444444444444444444444444444444444",
 			},
 		}
 
@@ -3797,8 +3812,11 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
 			ctp = &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "skip-after-revert", Namespace: "default"},
-				Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", branch),
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
 			}
 			ctp.Status.Active.Hydrated.Sha = activeSha
 			ctp.Status.Proposed.Hydrated.Sha = parentSha
@@ -3880,8 +3898,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			rc := &promoterv1alpha1.RevertCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
 				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
-					Sha:                     parentSha,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
+					Branch:               ctp.Spec.ActiveBranch,
+					Sha:                  parentSha,
 				},
 			}
 			rc.Status.RestoredFrom = parentSha
@@ -3896,8 +3915,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			rc := &promoterv1alpha1.RevertCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
 				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
-					Sha:                     parentSha,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
+					Branch:               ctp.Spec.ActiveBranch,
+					Sha:                  parentSha,
 				},
 			}
 			rc.Status.RestoredFrom = parentSha

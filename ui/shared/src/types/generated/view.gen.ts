@@ -1367,7 +1367,7 @@ export type components = {
             promotionStrategy: components["schemas"]["PromotionStrategy"];
             /** @description PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             pullRequests?: components["schemas"]["PullRequest"][];
-            /** @description RevertCommits are the RevertCommits whose spec.changeTransferPolicyRef names one of the ChangeTransferPolicies above. While one exists for an environment, its promotions are not auto-merged. */
+            /** @description RevertCommits are the RevertCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged. */
             revertCommits?: components["schemas"]["RevertCommit"][];
             /** @description ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy. */
             scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
@@ -1556,7 +1556,7 @@ export type components = {
              */
             output: components["schemas"]["OutputSpec"];
         };
-        /** @description RevertCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertCommit in the policy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts. */
+        /** @description RevertCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts. */
         RevertCommit: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1569,13 +1569,18 @@ export type components = {
             /** @default {} */
             status?: components["schemas"]["RevertCommitStatus"];
         };
-        /** @description RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha or policy would lose track of what it reverted. To restore something else, create a new RevertCommit. */
+        /** @description RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertCommit at a different sha, strategy, or branch would lose track of what it reverted. To restore something else, create a new RevertCommit. */
         RevertCommitSpec: {
             /**
-             * @description ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored. The policy supplies the repository, the active and proposed branches, and activePath.
+             * @description Branch is the environment branch on that PromotionStrategy to restore. The controller resolves it to the ChangeTransferPolicy the strategy created for this branch, which supplies the repository, the active and proposed branches, and activePath.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
              * @default {}
              */
-            changeTransferPolicyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /**
              * @description Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertCommit exists. Deleting it lifts that hold but does not by itself propose the reverted change again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.
              * @default

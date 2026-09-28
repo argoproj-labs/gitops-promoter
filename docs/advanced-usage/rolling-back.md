@@ -37,13 +37,15 @@ apiVersion: promoter.argoproj.io/v1alpha1
 kind: RevertCommit
 metadata:
   name: revert-production
-  namespace: <namespace of the ChangeTransferPolicy>
+  namespace: <namespace of the PromotionStrategy>
   # With multiple controller installs, copy the ChangeTransferPolicy's instance-id label:
   # labels:
   #   promoter.argoproj.io/instance-id: "<id>"
 spec:
-  changeTransferPolicyRef:
-    name: <ChangeTransferPolicy for the environment>
+  promotionStrategyRef:
+    name: <PromotionStrategy>
+  # The environment branch to restore, matching spec.environments[].branch.
+  branch: <environment branch>
   # The hydrated commit to restore: a previous commit on the environment's active branch.
   sha: <40- or 64-character hydrated SHA>
 ```
@@ -58,7 +60,7 @@ restore commit only. The commit the restore moved off does not carry it, so that
 restored again.
 
 > [!NOTE]
-> Creating a RevertCommit is the authorization boundary: anyone who can create one in the ChangeTransferPolicy's
+> Creating a RevertCommit is the authorization boundary: anyone who can create one in the PromotionStrategy's
 > namespace can restore that environment, and the push uses the controller's git credentials. Grant `create` on
 > `revertcommits` accordingly.
 

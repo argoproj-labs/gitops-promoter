@@ -68,7 +68,7 @@ const FlowCell: React.FC<{
       className={[
         'cell',
         `cell--${visualKind}`,
-        held ? 'cell--held' : '',
+        held ? (cell.revertedByRevertCommit ? 'cell--reverted' : 'cell--held') : '',
         isSelected ? 'cell--selected' : '',
       ]
         .filter(Boolean)
@@ -100,7 +100,13 @@ const FlowCell: React.FC<{
         ) : (
           <Tooltip label={pillTooltip}>
             <span
-              className={`cell__pill cell__pill--${visualKind}${held ? ' cell__pill--held' : ''}`}
+              className={`cell__pill cell__pill--${visualKind}${
+                held
+                  ? cell.revertedByRevertCommit
+                    ? ' cell__pill--reverted'
+                    : ' cell__pill--held'
+                  : ''
+              }`}
             >
               {visualKind === 'no-op' && (
                 <>

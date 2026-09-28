@@ -7279,8 +7279,11 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.changeTransferPolicyRef.name
-      name: ChangeTransferPolicy
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .spec.branch
+      name: Branch
       type: string
     - jsonPath: .spec.sha
       name: Sha
@@ -7300,8 +7303,8 @@ spec:
           RevertCommit restores one environment's active branch to a previously hydrated commit and records
           the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
           Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
-          policy's namespace can restore that environment, and the controller's git credentials perform the push.
-          The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
+          strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+          The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
         properties:
           apiVersion:
             description: |-
@@ -7324,13 +7327,27 @@ spec:
             description: |-
               RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
               once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-              existing RevertCommit at a different sha or policy would lose track of what it reverted. To
-              restore something else, create a new RevertCommit.
+              existing RevertCommit at a different sha, strategy, or branch would lose track of what it
+              reverted. To restore something else, create a new RevertCommit.
             properties:
-              changeTransferPolicyRef:
+              branch:
                 description: |-
-                  ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
-                  The policy supplies the repository, the active and proposed branches, and activePath.
+                  Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
+                  it to the ChangeTransferPolicy the strategy created for this branch, which supplies the
+                  repository, the active and proposed branches, and activePath.
+                maxLength: 100
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
+              promotionStrategyRef:
+                description: PromotionStrategyRef selects the PromotionStrategy that
+                  owns the environment to restore.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -7360,12 +7377,13 @@ spec:
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
             required:
-            - changeTransferPolicyRef
+            - branch
+            - promotionStrategyRef
             - sha
             type: object
             x-kubernetes-validations:
             - message: spec is immutable; create a new RevertCommit to restore a different
-                commit or policy
+                commit, strategy, or branch
               rule: self == oldSelf
           status:
             description: RevertCommitStatus defines the observed state of RevertCommit.

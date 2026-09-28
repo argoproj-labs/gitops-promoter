@@ -45,12 +45,12 @@ const histories = [
 const revertCommits = [
   {
     metadata: { name: 'revert-prod' },
-    spec: { changeTransferPolicyRef: { name: 'strategy-environment-prod-abcd' } },
+    spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
     status: { blockedDrySha: 'prod-proposed' },
   },
   {
     metadata: { name: 'revert-going-away', deletionTimestamp: '2026-09-25T00:00:00Z' },
-    spec: { changeTransferPolicyRef: { name: 'strategy-environment-prod-abcd' } },
+    spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
   },
 ] as unknown as RevertCommit[];
 

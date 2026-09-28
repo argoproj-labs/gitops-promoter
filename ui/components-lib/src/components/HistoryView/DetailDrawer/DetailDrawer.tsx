@@ -138,6 +138,7 @@ const DetailDrawer: React.FC<{
   cell: CellState | null;
   branch: string | null;
   namespace?: string;
+  promotionStrategyName?: string;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
   width: number;
@@ -153,6 +154,7 @@ const DetailDrawer: React.FC<{
   cell,
   branch,
   namespace,
+  promotionStrategyName,
   envs,
   rowsById,
   width,
@@ -200,13 +202,12 @@ const DetailDrawer: React.FC<{
       : [row.prId, row.prUrl];
 
   const env = envs.find((e) => e.branch === branch);
-  const changeTransferPolicyName = env?.changeTransferPolicyName;
   const showRevert = canShowRevertCommand(cell);
   const revertCommand =
-    showRevert && hydrated?.sha && namespace && changeTransferPolicyName
+    showRevert && hydrated?.sha && namespace && promotionStrategyName
       ? buildRevertCommitApplyCommand({
           namespace,
-          changeTransferPolicyName,
+          promotionStrategyName,
           instanceId: env?.instanceId,
           branch,
           sha: hydrated.sha,
@@ -216,7 +217,11 @@ const DetailDrawer: React.FC<{
   const kindBadge = (
     <span
       className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
-        cell.revertCommit ? ' hp-drawer__kind--held' : ''
+        cell.revertCommit
+          ? cell.revertedByRevertCommit
+            ? ' hp-drawer__kind--reverted'
+            : ' hp-drawer__kind--held'
+          : ''
       }`}
     >
       {cellKindLabel(cell)}
@@ -441,7 +446,13 @@ const DetailDrawer: React.FC<{
               const pillKind = displayKind(c.kind);
               const pill = (
                 <span
-                  className={`cell__pill cell__pill--${pillKind}${c.revertCommit ? ' cell__pill--held' : ''}`}
+                  className={`cell__pill cell__pill--${pillKind}${
+                    c.revertCommit
+                      ? c.revertedByRevertCommit
+                        ? ' cell__pill--reverted'
+                        : ' cell__pill--held'
+                      : ''
+                  }`}
                 >
                   {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
                   {pillKind === 'no-op' && <FaBan aria-hidden="true" />}

@@ -44,10 +44,10 @@ export function revertCommitResourceName(branch: string, sha: string): string {
 
 export interface RevertCommitApplyInput {
   namespace: string;
-  changeTransferPolicyName: string;
+  promotionStrategyName: string;
   /**
-   * The ChangeTransferPolicy's instance-id label. A non-default install only watches resources
-   * carrying its instance id, so the RevertCommit must carry the same one.
+   * The environment's ChangeTransferPolicy instance-id label. A non-default install only watches
+   * resources carrying its instance id, so the RevertCommit must carry the same one.
    */
   instanceId?: string;
   branch: string;
@@ -72,8 +72,9 @@ export function buildRevertCommitApplyCommand(input: RevertCommitApplyInput): st
     `  namespace: ${input.namespace}`,
     ...(input.instanceId ? ['  labels:', `    ${INSTANCE_ID_LABEL}: "${input.instanceId}"`] : []),
     'spec:',
-    '  changeTransferPolicyRef:',
-    `    name: ${input.changeTransferPolicyName}`,
+    '  promotionStrategyRef:',
+    `    name: ${input.promotionStrategyName}`,
+    `  branch: ${input.branch}`,
     `  sha: ${input.sha}`,
   ].join('\n');
 

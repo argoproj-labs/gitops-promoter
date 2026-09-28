@@ -32,8 +32,8 @@ import (
 // RevertCommit restores one environment's active branch to a previously hydrated commit and records
 // the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
 // Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
-// policy's namespace can restore that environment, and the controller's git credentials perform the push.
-// The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
+// strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+// The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
 type RevertCommitApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

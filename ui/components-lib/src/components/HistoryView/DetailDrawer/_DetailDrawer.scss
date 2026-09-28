@@ -158,6 +158,9 @@
   &--held {
     background: $failure-ink;
   }
+  &--reverted {
+    background: $text-secondary;
+  }
   &--was-here {
     background: $text-secondary;
   }

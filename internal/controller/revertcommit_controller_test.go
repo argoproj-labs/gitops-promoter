@@ -51,15 +51,16 @@ var _ = Describe("RevertCommit Controller", func() {
 		})
 	})
 
-	Context("When the ChangeTransferPolicy does not exist", func() {
-		It("reports the missing policy on the Ready condition", func() {
+	Context("When the PromotionStrategy does not exist", func() {
+		It("reports the missing strategy on the Ready condition", func() {
 			ctx := context.Background()
 			name := "revert-missing-" + utils.KubeSafeUniqueName(randomString(10))
 			rc := &promoterv1alpha1.RevertCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
-					Sha:                     "abcdef1234567890abcdef1234567890abcdef12",
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Branch:               testBranchDevelopment,
+					Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
 				},
 			}
 			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -75,15 +76,46 @@ var _ = Describe("RevertCommit Controller", func() {
 		})
 	})
 
+	Context("When the branch is not on the PromotionStrategy", func() {
+		It("reports the missing branch on the Ready condition", func() {
+			ctx := context.Background()
+			name := "revert-branch-" + utils.KubeSafeUniqueName(randomString(10))
+			ps := promotionStrategyForRevert(name+"-ps", "default", name+"-gr", testBranchStaging)
+			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
+			rc := &promoterv1alpha1.RevertCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Spec: promoterv1alpha1.RevertCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
+					Branch:               testBranchDevelopment,
+					Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, rc)).To(Succeed())
+				cond := meta.FindStatusCondition(rc.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Message).To(ContainSubstring(testBranchDevelopment))
+				g.Expect(cond.Message).To(ContainSubstring(ps.Name))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When the spec is updated", func() {
-		It("rejects changes to spec.sha and spec.changeTransferPolicyRef", func() {
+		It("rejects changes to spec.sha, spec.promotionStrategyRef, and spec.branch", func() {
 			ctx := context.Background()
 			name := "revert-immutable-" + utils.KubeSafeUniqueName(randomString(10))
 			rc := &promoterv1alpha1.RevertCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
-					Sha:                     "abcdef1234567890abcdef1234567890abcdef12",
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Branch:               testBranchDevelopment,
+					Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
 				},
 			}
 			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -110,7 +142,12 @@ var _ = Describe("RevertCommit Controller", func() {
 			Expect(err).To(MatchError(ContainSubstring("spec is immutable")))
 
 			err = updateSpec(func(spec *promoterv1alpha1.RevertCommitSpec) {
-				spec.ChangeTransferPolicyRef.Name = "another-policy"
+				spec.PromotionStrategyRef.Name = "another-strategy"
+			})
+			Expect(err).To(MatchError(ContainSubstring("spec is immutable")))
+
+			err = updateSpec(func(spec *promoterv1alpha1.RevertCommitSpec) {
+				spec.Branch = testBranchStaging
 			})
 			Expect(err).To(MatchError(ContainSubstring("spec is immutable")))
 
@@ -131,6 +168,8 @@ var _ = Describe("RevertCommit Controller", func() {
 		It("pushes a restore commit and leaves the proposed branch in place", func() {
 			ctx := context.Background()
 			name, scmSecret, scmProvider, gitRepo, _, ctp := changeTransferPolicyResources(ctx, "revert-active", "default")
+			strategyName := name + "-ps"
+			ctp.Name = utils.ChangeTransferPolicyNameForEnvironment(strategyName, testBranchDevelopment)
 			ctp.Spec.ActiveBranch = testBranchDevelopment
 			ctp.Spec.ProposedBranch = testBranchDevelopmentNext
 			autoMerge := false
@@ -190,12 +229,17 @@ var _ = Describe("RevertCommit Controller", func() {
 			proposedTip := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
 
+			ps := promotionStrategyForRevert(strategyName, "default", gitRepo.Name, testBranchDevelopment)
+			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
 			rcName := name + "-rc"
 			rc := &promoterv1alpha1.RevertCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: "default"},
 				Spec: promoterv1alpha1.RevertCommitSpec{
-					ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctp.Name},
-					Sha:                     v1Sha,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
+					Branch:               testBranchDevelopment,
+					Sha:                  v1Sha,
 				},
 			}
 			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -394,7 +438,7 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 
 	ctpKey := func(branch string) types.NamespacedName {
 		return types.NamespacedName{
-			Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, branch)),
+			Name:      utils.ChangeTransferPolicyNameForEnvironment(promotionStrategy.Name, branch),
 			Namespace: "default",
 		}
 	}
@@ -487,8 +531,9 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 	rc := &promoterv1alpha1.RevertCommit{
 		ObjectMeta: metav1.ObjectMeta{Name: name + "-rc", Namespace: "default"},
 		Spec: promoterv1alpha1.RevertCommitSpec{
-			ChangeTransferPolicyRef: promoterv1alpha1.ObjectReference{Name: ctpDev.Name},
-			Sha:                     restoreTo,
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: promotionStrategy.Name},
+			Branch:               testBranchDevelopment,
+			Sha:                  restoreTo,
 		},
 	}
 	Expect(k8sClient.Create(ctx, rc)).To(Succeed())
@@ -525,5 +570,23 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 		rolledOff:         rolledOff,
 		proposedTip:       proposedTip,
 		rc:                rc,
+	}
+}
+
+// promotionStrategyForRevert is a PromotionStrategy the RevertCommit controller can resolve, whose
+// orderCommitStatusRef does not exist. The PromotionStrategy controller stops before it upserts a
+// ChangeTransferPolicy, so a test can own that policy itself.
+func promotionStrategyForRevert(name, namespace, repoName, branch string) *promoterv1alpha1.PromotionStrategy {
+	return &promoterv1alpha1.PromotionStrategy{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec: promoterv1alpha1.PromotionStrategySpec{
+			RepositoryReference: promoterv1alpha1.ObjectReference{Name: repoName},
+			OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+				Group: promoterv1alpha1.SchemeGroupVersion.Group,
+				Kind:  "DependentsSuccessfulCommitStatus",
+				Name:  "missing-order-gate",
+			},
+			Environments: []promoterv1alpha1.Environment{{Branch: branch}},
+		},
 	}
 }

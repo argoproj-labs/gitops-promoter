@@ -26,14 +26,24 @@ import (
 
 // RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
 // once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertCommit at a different sha or policy would lose track of what it reverted. To
-// restore something else, create a new RevertCommit.
-// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertCommit to restore a different commit or policy"
+// existing RevertCommit at a different sha, strategy, or branch would lose track of what it
+// reverted. To restore something else, create a new RevertCommit.
+// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertCommit to restore a different commit, strategy, or branch"
 type RevertCommitSpec struct {
-	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
-	// The policy supplies the repository, the active and proposed branches, and activePath.
+	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	// +kubebuilder:validation:Required
-	ChangeTransferPolicyRef ObjectReference `json:"changeTransferPolicyRef"`
+	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
+
+	// Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
+	// it to the ChangeTransferPolicy the strategy created for this branch, which supplies the
+	// repository, the active and proposed branches, and activePath.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
+	Branch string `json:"branch"`
 
 	// Sha is the hydrated commit to restore onto the active branch. It must already be in the active
 	// branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
@@ -133,9 +143,10 @@ func (r *RevertCommit) SetStatusInstanceID(v *string) {
 // RevertCommit restores one environment's active branch to a previously hydrated commit and records
 // the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
 // Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
-// policy's namespace can restore that environment, and the controller's git credentials perform the push.
-// The controller sets the referenced ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
-// +kubebuilder:printcolumn:name="ChangeTransferPolicy",type=string,JSONPath=`.spec.changeTransferPolicyRef.name`
+// strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+// The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
+// +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
+// +kubebuilder:printcolumn:name="Branch",type=string,JSONPath=`.spec.branch`
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.spec.sha`,priority=1
 // +kubebuilder:printcolumn:name="Active Sha",type=string,JSONPath=`.status.activeSha`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

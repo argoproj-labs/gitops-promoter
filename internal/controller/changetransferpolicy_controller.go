@@ -399,17 +399,22 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 			GenericFunc: func(event.GenericEvent) bool { return false },
 		})).
 		// A RevertCommit blocks a promotion pull request for the dry SHA that was on the active
-		// branch, and blocks auto-merge of every proposed SHA while it exists. Map by the spec
-		// reference rather than the owner reference so a create is seen before the RevertCommit
-		// controller has stamped ownership, and a delete lifts both holds on the next reconcile.
-		// Status updates are watched only when the restore result changes, so the dry-SHA block
-		// takes effect. Auto-merge stays off until the RevertCommit is deleted.
+		// branch, and blocks auto-merge of every proposed SHA while it exists. Map by the
+		// ChangeTransferPolicy name derived from spec.promotionStrategyRef and spec.branch, rather
+		// than the owner reference, so a create is seen before the RevertCommit controller has
+		// stamped ownership, and a delete lifts both holds on the next reconcile. Status updates
+		// are watched only when the restore result changes, so the dry-SHA block takes effect.
+		// Auto-merge stays off until the RevertCommit is deleted.
 		Watches(&promoterv1alpha1.RevertCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
 			rc, ok := obj.(*promoterv1alpha1.RevertCommit)
-			if !ok || rc.Spec.ChangeTransferPolicyRef.Name == "" {
+			if !ok {
 				return nil
 			}
-			return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: rc.Namespace, Name: rc.Spec.ChangeTransferPolicyRef.Name}}}
+			ctpName := changeTransferPolicyNameForRevert(rc)
+			if ctpName == "" {
+				return nil
+			}
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: rc.Namespace, Name: ctpName}}}
 		}), builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(event.CreateEvent) bool { return true },
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -1633,7 +1638,16 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 	return contained, nil
 }
 
-// revertCommitsForPolicy lists live RevertCommits that reference this policy.
+// changeTransferPolicyNameForRevert is the ChangeTransferPolicy object name a RevertCommit selects:
+// the name the PromotionStrategy controller assigns to spec.branch.
+func changeTransferPolicyNameForRevert(rc *promoterv1alpha1.RevertCommit) string {
+	if rc.Spec.PromotionStrategyRef.Name == "" || rc.Spec.Branch == "" {
+		return ""
+	}
+	return utils.ChangeTransferPolicyNameForEnvironment(rc.Spec.PromotionStrategyRef.Name, rc.Spec.Branch)
+}
+
+// revertCommitsForPolicy lists live RevertCommits that select this policy.
 func (r *ChangeTransferPolicyReconciler) revertCommitsForPolicy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.RevertCommit, error) {
 	list := &promoterv1alpha1.RevertCommitList{}
 	// Namespace list, filtered in memory. A field index only works on the cache client, and this
@@ -1645,7 +1659,7 @@ func (r *ChangeTransferPolicyReconciler) revertCommitsForPolicy(ctx context.Cont
 	matched := make([]promoterv1alpha1.RevertCommit, 0, len(list.Items))
 	for i := range list.Items {
 		rc := &list.Items[i]
-		if rc.Spec.ChangeTransferPolicyRef.Name != ctp.Name || !rc.DeletionTimestamp.IsZero() {
+		if changeTransferPolicyNameForRevert(rc) != ctp.Name || !rc.DeletionTimestamp.IsZero() {
 			continue
 		}
 		matched = append(matched, *rc)

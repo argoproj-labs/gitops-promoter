@@ -1495,7 +1495,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
   map:
     fields:
-    - name: changeTransferPolicyRef
+    - name: branch
+      type:
+        scalar: string
+    - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: sha

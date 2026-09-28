@@ -60,8 +60,6 @@ const row: CommitRow = {
   hasNoop: false,
 };
 
-const CTP_NAME = 'my-strategy-staging-a1b2c3d4';
-
 const envs: EnvColumn[] = [
   {
     branch: 'production',
@@ -81,7 +79,7 @@ describe('revertCommand helpers', () => {
   it('builds a kubectl apply of a RevertCommit for the environment and hydrated sha', () => {
     const cmd = buildRevertCommitApplyCommand({
       namespace: 'promoter-system',
-      changeTransferPolicyName: CTP_NAME,
+      promotionStrategyName: 'argocon-demo',
       branch: 'environment/staging',
       sha: HYDRATED_SHA,
     });
@@ -94,8 +92,9 @@ describe('revertCommand helpers', () => {
         '  name: revert-environment-staging-abcdef0',
         '  namespace: promoter-system',
         'spec:',
-        '  changeTransferPolicyRef:',
-        `    name: ${CTP_NAME}`,
+        '  promotionStrategyRef:',
+        '    name: argocon-demo',
+        '  branch: environment/staging',
         `  sha: ${HYDRATED_SHA}`,
       ].join('\n')}\nEOF'`,
     );
@@ -105,7 +104,7 @@ describe('revertCommand helpers', () => {
   it("labels the RevertCommit with the policy's instance id so a non-default install sees it", () => {
     const cmd = buildRevertCommitApplyCommand({
       namespace: 'promoter-system',
-      changeTransferPolicyName: CTP_NAME,
+      promotionStrategyName: 'argocon-demo',
       instanceId: '123',
       branch: 'environment/staging',
       sha: HYDRATED_SHA,
@@ -126,7 +125,7 @@ describe('revertCommand helpers', () => {
   it('wraps the apply in one POSIX sh command accepted by bash, zsh, and fish', () => {
     const cmd = buildRevertCommitApplyCommand({
       namespace: 'promoter-system',
-      changeTransferPolicyName: CTP_NAME,
+      promotionStrategyName: 'argocon-demo',
       branch: 'staging',
       sha: HYDRATED_SHA,
     });
@@ -316,6 +315,7 @@ describe('DetailDrawer restore command', () => {
           cell,
           branch: 'production',
           namespace: 'promoter-system',
+          promotionStrategyName: 'my-strategy',
           envs,
           rowsById: new Map([[row.id, row]]),
           width: 420,
@@ -344,7 +344,8 @@ describe('DetailDrawer restore command', () => {
     expect(command).not.toBeNull();
     expect(command?.textContent).toContain('kubectl apply -f -');
     expect(command?.textContent).toContain('kind: RevertCommit');
-    expect(command?.textContent).toContain('name: my-strategy-production-a1b2c3d4');
+    expect(command?.textContent).toContain('name: my-strategy');
+    expect(command?.textContent).toContain('branch: production');
     expect(command?.textContent).toContain(`sha: ${HYDRATED_SHA}`);
     expect(command?.textContent).not.toContain('git ');
     expect(container.textContent).toContain('Restore this version on production');
@@ -389,9 +390,10 @@ describe('DetailDrawer restore command', () => {
         revertedByRevertCommit: true,
       }),
     );
-    const badge = container.querySelector('.hp-drawer__kind--held');
+    const badge = container.querySelector('.hp-drawer__kind--reverted');
     expect(badge?.textContent).toContain('REVERTED');
     expect(badge?.textContent).not.toContain('PROPOSED');
+    expect(container.querySelector('.hp-drawer__kind--held')).toBeNull();
   });
 
   it('labels a superseded restore cell REPLACED in the badge and the environment list', () => {

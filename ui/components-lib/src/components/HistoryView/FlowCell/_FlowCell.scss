@@ -68,6 +68,15 @@
     background: $failure-ink;
   }
 }
+// The proposed commit a RevertCommit moved off the active branch. It is settled, not failing,
+// so the body reads like a replaced cell; only the REVERTED pill carries the color.
+.cell--reverted {
+  background: $bg-soft;
+  border-color: $stroke-strong;
+  &::before {
+    background: $stroke-strong;
+  }
+}
 .cell--failed {
   background: $failure-soft;
   border-color: $failure-border;
@@ -167,6 +176,11 @@
   &--held {
     background: $failure-ink;
     color: #fff;
+  }
+  &--reverted {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
   }
   &--failed {
     background: $failure-ink;

@@ -24,12 +24,15 @@ package v1alpha1
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 // RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
 // once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertCommit at a different sha or policy would lose track of what it reverted. To
-// restore something else, create a new RevertCommit.
+// existing RevertCommit at a different sha, strategy, or branch would lose track of what it
+// reverted. To restore something else, create a new RevertCommit.
 type RevertCommitSpecApplyConfiguration struct {
-	// ChangeTransferPolicyRef selects the ChangeTransferPolicy whose active branch is restored.
-	// The policy supplies the repository, the active and proposed branches, and activePath.
-	ChangeTransferPolicyRef *ObjectReferenceApplyConfiguration `json:"changeTransferPolicyRef,omitempty"`
+	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
+	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
+	// Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
+	// it to the ChangeTransferPolicy the strategy created for this branch, which supplies the
+	// repository, the active and proposed branches, and activePath.
+	Branch *string `json:"branch,omitempty"`
 	// Sha is the hydrated commit to restore onto the active branch. It must already be in the active
 	// branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
 	// carries Promoter-restored-from is itself a restore and is refused. The
@@ -51,11 +54,19 @@ func RevertCommitSpec() *RevertCommitSpecApplyConfiguration {
 	return &RevertCommitSpecApplyConfiguration{}
 }
 
-// WithChangeTransferPolicyRef sets the ChangeTransferPolicyRef field in the declarative configuration to the given value
+// WithPromotionStrategyRef sets the PromotionStrategyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ChangeTransferPolicyRef field is set to the value of the last call.
-func (b *RevertCommitSpecApplyConfiguration) WithChangeTransferPolicyRef(value *ObjectReferenceApplyConfiguration) *RevertCommitSpecApplyConfiguration {
-	b.ChangeTransferPolicyRef = value
+// If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
+func (b *RevertCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *RevertCommitSpecApplyConfiguration {
+	b.PromotionStrategyRef = value
+	return b
+}
+
+// WithBranch sets the Branch field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Branch field is set to the value of the last call.
+func (b *RevertCommitSpecApplyConfiguration) WithBranch(value string) *RevertCommitSpecApplyConfiguration {
+	b.Branch = &value
 	return b
 }
 

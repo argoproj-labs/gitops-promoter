@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: revertcommit-sample
 spec:
-  changeTransferPolicyRef:
-    name: example-change-transfer-policy
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  branch: environment/development
   sha: abcdef1234567890abcdef1234567890abcdef12

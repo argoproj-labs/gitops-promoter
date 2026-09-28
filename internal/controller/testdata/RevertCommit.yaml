@@ -3,8 +3,9 @@ kind: RevertCommit
 metadata:
   name: example-revert
 spec:
-  changeTransferPolicyRef:
-    name: example-change-transfer-policy
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  branch: environment/development
   sha: "abcdef1234567890abcdef1234567890abcdef12"
 status:
   observedGeneration: 123
