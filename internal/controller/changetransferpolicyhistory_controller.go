@@ -266,10 +266,8 @@ func (r *ChangeTransferPolicyHistoryReconciler) SetupWithManager(ctx context.Con
 // this CTP owns. The name is derived from the CTP name, matching upsertChangeTransferPolicyHistory.
 func (r *ChangeTransferPolicyHistoryReconciler) mapCTPToChangeTransferPolicyHistories(_ context.Context, obj client.Object) []reconcile.Request {
 	return []reconcile.Request{{
-		NamespacedName: client.ObjectKey{
-			Namespace: obj.GetNamespace(),
-			Name:      utils.GetChangeTransferPolicyHistoryName(obj.GetName()),
-		},
+		Namespace: obj.GetNamespace(),
+		Name:      utils.GetChangeTransferPolicyHistoryName(obj.GetName()),
 	}}
 }
 

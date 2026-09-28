@@ -220,10 +220,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		}
 
 		dependentsSuccessfulCommitStatus := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName,
-				Namespace: "default",
-			},
+			Name:      psName,
+			Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,

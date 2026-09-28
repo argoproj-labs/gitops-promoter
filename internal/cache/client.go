@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -17,7 +16,7 @@ import (
 func ClientOptions() client.Options {
 	return client.Options{
 		Cache: &client.CacheOptions{
-			EnableReadYourWritesConsistency: ptr.To(true),
+			EnableReadYourWritesConsistency: new(true),
 			Unstructured:                    true,
 		},
 	}

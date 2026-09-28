@@ -23,8 +23,8 @@ func promoterScheme() *runtime.Scheme {
 
 func testPromotionStrategy(ref promoterv1alpha1.OrderCommitStatusRef) *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
-		Spec:       promoterv1alpha1.PromotionStrategySpec{OrderCommitStatusRef: ref},
+		Name: "demo", Namespace: "default",
+		Spec: promoterv1alpha1.PromotionStrategySpec{OrderCommitStatusRef: ref},
 	}
 }
 
@@ -63,7 +63,7 @@ var _ = Describe("Resolve", func() {
 	It("resolves DependentsSuccessfulCommitStatus via a typed Get", func() {
 		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
 		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Name: "demo", Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
 				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -78,7 +78,7 @@ var _ = Describe("Resolve", func() {
 	It("rejects a typed DependentsSuccessfulCommitStatus with an empty spec.key", func() {
 		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
 		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Name: "demo", Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
 			},
@@ -91,7 +91,7 @@ var _ = Describe("Resolve", func() {
 	It("rejects a typed DependentsSuccessfulCommitStatus whose promotionStrategyRef does not match", func() {
 		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
 		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Name: "demo", Namespace: "default",
 			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other"},
 				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -104,7 +104,7 @@ var _ = Describe("Resolve", func() {
 
 	It("resolves out-of-tree gate CRs at v1alpha1", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Name: "demo", Namespace: "default",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
 					Group: "ordering.example.com",
@@ -132,7 +132,7 @@ var _ = Describe("Resolve", func() {
 
 	It("resolves the cluster-preferred API version from the REST mapper", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Name: "demo", Namespace: "default",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
 					Group: "ordering.example.com",
