@@ -80,7 +80,7 @@ var _ = Describe("RevertCommit Controller", func() {
 		It("reports the missing branch on the Ready condition", func() {
 			ctx := context.Background()
 			name := "revert-branch-" + utils.KubeSafeUniqueName(randomString(10))
-			ps := promotionStrategyForRevert(name+"-ps", "default", name+"-gr", testBranchStaging)
+			ps := promotionStrategyForRevert(name+"-ps", name+"-gr", testBranchStaging)
 			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
@@ -229,7 +229,7 @@ var _ = Describe("RevertCommit Controller", func() {
 			proposedTip := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
 
-			ps := promotionStrategyForRevert(strategyName, "default", gitRepo.Name, testBranchDevelopment)
+			ps := promotionStrategyForRevert(strategyName, gitRepo.Name, testBranchDevelopment)
 			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
@@ -576,9 +576,9 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 // promotionStrategyForRevert is a PromotionStrategy the RevertCommit controller can resolve, whose
 // orderCommitStatusRef does not exist. The PromotionStrategy controller stops before it upserts a
 // ChangeTransferPolicy, so a test can own that policy itself.
-func promotionStrategyForRevert(name, namespace, repoName, branch string) *promoterv1alpha1.PromotionStrategy {
+func promotionStrategyForRevert(name, repoName, branch string) *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: repoName},
 			OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{

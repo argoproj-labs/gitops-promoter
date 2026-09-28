@@ -213,7 +213,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				proposedTip = strings.TrimSpace(proposedTip)
 
 				By("Restoring active to the previous commit")
-				ps := promotionStrategyForRevert(revertStrategyName, "default", gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RevertCommit{
@@ -323,7 +323,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Restoring the active branch, which does not close that pull request")
-				ps := promotionStrategyForRevert(revertStrategyName, "default", gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RevertCommit{
