@@ -25,19 +25,23 @@ type blobObject struct {
 
 // commitObject holds the fields of one commit, as formatted by git itself.
 type commitObject struct {
-	trailers map[string][]string // nil until parsed by getTrailers
+	trailers map[string][]string // parsed from git's own %(trailers:only) output; never nil once loaded
 	Message  string
 	State    v1alpha1.CommitShaState
 }
 
-// git log batch format: six NUL-separated fields per commit, in this order:
-// %H (sha), %an (author), %cI (commit time), %s (subject), %b (body), %B (full message).
+// git log batch format: seven NUL-separated fields per commit, in this order:
+// %H (sha), %an (author), %cI (commit time), %s (subject), %b (body), %B (full message),
+// %(trailers:only) (the message's trailer lines, as git interpret-trailers --only-trailers prints them).
+//
+// Having git extract the trailers in the same batch avoids spawning git interpret-trailers once per
+// commit when history reads the trailers of every commit in its window.
 //
 // NUL cannot appear inside those fields, so the output is a flat field stream.
 const (
 	commitFieldSep      = "\x00"
-	commitLogFormat     = "%H%x00%an%x00%cI%x00%s%x00%b%x00%B"
-	commitLogFieldCount = 6
+	commitLogFormat     = "%H%x00%an%x00%cI%x00%s%x00%b%x00%B%x00%(trailers:only)"
+	commitLogFieldCount = 7
 )
 
 // fullObjectID matches a complete lowercase SHA-1 or SHA-256 object ID. Batch inputs must be full
@@ -77,6 +81,71 @@ func (g *EnvironmentOperations) LoadCommitAndMetadataBlobs(ctx context.Context, 
 	return nil
 }
 
+// LoadHistoryNotes prefetches the promotion-history notes (PromoterHistoryNotesRef) of the given
+// commits into this instance's per-reconcile cache with a single git log, so later GetHistoryNote
+// calls are served from memory instead of spawning git notes show once per commit. Requires FetchNotes
+// to have run and the commits to be present in the clone.
+//
+// Prefetch is best-effort: git log fails the whole batch when any SHA is missing, in which case
+// GetHistoryNote reads each note individually as before.
+func (g *EnvironmentOperations) LoadHistoryNotes(ctx context.Context, shas ...string) error {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	revisions := make([]string, 0, len(shas))
+	seen := make(map[string]struct{}, len(shas))
+	for _, sha := range shas {
+		key := strings.ToLower(sha)
+		if _, ok := g.historyNotes[key]; ok {
+			continue
+		}
+		if _, ok := seen[key]; ok || !fullObjectID.MatchString(key) {
+			continue
+		}
+		seen[key] = struct{}{}
+		revisions = append(revisions, key)
+	}
+	if len(revisions) == 0 {
+		return nil
+	}
+
+	// --no-notes drops any notes refs configured for display so only the history ref is printed.
+	stdin := strings.NewReader(strings.Join(revisions, "\n") + "\n")
+	stdout, _, err := runCmdWithEnvAndStdin(ctx, g.gap, gitPath, nil, stdin,
+		"log", "--no-walk=unsorted", "--stdin", "-z", "--no-notes", "--notes="+PromoterHistoryNotesRef, "--pretty=format:%H%x00%N")
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("failed to prefetch history notes, falling back to individual lookups", "error", err)
+		return nil
+	}
+
+	notes, err := parseNotesLogOutput(stdout)
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("failed to parse history notes, falling back to individual lookups", "error", err)
+		return nil
+	}
+	maps.Copy(g.historyNotes, notes)
+	return nil
+}
+
+// parseNotesLogOutput parses git log -z --pretty=format:%H%x00%N output into raw note text by commit
+// SHA, with "" for commits that have no note.
+func parseNotesLogOutput(stdout string) (map[string]string, error) {
+	if stdout == "" {
+		return map[string]string{}, nil
+	}
+	fields := strings.Split(stdout, commitFieldSep)
+	if len(fields)%2 != 0 {
+		return nil, fmt.Errorf("expected a multiple of 2 fields in git log notes output, got %d", len(fields))
+	}
+	notes := make(map[string]string, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		notes[fields[i]] = fields[i+1]
+	}
+	return notes, nil
+}
+
 func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (commitObject, error) {
 	// git resolves uppercase revisions but emits %H lowercase, so cache keys are always lowercase.
 	key := strings.ToLower(sha)
@@ -98,26 +167,14 @@ func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (comm
 	return commit, nil
 }
 
-// getTrailers returns git trailers for a commit, parsing at most once per cached commitObject.
+// getTrailers returns git trailers for a commit. They are extracted by git in the same git log batch
+// that loads the commit, so no extra process is spawned.
 func (g *EnvironmentOperations) getTrailers(ctx context.Context, sha string) (map[string][]string, error) {
-	key := strings.ToLower(sha)
-
-	commit, err := g.getCommit(ctx, key)
+	commit, err := g.getCommit(ctx, sha)
 	if err != nil {
 		return nil, err
 	}
-	if commit.trailers != nil {
-		return commit.trailers, nil
-	}
-
-	trailers, err := ParseTrailersFromMessage(ctx, commit.Message)
-	if err != nil {
-		return nil, err
-	}
-
-	commit.trailers = trailers
-	g.commits[key] = commit
-	return trailers, nil
+	return commit.trailers, nil
 }
 
 func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (blobObject, error) {
@@ -253,7 +310,7 @@ func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
 	results := make(map[string]commitObject, recordCount)
 	for i := 0; i < len(fields); i += commitLogFieldCount {
 		sha, author, commitTime := fields[i], fields[i+1], fields[i+2]
-		subject, body, message := fields[i+3], fields[i+4], fields[i+5]
+		subject, body, message, trailers := fields[i+3], fields[i+4], fields[i+5], fields[i+6]
 
 		parsedTime, err := time.Parse(time.RFC3339, commitTime)
 		if err != nil {
@@ -268,7 +325,8 @@ func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
 				Subject:    subject,
 				Body:       strings.TrimSpace(body),
 			},
-			Message: message,
+			Message:  message,
+			trailers: parseTrailerLines(trailers),
 		}
 	}
 

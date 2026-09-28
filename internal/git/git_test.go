@@ -199,9 +199,11 @@ var _ = Describe("GetBranchSha skip-fetch behavior", func() {
 		}
 	})
 
-	It("skips the fetch only when a live ls-remote confirms the remote SHA is unchanged", func() {
-		By("Fetching normally once to establish the baseline hydrated SHA (this is the only real fetch)")
-		baseline, err := g.GetBranchSha(GinkgoT().Context(), branch, "")
+	It("skips the fetch only when the clone's origin ref already matches the live remote tip", func() {
+		ctx := GinkgoT().Context()
+
+		By("Fetching normally once to establish the baseline (this is the only real fetch)")
+		baseline, err := g.GetBranchSha(ctx, branch, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(baseline).NotTo(BeEmpty())
 
@@ -209,18 +211,59 @@ var _ = Describe("GetBranchSha skip-fetch behavior", func() {
 		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
 		Expect(err).NotTo(HaveOccurred())
 
-		By("An empty lastKnownHydratedSha always attempts a real fetch, which now fails (control case)")
-		_, err = g.GetBranchSha(GinkgoT().Context(), branch, "")
+		By("An empty lastKnownHydratedSha without a snapshot always attempts a real fetch, which now fails (control case)")
+		_, err = g.GetBranchSha(ctx, branch, "")
 		Expect(err).To(HaveOccurred(), "an unconditional fetch against the broken origin must fail, proving the control case actually exercises git fetch")
 
-		By("A mismatched lastKnownHydratedSha also triggers a real fetch, which fails the same way")
-		_, err = g.GetBranchSha(GinkgoT().Context(), branch, "not-the-real-sha")
-		Expect(err).To(HaveOccurred(), "a stale lastKnownHydratedSha must not skip the fetch")
-
-		By("A matching lastKnownHydratedSha skips the fetch entirely, so the broken origin is never used")
-		sha, err := g.GetBranchSha(GinkgoT().Context(), branch, baseline)
+		By("A non-empty lastKnownHydratedSha probes the remote; the clone already has the tip, so the fetch is skipped even when the hint is stale")
+		sha, err := g.GetBranchSha(ctx, branch, "not-the-real-sha")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(sha).To(Equal(baseline))
+		sha, err = g.GetBranchSha(ctx, branch, baseline)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sha).To(Equal(baseline))
+
+		By("Once the remote moves past the clone's origin ref, the fetch is attempted again, whatever the hint says")
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha": "dry-sha-2"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "commit", "-am", "Second commit")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(ctx, branch, baseline)
+		Expect(err).To(HaveOccurred(), "a remote tip the clone does not have must be fetched")
+	})
+
+	It("uses the SnapshotRemoteRefs snapshot instead of probing, and fetches when the snapshot shows a newer tip", func() {
+		ctx := GinkgoT().Context()
+
+		baseline, err := g.GetBranchSha(ctx, branch, "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(g.SnapshotRemoteRefs(ctx, branch)).To(Succeed())
+		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("The snapshot matches the clone, so even an empty hint skips the fetch")
+		sha, err := g.GetBranchSha(ctx, branch, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sha).To(Equal(baseline))
+
+		By("A snapshot taken after the remote moved triggers a fetch")
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha": "dry-sha-2"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "commit", "-am", "Second commit")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.SnapshotRemoteRefs(ctx, branch)).To(Succeed())
+		_, err = g.GetBranchSha(ctx, branch, baseline)
+		Expect(err).To(HaveOccurred(), "a snapshot tip the clone does not have must be fetched")
+	})
+
+	It("falls back to a real fetch when the snapshot shows the branch missing on the remote", func() {
+		ctx := GinkgoT().Context()
+		Expect(g.SnapshotRemoteRefs(ctx, "does-not-exist")).To(Succeed())
+		_, err := g.GetBranchSha(ctx, "does-not-exist", "some-sha")
+		Expect(err).To(MatchError(ContainSubstring("couldn't find remote ref")))
 	})
 })
 

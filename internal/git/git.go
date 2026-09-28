@@ -73,11 +73,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -96,10 +98,24 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
-	blobs    map[string]blobObject
-	commits  map[string]commitObject
+	gap     scms.GitOperationsProvider
+	gitRepo *v1alpha1.GitRepository
+	blobs   map[string]blobObject
+	commits map[string]commitObject
+
+	// remoteRefs is a snapshot of remote ref tips, keyed by full ref name, taken by SnapshotRemoteRefs.
+	// A probed ref that does not exist on the remote maps to "". Refs that were never probed, or whose
+	// entry was consumed (FetchNotes) or invalidated by a push from this instance, are absent.
+	remoteRefs map[string]string
+
+	// localRefs caches local ref tips read by localRefShas, keyed by full ref name, with "" for refs
+	// that do not exist locally. Entries are dropped whenever this instance changes the ref.
+	localRefs map[string]string
+
+	// historyNotes caches raw promotion-history notes by lowercase commit SHA, filled by
+	// LoadHistoryNotes. "" records a commit without a note. Cleared whenever the notes ref changes.
+	historyNotes map[string]string
+
 	identity string
 }
 
@@ -143,11 +159,14 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
-		blobs:    make(map[string]blobObject),
-		commits:  make(map[string]commitObject),
+		gap:          gap,
+		gitRepo:      gitRepo,
+		identity:     identity,
+		blobs:        make(map[string]blobObject),
+		commits:      make(map[string]commitObject),
+		remoteRefs:   make(map[string]string),
+		localRefs:    make(map[string]string),
+		historyNotes: make(map[string]string),
 	}
 }
 
@@ -243,20 +262,164 @@ func (e *MalformedHydratorMetadataError) Error() string {
 // Unwrap exposes the underlying decode failure.
 func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 
+// SnapshotRemoteRefs records the current remote tips of the given branches and of both notes refs
+// (HydratorNotesRef, PromoterHistoryNotesRef) with a single ls-remote. Later GetBranchSha and
+// FetchNotes calls on this instance use the snapshot to skip fetching refs whose local copy already
+// matches the remote, so a reconcile where nothing changed costs one network round trip instead of
+// one per branch and notes ref.
+//
+// Taking a snapshot is optional: without one, GetBranchSha and FetchNotes probe the remote
+// themselves. On error the snapshot is left unchanged and callers may carry on; the later calls then
+// fall back to their own probes or fetches.
+//
+// Read-only: queries the remote only; never touches the clone.
+func (g *EnvironmentOperations) SnapshotRemoteRefs(ctx context.Context, branches ...string) error {
+	refs := make([]string, 0, len(branches)+2)
+	for _, branch := range branches {
+		refs = append(refs, branchRef(branch))
+	}
+	refs = append(refs, HydratorNotesRef, PromoterHistoryNotesRef)
+
+	snapshot, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, refs...)
+	if err != nil {
+		return err
+	}
+	maps.Copy(g.remoteRefs, snapshot)
+
+	// Read the matching local tips in one go as well, so the comparisons in GetBranchSha and FetchNotes
+	// don't each spawn git. Best effort: they read whatever is missing on their own.
+	if g.ClonePath() != "" {
+		localRefs := make([]string, 0, len(refs))
+		for _, branch := range branches {
+			localRefs = append(localRefs, trackingRef(branch))
+		}
+		localRefs = append(localRefs, HydratorNotesRef, PromoterHistoryNotesRef)
+		if _, err := g.localRefShas(ctx, localRefs...); err != nil {
+			log.FromContext(ctx).V(4).Info("failed to read local refs for snapshot", "error", err)
+		}
+	}
+	return nil
+}
+
+// forgetRemoteRef drops a ref from the remote snapshot after this instance changed it on the remote,
+// so later calls re-probe instead of trusting the pre-push value.
+func (g *EnvironmentOperations) forgetRemoteRef(ref string) {
+	delete(g.remoteRefs, ref)
+}
+
+// forgetLocalRef drops a ref from the local ref cache after this instance changed (or may have
+// changed) it in the clone, so the next localRefShas reads it again.
+func (g *EnvironmentOperations) forgetLocalRef(ref string) {
+	delete(g.localRefs, ref)
+}
+
+func branchRef(branch string) string {
+	return "refs/heads/" + branch
+}
+
+func trackingRef(branch string) string {
+	return "refs/remotes/origin/" + branch
+}
+
+// lsRemoteRefs runs a single ls-remote for the given full ref names and returns the remote SHA of each.
+// Every requested ref is present in the result; refs that do not exist on the remote map to "".
+//
+// lsRemoteRefs is concurrency-safe: it queries the remote directly and uses no on-disk clone.
+func lsRemoteRefs(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, refs ...string) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+
+	start := time.Now()
+	args := make([]string, 0, 2+len(refs))
+	args = append(args, "ls-remote", gap.GetGitHttpsRepoUrl(*gitRepo))
+	args = append(args, refs...)
+	stdout, stderr, err := runCmd(ctx, gap, "", args...)
+	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not git ls-remote", "gitError", stderr)
+		return nil, err
+	}
+
+	shas := make(map[string]string, len(refs))
+	for _, ref := range refs {
+		shas[ref] = ""
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		sha, ref, found := strings.Cut(line, "\t")
+		if !found {
+			continue
+		}
+		// ls-remote patterns match on the ref name's tail, so keep exact matches only.
+		if _, requested := shas[ref]; requested {
+			shas[ref] = sha
+		}
+	}
+
+	logger.V(4).Info("ls-remote snapshot", "refs", shas)
+	return shas, nil
+}
+
+// localRefShas returns the local SHA of each of the given full ref names, with "" for refs that do
+// not exist locally. Refs not already in the local ref cache are read with a single for-each-ref.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) localRefShas(ctx context.Context, refs ...string) (map[string]string, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	var uncached []string
+	for _, ref := range refs {
+		if _, ok := g.localRefs[ref]; !ok {
+			uncached = append(uncached, ref)
+		}
+	}
+
+	if len(uncached) > 0 {
+		args := make([]string, 0, 2+len(uncached))
+		args = append(args, "for-each-ref", "--format=%(objectname) %(refname)")
+		args = append(args, uncached...)
+		stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read local refs: %w (stderr: %s)", err, stderr)
+		}
+
+		read := make(map[string]string, len(uncached))
+		for _, ref := range uncached {
+			read[ref] = ""
+		}
+		for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+			sha, ref, found := strings.Cut(line, " ")
+			if !found {
+				continue
+			}
+			// for-each-ref patterns also match refs nested below them, so keep exact matches only.
+			if _, requested := read[ref]; requested {
+				read[ref] = sha
+			}
+		}
+		maps.Copy(g.localRefs, read)
+	}
+
+	shas := make(map[string]string, len(refs))
+	for _, ref := range refs {
+		shas[ref] = g.localRefs[ref]
+	}
+	return shas, nil
+}
+
 // GetBranchSha fetches the given branch when needed and returns the commit SHA at origin/<branch>.
 //
-// Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
-// repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
-// Hydrated SHA this same branch/identity returned on a previous, successful call). If it matches,
-// the commit is guaranteed to already be present in this clone (it was fetched the last time this
-// identity observed that SHA), so the network fetch is skipped and rev-parse resolves the tip from
-// the existing local objects instead. This keeps the skip decision self-contained: callers cannot
-// accidentally skip the fetch based on a stale probe or a SHA observed by a different clone/identity,
-// since the check against the live remote happens inside this call, right before the fetch would.
+// The fetch is skipped when the branch's current remote SHA equals the clone's own origin/<branch>
+// ref: the commit is then already present locally, so rev-parse resolves the tip without a network
+// fetch. The remote SHA comes from the SnapshotRemoteRefs snapshot when the branch was part of it,
+// otherwise from a live ls-remote taken here, right before the fetch would run. Comparing against the
+// clone's own ref keeps the skip decision self-contained: it never relies on a SHA observed by a
+// different clone/identity or recorded by an earlier reconcile.
 //
-// Pass an empty lastKnownHydratedSha (e.g. before any SHA has been observed for this branch, or when
-// the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
-// nothing to compare against.
+// lastKnownHydratedSha is the tip the caller observed on a previous reconcile. When the branch is not
+// in the snapshot and lastKnownHydratedSha is empty (no SHA has been observed yet, so a fetch is
+// likely needed anyway), the ls-remote probe is skipped and the branch is always fetched.
 //
 // Hydrator dry metadata for the tip is not read here; callers that need it should prefetch the tip
 // (for example via LoadCommitAndMetadataBlobs) and use GetShaMetadataFromFile.
@@ -266,16 +429,6 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKnownHydratedSha string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	skipFetch := false
-	if lastKnownHydratedSha != "" {
-		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
-		if err != nil {
-			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
-		} else {
-			skipFetch = remoteHeads[branch] == lastKnownHydratedSha
-		}
-	}
-
 	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
@@ -283,9 +436,29 @@ func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKn
 
 	logger.V(4).Info("git path", "path", gitPath)
 
-	if skipFetch {
-		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
-	} else if err := g.FetchBranch(ctx, branch); err != nil {
+	remoteSha, probed := g.remoteRefs[branchRef(branch)]
+	if !probed && lastKnownHydratedSha != "" {
+		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
+		if err != nil {
+			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
+		} else {
+			remoteSha = remoteHeads[branch]
+		}
+	}
+
+	if remoteSha != "" {
+		tracking := trackingRef(branch)
+		local, err := g.localRefShas(ctx, tracking)
+		if err != nil {
+			return "", err
+		}
+		if local[tracking] == remoteSha {
+			logger.V(4).Info("local branch already matches remote, skipping fetch", "branch", branch, "sha", remoteSha)
+			return remoteSha, nil
+		}
+	}
+
+	if err := g.FetchBranch(ctx, branch); err != nil {
 		return "", err
 	}
 
@@ -313,6 +486,7 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 
 	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	g.forgetLocalRef(trackingRef(branch))
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not fetch branch", "gitError", stderr)
@@ -347,7 +521,9 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 	if obj.Missing {
 		// cat-file --batch reports both "path absent from tree" and "unknown SHA" as missing.
 		// Only degrade when the commit itself exists; unknown revisions must stay errors.
-		if g.CommitExists(ctx, sha) {
+		// A commit already in the per-reconcile cache is known to exist without spawning git.
+		_, cached := g.commits[strings.ToLower(sha)]
+		if cached || g.CommitExists(ctx, sha) {
 			logger.V(4).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
 			return v1alpha1.CommitShaState{}, nil
 		}
@@ -553,9 +729,25 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	logger := log.FromContext(ctx)
 	repoPath := g.ClonePath()
 
+	// The result only depends on the two tip commits, so it is memoized per repository and commit
+	// pair: a promotion waiting on its gates is reconciled many times against the same tips. The tips
+	// are resolved from the local ref cache and passed to merge-tree as SHAs so the cached answer is
+	// for exactly the commits that were checked.
+	activeRev, proposedRev := "origin/"+activeBranch, "origin/"+proposedBranch
+	var key conflictKey
+	if tips, err := g.localRefShas(ctx, trackingRef(activeBranch), trackingRef(proposedBranch)); err == nil &&
+		tips[trackingRef(activeBranch)] != "" && tips[trackingRef(proposedBranch)] != "" {
+		activeRev, proposedRev = tips[trackingRef(activeBranch)], tips[trackingRef(proposedBranch)]
+		key = conflictKey{repoURL: g.gap.GetGitHttpsRepoUrl(*g.gitRepo), activeSha: activeRev, proposedSha: proposedRev}
+		if conflict, ok := conflicts.get(key); ok {
+			logger.V(4).Info("Using cached merge-tree result", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "conflict", conflict)
+			return conflict, nil
+		}
+	}
+
 	// Use git merge-tree --write-tree to perform a stateless merge check
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", activeRev, proposedRev)
 	if err != nil {
 		// Unrelated histories cannot be inspected by merge-tree, but they need the same
 		// resolution as a content conflict: create an ours-style merge commit on proposed
@@ -573,6 +765,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 		// Exit code 1 with conflict info means conflicts were detected.
 		if strings.Contains(stdout, "CONFLICT") {
 			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			conflicts.put(key, true)
 			return true, nil
 		}
 		// Some other error occurred
@@ -582,7 +775,50 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 
 	// Exit code 0 means clean merge - stdout contains the resulting tree SHA
 	logger.V(4).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
+	conflicts.put(key, false)
 	return false, nil
+}
+
+// conflictKey identifies one merge-tree conflict check: the repository and the two commits merged.
+type conflictKey struct {
+	repoURL     string
+	activeSha   string
+	proposedSha string
+}
+
+// maxCachedConflicts bounds the process-wide merge-tree result cache. Each entry is a few hundred
+// bytes; the cache is simply reset when full since stale commit pairs are never asked about again.
+const maxCachedConflicts = 4096
+
+// conflictCache memoizes merge-tree conflict results by commit pair. It is shared by every
+// EnvironmentOperations in the process and is concurrency-safe.
+type conflictCache struct {
+	results map[conflictKey]bool
+	mu      sync.Mutex
+}
+
+var conflicts = &conflictCache{results: make(map[conflictKey]bool)}
+
+func (c *conflictCache) get(key conflictKey) (bool, bool) {
+	if key == (conflictKey{}) {
+		return false, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conflict, ok := c.results[key]
+	return conflict, ok
+}
+
+func (c *conflictCache) put(key conflictKey, conflict bool) {
+	if key == (conflictKey{}) {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.results) >= maxCachedConflicts {
+		clear(c.results)
+	}
+	c.results[key] = conflict
 }
 
 // MergeWithOursStrategy merges the active branch into the proposed branch using the "ours" strategy
@@ -619,6 +855,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
+	// The push also moves the clone's origin/<proposed> tracking ref.
+	g.forgetRemoteRef(branchRef(proposedBranch))
+	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
@@ -705,6 +944,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
+	// The push also moves the clone's origin/<proposed> tracking ref.
+	g.forgetRemoteRef(branchRef(proposedBranch))
+	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
@@ -775,13 +1017,61 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
-// FetchNotes fetches the git notes from the remote repository.
+// FetchNotes brings the local notes refs (HydratorNotesRef, PromoterHistoryNotesRef) up to date with
+// the remote. A ref is only fetched when its remote tip differs from the local one; the remote tips
+// come from the SnapshotRemoteRefs snapshot (used by at most one FetchNotes call), or from a single
+// ls-remote taken here when there is none.
+// A notes ref missing on the remote is not an error.
 //
 // Read-only: updates the notes refs only; never mutates the clone's index/worktree/HEAD.
 func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	notesRefs := []string{HydratorNotesRef, PromoterHistoryNotesRef}
+
+	// A snapshot answers one FetchNotes call: its entries are consumed here so a later call on this
+	// instance probes the remote again instead of trusting an older view.
+	remote := make(map[string]string, len(notesRefs))
+	var unprobed []string
+	for _, ref := range notesRefs {
+		if sha, ok := g.remoteRefs[ref]; ok {
+			remote[ref] = sha
+			g.forgetRemoteRef(ref)
+		} else {
+			unprobed = append(unprobed, ref)
+		}
+	}
+	if len(unprobed) > 0 {
+		probed, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, unprobed...)
+		if err != nil {
+			// Fall back to fetching every ref; fetchNotesRef reports the underlying failure.
+			logger.V(4).Info("ls-remote probe for notes refs failed, fetching unconditionally", "error", err)
+			for _, ref := range notesRefs {
+				if err := g.fetchNotesRef(ctx, ref); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		maps.Copy(remote, probed)
+	}
+
+	local, err := g.localRefShas(ctx, notesRefs...)
+	if err != nil {
+		return err
+	}
+
 	// Each ref is fetched in its own invocation because a multi-refspec fetch fails wholesale when any
 	// single ref is missing, and either ref can legitimately be absent.
-	for _, ref := range []string{HydratorNotesRef, PromoterHistoryNotesRef} {
+	for _, ref := range notesRefs {
+		remoteSha := remote[ref]
+		if remoteSha == "" {
+			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
+			continue
+		}
+		if local[ref] == remoteSha {
+			logger.V(4).Info("Git notes ref unchanged on remote, skipping fetch", "ref", ref)
+			continue
+		}
 		if err := g.fetchNotesRef(ctx, ref); err != nil {
 			return err
 		}
@@ -802,6 +1092,7 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 	// Fetch the notes ref from origin. We use + to force update in case of divergence.
 	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+ref+":"+ref)
+	g.forgetLocalRef(ref)
 	if err != nil {
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
@@ -814,6 +1105,9 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		return fmt.Errorf("failed to fetch git notes for ref %q: %w", ref, err)
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
+	if ref == PromoterHistoryNotesRef {
+		clear(g.historyNotes)
+	}
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil
@@ -863,15 +1157,24 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
-	if err != nil {
-		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
-		if strings.Contains(strings.ToLower(stderr), "no note found") {
-			logger.V(4).Info("No history note found for commit", "sha", sha)
-			return nil, nil
+	stdout, ok := g.historyNotes[strings.ToLower(sha)]
+	if !ok {
+		var stderr string
+		var err error
+		stdout, stderr, err = g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
+		if err != nil {
+			// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+			if strings.Contains(strings.ToLower(stderr), "no note found") {
+				logger.V(4).Info("No history note found for commit", "sha", sha)
+				return nil, nil
+			}
+			logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
+			return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
 		}
-		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
-		return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		logger.V(4).Info("No history note found for commit", "sha", sha)
+		return nil, nil
 	}
 
 	var trailers map[string][]string
@@ -921,6 +1224,8 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 
 		// -f overwrites an existing note, which keeps retried reconciles idempotent.
 		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
+		clear(g.historyNotes)
+		g.forgetLocalRef(PromoterHistoryNotesRef)
 		if err != nil {
 			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
 			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
@@ -930,6 +1235,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", PromoterHistoryNotesRef+":"+PromoterHistoryNotesRef)
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPushNotes, metrics.GitOperationResultFromError(err), time.Since(start))
 		if err == nil {
+			g.forgetRemoteRef(PromoterHistoryNotesRef)
 			logger.V(4).Info("Pushed history note", "sha", sha, "attempt", attempt)
 			return nil
 		}
@@ -992,6 +1298,31 @@ func (g *EnvironmentOperations) CommitExists(ctx context.Context, sha string) bo
 	return err == nil
 }
 
+// notedObjects returns the set of object SHAs that have a note in the given notes ref, without reading
+// any note contents. A missing notes ref yields an empty set.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) notedObjects(ctx context.Context, ref string) (map[string]struct{}, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+ref, "list")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list notes in %q: %w (stderr: %s)", ref, err, stderr)
+	}
+
+	noted := make(map[string]struct{})
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		// Each line is "<note blob> <annotated object>".
+		if _, object, found := strings.Cut(line, " "); found {
+			noted[object] = struct{}{}
+		}
+	}
+	return noted, nil
+}
+
 // FindMatchingHydratorNote returns the hydrator note for startSha, or — when the tip has
 // no note — the first note on a first-parent ancestor whose DrySha equals expectedDrySha.
 // A note on the branch tip is always preferred, including note-only hydrator updates where
@@ -1012,6 +1343,17 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		return nil, nil
 	}
 
+	// Only ancestors that carry a note are worth reading. notes list reads the notes tree alone (no note
+	// blobs, which a blob-less clone would fetch lazily), so this avoids a git notes show per ancestor
+	// and skips the walk entirely when no commit has a note, as with hydrators that never write them.
+	noted, err := g.notedObjects(ctx, HydratorNotesRef)
+	if err != nil {
+		return nil, err
+	}
+	if len(noted) == 0 {
+		return nil, nil
+	}
+
 	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
 	if err != nil {
 		return nil, err
@@ -1020,6 +1362,9 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 	logger := log.FromContext(ctx)
 	for _, sha := range shas {
 		if sha == startSha {
+			continue
+		}
+		if _, ok := noted[sha]; !ok {
 			continue
 		}
 		note, err := g.GetHydratorNote(ctx, sha)
@@ -1061,30 +1406,29 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
 		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
 	}
-	stdout := stdoutBuf.String()
-
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string][]string)
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		if strings.Contains(line, ":") {
-			key, value, found := strings.Cut(line, ":")
-			if found {
-				trimmedKey := strings.TrimSpace(key)
-				trimmedValue := strings.TrimSpace(value)
-				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
-			} else {
-				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
-			}
-		}
-	}
+	trailers := parseTrailerLines(stdoutBuf.String())
 	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
 	return trailers, nil
 }
 
-// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
+// parseTrailerLines turns trailer lines ("Key: value", as printed by git interpret-trailers
+// --only-trailers or the %(trailers:only) log format) into a map where each key can have multiple
+// values. Lines without a colon are skipped. The result is never nil.
+func parseTrailerLines(output string) map[string][]string {
+	trailers := make(map[string][]string)
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		trimmedKey := strings.TrimSpace(key)
+		trailers[trimmedKey] = append(trailers[trimmedKey], strings.TrimSpace(value))
+	}
+	return trailers
+}
+
+// GetTrailers retrieves the trailers of the given commit, as git interpret-trailers --only-trailers would
+// parse them from its message. They are extracted in the same batched git log that loads the commit.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
