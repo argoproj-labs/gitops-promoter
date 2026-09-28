@@ -368,14 +368,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     <div className="hp-row__subject" title={row.subject}>
                       {row.subject}
                     </div>
-                    {row.restoreSubject && (
-                      <div className="hp-row__restore-line" title={row.restoreSubject}>
-                        {row.restoreSubject}
-                        {row.restoreShaShort && (
-                          <span className="hp-row__restore-sha">{row.restoreShaShort}</span>
-                        )}
-                      </div>
-                    )}
                     <div className="hp-row__meta">
                       {row.repoUrl && row.dryShaFull ? (
                         <a

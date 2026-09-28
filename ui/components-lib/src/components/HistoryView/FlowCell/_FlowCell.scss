@@ -54,6 +54,15 @@
     background: $stroke-strong;
   }
 }
+// A restore reuses an earlier version, so it would otherwise look live (green) or
+// replaced (grey). The amber fill is the whole signal that the branch was restored.
+.cell--restore {
+  background: $restored-soft;
+  border-color: $restored-border;
+  &::before {
+    background: $restored-ink;
+  }
+}
 .cell--in-flight {
   background: $pending-soft;
   border-color: $pending-border;
@@ -162,6 +171,10 @@
 
   &--live {
     background: $success-ink;
+    color: #fff;
+  }
+  &--restore {
+    background: $restored-ink;
     color: #fff;
   }
   &--was-here {

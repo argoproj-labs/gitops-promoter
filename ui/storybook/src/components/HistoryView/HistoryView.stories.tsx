@@ -89,6 +89,58 @@ export const RevertedCommit: Story = {
     ),
 };
 
+const DEV = 'environments/development';
+const STAGING = 'environments/staging';
+const RESTORED_DRY = '2b329f8e0a1b2c3d4e5f60718293a4b5c6d7e8f9';
+const DEV_RESTORE = '6d1a639aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const STAGING_RESTORE = '7de7f61bbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+function restoreEnv(branch: string, hydratedSha: string, restoredFrom: string) {
+  const dryCommit = dry(RESTORED_DRY, 'chore: bump version to v1.0.2027');
+  const hydrated = {
+    sha: hydratedSha,
+    subject: `Revert ${branch} to ${restoredFrom.slice(0, 7)}`,
+    commitTime: '2026-09-28T18:00:00Z',
+    repoURL: 'https://github.com/argoproj-labs/gitops-promoter',
+  };
+  return {
+    branch,
+    active: { dry: dryCommit, hydrated, commitStatuses: [] },
+    proposed: { dry: dryCommit, hydrated: {}, commitStatuses: [] },
+    history: [
+      {
+        active: { dry: dryCommit, hydrated, commitStatuses: [] },
+        restoredFrom,
+      },
+    ],
+    lastHealthyDryShas: [],
+  };
+}
+
+/** Development and staging both restored the same dry commit, so they share one amber row. */
+export const CollapsedRestore: Story = {
+  render: () => (
+    <div style={{ height: '100vh' }}>
+      <HistoryView
+        strategy={
+          {
+            metadata: { name: 'argocon-demo', namespace: 'default' },
+            spec: { environments: [{ branch: DEV }, { branch: STAGING }] },
+            status: {
+              environments: [
+                restoreEnv(DEV, DEV_RESTORE, '041fe9eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+                restoreEnv(STAGING, STAGING_RESTORE, 'c027caabbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
+              ],
+            },
+          } as unknown as PromotionStrategy
+        }
+        namespace="default"
+        fillViewport
+      />
+    </div>
+  ),
+};
+
 /** A newer commit opened a pull request, which does not auto-merge while the RevertCommit exists. */
 export const NewerCommit: Story = {
   render: () =>

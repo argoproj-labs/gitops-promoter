@@ -124,9 +124,9 @@ describe('buildMatrix restore rows', () => {
     expect(restoreRow!.id).not.toBe(originalRow!.id);
   });
 
-  it('keeps the restored version dry identity on both rows and names the revert commit', () => {
+  it('keeps the restored version dry identity and keys the restore row by that sha', () => {
     // Two rows carrying the same dry sha and subject is the signal that the branch went
-    // back in time; the revert commit rides alongside rather than replacing the subject.
+    // back in time. The -revert suffix is what keeps the restore off the original row.
     const { rows } = buildMatrix(strategyWithHistory(true));
     const forOldDry = rows.filter((r) => r.dryShaFull === OLD_DRY);
     const restoreRow = forOldDry.find((r) => r.restoredFrom)!;
@@ -134,9 +134,53 @@ describe('buildMatrix restore rows', () => {
 
     expect(restoreRow.subject).toBe(originalRow.subject);
     expect(restoreRow.dryShaShort).toBe(originalRow.dryShaShort);
-    expect(restoreRow.restoreSubject).toBe(`Revert ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`);
-    expect(restoreRow.restoreShaShort).toBe(RESTORE_HYDRATED.slice(0, 7));
-    expect(originalRow.restoreSubject).toBeUndefined();
+    expect(restoreRow.id).toBe(`${OLD_DRY.slice(0, 7)}-revert`);
+    expect(originalRow.id).toBe(OLD_DRY.slice(0, 7));
+  });
+
+  it('collapses restores of the same dry commit across environments onto one row', () => {
+    const strategy = strategyWithHistory(true);
+    const dev = strategy.status!.environments![0] as Environment;
+    const staging = structuredClone(dev);
+    staging.branch = 'environments/staging';
+    const stagingHydrated = '1111111111111111111111111111111111111111';
+    staging.active!.hydrated!.sha = stagingHydrated;
+    staging.history![0]!.active!.hydrated!.sha = stagingHydrated;
+    strategy.status!.environments!.push(staging);
+
+    const { rows } = buildMatrix(strategy);
+    const restores = rows.filter((r) => r.restoredFrom);
+    expect(restores).toHaveLength(1);
+    expect(restores[0]!.id).toBe(`${OLD_DRY.slice(0, 7)}-revert`);
+    expect(restores[0]!.cells[BRANCH]!.kind).toBe('live');
+    expect(restores[0]!.cells[staging.branch]!.kind).toBe('live');
+    expect(restores[0]!.cells[BRANCH]!.hydrated?.sha).toBe(RESTORE_HYDRATED);
+    expect(restores[0]!.cells[staging.branch]!.hydrated?.sha).toBe(stagingHydrated);
+  });
+
+  it('keeps the newer restore when one environment restores the same dry commit twice', () => {
+    const strategy = strategyWithHistory(true);
+    const env = strategy.status!.environments![0] as Environment;
+    const older = env.history![0]!;
+    const newerHydrated = '2222222222222222222222222222222222222222';
+    const newer = structuredClone(older);
+    newer.active!.hydrated = {
+      ...newer.active!.hydrated,
+      sha: newerHydrated,
+      commitTime: '2026-09-25T18:00:00Z',
+    };
+    env.active = {
+      dry: dryCommit(NEW_DRY, 'chore: bump version to v1.0.1997', '2026-09-26T00:00:00Z'),
+      hydrated: { sha: NEW_HYDRATED, commitTime: '2026-09-26T00:00:00Z' },
+      commitStatuses: [],
+    };
+    env.history = [newer, older, ...env.history!.slice(1)];
+
+    const { rows } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.id.endsWith('-revert'))!.cells[BRANCH]!;
+    expect(cell.kind).toBe('restored');
+    expect(cell.hydrated?.sha).toBe(newerHydrated);
+    expect(cell.at).toBe('2026-09-25T18:00:00Z');
   });
 
   it('sorts the restore row to the top using the restore commit time, not the copied merge time', () => {

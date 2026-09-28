@@ -222,7 +222,7 @@ const DetailDrawer: React.FC<{
             ? ' hp-drawer__kind--reverted'
             : ' hp-drawer__kind--held'
           : ''
-      }`}
+      }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
     >
       {cellKindLabel(cell)}
     </span>

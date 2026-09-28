@@ -126,9 +126,23 @@ const cellRank: Record<CellKind, number> = {
   'no-changes': 1,
 };
 
+function cellAtMs(cell: CellState): number {
+  if (!cell.at) return 0;
+  const t = new Date(cell.at).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 function setCell(row: CommitRow, branch: string, next: CellState) {
   const prev = row.cells[branch];
-  if (!prev || cellRank[next.kind] >= cellRank[prev.kind]) {
+  if (!prev) {
+    row.cells[branch] = next;
+    return;
+  }
+  const rankDiff = cellRank[next.kind] - cellRank[prev.kind];
+  // History is walked newest-first, so an older entry of the same kind must not
+  // overwrite a newer one. That happens when one environment restores the same dry
+  // commit twice and both entries share a row.
+  if (rankDiff > 0 || (rankDiff === 0 && cellAtMs(next) >= cellAtMs(prev))) {
     row.cells[branch] = next;
   }
 }
@@ -156,29 +170,27 @@ function wentLiveAt(entry: HistoryEntry | undefined): number | null {
  * Row key for a restore entry, or null when the entry is an ordinary promotion.
  *
  * A restore reuses the restored version's tree, so its dry sha repeats the row the
- * original promotion already owns. Keying by the restore's own hydrated sha gives it
- * a distinct row instead of silently re-marking that older one.
+ * original promotion already owns. The same dry key plus `-revert` keeps that row
+ * distinct, and every environment restored back to that commit shares it. Each
+ * environment's own revert commit stays on the cell.
  */
 function restoreRowKey(entry: HistoryEntry | undefined): string | null {
-  const hydratedSha = entry?.active?.hydrated?.sha;
-  if (!entry?.restoredFrom || !hydratedSha) return null;
-  return `restore:${hydratedSha.slice(0, 7)}`;
+  if (!entry?.restoredFrom) return null;
+  const key = commitKey(entry.active?.dry);
+  if (!key) return null;
+  return `${key}-revert`;
 }
 
 /**
- * Mark a restore row and attach the revert commit that produced it.
+ * Mark a restore row.
  *
- * The row deliberately keeps the restored version's dry identity — same subject, same
- * dry sha as the original promotion's row — because two rows carrying identical dry
- * data is what shows the branch moved back to an earlier version. The revert commit's
- * own subject (`Revert <branch> to <sha>`) rides alongside as secondary detail so the
- * newer of the two rows is identifiable as the restore.
+ * The row keeps the restored version's dry identity — same subject, same dry sha as
+ * the original promotion's row — because two rows carrying identical dry data is what
+ * shows the branch moved back to an earlier version. The amber cell fill is what
+ * marks this row as the restore.
  */
 function applyRestoreIdentity(row: CommitRow, entry: HistoryEntry) {
   row.restoredFrom = entry.restoredFrom;
-  const hydrated = entry.active?.hydrated;
-  row.restoreSubject = (hydrated?.subject ?? '').trim() || undefined;
-  row.restoreShaShort = hydrated?.sha ? shortSha(hydrated.sha) : undefined;
 }
 
 function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {

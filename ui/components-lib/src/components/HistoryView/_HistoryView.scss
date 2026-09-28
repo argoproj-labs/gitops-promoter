@@ -524,28 +524,6 @@
   -webkit-box-orient: vertical;
 }
 
-/* The revert commit behind a restore row. The row header itself stays on the restored
-   version's dry commit, so this line is what names the revert. */
-.hp-row__restore-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 2px;
-  font-size: 11px;
-  color: $restored-ink;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.hp-row__restore-sha {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  padding: 0 4px;
-  border-radius: $radius-sm;
-  background: rgba(154, 90, 15, 0.1);
-}
-
 .hp-row__meta {
   display: flex;
   align-items: center;

@@ -14,7 +14,7 @@ export type DisplayCellKind = Exclude<CellKind, 'restored'>;
 
 /**
  * The kind a cell is drawn as. A superseded restore is a second row for an earlier dry commit
- * and looks like any other replaced cell; the revert subject on its row is what marks it as a restore.
+ * and uses the replaced layout; the amber cell fill is what marks it as a restore.
  */
 export function displayKind(kind: CellKind): DisplayCellKind {
   return kind === 'restored' ? 'was-here' : kind;
@@ -65,8 +65,13 @@ export const DRAWER_WIDTH_KEY = 'hp-drawer-width';
 
 export function cellPillTooltip(cell: CellState, branch: string): string {
   switch (cell.kind) {
-    case 'live':
-      return `Currently live in ${branch}`;
+    case 'live': {
+      if (!cell.restoredFrom) return `Currently live in ${branch}`;
+      const dry = cell.commit?.sha?.slice(0, 7);
+      return dry
+        ? `Currently live in ${branch} on reverted dry SHA ${dry}`
+        : `Currently live in ${branch} on a reverted dry SHA`;
+    }
     case 'in-flight':
       return cell.isProposed
         ? `Proposed for ${branch} — promotion pending`

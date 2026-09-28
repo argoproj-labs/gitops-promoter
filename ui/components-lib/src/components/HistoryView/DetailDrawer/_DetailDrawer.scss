@@ -152,6 +152,9 @@
   &--live {
     background: $success-ink;
   }
+  &--restore {
+    background: $restored-ink;
+  }
   &--in-flight {
     background: $pending-ink;
   }

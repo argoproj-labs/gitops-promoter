@@ -83,15 +83,11 @@ export interface CommitRow {
   refShaShort?: string;
   refUrl?: string;
   /**
-   * Hydrated sha the active branch was restored to. Set only on rows built from a
-   * restore entry, which share a dry sha with the original promotion's row and are
-   * keyed by hydrated sha to keep the two distinct.
+   * Set on rows built from a restore entry. Those rows share a dry sha with the
+   * original promotion and are keyed `{dry sha}-revert` to keep the two distinct.
+   * The value is one environment's restored-from sha; each cell carries its own.
    */
   restoredFrom?: string;
-  /** Subject of the revert commit itself, e.g. `Revert environments/development to 66ac6bf`. */
-  restoreSubject?: string;
-  /** Short sha of the revert commit on the active branch. */
-  restoreShaShort?: string;
   repoUrl: string;
   freshestAt: number;
   earliestAt: number;

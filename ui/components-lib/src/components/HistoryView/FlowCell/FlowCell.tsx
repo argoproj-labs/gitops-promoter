@@ -69,6 +69,7 @@ const FlowCell: React.FC<{
         'cell',
         `cell--${visualKind}`,
         held ? (cell.revertedByRevertCommit ? 'cell--reverted' : 'cell--held') : '',
+        isRestore ? 'cell--restore' : '',
         isSelected ? 'cell--selected' : '',
       ]
         .filter(Boolean)
@@ -106,7 +107,7 @@ const FlowCell: React.FC<{
                     ? ' cell__pill--reverted'
                     : ' cell__pill--held'
                   : ''
-              }`}
+              }${isRestore ? ' cell__pill--restore' : ''}`}
             >
               {visualKind === 'no-op' && (
                 <>
