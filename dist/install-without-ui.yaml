@@ -7268,14 +7268,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: revertcommits.promoter.argoproj.io
+  name: revertactivecommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: RevertCommit
-    listKind: RevertCommitList
-    plural: revertcommits
-    singular: revertcommit
+    kind: RevertActiveCommit
+    listKind: RevertActiveCommitList
+    plural: revertactivecommits
+    singular: revertactivecommit
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -7300,9 +7300,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          RevertCommit restores one environment's active branch to a previously hydrated commit and records
+          RevertActiveCommit restores one environment's active branch to a previously hydrated commit and records
           the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
-          Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
+          Creating the resource is the authorization boundary: whoever can create a RevertActiveCommit in the
           strategy's namespace can restore that environment, and the controller's git credentials perform the push.
           The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
         properties:
@@ -7325,10 +7325,10 @@ spec:
             type: object
           spec:
             description: |-
-              RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+              RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
               once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-              existing RevertCommit at a different sha, strategy, or branch would lose track of what it
-              reverted. To restore something else, create a new RevertCommit.
+              existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
+              reverted. To restore something else, create a new RevertActiveCommit.
             properties:
               branch:
                 description: |-
@@ -7369,7 +7369,7 @@ spec:
                   The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
                   a promotion pull request that would put the active branch's dry SHA back. A pull request
                   for a different proposed dry SHA may open, but nothing is auto-merged while this
-                  RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+                  RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
                   reverted change again; see status.blockedDrySha.
                   The restore runs once. Later promotions are left alone.
                 maxLength: 64
@@ -7382,11 +7382,11 @@ spec:
             - sha
             type: object
             x-kubernetes-validations:
-            - message: spec is immutable; create a new RevertCommit to restore a different
-                commit, strategy, or branch
+            - message: spec is immutable; create a new RevertActiveCommit to restore
+                a different commit, strategy, or branch
               rule: self == oldSelf
           status:
-            description: RevertCommitStatus defines the observed state of RevertCommit.
+            description: RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
             properties:
               activeSha:
                 description: ActiveSha is the commit on the active branch after a
@@ -7400,9 +7400,9 @@ spec:
                   BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
                   moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
                   proposed dry SHA still equals this value, so the reverted change is not put back. A different
-                  proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
+                  proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
                   exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
-                  had spec.sha's content so nothing was moved off it. Deleting the RevertCommit lifts
+                  had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
                   this block, but a promotion pull request only opens when the proposed branch has a commit the
                   active branch does not already contain. The restore commit is parented on the tip it moved
                   off of, so when that tip already contains the proposed commit (a merge-commit promotion),
@@ -9856,7 +9856,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
-  - revertcommits/status
+  - revertactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -9924,7 +9924,7 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - revertcommits
+  - revertactivecommits
   verbs:
   - get
   - list

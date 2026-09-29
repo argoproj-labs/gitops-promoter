@@ -24,12 +24,12 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
 // once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertCommit at a different sha, strategy, or branch would lose track of what it
-// reverted. To restore something else, create a new RevertCommit.
-// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertCommit to restore a different commit, strategy, or branch"
-type RevertCommitSpec struct {
+// existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
+// reverted. To restore something else, create a new RevertActiveCommit.
+// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertActiveCommit to restore a different commit, strategy, or branch"
+type RevertActiveCommitSpec struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	// +kubebuilder:validation:Required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
@@ -54,7 +54,7 @@ type RevertCommitSpec struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+	// RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
 	// reverted change again; see status.blockedDrySha.
 	// The restore runs once. Later promotions are left alone.
 	// +kubebuilder:validation:Required
@@ -64,8 +64,8 @@ type RevertCommitSpec struct {
 	Sha string `json:"sha"`
 }
 
-// RevertCommitStatus defines the observed state of RevertCommit.
-type RevertCommitStatus struct {
+// RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
+type RevertActiveCommitStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -83,9 +83,9 @@ type RevertCommitStatus struct {
 	// BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
 	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
-	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
+	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
 	// exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
-	// had spec.sha's content so nothing was moved off it. Deleting the RevertCommit lifts
+	// had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
 	// this block, but a promotion pull request only opens when the proposed branch has a commit the
 	// active branch does not already contain. The restore commit is parented on the tip it moved
 	// off of, so when that tip already contains the proposed commit (a merge-commit promotion),
@@ -121,18 +121,18 @@ type RevertCommitStatus struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// GetConditions returns the conditions of the RevertCommit.
-func (r *RevertCommit) GetConditions() *[]metav1.Condition {
+// GetConditions returns the conditions of the RevertActiveCommit.
+func (r *RevertActiveCommit) GetConditions() *[]metav1.Condition {
 	return &r.Status.Conditions
 }
 
 // SetObservedGeneration records the object generation that produced the current status.
-func (r *RevertCommit) SetObservedGeneration(generation int64) {
+func (r *RevertActiveCommit) SetObservedGeneration(generation int64) {
 	r.Status.ObservedGeneration = generation
 }
 
 // SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
-func (r *RevertCommit) SetStatusInstanceID(v *string) {
+func (r *RevertActiveCommit) SetStatusInstanceID(v *string) {
 	r.Status.InstanceID = v
 }
 
@@ -140,9 +140,9 @@ func (r *RevertCommit) SetStatusInstanceID(v *string) {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// RevertCommit restores one environment's active branch to a previously hydrated commit and records
+// RevertActiveCommit restores one environment's active branch to a previously hydrated commit and records
 // the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
-// Creating the resource is the authorization boundary: whoever can create a RevertCommit in the
+// Creating the resource is the authorization boundary: whoever can create a RevertActiveCommit in the
 // strategy's namespace can restore that environment, and the controller's git credentials perform the push.
 // The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
 // +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
@@ -150,26 +150,26 @@ func (r *RevertCommit) SetStatusInstanceID(v *string) {
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.spec.sha`,priority=1
 // +kubebuilder:printcolumn:name="Active Sha",type=string,JSONPath=`.status.activeSha`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-type RevertCommit struct {
+type RevertActiveCommit struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RevertCommitSpec   `json:"spec,omitempty"`
-	Status RevertCommitStatus `json:"status,omitempty"`
+	Spec   RevertActiveCommitSpec   `json:"spec,omitempty"`
+	Status RevertActiveCommitStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// RevertCommitList contains a list of RevertCommit
-type RevertCommitList struct {
+// RevertActiveCommitList contains a list of RevertActiveCommit
+type RevertActiveCommitList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RevertCommit `json:"items"`
+	Items           []RevertActiveCommit `json:"items"`
 }
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &RevertCommit{}, &RevertCommitList{})
+		s.AddKnownTypes(SchemeGroupVersion, &RevertActiveCommit{}, &RevertActiveCommitList{})
 		return nil
 	})
 }

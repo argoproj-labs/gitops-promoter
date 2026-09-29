@@ -57,8 +57,8 @@ var _ = Describe("GateCommitStatusKinds", func() {
 				"%s must not be treated as a PromotionStrategyRef gate; it lacks Spec.PromotionStrategyRef",
 				notWant)
 		}
-		Expect(got).NotTo(HaveKey("RevertCommit"),
-			"RevertCommit has Spec.PromotionStrategyRef but is not a commit-status gate")
+		Expect(got).NotTo(HaveKey("RevertActiveCommit"),
+			"RevertActiveCommit has Spec.PromotionStrategyRef but is not a commit-status gate")
 	})
 })
 

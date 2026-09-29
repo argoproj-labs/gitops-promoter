@@ -6,7 +6,7 @@ const BRANCH = 'environments/staging';
 const LIVE = 'e077303c44639639a42140b19cf5e1b66731f781';
 const REVERTED = '23966a8b70c6e6ff08a5849e2e8458679947b0e3';
 const NEWER = 'fb294e4cc39e838f2816eccd50d82827a3258c02';
-const REVERT_COMMIT = 'revert-environments-staging-22d5a51';
+const REVERT_ACTIVE_COMMIT = 'revert-environments-staging-22d5a51';
 
 const dry = (sha: string, subject: string) => ({
   sha,
@@ -39,7 +39,7 @@ function strategyWith(
             commitStatuses: [],
           },
           pullRequest,
-          revertCommit: { name: REVERT_COMMIT, blockedDrySha: REVERTED },
+          revertActiveCommit: { name: REVERT_ACTIVE_COMMIT, blockedDrySha: REVERTED },
           history: [
             {
               active: {
@@ -76,7 +76,7 @@ const render = (strategy: PromotionStrategy, rowSha: string) => (
   </div>
 );
 
-/** Proposed is still the commit the RevertCommit moved off active; no pull request opens. */
+/** Proposed is still the commit the RevertActiveCommit moved off active; no pull request opens. */
 export const RevertedCommit: Story = {
   render: () =>
     render(
@@ -141,7 +141,7 @@ export const CollapsedRestore: Story = {
   ),
 };
 
-/** A newer commit opened a pull request, which does not auto-merge while the RevertCommit exists. */
+/** A newer commit opened a pull request, which does not auto-merge while the RevertActiveCommit exists. */
 export const NewerCommit: Story = {
   render: () =>
     render(

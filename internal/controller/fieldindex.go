@@ -75,7 +75,7 @@ func discoverPromotionStrategyRefGateKinds(scheme *runtime.Scheme) []client.Obje
 		if strings.HasSuffix(kind, "List") {
 			continue
 		}
-		// RevertCommit also has Spec.PromotionStrategyRef. Gate discovery is commit-status
+		// RevertActiveCommit also has Spec.PromotionStrategyRef. Gate discovery is commit-status
 		// managers only; a kind that merely references a strategy is not a gate.
 		if !strings.HasSuffix(kind, "CommitStatus") {
 			continue

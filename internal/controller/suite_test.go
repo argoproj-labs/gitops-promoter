@@ -262,10 +262,10 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&RevertCommitReconciler{
+	err = (&RevertActiveCommitReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("RevertCommit"),
+		Recorder:    k8sManager.GetEventRecorder("RevertActiveCommit"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 		EnqueueCTPH: ctphReconciler.GetEnqueueFunc(),

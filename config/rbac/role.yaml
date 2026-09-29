@@ -82,7 +82,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
-  - revertcommits/status
+  - revertactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -150,7 +150,7 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - revertcommits
+  - revertactivecommits
   verbs:
   - get
   - list

@@ -27,11 +27,11 @@ function dns1123(value: string): string {
 }
 
 /**
- * RevertCommit metadata.name. Includes the environment branch and a short sha so two
+ * RevertActiveCommit metadata.name. Includes the environment branch and a short sha so two
  * environments restoring the same commit, or one environment restored to two commits,
  * do not collide. Stays inside the 253-character DNS-1123 subdomain limit.
  */
-export function revertCommitResourceName(branch: string, sha: string): string {
+export function revertActiveCommitResourceName(branch: string, sha: string): string {
   const prefix = 'revert-';
   const suffix = `-${sha.slice(0, 7)}`;
   const budget = 253 - prefix.length - suffix.length;
@@ -42,12 +42,12 @@ export function revertCommitResourceName(branch: string, sha: string): string {
   return `${prefix}${stem}${suffix}`;
 }
 
-export interface RevertCommitApplyInput {
+export interface RevertActiveCommitApplyInput {
   namespace: string;
   promotionStrategyName: string;
   /**
    * The environment's ChangeTransferPolicy instance-id label. A non-default install only watches
-   * resources carrying its instance id, so the RevertCommit must carry the same one.
+   * resources carrying its instance id, so the RevertActiveCommit must carry the same one.
    */
   instanceId?: string;
   branch: string;
@@ -55,18 +55,18 @@ export interface RevertCommitApplyInput {
 }
 
 /**
- * `kubectl apply` of a RevertCommit for this environment and hydrated commit.
+ * `kubectl apply` of a RevertActiveCommit for this environment and hydrated commit.
  *
  * Wrapped in `sh -c` so the heredoc is accepted when pasted into bash, zsh, or fish.
  * Creating the resource restores the active branch; deleting it lets promotion pull
  * requests auto-merge again. The reverted change itself may not be proposed again until
  * a new commit lands on the proposed branch.
  */
-export function buildRevertCommitApplyCommand(input: RevertCommitApplyInput): string {
-  const name = revertCommitResourceName(input.branch, input.sha);
+export function buildRevertActiveCommitApplyCommand(input: RevertActiveCommitApplyInput): string {
+  const name = revertActiveCommitResourceName(input.branch, input.sha);
   const manifest = [
     'apiVersion: promoter.argoproj.io/v1alpha1',
-    'kind: RevertCommit',
+    'kind: RevertActiveCommit',
     'metadata:',
     `  name: ${name}`,
     `  namespace: ${input.namespace}`,

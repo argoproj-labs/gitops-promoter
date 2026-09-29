@@ -22,7 +22,7 @@ import {
   displayKind,
 } from '../presentation';
 import { isEmptyCellKind } from '../helpers';
-import { buildRevertCommitApplyCommand, canShowRevertCommand } from '../revertCommand';
+import { buildRevertActiveCommitApplyCommand, canShowRevertCommand } from '../revertCommand';
 import { revertHoldTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
 import { StatusIcon, StatusType } from '../../StatusIcon';
@@ -195,7 +195,7 @@ const DetailDrawer: React.FC<{
     : undefined;
   const refs = cell.references ?? [];
 
-  const [prId, prUrl] = cell.revertCommit
+  const [prId, prUrl] = cell.revertActiveCommit
     ? [cell.pullRequest?.id, cell.pullRequest?.url]
     : cell.pullRequest?.id && cell.pullRequest?.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
@@ -205,7 +205,7 @@ const DetailDrawer: React.FC<{
   const showRevert = canShowRevertCommand(cell);
   const revertCommand =
     showRevert && hydrated?.sha && namespace && promotionStrategyName
-      ? buildRevertCommitApplyCommand({
+      ? buildRevertActiveCommitApplyCommand({
           namespace,
           promotionStrategyName,
           instanceId: env?.instanceId,
@@ -217,14 +217,14 @@ const DetailDrawer: React.FC<{
   const kindBadge = (
     <span
       className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
-        cell.revertCommit
-          ? cell.revertedByRevertCommit
+        cell.revertActiveCommit
+          ? cell.revertedByRevertActiveCommit
             ? ' hp-drawer__kind--reverted'
             : ' hp-drawer__kind--held'
           : ''
       }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
     >
-      {cell.revertCommit && !cell.revertedByRevertCommit && (
+      {cell.revertActiveCommit && !cell.revertedByRevertActiveCommit && (
         <GoBlocked className="hp-drawer__kind__stop" aria-hidden="true" />
       )}
       {cellKindLabel(cell)}
@@ -273,8 +273,13 @@ const DetailDrawer: React.FC<{
       <div className="hp-drawer__scroll">
         <div className="hp-drawer__header">
           <div className="hp-drawer__badges">
-            {cell.revertCommit ? (
-              <Tooltip label={revertHoldTooltip(cell.revertCommit, !!cell.revertedByRevertCommit)}>
+            {cell.revertActiveCommit ? (
+              <Tooltip
+                label={revertHoldTooltip(
+                  cell.revertActiveCommit,
+                  !!cell.revertedByRevertActiveCommit,
+                )}
+              >
                 {kindBadge}
               </Tooltip>
             ) : (
@@ -450,8 +455,8 @@ const DetailDrawer: React.FC<{
               const pill = (
                 <span
                   className={`cell__pill cell__pill--${pillKind}${
-                    c.revertCommit
-                      ? c.revertedByRevertCommit
+                    c.revertActiveCommit
+                      ? c.revertedByRevertActiveCommit
                         ? ' cell__pill--reverted'
                         : ' cell__pill--held'
                       : ''
@@ -460,7 +465,7 @@ const DetailDrawer: React.FC<{
                   {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
                   {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
                   {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
-                  {c.revertCommit && !c.revertedByRevertCommit && (
+                  {c.revertActiveCommit && !c.revertedByRevertActiveCommit && (
                     <GoBlocked className="cell__pill__stop" aria-hidden="true" />
                   )}
                   {cellKindLabel(c, true)}
@@ -469,8 +474,13 @@ const DetailDrawer: React.FC<{
               const inner = (
                 <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
-                  {c.revertCommit ? (
-                    <Tooltip label={revertHoldTooltip(c.revertCommit, !!c.revertedByRevertCommit)}>
+                  {c.revertActiveCommit ? (
+                    <Tooltip
+                      label={revertHoldTooltip(
+                        c.revertActiveCommit,
+                        !!c.revertedByRevertActiveCommit,
+                      )}
+                    >
                       {pill}
                     </Tooltip>
                   ) : (

@@ -167,5 +167,5 @@ If reading from the informer store fails for a kind, that kind's gauge is set to
 
 Labels:
 
-* `kind`: Kubernetes API kind of the custom resource (matches the root CRDs reconciled by GitOps Promoter except `ControllerConfiguration`, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
+* `kind`: Kubernetes API kind of the custom resource (matches the root CRDs reconciled by GitOps Promoter except `ControllerConfiguration`, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertActiveCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
 * `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).

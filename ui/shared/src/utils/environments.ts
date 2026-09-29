@@ -1,8 +1,12 @@
-import type { Environment, EnvironmentRevertCommit, PromotionStrategy } from '../types/promotion';
+import type {
+  Environment,
+  EnvironmentRevertActiveCommit,
+  PromotionStrategy,
+} from '../types/promotion';
 import type {
   ChangeTransferPolicy,
   ChangeTransferPolicyHistory,
-  RevertCommit,
+  RevertActiveCommit,
 } from '../types/view';
 
 /** Label a GitOps Promoter install stamps on the resources it owns (api/v1alpha1 InstanceIDLabel). */
@@ -14,14 +18,14 @@ export const INSTANCE_ID_LABEL = 'promoter.argoproj.io/instance-id';
  * built from the embedded ChangeTransferPolicies, one per environment keyed by
  * spec.activeBranch, in the order declared by the PromotionStrategy spec. Promotion history is
  * sourced from the per-environment ChangeTransferPolicyHistory resources, keyed the same way.
- * RevertCommits are matched to an environment by spec.branch. The bundle is already one
+ * RevertActiveCommits are matched to an environment by spec.branch. The bundle is already one
  * PromotionStrategy, so the branch is unique within it.
  */
 export function environmentsFromBundle(
   spec: PromotionStrategy['spec'],
   ctps: ChangeTransferPolicy[],
   histories: ChangeTransferPolicyHistory[],
-  revertCommits: RevertCommit[] = [],
+  revertActiveCommits: RevertActiveCommit[] = [],
 ): Environment[] {
   const byBranch = new Map<string, ChangeTransferPolicy>();
   for (const ctp of ctps) {
@@ -35,8 +39,8 @@ export function environmentsFromBundle(
     if (branch) historiesByBranch.set(branch, ctph);
   }
 
-  const revertsByBranch = new Map<string, EnvironmentRevertCommit>();
-  for (const rc of revertCommits) {
+  const revertsByBranch = new Map<string, EnvironmentRevertActiveCommit>();
+  for (const rc of revertActiveCommits) {
     const branch = rc.spec?.branch;
     const name = rc.metadata?.name;
     if (!branch || !name || rc.metadata?.deletionTimestamp) continue;
@@ -56,7 +60,7 @@ export function environmentsFromBundle(
       active: status.active ?? { dry: {}, hydrated: {} },
       proposed: status.proposed ?? { dry: {}, hydrated: {} },
       pullRequest: status.pullRequest,
-      revertCommit: revertsByBranch.get(env.branch),
+      revertActiveCommit: revertsByBranch.get(env.branch),
       history: historiesByBranch.get(env.branch)?.status?.history,
       lastHealthyDryShas: [],
     };
@@ -64,17 +68,17 @@ export function environmentsFromBundle(
 }
 
 /**
- * Hover copy for a proposed commit while a RevertCommit holds its environment. `reverted` is
- * true when the proposed commit is the one the RevertCommit moved off the active branch.
+ * Hover copy for a proposed commit while a RevertActiveCommit holds its environment. `reverted` is
+ * true when the proposed commit is the one the RevertActiveCommit moved off the active branch.
  */
 export function revertHoldTooltip(name: string, reverted: boolean): string {
   return reverted
-    ? `RevertCommit ${name} reverted this commit off the active branch, so it will not be promoted. Push a newer commit and delete the RevertCommit to resume promotion.`
-    : `RevertCommit ${name} is holding this environment in its reverted state, so this pull request will not auto-merge. Delete the RevertCommit to resume promotion.`;
+    ? `RevertActiveCommit ${name} reverted this commit off the active branch, so it will not be promoted. Push a newer commit and delete the RevertActiveCommit to resume promotion.`
+    : `RevertActiveCommit ${name} is holding this environment in its reverted state, so this pull request will not auto-merge. Delete the RevertActiveCommit to resume promotion.`;
 }
 
-/** Whether the environment's current proposed commit is the one its RevertCommit reverted. */
+/** Whether the environment's current proposed commit is the one its RevertActiveCommit reverted. */
 export function proposedIsReverted(env: Environment): boolean {
-  const blocked = env.revertCommit?.blockedDrySha;
+  const blocked = env.revertActiveCommit?.blockedDrySha;
   return !!blocked && blocked === env.proposed.dry?.sha;
 }

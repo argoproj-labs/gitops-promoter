@@ -48,7 +48,7 @@ const FlowCell: React.FC<{
   const visualKind = displayKind(cell.kind);
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
-  const held = cell.revertCommit;
+  const held = cell.revertActiveCommit;
   // A restore cell's dry sha is the version it restored, so a lookup by that sha finds the
   // earlier promotion and its pull request. The restore commit has no pull request of its own.
   const isRestore = !!cell.restoredFrom;
@@ -60,7 +60,7 @@ const FlowCell: React.FC<{
   const revertRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
   const revertUrl = revertSha ? getCommitUrl(revertRepoUrl, revertSha) : '';
   const pillTooltip = held
-    ? revertHoldTooltip(held, !!cell.revertedByRevertCommit)
+    ? revertHoldTooltip(held, !!cell.revertedByRevertActiveCommit)
     : cellPillTooltip(cell, branch);
 
   return (
@@ -68,7 +68,7 @@ const FlowCell: React.FC<{
       className={[
         'cell',
         `cell--${visualKind}`,
-        held ? (cell.revertedByRevertCommit ? 'cell--reverted' : 'cell--held') : '',
+        held ? (cell.revertedByRevertActiveCommit ? 'cell--reverted' : 'cell--held') : '',
         isRestore ? 'cell--restore' : '',
         isSelected ? 'cell--selected' : '',
       ]
@@ -86,7 +86,7 @@ const FlowCell: React.FC<{
       aria-label={`${
         visualKind === 'in-flight'
           ? cell.isProposed
-            ? cell.revertedByRevertCommit
+            ? cell.revertedByRevertActiveCommit
               ? 'Reverted'
               : 'Proposed'
             : 'PR open'
@@ -103,7 +103,7 @@ const FlowCell: React.FC<{
             <span
               className={`cell__pill cell__pill--${visualKind}${
                 held
-                  ? cell.revertedByRevertCommit
+                  ? cell.revertedByRevertActiveCommit
                     ? ' cell__pill--reverted'
                     : ' cell__pill--held'
                   : ''
@@ -114,7 +114,7 @@ const FlowCell: React.FC<{
                   <FaBan aria-hidden="true" />{' '}
                 </>
               )}
-              {held && !cell.revertedByRevertCommit && (
+              {held && !cell.revertedByRevertActiveCommit && (
                 <GoBlocked className="cell__pill__stop" aria-hidden="true" />
               )}
               {cellKindLabel(cell)}

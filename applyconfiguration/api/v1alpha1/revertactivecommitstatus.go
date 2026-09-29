@@ -21,11 +21,11 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// RevertCommitStatusApplyConfiguration represents a declarative configuration of the RevertCommitStatus type for use
+// RevertActiveCommitStatusApplyConfiguration represents a declarative configuration of the RevertActiveCommitStatus type for use
 // with apply.
 //
-// RevertCommitStatus defines the observed state of RevertCommit.
-type RevertCommitStatusApplyConfiguration struct {
+// RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
+type RevertActiveCommitStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -36,9 +36,9 @@ type RevertCommitStatusApplyConfiguration struct {
 	// BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
 	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
-	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertCommit
+	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
 	// exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
-	// had spec.sha's content so nothing was moved off it. Deleting the RevertCommit lifts
+	// had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
 	// this block, but a promotion pull request only opens when the proposed branch has a commit the
 	// active branch does not already contain. The restore commit is parented on the tip it moved
 	// off of, so when that tip already contains the proposed commit (a merge-commit promotion),
@@ -56,16 +56,16 @@ type RevertCommitStatusApplyConfiguration struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// RevertCommitStatusApplyConfiguration constructs a declarative configuration of the RevertCommitStatus type for use with
+// RevertActiveCommitStatusApplyConfiguration constructs a declarative configuration of the RevertActiveCommitStatus type for use with
 // apply.
-func RevertCommitStatus() *RevertCommitStatusApplyConfiguration {
-	return &RevertCommitStatusApplyConfiguration{}
+func RevertActiveCommitStatus() *RevertActiveCommitStatusApplyConfiguration {
+	return &RevertActiveCommitStatusApplyConfiguration{}
 }
 
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *RevertCommitStatusApplyConfiguration) WithObservedGeneration(value int64) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithObservedGeneration(value int64) *RevertActiveCommitStatusApplyConfiguration {
 	b.ObservedGeneration = &value
 	return b
 }
@@ -73,7 +73,7 @@ func (b *RevertCommitStatusApplyConfiguration) WithObservedGeneration(value int6
 // WithActiveSha sets the ActiveSha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ActiveSha field is set to the value of the last call.
-func (b *RevertCommitStatusApplyConfiguration) WithActiveSha(value string) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithActiveSha(value string) *RevertActiveCommitStatusApplyConfiguration {
 	b.ActiveSha = &value
 	return b
 }
@@ -81,7 +81,7 @@ func (b *RevertCommitStatusApplyConfiguration) WithActiveSha(value string) *Reve
 // WithBlockedDrySha sets the BlockedDrySha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the BlockedDrySha field is set to the value of the last call.
-func (b *RevertCommitStatusApplyConfiguration) WithBlockedDrySha(value string) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithBlockedDrySha(value string) *RevertActiveCommitStatusApplyConfiguration {
 	b.BlockedDrySha = &value
 	return b
 }
@@ -89,7 +89,7 @@ func (b *RevertCommitStatusApplyConfiguration) WithBlockedDrySha(value string) *
 // WithRestoredFrom sets the RestoredFrom field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the RestoredFrom field is set to the value of the last call.
-func (b *RevertCommitStatusApplyConfiguration) WithRestoredFrom(value string) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithRestoredFrom(value string) *RevertActiveCommitStatusApplyConfiguration {
 	b.RestoredFrom = &value
 	return b
 }
@@ -97,7 +97,7 @@ func (b *RevertCommitStatusApplyConfiguration) WithRestoredFrom(value string) *R
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *RevertCommitStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *RevertActiveCommitStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -110,7 +110,7 @@ func (b *RevertCommitStatusApplyConfiguration) WithConditions(values ...*v1.Cond
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *RevertCommitStatusApplyConfiguration) WithInstanceID(value string) *RevertCommitStatusApplyConfiguration {
+func (b *RevertActiveCommitStatusApplyConfiguration) WithInstanceID(value string) *RevertActiveCommitStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }

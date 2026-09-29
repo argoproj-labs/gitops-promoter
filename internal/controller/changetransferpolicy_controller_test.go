@@ -216,9 +216,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
-				rc := &promoterv1alpha1.RevertCommit{
+				rc := &promoterv1alpha1.RevertActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertCommitSpec{
+					Spec: promoterv1alpha1.RevertActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  restoreTo,
@@ -263,7 +263,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the RevertCommit, which allows the new dry SHA to auto-merge")
+				By("Deleting the RevertActiveCommit, which allows the new dry SHA to auto-merge")
 				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -326,9 +326,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
-				rc := &promoterv1alpha1.RevertCommit{
+				rc := &promoterv1alpha1.RevertActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertCommitSpec{
+					Spec: promoterv1alpha1.RevertActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  restoreTo,
@@ -343,7 +343,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(rc.Status.BlockedDrySha).To(Equal(revertedDrySha))
 					g.Expect(rc.Status.BlockedDrySha).NotTo(Equal(laterDrySha))
 					// The open pull request is for a later dry SHA, so it stays open. Auto-merge is
-					// still held until the RevertCommit is deleted.
+					// still held until the RevertActiveCommit is deleted.
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(revertedDrySha))
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
@@ -355,7 +355,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Leaving that pull request open, and not auto-merging it while the RevertCommit exists")
+				By("Leaving that pull request open, and not auto-merging it while the RevertActiveCommit exists")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					changeTransferPolicy.Spec.AutoMerge = new(true)
@@ -370,7 +370,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(laterDrySha))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the RevertCommit so the later dry SHA can auto-merge")
+				By("Deleting the RevertActiveCommit so the later dry SHA can auto-merge")
 				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -3553,7 +3553,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			Scheme:      k8sClient.Scheme(),
 			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
 		}
-		// No RevertCommit, and the active tip is an ordinary commit, so the restore-marker read
+		// No RevertActiveCommit, and the active tip is an ordinary commit, so the restore-marker read
 		// returns false and the ancestor check is not reached.
 		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: gitPath}, "default/"+name)
 		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
@@ -3714,7 +3714,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		return &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(100)}
 	}
 
-	It("blocks without touching git while a RevertCommit's restore is still pending", func() {
+	It("blocks without touching git while a RevertActiveCommit's restore is still pending", func() {
 		ctx := context.Background()
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -3727,9 +3727,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		// Never cloned. Reaching CommitIsAncestor or the restore-marker read would fail this call.
 		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
 		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
-		rc := &promoterv1alpha1.RevertCommit{
+		rc := &promoterv1alpha1.RevertActiveCommit{
 			ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-			Spec: promoterv1alpha1.RevertCommitSpec{
+			Spec: promoterv1alpha1.RevertActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 				Branch:               "environment/dev",
 				Sha:                  "4444444444444444444444444444444444444444",
@@ -3894,10 +3894,10 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeFalse())
 		})
 
-		It("skips when a RevertCommit references the policy and proposed is contained, even if the tip is not a restore", func() {
-			rc := &promoterv1alpha1.RevertCommit{
+		It("skips when a RevertActiveCommit references the policy and proposed is contained, even if the tip is not a restore", func() {
+			rc := &promoterv1alpha1.RevertActiveCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-				Spec: promoterv1alpha1.RevertCommitSpec{
+				Spec: promoterv1alpha1.RevertActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               ctp.Spec.ActiveBranch,
 					Sha:                  parentSha,
@@ -3910,11 +3910,11 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeTrue())
 		})
 
-		It("does not skip when a RevertCommit references the policy but proposed is not contained", func() {
+		It("does not skip when a RevertActiveCommit references the policy but proposed is not contained", func() {
 			ctp.Status.Proposed.Hydrated.Sha = sideSha
-			rc := &promoterv1alpha1.RevertCommit{
+			rc := &promoterv1alpha1.RevertActiveCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-				Spec: promoterv1alpha1.RevertCommitSpec{
+				Spec: promoterv1alpha1.RevertActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               ctp.Spec.ActiveBranch,
 					Sha:                  parentSha,

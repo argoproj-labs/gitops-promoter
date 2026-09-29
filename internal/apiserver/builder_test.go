@@ -105,18 +105,18 @@ func seedObjects() []client.Object {
 			ObjectMeta: psLabeledMeta("dev-ctph"),
 			Spec:       promoterv1alpha1.ChangeTransferPolicyHistorySpec{ActiveBranch: "environment/dev"},
 		},
-		&promoterv1alpha1.RevertCommit{
+		&promoterv1alpha1.RevertActiveCommit{
 			ObjectMeta: objectMeta("dev-revert"),
-			Spec: promoterv1alpha1.RevertCommitSpec{
+			Spec: promoterv1alpha1.RevertActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName},
 				Branch:               "environment/dev",
 				Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
 			},
 		},
-		// A RevertCommit for a different PromotionStrategy; must be excluded.
-		&promoterv1alpha1.RevertCommit{
+		// A RevertActiveCommit for a different PromotionStrategy; must be excluded.
+		&promoterv1alpha1.RevertActiveCommit{
 			ObjectMeta: objectMeta("other-revert"),
-			Spec: promoterv1alpha1.RevertCommitSpec{
+			Spec: promoterv1alpha1.RevertActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other-ps"},
 				Branch:               "environment/dev",
 				Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
@@ -201,9 +201,9 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.PullRequests).To(HaveLen(1))
 		Expect(bundle.CommitStatuses).To(HaveLen(1))
 
-		By("selecting RevertCommits by the PromotionStrategy they name")
-		Expect(bundle.RevertCommits).To(HaveLen(1))
-		Expect(bundle.RevertCommits[0].Name).To(Equal("dev-revert"))
+		By("selecting RevertActiveCommits by the PromotionStrategy they name")
+		Expect(bundle.RevertActiveCommits).To(HaveLen(1))
+		Expect(bundle.RevertActiveCommits[0].Name).To(Equal("dev-revert"))
 
 		By("filtering managers by promotionStrategyRef.name")
 		Expect(bundle.ArgoCDCommitStatuses).To(HaveLen(1))

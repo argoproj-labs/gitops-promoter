@@ -101,7 +101,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch;create;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits,verbs=get;list;watch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -398,15 +398,15 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 			DeleteFunc:  func(event.DeleteEvent) bool { return true },
 			GenericFunc: func(event.GenericEvent) bool { return false },
 		})).
-		// A RevertCommit blocks a promotion pull request for the dry SHA that was on the active
+		// A RevertActiveCommit blocks a promotion pull request for the dry SHA that was on the active
 		// branch, and blocks auto-merge of every proposed SHA while it exists. Map by the
 		// ChangeTransferPolicy name derived from spec.promotionStrategyRef and spec.branch, rather
-		// than the owner reference, so a create is seen before the RevertCommit controller has
+		// than the owner reference, so a create is seen before the RevertActiveCommit controller has
 		// stamped ownership, and a delete lifts both holds on the next reconcile. Status updates
 		// are watched only when the restore result changes, so the dry-SHA block takes effect.
-		// Auto-merge stays off until the RevertCommit is deleted.
-		Watches(&promoterv1alpha1.RevertCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-			rc, ok := obj.(*promoterv1alpha1.RevertCommit)
+		// Auto-merge stays off until the RevertActiveCommit is deleted.
+		Watches(&promoterv1alpha1.RevertActiveCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+			rc, ok := obj.(*promoterv1alpha1.RevertActiveCommit)
 			if !ok {
 				return nil
 			}
@@ -418,8 +418,8 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		}), builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(event.CreateEvent) bool { return true },
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RevertCommit)
-				newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RevertCommit)
+				oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RevertActiveCommit)
+				newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RevertActiveCommit)
 				if !okOld || !okNew {
 					return false
 				}
@@ -1590,27 +1590,27 @@ func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoter
 }
 
 // skipPullRequestAfterRevert reports whether createOrUpdatePullRequest must not open a pull request
-// because of a RevertCommit. An already-open pull request is for a different proposed commit and is
+// because of a RevertActiveCommit. An already-open pull request is for a different proposed commit and is
 // left alone in both cases.
 //
 // A restore commit is parented on the old active tip and the proposed branch is left where it was,
 // so the proposed SHA can already be contained in active. Creating a pull request then is rejected
 // by the SCM ("No commits between <branch> and <branch>-next"). That can only happen after a
-// restore, so the ancestor check runs only while a RevertCommit references this policy or the
+// restore, so the ancestor check runs only while a RevertActiveCommit references this policy or the
 // active tip is a restore commit. A restore commit carries Promoter-restored-from on its
 // promotion-history note, or on its commit trailers when it has no note. The second case keeps
-// the check after the RevertCommit is deleted: the reverted dry SHA stays unproposed until the
+// the check after the RevertActiveCommit is deleted: the reverted dry SHA stays unproposed until the
 // hydrator writes a new commit to the proposed branch.
 func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	reverts, err := r.revertCommitsForPolicy(ctx, ctp)
+	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
 	if err != nil {
 		return false, err
 	}
 	if blocked := promotionBlockedByRevert(ctp, reverts); blocked != "" {
-		logger.Info("RevertCommit blocks promotion of this dry SHA; not opening a pull request",
-			"revertCommit", blocked,
+		logger.Info("RevertActiveCommit blocks promotion of this dry SHA; not opening a pull request",
+			"revertActiveCommit", blocked,
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return true, nil
@@ -1638,25 +1638,25 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 	return contained, nil
 }
 
-// changeTransferPolicyNameForRevert is the ChangeTransferPolicy object name a RevertCommit selects:
+// changeTransferPolicyNameForRevert is the ChangeTransferPolicy object name a RevertActiveCommit selects:
 // the name the PromotionStrategy controller assigns to spec.branch.
-func changeTransferPolicyNameForRevert(rc *promoterv1alpha1.RevertCommit) string {
+func changeTransferPolicyNameForRevert(rc *promoterv1alpha1.RevertActiveCommit) string {
 	if rc.Spec.PromotionStrategyRef.Name == "" || rc.Spec.Branch == "" {
 		return ""
 	}
 	return utils.ChangeTransferPolicyNameForEnvironment(rc.Spec.PromotionStrategyRef.Name, rc.Spec.Branch)
 }
 
-// revertCommitsForPolicy lists live RevertCommits that select this policy.
-func (r *ChangeTransferPolicyReconciler) revertCommitsForPolicy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.RevertCommit, error) {
-	list := &promoterv1alpha1.RevertCommitList{}
+// revertActiveCommitsForPolicy lists live RevertActiveCommits that select this policy.
+func (r *ChangeTransferPolicyReconciler) revertActiveCommitsForPolicy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.RevertActiveCommit, error) {
+	list := &promoterv1alpha1.RevertActiveCommitList{}
 	// Namespace list, filtered in memory. A field index only works on the cache client, and this
-	// check also runs from tests that use a direct client. A namespace has few RevertCommits.
+	// check also runs from tests that use a direct client. A namespace has few RevertActiveCommits.
 	err := r.List(ctx, list, client.InNamespace(ctp.Namespace))
 	if err != nil {
-		return nil, fmt.Errorf("failed to list RevertCommits for ChangeTransferPolicy %q: %w", ctp.Name, err)
+		return nil, fmt.Errorf("failed to list RevertActiveCommits for ChangeTransferPolicy %q: %w", ctp.Name, err)
 	}
-	matched := make([]promoterv1alpha1.RevertCommit, 0, len(list.Items))
+	matched := make([]promoterv1alpha1.RevertActiveCommit, 0, len(list.Items))
 	for i := range list.Items {
 		rc := &list.Items[i]
 		if changeTransferPolicyNameForRevert(rc) != ctp.Name || !rc.DeletionTimestamp.IsZero() {
@@ -1667,17 +1667,17 @@ func (r *ChangeTransferPolicyReconciler) revertCommitsForPolicy(ctx context.Cont
 	return matched, nil
 }
 
-// promotionBlockedByRevert returns the name of the RevertCommit in reverts that blocks opening a
+// promotionBlockedByRevert returns the name of the RevertActiveCommit in reverts that blocks opening a
 // promotion pull request for the current proposed dry SHA, or "" when that dry SHA is not blocked.
 //
-// A RevertCommit whose restore has not been recorded yet blocks every proposed SHA, so a pull
+// A RevertActiveCommit whose restore has not been recorded yet blocks every proposed SHA, so a pull
 // request for the dry SHA being moved off active cannot land before status.blockedDrySha is
 // known. Once that field is set, only that dry SHA — the one that was on the active branch — is
 // blocked from opening a pull request. A different proposed dry SHA may open one. Auto-merge is a
-// separate hold: nothing is auto-merged while any RevertCommit for this policy exists. Deleting
-// the RevertCommit lifts both. The reverted dry SHA can still be skipped afterwards by the
+// separate hold: nothing is auto-merged while any RevertActiveCommit for this policy exists. Deleting
+// the RevertActiveCommit lifts both. The reverted dry SHA can still be skipped afterwards by the
 // ancestor check in skipPullRequestAfterRevert.
-func promotionBlockedByRevert(ctp *promoterv1alpha1.ChangeTransferPolicy, reverts []promoterv1alpha1.RevertCommit) string {
+func promotionBlockedByRevert(ctp *promoterv1alpha1.ChangeTransferPolicy, reverts []promoterv1alpha1.RevertActiveCommit) string {
 	for i := range reverts {
 		rc := &reverts[i]
 		if rc.Status.RestoredFrom != rc.Spec.Sha {
@@ -1691,7 +1691,7 @@ func promotionBlockedByRevert(ctp *promoterv1alpha1.ChangeTransferPolicy, revert
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the
-// environment is set to auto merge. A live RevertCommit for this policy holds auto-merge for every
+// environment is set to auto merge. A live RevertActiveCommit for this policy holds auto-merge for every
 // proposed dry SHA. Deleting it is what lets an open pull request merge, such as one opened for a
 // dry SHA that arrived after the restore.
 func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
@@ -1708,14 +1708,14 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return nil, nil
 	}
 
-	// Any live RevertCommit holds auto-merge, whether or not its dry SHA matches proposed.
-	reverts, err := r.revertCommitsForPolicy(ctx, ctp)
+	// Any live RevertActiveCommit holds auto-merge, whether or not its dry SHA matches proposed.
+	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
 	if err != nil {
 		return nil, err
 	}
 	if len(reverts) > 0 {
-		logger.Info("RevertCommit is present; not auto-merging",
-			"revertCommit", reverts[0].Name,
+		logger.Info("RevertActiveCommit is present; not auto-merging",
+			"revertActiveCommit", reverts[0].Name,
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil

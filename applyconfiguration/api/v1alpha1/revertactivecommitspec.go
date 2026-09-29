@@ -17,16 +17,16 @@ limitations under the License.
 
 package v1alpha1
 
-// RevertCommitSpecApplyConfiguration represents a declarative configuration of the RevertCommitSpec type for use
+// RevertActiveCommitSpecApplyConfiguration represents a declarative configuration of the RevertActiveCommitSpec type for use
 // with apply.
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// RevertCommitSpec defines the desired state of RevertCommit. It is immutable: the restore runs
+// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
 // once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertCommit at a different sha, strategy, or branch would lose track of what it
-// reverted. To restore something else, create a new RevertCommit.
-type RevertCommitSpecApplyConfiguration struct {
+// existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
+// reverted. To restore something else, create a new RevertActiveCommit.
+type RevertActiveCommitSpecApplyConfiguration struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
 	// Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
@@ -42,22 +42,22 @@ type RevertCommitSpecApplyConfiguration struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertCommit exists. Deleting it lifts that hold but does not by itself propose the
+	// RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
 	// reverted change again; see status.blockedDrySha.
 	// The restore runs once. Later promotions are left alone.
 	Sha *string `json:"sha,omitempty"`
 }
 
-// RevertCommitSpecApplyConfiguration constructs a declarative configuration of the RevertCommitSpec type for use with
+// RevertActiveCommitSpecApplyConfiguration constructs a declarative configuration of the RevertActiveCommitSpec type for use with
 // apply.
-func RevertCommitSpec() *RevertCommitSpecApplyConfiguration {
-	return &RevertCommitSpecApplyConfiguration{}
+func RevertActiveCommitSpec() *RevertActiveCommitSpecApplyConfiguration {
+	return &RevertActiveCommitSpecApplyConfiguration{}
 }
 
 // WithPromotionStrategyRef sets the PromotionStrategyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
-func (b *RevertCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *RevertCommitSpecApplyConfiguration {
+func (b *RevertActiveCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *RevertActiveCommitSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
 	return b
 }
@@ -65,7 +65,7 @@ func (b *RevertCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *Obj
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *RevertCommitSpecApplyConfiguration) WithBranch(value string) *RevertCommitSpecApplyConfiguration {
+func (b *RevertActiveCommitSpecApplyConfiguration) WithBranch(value string) *RevertActiveCommitSpecApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -73,7 +73,7 @@ func (b *RevertCommitSpecApplyConfiguration) WithBranch(value string) *RevertCom
 // WithSha sets the Sha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Sha field is set to the value of the last call.
-func (b *RevertCommitSpecApplyConfiguration) WithSha(value string) *RevertCommitSpecApplyConfiguration {
+func (b *RevertActiveCommitSpecApplyConfiguration) WithSha(value string) *RevertActiveCommitSpecApplyConfiguration {
 	b.Sha = &value
 	return b
 }

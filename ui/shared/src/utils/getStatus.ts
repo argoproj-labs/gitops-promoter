@@ -37,7 +37,7 @@ export function getEnvironmentStatus(
     return 'promoted';
   }
 
-  // After a RevertCommit restores the active branch, the proposed branch still points at the
+  // After a RevertActiveCommit restores the active branch, the proposed branch still points at the
   // commit that was reverted. That is not a new change waiting to promote; the environment is
   // settled until a newer commit arrives.
   if (proposedIsReverted(env)) {

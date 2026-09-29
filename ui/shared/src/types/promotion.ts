@@ -30,14 +30,14 @@ export type Environment = components['schemas']['EnvironmentStatus'] & {
    * environment need the same label, or a non-default install's controller never sees them.
    */
   instanceId?: string;
-  /** RevertCommit holding this environment in its reverted state, from the bundle. */
-  revertCommit?: EnvironmentRevertCommit;
+  /** RevertActiveCommit holding this environment in its reverted state, from the bundle. */
+  revertActiveCommit?: EnvironmentRevertActiveCommit;
 };
 
-/** The parts of a RevertCommit the UI needs to explain why a promotion is held. */
-export interface EnvironmentRevertCommit {
+/** The parts of a RevertActiveCommit the UI needs to explain why a promotion is held. */
+export interface EnvironmentRevertActiveCommit {
   name: string;
-  /** Dry SHA the RevertCommit moved off the active branch. */
+  /** Dry SHA the RevertActiveCommit moved off the active branch. */
   blockedDrySha?: string;
 }
 
@@ -165,9 +165,9 @@ export interface EnrichedEnvDetails {
   proposedChecks: Check[];
   proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
-  /** RevertCommit holding the environment; unset in history views. */
-  revertCommit?: string;
-  /** True when the proposed commit is the one that RevertCommit reverted. */
+  /** RevertActiveCommit holding the environment; unset in history views. */
+  revertActiveCommit?: string;
+  /** True when the proposed commit is the one that RevertActiveCommit reverted. */
   proposedIsReverted?: boolean;
 
   proposedReferenceCommit: ReferenceCommit | null;

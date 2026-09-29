@@ -53,9 +53,9 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | PullRequestCreateFailed              | Creating the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.     |
 | Warning    | PullRequestMergeFailed               | Merging the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.      |
 
-## RevertCommit
+## RevertActiveCommit
 
-[RevertCommits](../crd-specs.md#revertcommit) may produce the following events:
+[RevertActiveCommits](../crd-specs.md#revertactivecommit) may produce the following events:
 
 | Event Type | Event Reason | Description |
 |------------|--------------|-------------|

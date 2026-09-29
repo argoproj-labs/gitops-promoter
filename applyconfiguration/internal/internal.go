@@ -1474,7 +1474,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: output
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommit
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommit
   map:
     fields:
     - name: apiVersion
@@ -1488,11 +1488,11 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
     - name: status
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
   map:
     fields:
     - name: branch
@@ -1504,7 +1504,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: sha
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
   map:
     fields:
     - name: activeSha

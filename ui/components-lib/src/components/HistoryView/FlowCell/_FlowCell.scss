@@ -70,7 +70,7 @@
     background: $pending-ink;
   }
 }
-// A proposed commit held by a RevertCommit keeps the in-flight blue; the stop sign in
+// A proposed commit held by a RevertActiveCommit keeps the in-flight blue; the stop sign in
 // its pill is what says it will not auto-merge.
 .cell--held {
   background: $pending-soft;
@@ -79,7 +79,7 @@
     background: $pending-ink;
   }
 }
-// The proposed commit a RevertCommit moved off the active branch. It is settled, not failing,
+// The proposed commit a RevertActiveCommit moved off the active branch. It is settled, not failing,
 // so the body reads like a replaced cell; only the REVERTED pill carries the color.
 .cell--reverted {
   background: $bg-soft;

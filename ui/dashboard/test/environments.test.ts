@@ -4,7 +4,7 @@ import type { PromotionStrategy } from '@shared/types/promotion';
 import type {
   ChangeTransferPolicy,
   ChangeTransferPolicyHistory,
-  RevertCommit,
+  RevertActiveCommit,
 } from '@shared/types/view';
 
 const spec = {
@@ -42,7 +42,7 @@ const histories = [
   },
 ] as unknown as ChangeTransferPolicyHistory[];
 
-const revertCommits = [
+const revertActiveCommits = [
   {
     metadata: { name: 'revert-prod' },
     spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
@@ -52,18 +52,21 @@ const revertCommits = [
     metadata: { name: 'revert-going-away', deletionTimestamp: '2026-09-25T00:00:00Z' },
     spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
   },
-] as unknown as RevertCommit[];
+] as unknown as RevertActiveCommit[];
 
 describe('environmentsFromBundle', () => {
   it('orders environments by the strategy spec and keys CTP status by activeBranch', () => {
-    const envs = environmentsFromBundle(spec, ctps, histories, revertCommits);
+    const envs = environmentsFromBundle(spec, ctps, histories, revertActiveCommits);
 
     expect(envs.map((e) => e.branch)).toEqual(['environment/dev', 'environment/prod']);
     expect(envs[0].active.dry?.sha).toBe('dev-active');
     expect(envs[1].active.dry?.sha).toBe('prod-active');
     expect(envs[1].pullRequest?.id).toBe('42');
-    expect(envs[1].revertCommit).toEqual({ name: 'revert-prod', blockedDrySha: 'prod-proposed' });
-    expect(envs[0].revertCommit).toBeUndefined();
+    expect(envs[1].revertActiveCommit).toEqual({
+      name: 'revert-prod',
+      blockedDrySha: 'prod-proposed',
+    });
+    expect(envs[0].revertActiveCommit).toBeUndefined();
     expect(proposedIsReverted(envs[1])).toBe(true);
     expect(envs[1].changeTransferPolicyName).toBe('strategy-environment-prod-abcd');
     expect(envs[0].changeTransferPolicyName).toBeUndefined();

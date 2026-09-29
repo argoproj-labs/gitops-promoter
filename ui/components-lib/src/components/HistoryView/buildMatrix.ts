@@ -63,12 +63,12 @@ function buildEnvColumn(
   };
 }
 
-// While a RevertCommit holds the environment, status.pullRequest is the promotion that landed
+// While a RevertActiveCommit holds the environment, status.pullRequest is the promotion that landed
 // the commit the revert moved off the active branch. That merged pull request belongs on the
 // reverted commit. An open one belongs on a newer proposed commit that is waiting out the hold.
 // A merged pull request on any other proposed commit is a previous promotion, not this commit's.
 function heldPullRequest(env: StatusEnvironment): PullRequest | undefined {
-  if (!env.revertCommit) return env.pullRequest;
+  if (!env.revertActiveCommit) return env.pullRequest;
   if (env.pullRequest?.state === 'open' || proposedIsReverted(env)) return env.pullRequest;
   return undefined;
 }
@@ -415,7 +415,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (proposedIsDistinct && env.proposed?.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const heldName = env.revertCommit?.name;
+      const heldName = env.revertActiveCommit?.name;
       const pullRequest = heldPullRequest(env);
       const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
       if (row) {
@@ -429,8 +429,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
           health,
           pullRequest,
           isProposed: true,
-          revertCommit: heldName,
-          revertedByRevertCommit: heldName ? proposedIsReverted(env) : undefined,
+          revertActiveCommit: heldName,
+          revertedByRevertActiveCommit: heldName ? proposedIsReverted(env) : undefined,
           at: env.proposed.dry.commitTime ?? undefined,
         });
       }

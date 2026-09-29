@@ -1299,7 +1299,7 @@ func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha strin
 	return trailers, nil
 }
 
-// CommitIsRestore reports whether sha is a commit written by a RevertCommit restore. The marker is
+// CommitIsRestore reports whether sha is a commit written by a RevertActiveCommit restore. The marker is
 // Promoter-restored-from on the promotion-history note, or on the commit trailers when that note is
 // absent, empty, or not valid JSON.
 func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string) (bool, error) {
@@ -1409,7 +1409,7 @@ func (g *EnvironmentOperations) refuseRestoreTarget(ctx context.Context, targetS
 
 // ensureInHistory makes sure sha is a commit that the active branch already contains: its tip
 // or one of the tip's ancestors. A restore only puts back something that was on the branch before,
-// so a RevertCommit cannot push a commit that never went through promotion (another environment's
+// so a RevertActiveCommit cannot push a commit that never went through promotion (another environment's
 // branch, an unmerged pull request head) straight to the active branch.
 //
 // The active branch was just fetched, so every commit in its history is already in the clone and

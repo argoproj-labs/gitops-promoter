@@ -42,8 +42,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// RevertCommitReconciler reconciles a RevertCommit object.
-type RevertCommitReconciler struct {
+// RevertActiveCommitReconciler reconciles a RevertActiveCommit object.
+type RevertActiveCommitReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
@@ -56,8 +56,8 @@ type RevertCommitReconciler struct {
 	EnqueueCTPH CTPHEnqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits,verbs=get;list;watch;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -66,31 +66,31 @@ type RevertCommitReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile resolves spec.promotionStrategyRef and spec.branch to that environment's
-// ChangeTransferPolicy, makes the policy the owner of this RevertCommit, and restores the policy's
+// ChangeTransferPolicy, makes the policy the owner of this RevertActiveCommit, and restores the policy's
 // active branch to spec.sha exactly once. A successful status (status.restoredFrom == spec.sha) is
 // not repeated, so a later promotion is not overwritten when this resource is reconciled again. A
 // spec.sha that carries Promoter-restored-from is refused. status.blockedDrySha is the dry SHA that
 // was on the active branch; the ChangeTransferPolicy does not open a pull request that would put it
 // back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while
-// this RevertCommit exists. Deleting it lifts both holds, but does not by itself propose the
+// this RevertActiveCommit exists. Deleting it lifts both holds, but does not by itself propose the
 // reverted dry SHA again: see ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
-func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling RevertCommit")
+	logger.Info("Reconciling RevertActiveCommit")
 	startTime := time.Now()
 
-	var rc promoterv1alpha1.RevertCommit
+	var rc promoterv1alpha1.RevertActiveCommit
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
-	defer utils.HandleReconciliationResult(ctx, startTime, &rc, r.Client, r.Recorder, constants.RevertCommitControllerFieldOwner, &result, &err, &previousReady)
+	defer utils.HandleReconciliationResult(ctx, startTime, &rc, r.Client, r.Recorder, constants.RevertActiveCommitControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.Get(ctx, req.NamespacedName, &rc)
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
-			logger.Info("RevertCommit not found")
+			logger.Info("RevertActiveCommit not found")
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get RevertCommit: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get RevertActiveCommit: %w", err)
 	}
 
 	previousReady = utils.RemoveReadyCondition(&rc)
@@ -134,7 +134,7 @@ func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, rc.Namespace+"/"+rc.Name)
 	defer func() {
 		if rmErr := gitOperations.RemoveClone(); rmErr != nil {
-			logger.Error(rmErr, "failed to remove RevertCommit clone")
+			logger.Error(rmErr, "failed to remove RevertActiveCommit clone")
 		}
 	}()
 	if err := gitOperations.CloneRepo(ctx); err != nil {
@@ -167,7 +167,7 @@ func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 // resolveChangeTransferPolicy loads the PromotionStrategy and the ChangeTransferPolicy the strategy
 // controller created for spec.branch.
-func (r *RevertCommitReconciler) resolveChangeTransferPolicy(ctx context.Context, rc *promoterv1alpha1.RevertCommit) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *RevertActiveCommitReconciler) resolveChangeTransferPolicy(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: rc.Namespace, Name: rc.Spec.PromotionStrategyRef.Name}, ps); err != nil {
 		return nil, fmt.Errorf("failed to get PromotionStrategy %q: %w", rc.Spec.PromotionStrategyRef.Name, err)
@@ -192,10 +192,10 @@ func strategyHasBranch(ps *promoterv1alpha1.PromotionStrategy, branch string) bo
 	return false
 }
 
-// applyOwnerReference makes the ChangeTransferPolicy the controller owner of the RevertCommit via
+// applyOwnerReference makes the ChangeTransferPolicy the controller owner of the RevertActiveCommit via
 // Server-Side Apply. Only metadata.ownerReferences is declared, so the user's spec stays with its
-// own field manager. Deleting the policy garbage-collects its RevertCommits.
-func (r *RevertCommitReconciler) applyOwnerReference(ctx context.Context, rc *promoterv1alpha1.RevertCommit, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+// own field manager. Deleting the policy garbage-collects its RevertActiveCommits.
+func (r *RevertActiveCommitReconciler) applyOwnerReference(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	for i := range rc.OwnerReferences {
 		if rc.OwnerReferences[i].UID == ctp.UID {
 			return nil
@@ -204,7 +204,7 @@ func (r *RevertCommitReconciler) applyOwnerReference(ctx context.Context, rc *pr
 
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-	apply := acv1alpha1.RevertCommit(rc.Name, rc.Namespace).
+	apply := acv1alpha1.RevertActiveCommit(rc.Name, rc.Namespace).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -214,20 +214,20 @@ func (r *RevertCommitReconciler) applyOwnerReference(ctx context.Context, rc *pr
 			WithBlockOwnerDeletion(true))
 
 	// Patch a bare object so the response does not overwrite the in-memory status this reconcile is building.
-	target := &promoterv1alpha1.RevertCommit{}
+	target := &promoterv1alpha1.RevertActiveCommit{}
 	target.Name = rc.Name
 	target.Namespace = rc.Namespace
-	if err := r.Patch(ctx, target, utils.ApplyPatch{ApplyConfig: apply}, client.FieldOwner(constants.RevertCommitControllerFieldOwner), client.ForceOwnership); err != nil {
-		return fmt.Errorf("failed to set owner reference on RevertCommit %q: %w", rc.Name, err)
+	if err := r.Patch(ctx, target, utils.ApplyPatch{ApplyConfig: apply}, client.FieldOwner(constants.RevertActiveCommitControllerFieldOwner), client.ForceOwnership); err != nil {
+		return fmt.Errorf("failed to set owner reference on RevertActiveCommit %q: %w", rc.Name, err)
 	}
 	rc.OwnerReferences = target.OwnerReferences
 	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RevertCommitReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *RevertActiveCommitReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.RevertCommit{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.RevertActiveCommit{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

@@ -279,7 +279,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
     proposedChecks,
     proposedChecksSummary,
-    revertCommit: isHistoric ? undefined : environment.revertCommit?.name,
+    revertActiveCommit: isHistoric ? undefined : environment.revertActiveCommit?.name,
     proposedIsReverted: !isHistoric && proposedIsReverted(environment),
     historyMergeTimeAgo,
   };

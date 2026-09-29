@@ -253,7 +253,7 @@ describe('buildMatrix restore rows', () => {
       commitStatuses: [],
     };
     env.pullRequest = pullRequest;
-    env.revertCommit = { name: 'revert-staging', blockedDrySha };
+    env.revertActiveCommit = { name: 'revert-staging', blockedDrySha };
     return strategy;
   };
 
@@ -266,8 +266,8 @@ describe('buildMatrix restore rows', () => {
     const cell = rows.find((r) => r.dryShaFull === reverted)!.cells[BRANCH]!;
     expect(cell.kind).toBe('in-flight');
     expect(cell.isProposed).toBe(true);
-    expect(cell.revertCommit).toBe('revert-staging');
-    expect(cell.revertedByRevertCommit).toBe(true);
+    expect(cell.revertActiveCommit).toBe('revert-staging');
+    expect(cell.revertedByRevertActiveCommit).toBe(true);
     expect(cell.pullRequest?.id).toBe('3018');
     expect(envs[0]!.proposedPR?.id).toBe('3018');
 
@@ -277,15 +277,15 @@ describe('buildMatrix restore rows', () => {
     expect(rows.find((r) => r.restoredFrom)!.prId).toBeUndefined();
   });
 
-  it('keeps the open pull request on a newer commit held by the RevertCommit', () => {
+  it('keeps the open pull request on a newer commit held by the RevertActiveCommit', () => {
     const newer = 'cccccccccccccccccccccccccccccccccccccccc';
     const open = { id: '3020', url: 'https://github.com/org/repo/pull/3020', state: 'open' };
     const strategy = heldStrategy(newer, open, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
-    expect(cell.revertCommit).toBe('revert-staging');
-    expect(cell.revertedByRevertCommit).toBe(false);
+    expect(cell.revertActiveCommit).toBe('revert-staging');
+    expect(cell.revertedByRevertActiveCommit).toBe(false);
     expect(cell.pullRequest?.id).toBe('3020');
     expect(envs[0]!.proposedPR?.id).toBe('3020');
     expect(rows.find((r) => r.restoredFrom)!.cells[BRANCH]!.pullRequest).toBeUndefined();
@@ -301,7 +301,7 @@ describe('buildMatrix restore rows', () => {
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
-    expect(cell.revertedByRevertCommit).toBe(false);
+    expect(cell.revertedByRevertActiveCommit).toBe(false);
     expect(cell.pullRequest).toBeUndefined();
     expect(envs[0]!.proposedPR).toBeUndefined();
     const restoreRow = rows.find((r) => r.restoredFrom)!;

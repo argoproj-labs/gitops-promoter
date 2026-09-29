@@ -26,9 +26,9 @@ export interface ProposedChangesCardProps {
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
-  /** RevertCommit holding the environment; the banner shows a blocked mark and explains the hold. */
-  revertCommit?: string;
-  /** True when the proposed commit is the one that RevertCommit reverted. */
+  /** RevertActiveCommit holding the environment; the banner shows a blocked mark and explains the hold. */
+  revertActiveCommit?: string;
+  /** True when the proposed commit is the one that RevertActiveCommit reverted. */
   proposedIsReverted?: boolean;
 }
 
@@ -63,13 +63,13 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   prUrl,
   prNumber,
   prTooltip,
-  revertCommit,
+  revertActiveCommit,
   proposedIsReverted = false,
 }) => {
   const message = progressMessage(healthSummary, checks);
   const banner = (
-    <div className={`promote-banner${revertCommit ? ' promote-banner--held' : ''}`}>
-      {revertCommit ? (
+    <div className={`promote-banner${revertActiveCommit ? ' promote-banner--held' : ''}`}>
+      {revertActiveCommit ? (
         <GoBlocked
           className="promote-banner__icon promote-banner__icon--blocked"
           aria-hidden="true"
@@ -92,8 +92,10 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   return (
     <div className="proposed-changes-card">
       <div className="promote-flow" aria-hidden="true" />
-      {revertCommit ? (
-        <Tooltip label={revertHoldTooltip(revertCommit, proposedIsReverted)}>{banner}</Tooltip>
+      {revertActiveCommit ? (
+        <Tooltip label={revertHoldTooltip(revertActiveCommit, proposedIsReverted)}>
+          {banner}
+        </Tooltip>
       ) : (
         banner
       )}

@@ -85,8 +85,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return scheduledCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ControllerConfiguration:
 		return controllerConfigurationStatusApply(o, conditionsOnly)
-	case *promoterv1alpha1.RevertCommit:
-		return revertCommitStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.RevertActiveCommit:
+		return revertActiveCommitStatusApply(o, conditionsOnly)
 	default:
 		return nil, fmt.Errorf("unsupported object type for status SSA: %T", obj)
 	}
@@ -232,14 +232,14 @@ func scheduledCommitStatusStatusApply(o *promoterv1alpha1.ScheduledCommitStatus,
 	return acv1alpha1.ScheduledCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
-func revertCommitStatusApply(o *promoterv1alpha1.RevertCommit, conditionsOnly bool) (any, error) {
-	statusAC := acv1alpha1.RevertCommitStatus()
+func revertActiveCommitStatusApply(o *promoterv1alpha1.RevertActiveCommit, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.RevertActiveCommitStatus()
 	if conditionsOnly {
 		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
-	return acv1alpha1.RevertCommit(o.Name, o.Namespace).WithStatus(statusAC), nil
+	return acv1alpha1.RevertActiveCommit(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func controllerConfigurationStatusApply(o *promoterv1alpha1.ControllerConfiguration, conditionsOnly bool) (any, error) {

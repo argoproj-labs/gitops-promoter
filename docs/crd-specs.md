@@ -53,23 +53,23 @@ promotions. PullRequests carry promotion-strategy, change-transfer-policy, and e
 {!internal/controller/testdata/PullRequest.yaml!}
 ```
 
-### RevertCommit
+### RevertActiveCommit
 
-A RevertCommit restores one environment's active branch to a previously promoted hydrated commit and holds promotion
+A RevertActiveCommit restores one environment's active branch to a previously promoted hydrated commit and holds promotion
 for that environment until it is deleted. `spec.promotionStrategyRef` names the PromotionStrategy and `spec.branch`
 names the environment; the controller resolves those to the environment's ChangeTransferPolicy, which supplies the
 repository, branches, and `activePath`. `spec.sha` is the hydrated commit to restore. The spec is immutable, so
-restoring something else means creating a new RevertCommit. The controller makes the ChangeTransferPolicy its owner,
-so deleting the policy removes its RevertCommits.
+restoring something else means creating a new RevertActiveCommit. The controller makes the ChangeTransferPolicy its owner,
+so deleting the policy removes its RevertActiveCommits.
 
 The restore is a new commit on top of the active branch, not a force-push, and runs once. `status.blockedDrySha`
 records the dry SHA that was live before the restore; the ChangeTransferPolicy will not open a pull request for it. No
-promotion is auto-merged while the RevertCommit exists. A commit that carries `Promoter-restored-from` cannot
+promotion is auto-merged while the RevertActiveCommit exists. A commit that carries `Promoter-restored-from` cannot
 be restored to. That trailer is on the restore commit only. See [Rolling Back an Environment](advanced-usage/rolling-back.md)
 for the full workflow.
 
 ```yaml
-{!internal/controller/testdata/RevertCommit.yaml!}
+{!internal/controller/testdata/RevertActiveCommit.yaml!}
 ```
 
 ### CommitStatus
