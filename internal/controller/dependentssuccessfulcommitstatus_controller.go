@@ -506,7 +506,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	key := dcs.Spec.Key
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
 
-	kind := reflect.TypeOf(promoterv1alpha1.DependentsSuccessfulCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	labels := utils.CommitStatusStandardLabels(dcs, branch, key)

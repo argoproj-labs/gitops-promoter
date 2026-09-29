@@ -176,7 +176,7 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 	}
 	Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
