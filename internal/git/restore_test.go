@@ -61,8 +61,8 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(os.RemoveAll(workDir)).To(Succeed())
 	})
 
-	It("restores the active tree, copies the history note, and leaves proposed in place", func() {
-		v1 := commitFile("version.txt", "v1\n", "version v1")
+	It("restores the active tree, copies the trailers and history note, and leaves proposed in place", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1\n\nPull-request-id: 9\nPull-request-url: https://example.com/pr/9\nSigned-off-by: A <a@example.com>\nSigned-off-by: B <b@example.com>\n")
 		mustGit(workDir, "branch", "-M", "environment/development")
 		mustGit(workDir, "push", "-u", "origin", "environment/development")
 		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development-next")
@@ -99,6 +99,19 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(restored.BlockedDrySha).To(Equal(activeDry))
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development-next"))).To(Equal(extra))
 
+		// The restore commit message carries the target's trailers plus the restore marker, the same way
+		// the note is copied from the target with only that key added.
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "log", "-1", "--format=%s", restored.ActiveSha))).To(Equal("Revert environment/development to " + v1[:7]))
+		messageTrailers, err := g.GetTrailers(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(messageTrailers).To(Equal(map[string][]string{
+			constants.TrailerPullRequestID:  {"9"},
+			constants.TrailerPullRequestUrl: {"https://example.com/pr/9"},
+			"Signed-off-by":                 {"A <a@example.com>", "B <b@example.com>"},
+			constants.TrailerRestoredFrom:   {v1},
+		}))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "log", "-1", "--format=%B", restored.ActiveSha))).To(HaveSuffix(constants.TrailerRestoredFrom+": "+v1), "the restore marker is the last trailer")
+
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
 		got, err := g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
 		Expect(err).NotTo(HaveOccurred())
@@ -113,6 +126,33 @@ var _ = Describe("RestoreActiveBranch", func() {
 		again, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(again).To(Equal(restored))
+	})
+
+	It("copies the target's commit trailers into the note when the target has no history note", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1\n\nPull-request-id: 9\nPull-request-url: https://example.com/pr/9\n")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		got, err := g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(map[string][]string{
+			constants.TrailerPullRequestID:  {"9"},
+			constants.TrailerPullRequestUrl: {"https://example.com/pr/9"},
+			constants.TrailerRestoredFrom:   {v1},
+		}))
+
+		// The marker is added to a copy, so the target's own trailers are unchanged.
+		targetTrailers, err := g.GetTrailers(GinkgoT().Context(), v1)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targetTrailers).NotTo(HaveKey(constants.TrailerRestoredFrom))
 	})
 
 	It("replaces only activePath and keeps the rest of the active tree", func() {

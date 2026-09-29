@@ -77,6 +77,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1118,9 +1119,12 @@ type RestoreResult struct {
 //
 // The active update is a new commit parented on the current tip, not a reset, so history stays
 // fast-forwardable. The commit message and the promotion-history note both carry
-// Promoter-restored-from set to targetSha; the note is copied from targetSha with only that key
-// added, so its Pull-request-merge-time stays the original promotion's. The restore's own time is
-// the restore commit's commit time. The note is pushed before the branch.
+// Promoter-restored-from set to targetSha. Each is copied from targetSha with only that key added:
+// the message's trailer block from targetSha's commit-message trailers, the note from targetSha's
+// note, so the copied Pull-request-merge-time stays the original promotion's. When targetSha has no
+// note, or its note is empty or not valid JSON, the note is built from those same commit-message
+// trailers. The restore's own time is the restore commit's commit time. The note is pushed before
+// the branch.
 //
 // A repeat call is a no-op when the active tip already has the restore marker for targetSha and
 // the matching tree. When the active tip already has the matching tree without that marker, the
@@ -1171,10 +1175,14 @@ type RestoreResult struct {
 //
 //	# otherwise create the restore commit, note, and push (note first).
 //	# SetHistoryNote re-fetches before add, and retries that fetch/add/push up to 3 times.
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< T               # copy T's trailers
+//	git interpret-trailers --only-trailers < message                              # (cached from the refuse check)
 //	git commit-tree <tree> -p <activeTip> -m 'Revert A to <T[:7]>
 //
+//	<T's trailers, sorted by key>
 //	Promoter-restored-from: T'
 //	git notes --ref=refs/notes/promoter.history show T                         # copy T's note
+//	# when that note is absent, empty, or not valid JSON, build it from T's commit trailers (cached above)
 //	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
 //	git notes --ref=refs/notes/promoter.history add -f -m '<json>' <restoreSha>
 //	git push origin refs/notes/promoter.history:refs/notes/promoter.history
@@ -1260,11 +1268,10 @@ func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeB
 	if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
 		return "", err
 	}
-	short := targetSha
-	if len(short) > 7 {
-		short = short[:7]
+	message, err := g.restoreCommitMessage(ctx, activeBranch, targetSha)
+	if err != nil {
+		return "", err
 	}
-	message := fmt.Sprintf("Revert %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, targetSha)
 	restoreSha, err := g.commitTree(ctx, wantTree, []string{activeTip}, message)
 	if err != nil {
 		return "", fmt.Errorf("failed to create restore commit for %q: %w", activeBranch, err)
@@ -1280,6 +1287,42 @@ func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeB
 		return "", err
 	}
 	return restoreSha, nil
+}
+
+// restoreCommitMessage builds the restore commit's message: a "Revert <branch> to <short sha>" subject
+// followed by a trailer block. The trailers are copied from targetSha's commit message, the same way
+// writeRestoreNote copies targetSha's note, so the restore keeps the promotion bookkeeping of the version
+// it puts back (pull request, SHAs, commit statuses) and history rebuilt from the message alone still
+// describes that promotion. Copied keys are written in sorted order, each value on its own line, and
+// Promoter-restored-from is appended last. Any Promoter-restored-from already on targetSha is dropped so
+// the restore carries exactly one, pointing at targetSha.
+func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, activeBranch, targetSha string) (string, error) {
+	copied, err := g.GetTrailers(ctx, targetSha)
+	if err != nil {
+		return "", fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
+	}
+	short := targetSha
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	keys := make([]string, 0, len(copied))
+	for key := range copied {
+		if key == constants.TrailerRestoredFrom {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	var message strings.Builder
+	fmt.Fprintf(&message, "Revert %s to %s\n\n", activeBranch, short)
+	for _, key := range keys {
+		for _, value := range copied[key] {
+			fmt.Fprintf(&message, "%s: %s\n", key, value)
+		}
+	}
+	fmt.Fprintf(&message, "%s: %s\n", constants.TrailerRestoredFrom, targetSha)
+	return message.String(), nil
 }
 
 // promotionTrailers returns the promotion-history note for sha. Commit-message trailers are used
@@ -1322,16 +1365,29 @@ func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targe
 	return len(values) > 0 && values[0] == targetSha, nil
 }
 
+// writeRestoreNote writes the restore commit's promotion-history note: targetSha's note with
+// Promoter-restored-from added. When targetSha has no note, or its note is empty or not valid JSON,
+// the note is built from targetSha's commit-message trailers instead, the same fallback
+// promotionTrailers uses, so history rebuilt from the note still describes the original promotion.
+// The map is copied before the marker is added: GetTrailers returns the cached map, and mutating it
+// would change what later reads of targetSha's trailers return.
 func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha, targetSha string) error {
 	trailers, err := g.GetHistoryNote(ctx, targetSha)
 	if err != nil {
 		return fmt.Errorf("read promotion-history note for %q: %w", targetSha, err)
 	}
-	if trailers == nil {
-		trailers = map[string][]string{}
+	if len(trailers) == 0 {
+		trailers, err = g.GetTrailers(ctx, targetSha)
+		if err != nil {
+			return fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
+		}
 	}
-	trailers[constants.TrailerRestoredFrom] = []string{targetSha}
-	if err := g.SetHistoryNote(ctx, restoreSha, trailers); err != nil {
+	copied := make(map[string][]string, len(trailers)+1)
+	for key, values := range trailers {
+		copied[key] = values
+	}
+	copied[constants.TrailerRestoredFrom] = []string{targetSha}
+	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
 		return fmt.Errorf("write restore note for %q: %w", restoreSha, err)
 	}
 	return nil

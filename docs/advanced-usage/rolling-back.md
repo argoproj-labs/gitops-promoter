@@ -8,10 +8,11 @@ live and you need the previous version back now, before a fix can go through the
 
 1. **Restore.** The controller writes a new commit on top of the active branch whose content is the chosen hydrated
    commit: the whole tree, or only `activePath` when the ChangeTransferPolicy sets one. It is an ordinary commit, not a
-   force-push, so the branch history stays intact. The proposed branch is not touched. The restore commit gets a copy
-   of the chosen version's [promotion-history note](../debugging/git-trailers.md) with `Promoter-restored-from` added.
-   The copied pull request details, including `Pull-request-merge-time`, still describe that version's original
-   promotion.
+   force-push, so the branch history stays intact. The proposed branch is not touched. The restore commit copies the
+   chosen version's [git trailers](../debugging/git-trailers.md) into its own commit message and its
+   promotion-history note into its own note, each with `Promoter-restored-from` added. When the chosen version has no
+   note, the note is built from its commit-message trailers instead. The copied pull request details, including
+   `Pull-request-merge-time`, still describe that version's original promotion.
 2. **Block.** The dry SHA that was live before the restore is recorded in `status.blockedDrySha`. The
    ChangeTransferPolicy will not open a promotion pull request for it.
 3. **Hold.** While the RevertActiveCommit exists, nothing is auto-merged into that environment. A pull request for a
