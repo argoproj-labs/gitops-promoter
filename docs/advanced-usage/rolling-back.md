@@ -51,13 +51,7 @@ spec:
 ```
 
 When `status.activeSha` is set and the Ready condition is `True`, the environment is running the restored version. The
-restore also shows up in the environment's promotion history, marked by `restoredFrom`. The restore's time is the
-restore commit's commit time, `active.hydrated.commitTime`; its `pullRequest.prMergeTime` is the original promotion's.
-A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an
-unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit that
-carries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the
-restore commit only. The commit the restore moved off does not carry it, so that commit can be
-restored again.
+restore also shows up in the environment's promotion history, marked by `restoredFrom`. A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit thatcarries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the restore commit only. The commit the restore moved off does not carry it, so that commit can be restored again.
 
 > [!NOTE]
 > Creating a RevertActiveCommit is the authorization boundary: anyone who can create one in the PromotionStrategy's

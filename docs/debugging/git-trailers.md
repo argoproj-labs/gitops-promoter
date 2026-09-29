@@ -89,7 +89,7 @@ git notes --ref=promoter.history show <merge-commit-sha> | jq '.["Sha-dry-propos
 ```
 
 > [!TIP]
-> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block. The ChangeTransferPolicy controller recognizes a restore commit from the promotion-history note on the active tip, falling back to that commit's trailers.
+> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block.
 
 ## Related
 
