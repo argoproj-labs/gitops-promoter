@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -116,7 +117,7 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if rc.Status.RestoredFrom == rc.Spec.Sha {
 		logger.V(4).Info("restore already applied", "sha", rc.Spec.Sha, "activeSha", rc.Status.ActiveSha)
-		return ctrl.Result{}, nil
+		return r.requeueResult(ctx)
 	}
 
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, ctp)
@@ -162,7 +163,17 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		r.Recorder.Eventf(&rc, nil, "Normal", "Restored", "Restoring", "Restored %s to %s as %s", ctp.Spec.ActiveBranch, rc.Spec.Sha, restored.ActiveSha)
 	}
-	return ctrl.Result{}, nil
+	return r.requeueResult(ctx)
+}
+
+// requeueResult schedules the next reconcile from ControllerConfiguration. The git restore itself
+// still runs once: a later pass returns before cloning when status.restoredFrom already matches spec.sha.
+func (r *RevertActiveCommitReconciler) requeueResult(ctx context.Context) (ctrl.Result, error) {
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.RevertActiveCommitConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for RevertActiveCommit: %w", err)
+	}
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // resolveChangeTransferPolicy loads the PromotionStrategy and the ChangeTransferPolicy the strategy
@@ -226,8 +237,21 @@ func (r *RevertActiveCommitReconciler) applyOwnerReference(ctx context.Context, 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RevertActiveCommitReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RevertActiveCommitConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get RevertActiveCommit rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.RevertActiveCommitConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get RevertActiveCommit max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.RevertActiveCommit{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

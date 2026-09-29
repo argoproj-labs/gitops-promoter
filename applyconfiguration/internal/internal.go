@@ -586,6 +586,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestConfiguration
+    - name: revertActiveCommit
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
@@ -1492,6 +1495,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
   map:
     fields:

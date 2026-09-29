@@ -536,6 +536,11 @@ func (in RevertActiveCommit) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in RevertActiveCommitConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RevertActiveCommitConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in RevertActiveCommitList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.RevertActiveCommitList"
 }
