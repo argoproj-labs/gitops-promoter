@@ -14,7 +14,7 @@ GitOps Promoter facilitates environment promotion for config managed via GitOps.
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/argoproj-labs/gitops-promoter/badge)](https://scorecard.dev/viewer/?uri=github.com/argoproj-labs/gitops-promoter)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11911/badge)](https://www.bestpractices.dev/projects/11911)
 
-![Video of the GitOps Promoter UI as a change is promoted through three environments](https://github.com/user-attachments/assets/5860cc7a-56e6-4003-b1fc-b33e4d69d411)
+![Animation of the GitOps Promoter dashboard: a change with its deployment and code commits is promoted through development, staging, and production, then the history view shows the promotion timeline and the referenced code commit](docs/assets/demo.gif)
 
 ## Key Features
 
