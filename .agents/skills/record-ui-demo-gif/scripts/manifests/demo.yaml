@@ -1,0 +1,91 @@
+# Demo resources for recording the dashboard GIF. The fake SCM provider talks to
+# the git server from `go run ./.agents/skills/record-ui-demo-gif/scripts/gitserver`
+# on localhost:5001. See .agents/skills/record-ui-demo-gif/SKILL.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: promoter-demo
+---
+# The fake provider ignores the secret contents, but ScmProvider.secretRef must resolve.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fake-scm
+  namespace: promoter-demo
+type: Opaque
+stringData:
+  token: unused
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: fake-scm
+  namespace: promoter-demo
+spec:
+  secretRef:
+    name: fake-scm
+  fake: {}
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: gitops-config
+  namespace: promoter-demo
+spec:
+  scmProviderRef:
+    kind: ScmProvider
+    name: fake-scm
+  fake:
+    owner: acme
+    name: gitops-config
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: shop
+  namespace: promoter-demo
+spec:
+  gitRepositoryRef:
+    name: gitops-config
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: shop
+  activeCommitStatuses:
+    - key: soak
+  environments:
+    - branch: environment/development
+      autoMerge: true
+    - branch: environment/staging
+      autoMerge: true
+    - branch: environment/production
+      autoMerge: true
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: shop
+  namespace: promoter-demo
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: shop
+---
+# A short soak time per environment so the GIF shows the gate flipping from
+# pending to success before the next environment is promoted.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TimedCommitStatus
+metadata:
+  name: soak
+  namespace: promoter-demo
+spec:
+  key: soak
+  promotionStrategyRef:
+    name: shop
+  environments:
+    - branch: environment/development
+      duration: 12s
+    - branch: environment/staging
+      duration: 12s
+    - branch: environment/production
+      duration: 12s
