@@ -419,16 +419,6 @@ const DetailDrawer: React.FC<{
           </div>
         )}
 
-        {revertCommand && (
-          <div className="hp-drawer__section">
-            <div className="hp-drawer__restore-header">
-              <h3>Restore this version on {branch}</h3>
-              <CopyCommandButton command={revertCommand} />
-            </div>
-            <pre className="hp-drawer__command">{revertCommand}</pre>
-          </div>
-        )}
-
         {cell.commitStatuses.length > 0 && (
           <div className="hp-drawer__section">
             <h3>Checks</h3>
@@ -532,6 +522,16 @@ const DetailDrawer: React.FC<{
               <FaArrowRight aria-hidden="true" />
               <span>{rowsById.get(cell.supersededById)!.subject}</span>
             </button>
+          </div>
+        )}
+
+        {revertCommand && (
+          <div className="hp-drawer__section">
+            <div className="hp-drawer__restore-header">
+              <h3>Restore this version on {branch}</h3>
+              <CopyCommandButton command={revertCommand} />
+            </div>
+            <pre className="hp-drawer__command">{revertCommand}</pre>
           </div>
         )}
       </div>
