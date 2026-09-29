@@ -347,3 +347,55 @@ describe('buildMatrix restore command eligibility', () => {
     expect(canShowRevertCommand(cell)).toBe(false);
   });
 });
+
+describe('buildMatrix live and proposed pull requests', () => {
+  it('keeps an open proposed pull request off the commit that is still live', () => {
+    const proposedDry = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.proposed = {
+      dry: dryCommit(proposedDry, 'chore: bump version to v1.0.2006', '2026-09-25T16:00:00Z'),
+      hydrated: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      commitStatuses: [],
+    };
+    env.pullRequest = {
+      id: '3101',
+      url: 'https://github.com/org/repo/pull/3101',
+      state: 'open',
+    };
+
+    const { rows } = buildMatrix(strategy);
+    const live = rows.find((r) => r.dryShaFull === NEW_DRY)!;
+    const proposed = rows.find((r) => r.dryShaFull === proposedDry)!;
+    const previous = rows.find((r) => r.dryShaFull === OLD_DRY)!;
+
+    expect(live.cells[BRANCH]!.kind).toBe('live');
+    expect(live.cells[BRANCH]!.pullRequest?.id).toBe('2972');
+    expect(live.prId).toBe('2972');
+    expect(proposed.cells[BRANCH]!.isProposed).toBe(true);
+    expect(proposed.cells[BRANCH]!.pullRequest?.id).toBe('3101');
+    expect(proposed.prId).toBe('3101');
+    expect(previous.cells[BRANCH]!.pullRequest?.id).toBe('2957');
+  });
+
+  it('uses a merged pull request for the live commit when history has not caught up', () => {
+    const landed = 'abababababababababababababababababababab';
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.active = {
+      dry: dryCommit(landed, 'chore: bump version to v1.0.2006', '2026-09-25T16:00:00Z'),
+      hydrated: { sha: 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd' },
+      commitStatuses: [],
+    };
+    env.pullRequest = {
+      id: '3101',
+      url: 'https://github.com/org/repo/pull/3101',
+      state: 'merged',
+    };
+
+    const { rows } = buildMatrix(strategy);
+    const live = rows.find((r) => r.dryShaFull === landed)!.cells[BRANCH]!;
+    expect(live.kind).toBe('live');
+    expect(live.pullRequest?.id).toBe('3101');
+  });
+});

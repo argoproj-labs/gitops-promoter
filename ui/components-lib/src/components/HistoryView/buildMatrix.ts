@@ -73,6 +73,35 @@ function heldPullRequest(env: StatusEnvironment): PullRequest | undefined {
   return undefined;
 }
 
+// status.pullRequest is the pull request the controller is tracking right now. While a newer
+// commit is proposed, that is the open promotion, not the one that landed the commit still
+// running. The live commit's pull request is on the history entry for the active tip. Until
+// history catches up to a merge, a merged status.pullRequest is that same promotion.
+function liveCommitPullRequest(env: StatusEnvironment): PullRequest | undefined {
+  const fromHistory = historyPullRequestForActive(env);
+  if (fromHistory?.id) return fromHistory;
+
+  const pr = env.pullRequest;
+  if (pr?.id && (pr.state === 'merged' || pr.externallyMergedOrClosed)) return pr;
+  return undefined;
+}
+
+function historyPullRequestForActive(env: StatusEnvironment): PullRequest | undefined {
+  const hydrated = env.active?.hydrated?.sha;
+  const dry = env.active?.dry?.sha;
+  if (!hydrated && !dry) return undefined;
+  for (const entry of env.history ?? []) {
+    // A restore copies the restored version's pull request; that promotion already has a row.
+    if (entry.restoredFrom) continue;
+    const sameTip = hydrated
+      ? entry.active?.hydrated?.sha === hydrated
+      : entry.active?.dry?.sha === dry;
+    if (!sameTip) continue;
+    return entry.pullRequest?.id ? entry.pullRequest : undefined;
+  }
+  return undefined;
+}
+
 function getRow(
   rowsById: Map<string, CommitRow>,
   commit: Commit | undefined,
@@ -389,7 +418,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const health = healthFromStatuses(statuses);
       // The restore commit is written directly onto the active branch, so the policy's current
       // pull request is not its. That pull request stays on the commit it promoted.
-      const livePullRequest = activeRestore ? undefined : env.pullRequest;
+      const livePullRequest = activeRestore ? undefined : liveCommitPullRequest(env);
       const row = getRow(rowsById, env.active.dry, '', livePullRequest, activeRestoreKey);
       if (row) {
         if (activeRestore) applyRestoreIdentity(row, activeRestore);
