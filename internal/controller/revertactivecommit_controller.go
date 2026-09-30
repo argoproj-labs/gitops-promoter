@@ -133,7 +133,7 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// the restore clone independent of the policy's long-lived clone of the same repo. The restore
 	// runs once, so the clone is removed when this reconcile ends rather than kept for the life of
 	// the process.
-	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, ctp.Namespace+"/"+ctp.Name+"-revert")
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, rc.Namespace+"/"+rc.Name+"-revert")
 	defer func() {
 		if rmErr := gitOperations.RemoveClone(); rmErr != nil {
 			logger.Error(rmErr, "failed to remove RevertActiveCommit clone")
