@@ -4,6 +4,10 @@ Commit status rows in both the standalone dashboard and the Argo CD UI extension
 
 A plugin renders one commit status kind (e.g. `TimedCommitStatus`) with custom UI instead of the default name/description/link row. It does not require a CRD change: registration is by group/version/kind (GVK), optionally refined by an annotation on the commit status manager, read off it at render time.
 
+## Worked example
+
+[`argoproj-labs/gitops-promoter-ui-plugins`](https://github.com/argoproj-labs/gitops-promoter-ui-plugins) is a store of example plugins, built and versioned entirely outside this repository. Its `examples/timed-commit-status` plugin is a complete, working reference for everything on this page: an alternate `TimedCommitStatus` row (a countdown ring and status pill in `rowHeader`, a per-environment detail table in `rowContent`), registered at runtime, loaded successfully into both the dashboard and the Argo CD UI extension. Clone it and follow its build steps alongside this page rather than starting from the placeholder snippets below.
+
 ## The plugin contract
 
 Defined in [`ui/shared/src/components/plugins/types.ts`](https://github.com/argoproj-labs/gitops-promoter/blob/main/ui/shared/src/components/plugins/types.ts):
@@ -158,6 +162,8 @@ Point the dashboard at a directory containing your built bundle:
 go run ./cmd dashboard --kubeconfig ~/.kube/config --plugins-dir /path/to/your/plugin/dist
 ```
 
+For example, after building `examples/timed-commit-status` from [`gitops-promoter-ui-plugins`](https://github.com/argoproj-labs/gitops-promoter-ui-plugins), point `--plugins-dir` at its `dist/` directory to see the alternate `TimedCommitStatus` row render in place of the built-in one.
+
 `/plugins.js` reads this directory once at startup and caches the result for the life of the process. Dropping in, removing, or replacing a bundle has no effect until the dashboard restarts. `--plugins-dir` defaults to `/tmp/plugins`.
 
 Two things to watch for:
@@ -207,15 +213,15 @@ initContainers:
     volumeMounts:
       - name: extensions
         mountPath: /tmp/extensions/
-  - name: extension-plugin-my-plugin
+  - name: extension-plugin-timed-commit-status
     image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
     env:
       - name: EXTENSION_NAME
-        value: plugin-my-plugin
+        value: timed-commit-status
       - name: EXTENSION_URL
-        value: https://example.com/releases/my-plugin.tar.gz
+        value: https://github.com/argoproj-labs/gitops-promoter-ui-plugins/releases/download/v0.1.0/timed-commit-status-argocd-extension.tar.gz
       - name: EXTENSION_CHECKSUM_URL
-        value: https://example.com/releases/my-plugin_checksums.txt
+        value: https://github.com/argoproj-labs/gitops-promoter-ui-plugins/releases/download/v0.1.0/timed-commit-status_0.1.0_checksums.txt
     volumeMounts:
       - name: extensions
         mountPath: /tmp/extensions/
@@ -231,7 +237,7 @@ volumes:
 
 Two things to get right:
 
-- **Build the release tarball the way `argocd-extension-installer` expects any extension**: a top-level `resources/` directory, containing a subdirectory unique to the plugin, containing the built bundle file. The installer does a plain `cp -Rf`, so a subdirectory name clash with another plugin (or with `gitops-promoter`) silently overwrites files. The bundle file itself must match Argo CD's `extension*.js` pattern — e.g. `extension-plugin-my-plugin.js` — a different convention from the `plugin*.js` used by the dashboard paths, since Argo CD's server does the matching here, not the promoter's.
+- **Build the release tarball the way `argocd-extension-installer` expects any extension**: a top-level `resources/` directory, containing a subdirectory unique to the plugin, containing the built bundle file. The installer does a plain `cp -Rf`, so a subdirectory name clash with another plugin (or with `gitops-promoter`) silently overwrites files. The bundle file itself must match Argo CD's `extension*.js` pattern — e.g. `extension-plugin-my-plugin.js` — a different convention from the `plugin*.js` used by the dashboard paths, since Argo CD's server does the matching here, not the promoter's. [`gitops-promoter-ui-plugins`'s `v0.1.0` release](https://github.com/argoproj-labs/gitops-promoter-ui-plugins/releases/tag/v0.1.0) is a working example of this layout, and the init container example below loads it directly.
 - **Poll for `window.promoterPluginsAPI` instead of a `?.`-guarded call.** `argocd-server` re-walks `/tmp/extensions/` fresh on every request with no caching, so load order isn't something to rely on (Argo CD's own installer does name its files `extension-0-*` to sort first, but that only has to survive one write, not every page load against a live filesystem walk):
 
   ```ts
