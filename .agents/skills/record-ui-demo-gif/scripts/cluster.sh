@@ -78,15 +78,17 @@ cmd_up() {
   kubectl -n "${CONTROLLER_NAMESPACE}" rollout status deploy/promoter-apiserver --timeout=180s
 
   log "waiting for APIService ${APISERVICE} to become Available"
-  local _
+  local _ ok=false
   for _ in $(seq 1 60); do
     if [ "$(kubectl get apiservice "${APISERVICE}" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')" = "True" ]; then
       log "APIService is Available"
+      ok=true
       break
     fi
     sleep 2
   done
   kubectl get apiservice "${APISERVICE}"
+  [ "${ok}" = true ] || { log "APIService did not become Available"; exit 1; }
   log "done. Next: go run ./.agents/skills/record-ui-demo-gif/scripts/gitserver"
 }
 

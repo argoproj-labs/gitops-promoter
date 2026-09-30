@@ -80,28 +80,14 @@ data:
   image: ghcr.io/acme/shop:${IMAGE_TAG}
   environment: ${env}
 EOF
-  cat >"${DEMO_WORKTREE}/hydrator.metadata" <<EOF
-{
-  "repoURL": "${CONFIG_REPO_URL}",
-  "drySha": "${DRY_SHA}",
-  "author": "${DRY_AUTHOR}",
-  "date": "${DRY_DATE}",
-  "subject": "${DRY_SUBJECT}",
-  "body": "${DRY_BODY}",
-  "references": [
-    {
-      "commit": {
-        "repoURL": "${CODE_REPO_URL}",
-        "sha": "${REF_SHA}",
-        "author": "${REF_AUTHOR}",
-        "date": "${REF_DATE}",
-        "subject": "${REF_SUBJECT}",
-        "body": "${REF_BODY}"
-      }
-    }
-  ]
-}
-EOF
+  jq -n \
+    --arg repo "${CONFIG_REPO_URL}" --arg dsha "${DRY_SHA}" --arg da "${DRY_AUTHOR}" \
+    --arg dd "${DRY_DATE}" --arg ds "${DRY_SUBJECT}" --arg db "${DRY_BODY}" \
+    --arg crepo "${CODE_REPO_URL}" --arg rsha "${REF_SHA}" --arg ra "${REF_AUTHOR}" \
+    --arg rd "${REF_DATE}" --arg rs "${REF_SUBJECT}" --arg rb "${REF_BODY}" \
+    '{repoURL:$repo, drySha:$dsha, author:$da, date:$dd, subject:$ds, body:$db,
+      references:[{commit:{repoURL:$crepo, sha:$rsha, author:$ra, date:$rd, subject:$rs, body:$rb}}]}' \
+    >"${DEMO_WORKTREE}/hydrator.metadata"
 }
 
 # hydrate_branch <branch> [bootstrap-branch] checks out the branch, writes the
