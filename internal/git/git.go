@@ -1175,8 +1175,11 @@ type RestoreResult struct {
 //
 //	# otherwise create the restore commit, note, and push (note first).
 //	# SetHistoryNote re-fetches before add, and retries that fetch/add/push up to 3 times.
-//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< T               # copy T's trailers
-//	git interpret-trailers --only-trailers < message                              # (cached from the refuse check)
+//	# Copy T's commit-message trailers. Both commands are skipped when the refuse check already
+//	# parsed them (note absent, empty, or not valid JSON). A parsed note does not read the message,
+//	# so this is the first read in that case.
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< T
+//	git interpret-trailers --only-trailers < message
 //	git commit-tree <tree> -p <activeTip> -m 'Revert A to <T[:7]>
 //
 //	<T's trailers, sorted by key>
