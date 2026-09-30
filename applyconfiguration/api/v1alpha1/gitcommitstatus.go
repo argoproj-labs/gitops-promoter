@@ -29,9 +29,7 @@ import (
 // GitCommitStatusApplyConfiguration represents a declarative configuration of the GitCommitStatus type for use
 // with apply.
 //
-// GitCommitStatus is the Schema for the gitcommitstatuses API.
-//
-// It validates commits from PromotionStrategy environments using configurable expressions
+// GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions
 // and creates CommitStatus resources with the validation results.
 //
 // Use the Target field to control which commit is validated:

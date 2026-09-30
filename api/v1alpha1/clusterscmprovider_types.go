@@ -34,7 +34,9 @@ var ClusterScmProviderKind = reflect.TypeFor[ClusterScmProvider]().Name()
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 
-// ClusterScmProvider is the Schema for the clusterscmproviders API.
+// ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub)
+// and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference
+// a ClusterScmProvider by name.
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ClusterScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`

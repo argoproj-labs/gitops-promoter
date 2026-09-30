@@ -30,8 +30,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
-          API
+        description: |-
+          WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to
+          configurable endpoints, evaluates a validation expression against the response, and creates or updates
+          CommitStatus resources.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus
