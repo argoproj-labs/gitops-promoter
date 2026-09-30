@@ -29,7 +29,11 @@ type TimedCommitStatusSpecApplyConfiguration struct {
 	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
 	// proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
-	Key          *string                                           `json:"key,omitempty"`
+	Key *string `json:"key,omitempty"`
+	// Environments is the list of branches this soak gate covers. A PromotionStrategy
+	// environment that requires spec.key (top-level or per-environment proposed or
+	// active commit statuses) must appear here; otherwise reconciliation fails with
+	// Ready=False. Extra listed environments are allowed.
 	Environments []TimedCommitStatusEnvironmentsApplyConfiguration `json:"environments,omitempty"`
 }
 

@@ -1583,7 +1583,7 @@ export type components = {
         ScheduledCommitStatusSpec: {
             /** @description Allow defines global allow windows applied to all listed environments in addition to per-environment allow windows (OR semantics across all). */
             allow?: components["schemas"]["CronWindow"][];
-            /** @description Environments defines the list of environments to gate. Only listed environments are gated; unlisted environments default to success (24/7 open). Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined. */
+            /** @description Environments defines the list of environments to gate. A PromotionStrategy environment that requires spec.key (top-level or per-environment proposed or active commit statuses) must appear here; otherwise reconciliation fails with Ready=False. Extra listed environments are allowed. Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined. */
             environments: components["schemas"]["ScheduledEnvironment"][];
             /** @description Exclude defines global exclusion windows applied to all listed environments in addition to per-environment exclusions. Exclusions take precedence over allow windows. */
             exclude?: components["schemas"]["CronWindow"][];
@@ -1848,6 +1848,7 @@ export type components = {
         };
         /** @description TimedCommitStatusSpec defines the desired state of TimedCommitStatus */
         TimedCommitStatusSpec: {
+            /** @description Environments is the list of branches this soak gate covers. A PromotionStrategy environment that requires spec.key (top-level or per-environment proposed or active commit statuses) must appear here; otherwise reconciliation fails with Ready=False. Extra listed environments are allowed. */
             environments: components["schemas"]["TimedCommitStatusEnvironments"][];
             /** @description Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$). */
             key?: string;

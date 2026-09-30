@@ -284,7 +284,7 @@ spec:
 2. **CEL validation** — ensure each environment ends up with a valid configuration after the merge (e.g. at least one allow or exclude window)
 3. **Clear precedence rules** — which level wins on conflict (e.g. exclusions always override allow windows)
 
-Only listed environments are gated; unlisted environments default to success (24/7 open).
+Only listed environments receive a CommitStatus from the gate controller. Unlisted environments are not "default success": if the PromotionStrategy still requires that `key` for them -- especially through a top-level `proposedCommitStatuses` / `activeCommitStatuses` entry, which applies to every environment -- the missing status is treated as `pending` and the promotion blocks. Document that users should require the key only on the environments their gate CR lists.
 
 ### Choosing a Pattern
 

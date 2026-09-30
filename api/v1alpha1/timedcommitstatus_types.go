@@ -45,6 +45,10 @@ type TimedCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key,omitempty"`
 
+	// Environments is the list of branches this soak gate covers. A PromotionStrategy
+	// environment that requires spec.key (top-level or per-environment proposed or
+	// active commit statuses) must appear here; otherwise reconciliation fails with
+	// Ready=False. Extra listed environments are allowed.
 	// +required
 	Environments []TimedCommitStatusEnvironments `json:"environments"`
 }

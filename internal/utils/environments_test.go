@@ -22,6 +22,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("GetApplicableEnvironments", func() {
@@ -133,4 +134,65 @@ var _ = Describe("GetApplicableEnvironments", func() {
 			},
 		),
 	)
+})
+
+var _ = Describe("ValidateGateEnvironmentList", func() {
+	var ps *promoterv1alpha1.PromotionStrategy
+
+	BeforeEach(func() {
+		ps = &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "webservice-tier-1"},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: "environment/dev"},
+					{Branch: "environment/staging"},
+					{Branch: "environment/prod"},
+				},
+			},
+		}
+	})
+
+	It("returns nil when listed environments cover a global proposed key", func() {
+		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "promotion-window"}}
+		Expect(utils.ValidateGateEnvironmentList(ps, "promotion-window", []string{
+			"environment/dev", "environment/staging", "environment/prod",
+		})).To(Succeed())
+	})
+
+	It("returns nil when extra listed environments do not require the key", func() {
+		ps.Spec.Environments[0].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "promotion-window"},
+		}
+		Expect(utils.ValidateGateEnvironmentList(ps, "promotion-window", []string{
+			"environment/dev", "environment/staging",
+		})).To(Succeed())
+	})
+
+	It("errors when a global key is required for environments the gate does not list", func() {
+		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "promotion-window"}}
+		err := utils.ValidateGateEnvironmentList(ps, "promotion-window", []string{"environment/dev"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("requires key \"promotion-window\""))
+		Expect(err.Error()).To(ContainSubstring("environment/prod"))
+		Expect(err.Error()).To(ContainSubstring("environment/staging"))
+	})
+
+	It("errors when a listed branch is not on the PromotionStrategy", func() {
+		err := utils.ValidateGateEnvironmentList(ps, "promotion-window", []string{"environment/nonexistent"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("branches not found in PromotionStrategy \"webservice-tier-1\": environment/nonexistent"))
+	})
+
+	It("unions proposed and active selectors when finding required environments", func() {
+		ps.Spec.Environments[0].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "shared-key"},
+		}
+		ps.Spec.Environments[1].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "shared-key"},
+		}
+		err := utils.ValidateGateEnvironmentList(ps, "shared-key", []string{"environment/dev"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("environment/staging"))
+		Expect(err.Error()).NotTo(ContainSubstring("environment/prod"))
+	})
 })

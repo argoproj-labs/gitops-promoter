@@ -37,10 +37,12 @@ type ScheduledCommitStatusSpecApplyConfiguration struct {
 	// Exclude defines global exclusion windows applied to all listed environments in addition to
 	// per-environment exclusions. Exclusions take precedence over allow windows.
 	Exclude []CronWindowApplyConfiguration `json:"exclude,omitempty"`
-	// Environments defines the list of environments to gate. Only listed environments are gated;
-	// unlisted environments default to success (24/7 open). Each environment inherits global
-	// allow/exclude windows and may add its own. An environment with no per-environment windows
-	// is valid when global windows are defined.
+	// Environments defines the list of environments to gate. A PromotionStrategy
+	// environment that requires spec.key (top-level or per-environment proposed or
+	// active commit statuses) must appear here; otherwise reconciliation fails with
+	// Ready=False. Extra listed environments are allowed. Each environment inherits
+	// global allow/exclude windows and may add its own. An environment with no
+	// per-environment windows is valid when global windows are defined.
 	Environments []ScheduledEnvironmentApplyConfiguration `json:"environments,omitempty"`
 }
 

@@ -50,7 +50,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		By("Setting up test git repository and resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-test", "default")
 
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+		promotionStrategy.Spec.Environments[0].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "promotion-window"},
 		}
 		// PS hard-fails without an ordering gate; declare and create PECS like other gate tests.
@@ -393,7 +393,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			keyCtx = context.Background()
 			keyName, keySecret, keyScmProv, keyGitRepo, _, _, keyPS = promotionStrategyResource(keyCtx, "scheduled-key-test", "default")
-			keyPS.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			keyPS.Spec.Environments[0].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: customKey},
 			}
 			declareDependentsSuccessfulGate(keyPS)
@@ -594,6 +594,45 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 			g.Expect(readyCondition).ToNot(BeNil())
 			g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(readyCondition.Message).To(ContainSubstring("environment/nonexistent"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("should set Ready=False when PromotionStrategy requires the key for an unlisted environment", func() {
+		unlisted := &promoterv1alpha1.ScheduledCommitStatus{
+			Name:      name + "-key-unlisted",
+			Namespace: "default",
+			Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
+				Key: "promotion-window",
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: name,
+				},
+				Environments: []promoterv1alpha1.ScheduledEnvironment{
+					{
+						Branch: testBranchDevelopment,
+						Allow: []promoterv1alpha1.CronWindow{
+							{Cron: "* * * * *", Duration: metav1.Duration{Duration: 24 * time.Hour}},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, unlisted)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, unlisted) })
+
+		Eventually(func(g Gomega) {
+			var current promoterv1alpha1.ScheduledCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name + "-key-unlisted",
+				Namespace: "default",
+			}, &current)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			readyCondition := meta.FindStatusCondition(current.Status.Conditions, "Ready")
+			g.Expect(readyCondition).ToNot(BeNil())
+			g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(readyCondition.Message).To(ContainSubstring("requires key \"promotion-window\""))
+			g.Expect(readyCondition.Message).To(ContainSubstring(testBranchStaging))
+			g.Expect(readyCondition.Message).To(ContainSubstring(testBranchProduction))
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 })
