@@ -1025,7 +1025,8 @@ func (g *EnvironmentOperations) notedObjects(ctx context.Context, ref string) (m
 
 	noted := make(map[string]struct{})
 	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
-		// Each line is "<note blob> <annotated object>".
+		// Each line is "<note-object> <annotated-object>", both object IDs. The first is the
+		// note blob's ID; the note body is not in the output.
 		if _, object, found := strings.Cut(line, " "); found {
 			noted[object] = struct{}{}
 		}
@@ -1063,10 +1064,10 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 	//     repeated ours-merges after reverts (or other noteless commits) on active. Each of
 	//     those used to be a notes show miss; notes list skips them.
 	//
-	// notes list reads the notes tree alone (no note blobs, which a blob-less clone would
-	// fetch lazily). When the list is empty we skip the walk. A delayed note on the proposed
-	// tip is not this path: GetHydratorNote(startSha) already ran; the next FetchNotes
-	// reconcile hits it there.
+	// notes list walks the notes tree and prints those IDs. It does not read note bodies,
+	// which a blob-less clone would fetch lazily on notes show. When the list is empty we
+	// skip the walk. A delayed note on the proposed tip is not this path:
+	// GetHydratorNote(startSha) already ran; the next FetchNotes reconcile hits it there.
 	noted, err := g.notedObjects(ctx, HydratorNotesRef)
 	if err != nil {
 		return nil, err
