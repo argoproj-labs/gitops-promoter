@@ -101,9 +101,10 @@ function getRow(
 }
 
 const cellRank: Record<CellKind, number> = {
-  live: 6,
-  'in-flight': 5,
-  failed: 4,
+  live: 7,
+  'in-flight': 6,
+  failed: 5,
+  'was-failed': 4,
   'was-here': 3,
   'no-op': 2,
   'unknown-history': 1,
@@ -136,7 +137,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
     const health = healthFromStatuses(statuses);
     const olderSha = history[idx + 1]?.active?.dry?.sha;
     const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
-    const kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
+    const kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'was-failed' : 'was-here';
 
     const row = getRow(rowsById, commit, '', entry.pullRequest);
     if (!row) return;
@@ -251,7 +252,7 @@ function finalizeRow(
   const states = branches.map((b) => row.cells[b].kind);
   row.hasLive = states.includes('live');
   row.hasInFlight = states.includes('in-flight');
-  row.hasFailed = states.includes('failed');
+  row.hasFailed = states.includes('failed') || states.includes('was-failed');
   row.hasNoop = states.includes('no-op');
 
   return row;

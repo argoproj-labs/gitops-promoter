@@ -82,7 +82,7 @@ const FlowCell: React.FC<{
               {cell.kind === 'live' && 'LIVE'}
               {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
               {cell.kind === 'was-here' && 'REPLACED'}
-              {cell.kind === 'failed' && 'FAILED'}
+              {(cell.kind === 'failed' || cell.kind === 'was-failed') && 'FAILED'}
               {cell.kind === 'no-op' && (
                 <>
                   <FaBan aria-hidden="true" /> NO-OP
@@ -126,13 +126,13 @@ const FlowCell: React.FC<{
       )}
 
       <div className="cell__bottom">
-        {cell.kind === 'failed' && failingChecks.length > 0 && (
+        {(cell.kind === 'failed' || cell.kind === 'was-failed') && failingChecks.length > 0 && (
           <span className="cell__reason">{failingChecks[0]}</span>
         )}
         {cell.kind === 'no-op' && (
           <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>
         )}
-        {cell.kind === 'was-here' &&
+        {(cell.kind === 'was-here' || cell.kind === 'was-failed') &&
           cell.supersededById &&
           onJumpToRow &&
           rowsById.get(cell.supersededById) && (
