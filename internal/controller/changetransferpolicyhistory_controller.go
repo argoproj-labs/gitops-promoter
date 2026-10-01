@@ -117,14 +117,6 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
-	// Cheap fast-path before any git/network work: when the sibling ChangeTransferPolicy's active tip
-	// is already fully described by the newest history entry, the rev-list window and trailer content
-	// on those commits are immutable in git and a rebuild would produce the same result.
-	if activeSha, ok := r.siblingActiveSha(ctx, &ctph); ok && shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
-		logger.V(4).Info("skipping history recalculation, newest history entry describes the active tip")
-		return ctrl.Result{RequeueAfter: requeueDuration}, nil
-	}
-
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctph.Spec.RepositoryReference, &ctph)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctph.Spec.RepositoryReference.Name, err)
@@ -165,11 +157,20 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to get SHA for active branch %q: %w", ctph.Spec.ActiveBranch, err)
 	}
 
-	// Recheck the skip guard against the fetched tip. This covers resources without a sibling
-	// ChangeTransferPolicy (the fast-path above could not run) whose branch has not moved.
+	// Skip the rebuild when the newest history entry already describes this tip and this clone's
+	// promotion-history notes ref matches the snapshot. A note can correct trailer-derived fields
+	// without moving the active tip; skipping on the entry alone would pin that uncorrected history.
+	// No snapshot (the probe failed) does not match, so the rebuild probes the notes ref itself.
 	if shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
-		logger.V(4).Info("skipping history recalculation, newest history entry describes the fetched active tip")
-		return ctrl.Result{RequeueAfter: requeueDuration}, nil
+		notesMatch, err := gitOperations.PromotionHistoryNotesMatchSnapshot(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to compare promotion-history notes ref: %w", err)
+		}
+		if notesMatch {
+			logger.V(4).Info("skipping history recalculation, newest history entry describes the fetched active tip and the promotion-history notes ref is unchanged")
+			return ctrl.Result{RequeueAfter: requeueDuration}, nil
+		}
+		logger.V(4).Info("recalculating history, promotion-history notes ref differs from the snapshot")
 	}
 
 	history, err := calculateHistory(ctx, ctph.Spec.ActiveBranch, ctph.Spec.ActivePath, gitOperations)
@@ -181,23 +182,6 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
 	}, nil
-}
-
-// siblingActiveSha returns the active hydrated SHA of the ChangeTransferPolicy that owns this
-// ChangeTransferPolicyHistory. The second return value is false when there is no controller owner
-// or the owning ChangeTransferPolicy cannot be read.
-func (r *ChangeTransferPolicyHistoryReconciler) siblingActiveSha(ctx context.Context, ctph *promoterv1alpha1.ChangeTransferPolicyHistory) (string, bool) {
-	owner := metav1.GetControllerOf(ctph)
-	if owner == nil || owner.Kind != "ChangeTransferPolicy" {
-		return "", false
-	}
-
-	var ctp promoterv1alpha1.ChangeTransferPolicy
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ctph.Namespace, Name: owner.Name}, &ctp); err != nil {
-		log.FromContext(ctx).V(4).Info("failed to get owning ChangeTransferPolicy", "err", err)
-		return "", false
-	}
-	return ctp.Status.Active.Hydrated.Sha, true
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -321,7 +305,9 @@ func pullRequestCommonStatusesEqual(a, b *promoterv1alpha1.PullRequestCommonStat
 // the stale entry until the active tip moves. Rebuilding whenever the PR ID is missing keeps that
 // path self-healing: once the note is on the remote, the rebuild picks it up. Commits that genuinely
 // carry no PR metadata (direct pushes to the active branch) simply keep the behavior of recalculating
-// every reconcile.
+// every reconcile. An entry that already has a pull request ID can still be wrong: the note may correct
+// trailer-derived fields without moving the tip. The caller also requires the promotion-history notes
+// ref to match this reconcile's remote snapshot before it skips.
 //
 // A Spec.ActivePath change without a new active tip is not detected here; history is refreshed on
 // the next promotion that moves the active branch.

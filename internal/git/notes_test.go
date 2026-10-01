@@ -182,6 +182,43 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(BeNil())
 	})
 
+	It("PromotionHistoryNotesMatchSnapshot compares the clone to the snapshot and leaves the snapshot in place", func() {
+		ctx := GinkgoT().Context()
+		g := newEnvOps("default/notes-match")
+		Expect(g.FetchBranch(ctx, defaultBranch)).To(Succeed())
+
+		By("no snapshot has been taken")
+		match, err := g.PromotionHistoryNotesMatchSnapshot(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(match).To(BeFalse())
+
+		By("neither side has a promotion-history notes ref")
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		match, err = g.PromotionHistoryNotesMatchSnapshot(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(match).To(BeTrue())
+
+		By("the remote gained a note the clone has not fetched")
+		_, err = runGitCmd(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m", `{"Pull-request-id":["1"]}`, shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		match, err = g.PromotionHistoryNotesMatchSnapshot(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(match).To(BeFalse())
+
+		By("fetching the note makes the clone match, and the snapshot is still there for FetchNotes")
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		match, err = g.PromotionHistoryNotesMatchSnapshot(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(match).To(BeTrue())
+		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+	})
+
 	It("FetchNotes only fetches notes refs that moved on the remote", func() {
 		ctx := GinkgoT().Context()
 		g := newEnvOps("default/fetch-skip")

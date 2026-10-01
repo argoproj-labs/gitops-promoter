@@ -1022,6 +1022,26 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
+// PromotionHistoryNotesMatchSnapshot reports whether this clone's promotion-history notes ref equals
+// the tip SnapshotRemoteRefs recorded for PromoterHistoryNotesRef. An empty SHA on both sides matches:
+// the ref is absent locally and on the remote. It returns false when that ref is not in the snapshot,
+// including when SnapshotRemoteRefs failed, so callers do not treat an unknown remote as unchanged.
+//
+// The snapshot entry is left in place. FetchNotes still consumes it when the caller goes on to rebuild.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) PromotionHistoryNotesMatchSnapshot(ctx context.Context) (bool, error) {
+	remoteSha, ok := g.remoteRefs[PromoterHistoryNotesRef]
+	if !ok {
+		return false, nil
+	}
+	local, err := g.localRefShas(ctx, PromoterHistoryNotesRef)
+	if err != nil {
+		return false, err
+	}
+	return local[PromoterHistoryNotesRef] == remoteSha, nil
+}
+
 // FetchNotes brings the local notes refs (HydratorNotesRef, PromoterHistoryNotesRef) up to date with
 // the remote. A ref is only fetched when its remote tip differs from the local one; the remote tips
 // come from the SnapshotRemoteRefs snapshot (used by at most one FetchNotes call), or from a single
