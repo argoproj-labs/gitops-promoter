@@ -182,7 +182,7 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(BeNil())
 	})
 
-	It("LoadHistoryNotes serves GetHistoryNote from one batch and SetHistoryNote invalidates it", func() {
+	It("LoadHistoryNotes serves GetHistoryNote from one batch", func() {
 		ctx := GinkgoT().Context()
 		_, err := runGitCmd(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m", `{"Pull-request-id":["1"]}`, shaOne)
 		Expect(err).NotTo(HaveOccurred())
@@ -203,12 +203,6 @@ var _ = Describe("Promotion history notes", func() {
 		got, err = g.GetHistoryNote(ctx, shaTwo)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(BeNil())
-
-		By("writing a note drops the cached entries")
-		Expect(g.SetHistoryNote(ctx, shaTwo, map[string][]string{"Pull-request-id": {"2"}})).To(Succeed())
-		got, err = g.GetHistoryNote(ctx, shaTwo)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(map[string][]string{"Pull-request-id": {"2"}}))
 	})
 
 	It("LoadHistoryNotes tolerates a commit missing from the clone", func() {

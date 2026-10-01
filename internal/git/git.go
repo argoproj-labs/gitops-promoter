@@ -102,7 +102,8 @@ type EnvironmentOperations struct {
 	commits map[string]commitObject
 
 	// historyNotes caches raw promotion-history notes by lowercase commit SHA, filled by
-	// LoadHistoryNotes. "" records a commit without a note. Cleared whenever the notes ref changes.
+	// LoadHistoryNotes. "" records a commit without a note. The map lives only for this
+	// EnvironmentOperations instance, which callers construct per reconcile.
 	historyNotes map[string]string
 
 	identity string
@@ -820,9 +821,6 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		return fmt.Errorf("failed to fetch git notes for ref %q: %w", ref, err)
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
-	if ref == PromoterHistoryNotesRef {
-		clear(g.historyNotes)
-	}
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil
@@ -939,7 +937,6 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 
 		// -f overwrites an existing note, which keeps retried reconciles idempotent.
 		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
-		clear(g.historyNotes)
 		if err != nil {
 			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
 			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
