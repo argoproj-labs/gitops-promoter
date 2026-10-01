@@ -1,22 +1,51 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useReducer, useRef } from 'react';
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'react-icons/fa';
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
-import type { CommitRow, FilterId, SortId } from './types';
+import type { HistoryViewState } from '@shared/utils/deepLink';
+import { FILTER_IDS, SORT_IDS, type CommitRow, type FilterId, type SortId } from './types';
 import { buildMatrix } from './buildMatrix';
-import { isEmptyCellKind } from './helpers';
+import { isEmptyCellKind, pruneEnvFilter } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
+import { initialUrlState, sameUrlState, urlStateReducer } from './urlState';
+import type { CellSelection, HistoryUrlState, UrlStateAction } from './urlState';
 import './index.scss';
 
-export interface CellSelection {
-  rowId: string;
-  branch: string;
-}
+const scrollRowIntoView = (rowId: string) => {
+  requestAnimationFrame(() => {
+    document
+      .getElementById(`row-${rowId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+};
+
+const FILTER_LABELS: Record<FilterId, string> = {
+  all: 'All commits',
+  live: 'Live',
+  'in-flight': 'In flight',
+  failed: 'Failed',
+  'no-op': 'No-op',
+};
+const FILTERS: { id: FilterId; label: string }[] = FILTER_IDS.map((id) => ({
+  id,
+  label: FILTER_LABELS[id],
+}));
+
+const SORT_LABELS: Record<SortId, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+};
+const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
+  id,
+  label: SORT_LABELS[id],
+}));
+
+export type { CellSelection, HistoryUrlState };
 
 export interface HistoryViewProps {
   strategy?: PromotionStrategy;
@@ -24,11 +53,8 @@ export interface HistoryViewProps {
   namespace?: string;
   onBack?: () => void;
   initialSelection?: CellSelection | null;
-  onSelectionChange?: (_selection: CellSelection | null) => void;
-  // By default the view fills its host container (`height: 100%`), which is
-  // correct when mounted inside a sized ancestor like ArgoCD's
-  // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
-  // set this to clamp the root to the viewport instead.
+  initialViewState?: Partial<HistoryViewState>;
+  onUrlStateChange?: (_state: HistoryUrlState) => void;
   fillViewport?: boolean;
 }
 
@@ -39,7 +65,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   onBack,
   fillViewport = false,
   initialSelection = null,
-  onSelectionChange,
+  initialViewState,
+  onUrlStateChange,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
@@ -55,34 +82,91 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     return m;
   }, [rows]);
 
-  const [filter, setFilter] = useState<FilterId>('all');
-  const [sort, setSort] = useState<SortId>('newest');
-  const [envFilter, setEnvFilter] = useState<string[]>([]);
-  const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
+  const [urlState, dispatch] = useReducer(
+    urlStateReducer,
+    initialUrlState(initialSelection, initialViewState),
+  );
+  const { selection: selected, viewState } = urlState;
+  const { filter, sort, envFilter } = viewState;
+  const selectionFromLinkRef = useRef(initialSelection !== null);
+  const pendingScrollRowIdRef = useRef<string | null>(null);
 
-  const onSelectionChangeRef = useRef(onSelectionChange);
-  onSelectionChangeRef.current = onSelectionChange;
+  const onUrlStateChangeRef = useRef(onUrlStateChange);
+  onUrlStateChangeRef.current = onUrlStateChange;
 
-  const selectCell = useCallback((next: CellSelection | null) => {
-    setSelectedState(next);
-    onSelectionChangeRef.current?.(next);
+  const urlStateRef = useRef(urlState);
+  urlStateRef.current = urlState;
+
+  const initialUrlStateRef = useRef(urlState);
+  useEffect(() => {
+    const next = initialUrlState(initialSelection, initialViewState);
+    if (!sameUrlState(next, initialUrlStateRef.current)) {
+      initialUrlStateRef.current = next;
+      selectionFromLinkRef.current = next.selection !== null;
+      dispatch({ type: 'reset', state: next });
+      if (next.selection) {
+        if (rows.length > 0) scrollRowIntoView(next.selection.rowId);
+        else pendingScrollRowIdRef.current = next.selection.rowId;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelection, initialViewState]);
+
+  useEffect(() => {
+    if (rows.length === 0 || !pendingScrollRowIdRef.current) return;
+    scrollRowIntoView(pendingScrollRowIdRef.current);
+    pendingScrollRowIdRef.current = null;
+  }, [rows.length]);
+
+  const dispatchAndNotify = useCallback((action: UrlStateAction) => {
+    const next = urlStateReducer(urlStateRef.current, action);
+    dispatch(action);
+    urlStateRef.current = next;
+    if (action.type !== 'reset') onUrlStateChangeRef.current?.(next);
   }, []);
+
+  const setFilter = useCallback(
+    (next: FilterId) => {
+      dispatchAndNotify({ type: 'setFilter', filter: next });
+    },
+    [dispatchAndNotify],
+  );
+
+  const setSort = useCallback(
+    (next: SortId) => {
+      dispatchAndNotify({ type: 'setSort', sort: next });
+    },
+    [dispatchAndNotify],
+  );
+
+  const setEnvFilter = useCallback(
+    (next: string[] | ((_prev: string[]) => string[])) => {
+      const value =
+        typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
+      dispatchAndNotify({ type: 'setEnvFilter', envFilter: value });
+    },
+    [dispatchAndNotify],
+  );
+
+  const [staleLink, setStaleLink] = useState(false);
+
+  const selectCell = useCallback(
+    (next: CellSelection | null) => {
+      selectionFromLinkRef.current = false;
+      setStaleLink(false);
+      dispatchAndNotify({ type: 'setSelection', selection: next });
+    },
+    [dispatchAndNotify],
+  );
 
   const drawer = useDrawerWidth();
 
   const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
-  useEffect(() => {
-    if (!selected || rows.length === 0) return;
-    const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
-    if (
-      !validBranches.has(selected.branch) ||
-      !selectedCell ||
-      isEmptyCellKind(selectedCell.kind)
-    ) {
-      setSelectedState(null);
-      onSelectionChangeRef.current?.(null);
-    }
-  }, [selected, rows.length, rowsById, validBranches]);
+
+  const effectiveEnvFilter = useMemo(
+    () => pruneEnvFilter(envFilter, validBranches) ?? envFilter,
+    [envFilter, validBranches],
+  );
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -92,10 +176,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const envScopedRows = useMemo(
     () =>
-      envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
+      effectiveEnvFilter.length
+        ? rows.filter((r) => effectiveEnvFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
         : rows,
-    [rows, envFilter],
+    [rows, effectiveEnvFilter],
   );
 
   const filteredRows = useMemo(() => {
@@ -118,6 +202,29 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
 
+  const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.id)), [filteredRows]);
+
+  const selectionIsStale = useMemo(() => {
+    if (!selected || !strategy) return false;
+    const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
+    return (
+      !validBranches.has(selected.branch) ||
+      !selectedCell ||
+      isEmptyCellKind(selectedCell.kind) ||
+      (effectiveEnvFilter.length > 0 && !effectiveEnvFilter.includes(selected.branch)) ||
+      !filteredRowIds.has(selected.rowId)
+    );
+  }, [selected, strategy, rowsById, validBranches, effectiveEnvFilter, filteredRowIds]);
+
+  const effectiveSelected = selectionIsStale ? null : selected;
+
+  useEffect(() => {
+    if (!selectionIsStale) return;
+    if (selectionFromLinkRef.current) setStaleLink(true);
+    selectionFromLinkRef.current = false;
+    dispatchAndNotify({ type: 'setSelection', selection: null });
+  }, [selectionIsStale, dispatchAndNotify]);
+
   const counts = useMemo(() => {
     return {
       all: envScopedRows.length,
@@ -138,11 +245,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
       const branch = liveBranch ?? branches.find((b) => !isEmptyCellKind(row.cells[b].kind));
       if (branch) selectCell({ rowId, branch });
-      requestAnimationFrame(() => {
-        document
-          .getElementById(`row-${rowId}`)
-          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
+      scrollRowIntoView(rowId);
     },
     [envs, rowsById, selectCell],
   );
@@ -165,24 +268,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     );
   }
 
-  const selectedRow = selected ? (rowsById.get(selected.rowId) ?? null) : null;
-  const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
+  const selectedRow = effectiveSelected ? (rowsById.get(effectiveSelected.rowId) ?? null) : null;
+  const selectedCell =
+    selectedRow && effectiveSelected ? selectedRow.cells[effectiveSelected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
 
-  const FILTERS: { id: FilterId; label: string }[] = [
-    { id: 'all', label: 'All commits' },
-    { id: 'live', label: 'Live' },
-    { id: 'in-flight', label: 'In flight' },
-    { id: 'failed', label: 'Failed' },
-    { id: 'no-op', label: 'No-op' },
-  ];
-
-  const SORTS: { id: SortId; label: string }[] = [
-    { id: 'newest', label: 'Newest first' },
-    { id: 'oldest', label: 'Oldest first' },
-  ];
-
-  const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
+  const visibleEnvs = effectiveEnvFilter.length
+    ? envs.filter((e) => effectiveEnvFilter.includes(e.branch))
+    : envs;
 
   // Trailing 1fr spacer track (no cell placed in it) soaks up leftover width as
   // empty gap; when columns overflow it collapses to 0 and the matrix scrolls.
@@ -230,21 +323,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             <Dropdown
               icon={<FaLayerGroup />}
               label="Environment"
-              active={envFilter.length > 0}
+              active={effectiveEnvFilter.length > 0}
               value={
-                envFilter.length === 0 ? (
+                effectiveEnvFilter.length === 0 ? (
                   'All environments'
-                ) : envFilter.length === 1 ? (
+                ) : effectiveEnvFilter.length === 1 ? (
                   <>
                     <span
                       className="hp-chip__dot"
-                      style={{ background: envs.find((e) => e.branch === envFilter[0])?.color }}
+                      style={{
+                        background: envs.find((e) => e.branch === effectiveEnvFilter[0])?.color,
+                      }}
                       aria-hidden="true"
                     />
-                    {envFilter[0]}
+                    {effectiveEnvFilter[0]}
                   </>
                 ) : (
-                  `${envFilter.length} environments`
+                  `${effectiveEnvFilter.length} environments`
                 )
               }
             >
@@ -252,7 +347,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 <>
                   <DropdownItem
                     multi
-                    selected={envFilter.length === 0}
+                    selected={effectiveEnvFilter.length === 0}
                     onSelect={() => setEnvFilter([])}
                   >
                     <span className="hp-dd__item-label">All environments</span>
@@ -265,7 +360,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                       <DropdownItem
                         key={env.branch}
                         multi
-                        selected={envFilter.includes(env.branch)}
+                        selected={effectiveEnvFilter.includes(env.branch)}
                         onSelect={() => handleToggleEnvFilter(env.branch)}
                       >
                         <span
@@ -315,7 +410,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
           <div className="hp-matrix">
             <div className="hp-matrix__sticky">
-              {envFilter.length > 0 && visibleEnvs.length < envs.length && (
+              {staleLink && (
+                <div className="hp-env-banner hp-stale-link" role="status">
+                  <span className="hp-env-banner__text">
+                    That commit is no longer in this promotion history.
+                  </span>
+                  <button
+                    type="button"
+                    className="hp-env-banner__clear"
+                    onClick={() => setStaleLink(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {effectiveEnvFilter.length > 0 && visibleEnvs.length < envs.length && (
                 <div className="hp-env-banner">
                   <span className="hp-env-banner__text">
                     Showing {visibleEnvs.length} of {envs.length} environments
@@ -359,7 +468,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 <div
                   key={row.id}
                   id={`row-${row.id}`}
-                  className={`hp-row ${selected?.rowId === row.id ? 'hp-row--selected' : ''}`}
+                  className={`hp-row ${effectiveSelected?.rowId === row.id ? 'hp-row--selected' : ''}`}
                   style={{ gridTemplateColumns: gridTemplate }}
                 >
                   <div className="hp-row__commit">
@@ -424,7 +533,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     </div>
                   </div>
                   {visibleEnvs.map((env) => {
-                    const isFocusedEnv = envFilter.includes(env.branch);
+                    const isFocusedEnv = effectiveEnvFilter.includes(env.branch);
                     return (
                       <div
                         key={env.branch}
@@ -438,7 +547,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                         <FlowCell
                           cell={row.cells[env.branch]}
                           branch={env.branch}
-                          isSelected={selected?.rowId === row.id && selected?.branch === env.branch}
+                          isSelected={
+                            effectiveSelected?.rowId === row.id &&
+                            effectiveSelected?.branch === env.branch
+                          }
                           onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
                           rowsById={rowsById}
                           onJumpToRow={handleJumpToRow}
@@ -455,7 +567,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         <DetailDrawer
           row={selectedRow}
           cell={selectedCell}
-          branch={selected?.branch ?? null}
+          branch={effectiveSelected?.branch ?? null}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}
@@ -465,7 +577,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onResizeTo={drawer.onResizeTo}
           onClose={() => selectCell(null)}
           onJumpToRow={handleJumpToRow}
-          onSelectCell={(branch) => selected && selectCell({ rowId: selected.rowId, branch })}
+          onSelectCell={(branch) =>
+            effectiveSelected && selectCell({ rowId: effectiveSelected.rowId, branch })
+          }
         />
       </div>
     </div>

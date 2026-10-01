@@ -6,6 +6,9 @@ import type {
   ReferenceCommit,
 } from '@shared/types/promotion';
 
+export { FILTER_IDS, SORT_IDS } from '@shared/types/historyView';
+export type { FilterId, SortId } from '@shared/types/historyView';
+
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
 export type CellKind =
@@ -78,6 +81,3 @@ export interface CommitRow {
   hasFailed: boolean;
   hasNoop: boolean;
 }
-
-export type FilterId = 'all' | 'live' | 'in-flight' | 'failed' | 'no-op';
-export type SortId = 'newest' | 'oldest';

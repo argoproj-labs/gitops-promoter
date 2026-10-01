@@ -5,10 +5,14 @@ import { namespaceStore } from '../stores/NamespaceStore';
 import './NamespaceDropdown.scss';
 
 interface NamespaceStore {
-  namespace: string;
   namespaces: string[];
   setNamespace: (_ns: string) => void;
   setNamespaces: (_nsList: string[]) => void;
+}
+
+interface NamespaceDropdownProps {
+  namespace: string;
+  onNamespaceChange: (_ns: string) => void;
 }
 
 interface SelectOption {
@@ -16,11 +20,10 @@ interface SelectOption {
   label: string;
 }
 
-const NamespaceDropdown: React.FC = () => {
+const NamespaceDropdown: React.FC<NamespaceDropdownProps> = ({ namespace, onNamespaceChange }) => {
   const namespaces = namespaceStore((s: NamespaceStore) => s.namespaces);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
   const setNamespaces = namespaceStore((s: NamespaceStore) => s.setNamespaces);
-  const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
 
   // Fetching namespace from API
   useEffect(() => {
@@ -51,7 +54,9 @@ const NamespaceDropdown: React.FC = () => {
       options={options}
       placeholder="Select a namespace"
       value={options.find((opt: SelectOption) => opt.value === namespace) || null}
-      onChange={(option: SingleValue<SelectOption>) => setNamespace(option ? option.value : '')}
+      onChange={(option: SingleValue<SelectOption>) =>
+        onNamespaceChange(option ? option.value : '')
+      }
       components={{ Option }}
       isClearable
     />

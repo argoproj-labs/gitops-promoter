@@ -1,8 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
-import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
@@ -25,17 +24,19 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   namespace: propsNamespace,
   strategyName: propsStrategyName,
 }) => {
-  const { namespace: urlNamespace, name: urlStrategyName } = useParams();
+  const { namespace: urlNamespace, name: urlStrategyName, tab } = useParams();
   const namespace = propsNamespace || urlNamespace;
   const strategyName = propsStrategyName || urlStrategyName;
 
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
-  const { currentView, setView } = viewStore();
+  const showManifest = tab === 'manifest';
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
   const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
+
+  const fetchedNamespaceRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!namespace) return;
@@ -43,24 +44,17 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
       setNamespace(namespace);
     }
 
-    if (!items.length || !selectedStrategy) {
+    if (fetchedNamespaceRef.current !== namespace) {
+      fetchedNamespaceRef.current = namespace;
       fetchItems(namespace);
     }
 
     subscribe(namespace);
     return () => unsubscribe();
-  }, [
-    namespace,
-    currentNamespace,
-    setNamespace,
-    fetchItems,
-    subscribe,
-    unsubscribe,
-    items,
-    selectedStrategy,
-  ]);
+  }, [namespace, currentNamespace, setNamespace, fetchItems, subscribe, unsubscribe]);
 
   const navigate = useNavigateWithParams();
+  const strategyPath = `/promotion-strategies/${namespace}/${strategyName}`;
 
   const handleBack = () => {
     setNamespace(currentNamespace);
@@ -95,22 +89,28 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
         <div className="strategy-page-header-right">
           <div className="strategy-page-tabs">
             <button
-              className={`strategy-page-tab ${currentView === 'cards' ? 'active' : ''}`}
-              onClick={() => setView('cards')}
+              className={`strategy-page-tab ${!showManifest ? 'active' : ''}`}
+              onClick={() => {
+                if (!showManifest) return;
+                navigate(strategyPath, { replace: true });
+              }}
             >
               Overview
             </button>
 
             <button
               className="strategy-page-tab"
-              onClick={() => navigate(`/promotion-strategies/${namespace}/${strategyName}/history`)}
+              onClick={() => navigate(`${strategyPath}/history`)}
             >
               History
             </button>
 
             <button
-              className={`strategy-page-tab ${currentView === 'yaml' ? 'active' : ''}`}
-              onClick={() => setView('yaml')}
+              className={`strategy-page-tab ${showManifest ? 'active' : ''}`}
+              onClick={() => {
+                if (showManifest) return;
+                navigate(`${strategyPath}/manifest`, { replace: true });
+              }}
             >
               Live
               <br />
@@ -120,12 +120,12 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
         </div>
       </div>
 
-      {currentView === 'cards' ? (
+      {showManifest ? (
+        <LiveManifestView strategy={selectedStrategy} />
+      ) : (
         <div className="strategy-page-cards">
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
-      ) : (
-        <LiveManifestView strategy={selectedStrategy} />
       )}
     </>
   );

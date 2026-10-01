@@ -1,19 +1,32 @@
 import { useCallback } from 'react';
 import { useLocation, useNavigate, type NavigateOptions } from 'react-router';
 
-/**
- * Like useNavigate, but preserves the current query string when navigating to a
- * string path that doesn't already carry its own. Keeps params such as ?mock=true
- * intact across in-app navigation (Back button, tile clicks, history links).
- */
+export const CROSS_PAGE_PARAMS = ['mock', 'namespace'] as const;
+
+export function mergeAllowedParams(to: string, search: string): string {
+  if (to.includes('?') || !search) {
+    return to;
+  }
+
+  const current = new URLSearchParams(search);
+  const kept = new URLSearchParams();
+  for (const name of CROSS_PAGE_PARAMS) {
+    for (const value of current.getAll(name)) {
+      kept.append(name, value);
+    }
+  }
+
+  const query = kept.toString();
+  return query ? `${to}?${query}` : to;
+}
+
 export function useNavigateWithParams() {
   const navigate = useNavigate();
   const { search } = useLocation();
 
   return useCallback(
     (to: string, options?: NavigateOptions) => {
-      const next = to.includes('?') || !search ? to : `${to}${search}`;
-      navigate(next, options);
+      navigate(mergeAllowedParams(to, search), options);
     },
     [navigate, search],
   );
