@@ -64,9 +64,7 @@ const FlowCell: React.FC<{
   const revertSha = isRestore ? cell.hydrated?.sha : undefined;
   const revertRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
   const revertUrl = revertSha ? getCommitUrl(revertRepoUrl, revertSha) : '';
-  const pillTooltip = held
-    ? revertHoldTooltip(held, reverted)
-    : cellPillTooltip(cell, branch);
+  const pillTooltip = held ? revertHoldTooltip(held, reverted) : cellPillTooltip(cell, branch);
 
   return (
     <div
@@ -115,9 +113,7 @@ const FlowCell: React.FC<{
                   <FaBan aria-hidden="true" />{' '}
                 </>
               )}
-              {held && !reverted && (
-                <GoBlocked className="cell__pill__stop" aria-hidden="true" />
-              )}
+              {held && !reverted && <GoBlocked className="cell__pill__stop" aria-hidden="true" />}
               {cellKindLabel(cell)}
             </span>
           </Tooltip>
