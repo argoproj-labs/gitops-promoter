@@ -603,6 +603,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 		// even share a history.
 		if strings.Contains(stderr, "refusing to merge unrelated histories") {
 			logger.Info("Unrelated branch histories detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			conflicts.put(key, true)
 			return true, nil
 		}
 		// Exit code 1 with conflict info means conflicts were detected.
