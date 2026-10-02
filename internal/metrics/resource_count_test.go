@@ -62,7 +62,10 @@ func (s *stubResourceCountInformerSource) List(ctx context.Context, list client.
 	for _, item := range s.gvkItems[gvk] {
 		items = append(items, item)
 	}
-	return apimeta.SetList(list, items)
+	if err := apimeta.SetList(list, items); err != nil {
+		return fmt.Errorf("setting list items: %w", err)
+	}
+	return nil
 }
 
 func testMetricsScheme() *runtime.Scheme {
@@ -106,6 +109,8 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 			gvkItems[gvk] = []client.Object{
 				&promoterv1alpha1.GitRepository{Name: "repo-a", Namespace: "ns"},
 			}
+		default:
+			// Other kinds list empty.
 		}
 	}
 	return &stubResourceCountInformerSource{scheme: s, gvkItems: gvkItems}
