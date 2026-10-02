@@ -61,6 +61,22 @@ var _ = Describe("ExpressionEvaluator", func() {
 		})
 	})
 
+	Describe("evaluateTriggerWhenBranch", func() {
+		It("can read NamespaceMetadata labels from TemplateData", func() {
+			trigger := &promoterv1alpha1.TriggerModeSpec{
+				When: promoterv1alpha1.WhenWithOutputSpec{
+					Expression: `NamespaceMetadata.Labels["team"] == "payments"`,
+				},
+			}
+			td := TemplateData{
+				NamespaceMetadata: NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
+			}
+			shouldFire, _, _, err := e.evaluateTriggerWhenBranch(ctx, trigger, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(shouldFire).To(BeTrue())
+		})
+	})
+
 	Describe("evaluateTriggerDataExpression", func() {
 		It("returns the map produced by the expression", func() {
 			result, err := e.evaluateTriggerDataExpression(ctx, `{"foo": "bar"}`, map[string]any{})
@@ -74,21 +90,72 @@ var _ = Describe("ExpressionEvaluator", func() {
 		})
 	})
 
-	Describe("evaluateValidationExpression", func() {
-		It("returns true for a boolean expression that evaluates to true", func() {
-			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+	Describe("evaluateValidationExpressionForEnvironments", func() {
+		It("returns CommitPhaseSuccess for a boolean expression that evaluates to true", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(passed).To(BeTrue())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 		})
 
-		It("returns false when the boolean expression is false", func() {
-			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+		It("returns CommitPhasePending when the boolean expression is false", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 500},
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(passed).To(BeFalse())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("returns the phase from a { phase } object", func() {
+			expression := `Response.StatusCode >= 500 ? {"phase": "failure"} : {"phase": "success"}`
+
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{
+				"Response": map[string]any{"StatusCode": 503},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+
+			phase, err = e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{
+				"Response": map[string]any{"StatusCode": 200},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("returns CommitPhasePending for an explicit pending phase", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"phase": "pending"}`, map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("defaults phase to pending when the object omits it", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"other": "value"}`, map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("errors on an unrecognized phase", func() {
+			_, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"phase": "bogus"}`, map[string]any{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unrecognized phase"))
+		})
+
+		It("errors when the object uses promotionstrategy-only keys", func() {
+			for _, expression := range []string{
+				`{"defaultPhase": "success"}`,
+				`{"environments": [{"branch": "env/dev", "phase": "success"}]}`,
+			} {
+				_, err := e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("promotionstrategy"))
+			}
+		})
+
+		It("errors when the expression returns a non-bool, non-object value", func() {
+			_, err := e.evaluateValidationExpressionForEnvironments(ctx, `"success"`, map[string]any{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("must return bool or object { phase }"))
 		})
 	})
 
@@ -229,7 +296,14 @@ var _ = Describe("ExpressionEvaluator", func() {
 var _ = Describe("Pure helpers", func() {
 	Describe("TemplateData.triggerExprData", func() {
 		It("exposes expected keys", func() {
-			td := TemplateData{Branch: "env/dev", Phase: "pending"}
+			td := TemplateData{
+				Branch: "env/dev",
+				Phase:  "pending",
+				NamespaceMetadata: NamespaceMetadata{
+					Labels:      map[string]string{"team": "payments"},
+					Annotations: map[string]string{"cost-center": "cc-42"},
+				},
+			}
 			m := td.triggerExprData()
 			Expect(m).To(HaveKeyWithValue("Branch", "env/dev"))
 			Expect(m).To(HaveKeyWithValue("Phase", "pending"))
@@ -238,6 +312,11 @@ var _ = Describe("Pure helpers", func() {
 			Expect(m).To(HaveKey("TriggerOutput"))
 			Expect(m).To(HaveKey("ResponseOutput"))
 			Expect(m).To(HaveKey("SuccessOutput"))
+			Expect(m).To(HaveKey("NamespaceMetadata"))
+			ns, ok := m["NamespaceMetadata"].(NamespaceMetadata)
+			Expect(ok).To(BeTrue())
+			Expect(ns.Labels).To(HaveKeyWithValue("team", "payments"))
+			Expect(ns.Annotations).To(HaveKeyWithValue("cost-center", "cc-42"))
 		})
 	})
 

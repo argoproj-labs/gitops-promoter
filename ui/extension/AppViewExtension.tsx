@@ -1,14 +1,59 @@
 import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
+import HistoryView from '@components-lib/components/HistoryView/HistoryView';
+import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
+import type { PromotionStrategyDetails } from '@shared/types/view';
+import { mergeCommitStatusManagers } from '@shared/utils/PSData';
+import { environmentsFromBundle } from '@shared/utils/environments';
+import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
 import { AppViewComponentProps } from '@shared/types/extension';
+import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
-const GROUP = 'promoter.argoproj.io';
-const KIND = 'PromotionStrategy';
+type ViewMode = 'card' | 'history';
+
+const GROUP = 'view.promoter.argoproj.io';
+const KIND = 'PromotionStrategyDetails';
 const PARAM = 'promotionstrategy';
 const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
+
+interface StrategyItem {
+  promotionStrategy: PromotionStrategy;
+}
+
+function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
+  return {
+    timedCommitStatuses: bundle.timedCommitStatuses,
+    gitCommitStatuses: bundle.gitCommitStatuses,
+    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
+    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
+    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+  };
+}
+
+function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
+  const ps = bundle.promotionStrategy;
+  const environments = environmentsFromBundle(
+    ps.spec,
+    bundle.changeTransferPolicies ?? [],
+    bundle.changeTransferPolicyHistories ?? [],
+  );
+  const promotionStrategy = {
+    ...ps,
+    metadata: {
+      ...ps.metadata,
+      name: bundle.metadata.name,
+      namespace: bundle.metadata.namespace,
+    },
+    status: { ...ps.status, environments },
+  } as PromotionStrategy;
+  sortStrategyCommitStatuses(promotionStrategy);
+  return {
+    promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
+  };
+}
 
 interface SelectOption {
   value: string;
@@ -26,6 +71,28 @@ const setParam = (name: string) => {
     url.searchParams.set(PARAM, name);
   } else {
     url.searchParams.delete(PARAM);
+  }
+  window.history.replaceState(null, '', url.toString());
+};
+
+const COMMIT_PARAM = 'psCommit';
+const ENV_PARAM = 'psEnv';
+
+const getSelectionFromUrl = (): CellSelection | null => {
+  const params = new URLSearchParams(window.location.search);
+  const rowId = params.get(COMMIT_PARAM);
+  const branch = params.get(ENV_PARAM);
+  return rowId && branch ? { rowId, branch } : null;
+};
+
+const setSelectionInUrl = (selection: CellSelection | null) => {
+  const url = new URL(window.location.href);
+  if (selection) {
+    url.searchParams.set(COMMIT_PARAM, selection.rowId);
+    url.searchParams.set(ENV_PARAM, selection.branch);
+  } else {
+    url.searchParams.delete(COMMIT_PARAM);
+    url.searchParams.delete(ENV_PARAM);
   }
   window.history.replaceState(null, '', url.toString());
 };
@@ -57,17 +124,18 @@ const setStored = (appNamespace: string, appName: string, name: string) => {
 const strategyKey = (s: PromotionStrategy) => `${s.metadata.namespace}/${s.metadata.name}`;
 
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
-  const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
+  const [strategies, setStrategies] = useState<StrategyItem[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>(
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>(() => (getSelectionFromUrl() ? 'history' : 'card'));
 
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
 
-    const strategyNodes = (tree.nodes || []).filter(
+    const strategyNodes = (tree.nodes ?? []).filter(
       (node) => node.group === GROUP && node.kind === KIND,
     );
 
@@ -106,12 +174,12 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           throw new Error(messageParts.join(' - '));
         }
         const data: { manifest: string } = await response.json();
-        return JSON.parse(data.manifest) as PromotionStrategy;
+        return bundleToItem(JSON.parse(data.manifest) as PromotionStrategyDetails);
       }),
     )
       .then((parsed) => {
         setStrategies(parsed);
-        const keys = parsed.map(strategyKey);
+        const keys = parsed.map((item) => strategyKey(item.promotionStrategy));
         const fromUrl = getParam();
         const fromStored = getStored(appNamespace, appName);
         const initial =
@@ -139,37 +207,74 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     return <div>Loading...</div>;
   }
 
-  const selected = strategies.find((s) => strategyKey(s) === selectedKey);
+  const selected = strategies.find((s) => strategyKey(s.promotionStrategy) === selectedKey);
 
   const hasDuplicateNames =
-    new Set(strategies.map((s) => s.metadata.name)).size < strategies.length;
+    new Set(strategies.map((s) => s.promotionStrategy.metadata.name)).size < strategies.length;
 
   const options: SelectOption[] = strategies.map((s) => ({
-    value: strategyKey(s),
-    label: hasDuplicateNames ? `${s.metadata.name} (${s.metadata.namespace})` : s.metadata.name,
+    value: strategyKey(s.promotionStrategy),
+    label: hasDuplicateNames
+      ? `${s.promotionStrategy.metadata.name} (${s.promotionStrategy.metadata.namespace})`
+      : s.promotionStrategy.metadata.name,
   }));
 
   return (
     <div className="extension-container">
-      {strategies.length > 1 && (
-        <div className="strategy-dropdown-wrapper">
-          <Select<SelectOption>
-            classNamePrefix="strategy-dropdown"
-            options={options}
-            placeholder="Select a PromotionStrategy"
-            value={options.find((opt) => opt.value === selectedKey) || null}
-            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-            styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
-            onChange={(option: SingleValue<SelectOption>) => {
-              const key = option ? option.value : '';
-              setSelectedKey(key);
-              setParam(key);
-              setStored(application.metadata.namespace, application.metadata.name, key);
-            }}
+      <div className="gp-controls">
+        {strategies.length > 1 && (
+          <div className="strategy-dropdown-wrapper">
+            <Select<SelectOption>
+              classNamePrefix="strategy-dropdown"
+              options={options}
+              placeholder="Select a PromotionStrategy"
+              value={options.find((opt) => opt.value === selectedKey) || null}
+              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+              styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
+              onChange={(option: SingleValue<SelectOption>) => {
+                const key = option ? option.value : '';
+                setSelectedKey(key);
+                setParam(key);
+                setStored(application.metadata.namespace, application.metadata.name, key);
+              }}
+            />
+          </div>
+        )}
+        {selected && (
+          <div className="gp-view-toggle" role="tablist" aria-label="View">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'card'}
+              className={`gp-view-toggle__btn ${view === 'card' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('card')}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'history'}
+              className={`gp-view-toggle__btn ${view === 'history' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('history')}
+            >
+              History
+            </button>
+          </div>
+        )}
+      </div>
+      {selected && view === 'card' && (
+        <Card environments={selected.promotionStrategy.status?.environments || []} />
+      )}
+      {selected && view === 'history' && (
+        <div className="gp-history-wrapper">
+          <HistoryView
+            strategy={selected.promotionStrategy}
+            initialSelection={getSelectionFromUrl()}
+            onSelectionChange={setSelectionInUrl}
           />
         </div>
       )}
-      {selected && <Card environments={selected.status?.environments || []} />}
     </div>
   );
 };

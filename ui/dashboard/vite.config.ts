@@ -7,6 +7,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        // In dev, Vite injects this CSS into a <style> tag, so a leading
+        // @charset (emitted by Sass when the source has non-ASCII chars) is
+        // an invalid at-rule the browser drops — taking the next rule with it.
+        charset: false,
+      },
+    },
+  },
   server: {
     hmr: {
       host: 'localhost',

@@ -1,5 +1,7 @@
-//Get duration ago (E.g: 1 day ago)
-export const timeAgo = (dateString: string): string => {
+import type { Environment, PromotionStrategy, Rfc3339DateTime } from '../types/promotion';
+
+/** Relative time from an {@link Rfc3339DateTime} (e.g. `"3 hours ago"`). */
+export const timeAgo = (dateString: Rfc3339DateTime): string => {
   const now = new Date();
   const date = new Date(dateString);
 
@@ -19,6 +21,73 @@ export const timeAgo = (dateString: string): string => {
     return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
   }
 };
+
+/**
+ * Compact duration from a millisecond span (e.g. `"3d 4h"`, `"2h 15m"`, `"8m"`,
+ * `"45s"`). Shows at most the two largest non-zero units. Sub-minute spans
+ * round to seconds; a non-positive span returns `"<1m"`.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '<1m';
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`;
+  if (hours > 0) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
+export function parseGoDuration(duration: string): number | null {
+  const trimmed = duration.trim();
+  if (trimmed === '0' || trimmed === '+0' || trimmed === '-0') {
+    return 0;
+  }
+  if (!/^[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:ns|us|µs|ms|h|m|s)[+-]?)+$/.test(trimmed)) {
+    return null;
+  }
+  if (/[+-]$/.test(trimmed)) {
+    return null;
+  }
+  const units = trimmed.match(/ns|us|µs|ms|h|m|s/g) ?? [];
+  if (new Set(units).size !== units.length) {
+    return null;
+  }
+
+  let totalMs = 0;
+  const negated = trimmed.startsWith('-');
+  const body = negated ? trimmed.replace('-', '') : trimmed;
+  const re = /([+-]?)(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|ms|h|m|s)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const value = (m[1] === '-' ? -1 : 1) * parseFloat(m[2]);
+    switch (m[3]) {
+      case 'h':
+        totalMs += value * 3_600_000;
+        break;
+      case 'm':
+        totalMs += value * 60_000;
+        break;
+      case 's':
+        totalMs += value * 1_000;
+        break;
+      case 'ms':
+        totalMs += value;
+        break;
+      case 'us':
+      case 'µs':
+        totalMs += value / 1_000;
+        break;
+      case 'ns':
+        totalMs += value / 1_000_000;
+        break;
+    }
+  }
+  const result = negated ? -totalMs : totalMs;
+  return result === 0 ? 0 : result;
+}
 
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
@@ -45,8 +114,11 @@ export function extractBodyPreTrailer(body: string): string {
   return lines.slice(0, trailerStart).join('\n').trim();
 }
 
-// date formatting (e.g: Jul 5 2025, 12:15pm EDT)
-export function formatDate(date?: string): string {
+/**
+ * Locale display string from an {@link Rfc3339DateTime} such as `2026-05-22T15:00:36Z`.
+ * Shape depends on the browser locale and timezone (e.g. `May 22, 2026, 11:00 AM EDT`).
+ */
+export function formatDate(date?: Rfc3339DateTime): string {
   if (!date) return '-';
   const d = new Date(date);
   return d
@@ -64,24 +136,47 @@ export function formatDate(date?: string): string {
 }
 
 // Get the last commit time from a PromotionStrategy
-export function getLastCommitTime(ps: any): Date | null {
-  //Determine the last commit time between both active/proposed hydrated commit
-  const commitTimes = [
-    ...(ps.status?.environments?.map((env: any) => env.active?.dry?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.active?.hydrated?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.proposed?.dry?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.proposed?.hydrated?.commitTime) || []),
-  ].filter(Boolean);
+export function getLastCommitTime(ps: PromotionStrategy): Date | null {
+  const commitTimes = (
+    ps.status?.environments?.flatMap((env) => [
+      env.active.dry?.commitTime,
+      env.active.hydrated?.commitTime,
+      env.proposed.dry?.commitTime,
+      env.proposed.hydrated?.commitTime,
+    ]) ?? []
+  ).filter(Boolean) as Rfc3339DateTime[];
 
   if (commitTimes.length) {
-    return new Date(Math.max(...commitTimes.map((t) => new Date(t as string).getTime())));
+    return new Date(Math.max(...commitTimes.map((t) => new Date(t).getTime())));
   }
 
-  if (ps.metadata?.creationTimestamp) {
+  if (ps.metadata.creationTimestamp) {
     return new Date(ps.metadata.creationTimestamp);
   }
 
   return null;
+}
+
+/**
+ * Sort every `commitStatuses` list on a parsed PromotionStrategy by key, in
+ * place. The CRD emits these in a non-deterministic order (aggregated from
+ * multiple CommitStatus resources), so normalizing once at ingestion gives every
+ * consumer (overview, history matrix, drawer) the same stable ordering. Mutates
+ * and returns the same object for call-site convenience.
+ */
+export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {
+  const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
+  // The store adapters re-project history from the ChangeTransferPolicyHistory resources onto each
+  // environment, so the runtime shape is Environment (EnvironmentStatus + history).
+  for (const env of (ps.status?.environments ?? []) as Environment[]) {
+    env.active.commitStatuses?.sort(byKey);
+    env.proposed.commitStatuses?.sort(byKey);
+    for (const entry of env.history ?? []) {
+      entry.active?.commitStatuses?.sort(byKey);
+      entry.proposed?.commitStatuses?.sort(byKey);
+    }
+  }
+  return ps;
 }
 
 // Get the overall promotion status from individual environment statuses

@@ -80,8 +80,7 @@ func RecoveryWithLogr(logger logr.Logger, timeFormat string, utc, stack bool) gi
 			// condition that warrants a panic stack trace.
 			var brokenPipe bool
 			if ne, ok := err.(*net.OpError); ok {
-				var se *os.SyscallError
-				if errors.As(ne.Err, &se) {
+				if se, ok := errors.AsType[*os.SyscallError](ne.Err); ok {
 					if strings.Contains(strings.ToLower(se.Error()), "broken pipe") ||
 						strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
 						brokenPipe = true

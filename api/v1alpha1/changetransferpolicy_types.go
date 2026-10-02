@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -33,14 +34,30 @@ type ChangeTransferPolicySpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// ProposedBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	ActiveBranch string `json:"activeBranch"`
+
+	// ActivePath is an optional repository subpath for this policy's active state.
+	// When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=true
@@ -57,6 +74,11 @@ type ChangeTransferPolicySpec struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// PullRequest configures SCM pull request behavior for this change transfer policy.
+	// Copied from the owning PromotionStrategy by the PromotionStrategy controller.
+	// +kubebuilder:validation:Optional
+	PullRequest *PullRequestPolicySpec `json:"pullRequest,omitempty"`
 }
 
 // ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy.
@@ -85,6 +107,7 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 // CommitBranchState defines the state of a branch in a ChangeTransferPolicy.
 type CommitBranchState struct {
 	// Dry is the dry state of the branch, which is the commit that is being proposed.
+	// +nullable
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
@@ -92,6 +115,7 @@ type CommitBranchState struct {
 	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=100
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
@@ -116,6 +140,7 @@ type HydratorMetadata struct {
 	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch.
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -139,6 +164,7 @@ type CommitShaState struct {
 	// Body is the body of the commit message without the subject line
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -171,47 +197,38 @@ type ChangeTransferPolicyStatus struct {
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
-	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
-	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is hard-coded to be at most 5 entries. This may change in the future.
-	// History is constructed on a best-effort basis and should be used for informational purposes only.
-	// History is in reverse chronological order (newest is first).
-	History []History `json:"history,omitempty"`
-
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// History describes a particular change that was promoted by the ChangeTransferPolicy.
-type History struct {
-	// Proposed is the state of the proposed branch at the time the PR was merged.
-	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged.
-	Active CommitBranchState `json:"active,omitempty"`
-	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
-	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
-}
-
-// CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as
-// the proposed dry side at merge becomes the Active.
-type CommitBranchStateHistoryProposed struct {
-	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
-	Hydrated CommitShaState `json:"hydrated,omitempty"`
-	// CommitStatuses is a list of commit statuses that were being monitored for this branch.
-	// This contains the state frozen at the moment the PR was merged.
-	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
-}
+const (
+	// MaxEnvironments is the maximum number of environments on a PromotionStrategy spec and status.
+	MaxEnvironments = 500
+	// MaxCommitStatuses is the maximum number of commit statuses stored on a branch state.
+	MaxCommitStatuses = 100
+	// MaxRevisionReferences is the maximum number of related-commit references on a hydrated or dry commit.
+	MaxRevisionReferences = 100
+)
 
 // PullRequestCommonStatus defines the common status fields for a pull request.
 type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum=closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
@@ -224,12 +241,23 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-	// PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
-	// because the PullRequest resource was deleted (finalizer) before this status was reconciled.
-	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-	// record until a new pull request is created for this environment.
+	// MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+	// only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+	// target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+	// and is empty until the merge is observed; in a History entry it is the active-branch commit the
+	// entry describes.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+	// promotion still desired it open. The PullRequest controller no longer sets this field.
+	//
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+	// appear when mirrored from older PullRequest status. This field may be removed in a future API
+	// revision.
+	// +optional
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 
@@ -243,7 +271,13 @@ func (ps *ChangeTransferPolicy) SetObservedGeneration(generation int64) {
 	ps.Status.ObservedGeneration = generation
 }
 
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (ps *ChangeTransferPolicy) SetStatusInstanceID(v *string) {
+	ps.Status.InstanceID = v
+}
+
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -271,5 +305,8 @@ type ChangeTransferPolicyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ChangeTransferPolicy{}, &ChangeTransferPolicyList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ChangeTransferPolicy{}, &ChangeTransferPolicyList{})
+		return nil
+	})
 }

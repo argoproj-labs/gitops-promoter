@@ -20,8 +20,9 @@ import (
 // ARGOCDURL is the ArgoCD release URL template.
 const ARGOCDURL = "https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install-with-hydrator.yaml"
 
-// PROMOTERURL is the GitOps Promoter release URL template.
-const PROMOTERURL = "https://github.com/argoproj-labs/gitops-promoter/releases/download/%s/install.yaml"
+// PROMOTERURL is the GitOps Promoter release URL template. The demo installs the
+// controller-only bundle (the dashboard UI is surfaced via the Argo CD extension).
+const PROMOTERURL = "https://github.com/argoproj-labs/gitops-promoter/releases/download/%s/install-without-ui.yaml"
 
 //go:embed app/app.yaml
 var appYAML []byte
@@ -135,8 +136,8 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 
 	// Split into individual YAML documents and filter CRDs
 	var crds []string
-	docs := strings.Split(string(output), "\n---")
-	for _, doc := range docs {
+	docs := strings.SplitSeq(string(output), "\n---")
+	for doc := range docs {
 		doc = strings.TrimSpace(doc)
 		if doc == "" {
 			continue
@@ -153,7 +154,7 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 
 	// Apply CRDs with server-side apply
 	crdManifest := strings.Join(crds, "\n---\n")
-	args := []string{"apply", "--server-side", "-f", "-"}
+	args := []string{"apply", "--server-side", "-f", "-"} //nolint:goconst // kubectl subcommand; demo CLI only
 	kubectlCmd := exec.CommandContext(ctx, "kubectl", args...)
 	kubectlCmd.Stdin = strings.NewReader(crdManifest)
 	kubectlCmd.Stdout = os.Stdout
@@ -229,8 +230,8 @@ func (i *Installer) RefreshAllApps(ctx context.Context) error {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
 
-	appNames := strings.Fields(string(output))
-	for _, appName := range appNames {
+	appNames := strings.FieldsSeq(string(output))
+	for appName := range appNames {
 		if err := i.RefreshApp(ctx, appName); err != nil {
 			return err
 		}
@@ -333,7 +334,7 @@ func (i *Installer) runKubectl(ctx context.Context, args ...string) error {
 func (i *Installer) kubectlApplyURL(
 	ctx context.Context, url, namespace string, serverSide, forceConflicts bool,
 ) error {
-	args := []string{"apply"}
+	args := []string{"apply"} //nolint:goconst // kubectl subcommand; demo CLI only
 	if serverSide {
 		args = append(args, "--server-side")
 	}
@@ -349,7 +350,7 @@ func (i *Installer) kubectlApplyURL(
 }
 
 func (i *Installer) kubectlApplyManifest(ctx context.Context, manifest, namespace string) error {
-	args := []string{"apply", "-f", "-"}
+	args := []string{"apply", "-f", "-"} //nolint:goconst // kubectl subcommand; demo CLI only
 	if namespace != "" {
 		args = append(args, "-n", namespace)
 	}

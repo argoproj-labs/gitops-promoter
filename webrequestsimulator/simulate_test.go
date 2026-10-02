@@ -99,8 +99,8 @@ const changeMgmtBaselineFingerprint = "environment/dev:aaaaaaaaaaaaaaaaaaaaaaaaa
 	"environments/production-eu:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func loadChangeManagementWRCSByName(name string) *promoterv1alpha1.WebRequestCommitStatus {
-	docs := bytes.Split(changeManagementWebrequestsYAML, []byte("\n---\n"))
-	for _, doc := range docs {
+	docs := bytes.SplitSeq(changeManagementWebrequestsYAML, []byte("\n---\n"))
+	for doc := range docs {
 		doc = bytes.TrimSpace(doc)
 		if len(doc) == 0 {
 			continue
@@ -145,7 +145,7 @@ func changeManagementArgoconDemoPS() *promoterv1alpha1.PromotionStrategy {
 	}
 
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: "argocon-demo", Namespace: "default"},
+		Name: "argocon-demo", Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-app-repo"},
 			Environments: []promoterv1alpha1.Environment{
@@ -256,7 +256,7 @@ func jsonMap(m map[string]any) *apiextensionsv1.JSON {
 // "dev" and "prod" on testWRCSKey via per-env ProposedCommitStatuses.
 func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+		Name: "ps", Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 			Environments: []promoterv1alpha1.Environment{
@@ -293,7 +293,7 @@ func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 // with the supplied mode and success expression.
 func basicWRCS(mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1alpha1.WebRequestCommitStatus {
 	return &promoterv1alpha1.WebRequestCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+		Name: "wrcs", Namespace: "default",
 		Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 			Key:                  testWRCSKey,
@@ -318,7 +318,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	// newPS builds a minimal PromotionStrategy with two branches gated on key "k".
 	newPS := func() *promoterv1alpha1.PromotionStrategy {
 		return &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+			Name: "ps", Namespace: "default",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 				Environments: []promoterv1alpha1.Environment{
@@ -352,7 +352,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		successExpr string,
 	) *promoterv1alpha1.WebRequestCommitStatus {
 		return &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+			Name: "wrcs", Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 				Key:                  "k",
@@ -462,6 +462,23 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		Expect(err).ToNot(HaveOccurred())
 		for _, req := range r.RenderedRequests {
 			Expect(req.URL).To(HavePrefix("https://example.com/payments/"))
+		}
+	})
+
+	It("Simulate forwards NamespaceMetadata into success expressions", func() {
+		wrcs := newWRCS(
+			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+			`NamespaceMetadata.Labels["team"] == "payments" && Response.StatusCode == 200`,
+		)
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+			WebRequestCommitStatus: wrcs,
+			PromotionStrategy:      newPS(),
+			NamespaceMetadata:      simulatortypes.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
+			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+		})
+		Expect(err).ToNot(HaveOccurred())
+		for _, e := range r.Status.Environments {
+			Expect(e.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 		}
 	})
 })
@@ -632,6 +649,55 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(byBranch["prod"].Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			Expect(byBranch["prod"].LastResponseStatusCode).ToNot(BeNil())
 			Expect(*byBranch["prod"].LastResponseStatusCode).To(Equal(201))
+		})
+
+		It("resolves failure from a { phase } object return", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				`Response.StatusCode >= 500 ? { phase: "failure" } : { phase: Response.StatusCode == 200 ? "success" : "pending" }`,
+			)
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses: []simulatortypes.HTTPResponse{
+					{Branch: "dev", Response: simulatortypes.Response{StatusCode: 200}},
+					{Branch: "prod", Response: simulatortypes.Response{StatusCode: 503}},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			byBranch := map[string]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{}
+			for _, e := range result.Status.Environments {
+				byBranch[e.Branch] = e
+			}
+			Expect(byBranch["dev"].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(byBranch["dev"].LastSuccessfulSha).To(Equal(byBranch["dev"].ReportedSha))
+			Expect(byBranch["prod"].Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			Expect(byBranch["prod"].LastSuccessfulSha).To(BeEmpty(), "a failed environment must not record a successful SHA")
+
+			csByBranch := map[string]promoterv1alpha1.CommitStatusPhase{}
+			for _, cs := range result.CommitStatuses {
+				csByBranch[cs.Spec.Name] = cs.Spec.Phase
+			}
+			Expect(csByBranch[wrcs.Spec.Key+"/dev"]).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(csByBranch[wrcs.Spec.Key+"/prod"]).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+		})
+
+		It("surfaces an error for a promotionstrategy-shaped object return", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				`{ defaultPhase: "success" }`,
+			)
+			ps := twoEnvPromotionStrategy()
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("promotionstrategy"))
 		})
 	})
 
@@ -861,7 +927,7 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			// Reconcile 1: no ResponseOutput yet -> methodTemplate renders GET (search).
 			// Reconcile 2: ResponseOutput.changeId set by prior response.output -> renders POST (close).
 			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+				Name: "wrcs", Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 					Key:                  testWRCSKey,
@@ -901,7 +967,7 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 
 			// PS gates dev+prod on testWRCSKey via ActiveCommitStatuses so reportOn=active picks them up.
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+				Name: "ps", Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 					Environments: []promoterv1alpha1.Environment{

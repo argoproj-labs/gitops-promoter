@@ -13,9 +13,6 @@ import (
 const (
 	// azureDevOpsTokenSecretKey is the key in the secret that contains the PAT token for Azure DevOps.
 	azureDevOpsTokenSecretKey = "token"
-	// azureDevOpsScope is the OAuth2 scope required for Azure DevOps API access
-	// This guid is fixed for Azure DevOps and should not be changed, see https://learn.microsoft.com/en-us/rest/api/azure/devops/tokens
-	azureDevOpsScope = "499b84ac-1321-427f-aa17-267ca6975798/.default"
 )
 
 // GitAuthenticationProvider provides methods to authenticate with Azure DevOps.

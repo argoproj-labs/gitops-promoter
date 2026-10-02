@@ -63,7 +63,8 @@ type TemplateData struct {
 }
 
 // NamespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
-// It is included in TemplateData so URL, header, body, and description templates can reference them.
+// It is included in TemplateData so URL, header, body, and description templates can reference them,
+// and is exposed to trigger/success expr programs as NamespaceMetadata.
 type NamespaceMetadata struct {
 	Labels      map[string]string
 	Annotations map[string]string
@@ -134,6 +135,7 @@ func (td TemplateData) triggerExprData() map[string]any {
 		"TriggerOutput":          td.TriggerOutput,
 		"ResponseOutput":         td.ResponseOutput,
 		"SuccessOutput":          td.SuccessOutput,
+		"NamespaceMetadata":      td.NamespaceMetadata,
 	}
 }
 

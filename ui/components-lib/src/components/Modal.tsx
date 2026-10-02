@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import './Modal.scss';
 import { FaTimes } from 'react-icons/fa';
 import TimeAgo from './TimeAgo';
+import type { Rfc3339DateTime } from '@shared/types/promotion';
 
 interface ModalProps {
   isOpen: boolean;
@@ -13,7 +14,8 @@ interface ModalProps {
   subject?: string;
   message?: string;
   proposedSha?: string;
-  commitTime?: string;
+  /** RFC 3339; rendered with `TimeAgo`. */
+  commitTime?: Rfc3339DateTime;
   trailers?: { [key: string]: string };
 }
 
@@ -79,11 +81,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
               {author && commitTime && (
                 <div className="modal-commit-author">
                   <span>
-                    by <strong>{author}</strong> (authored{' '}
-                    <span title={commitTime}>
-                      <TimeAgo date={commitTime} />
-                    </span>
-                    )
+                    by <strong>{author}</strong> (authored <TimeAgo date={commitTime} />)
                   </span>
                 </div>
               )}

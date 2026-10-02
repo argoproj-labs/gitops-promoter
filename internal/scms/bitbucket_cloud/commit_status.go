@@ -78,8 +78,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &unexpectedErr) {
+		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
 			return nil, fmt.Errorf("failed to create status: %w", unexpectedErr.ErrorWithBody())
 		}
 		return nil, fmt.Errorf("failed to create status: %w", err)

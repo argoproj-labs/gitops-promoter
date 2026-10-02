@@ -19,16 +19,18 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 //go:embed testdata/ScmProvider.yaml
@@ -58,10 +60,8 @@ var _ = Describe("ScmProvider Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, scmprovider)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &promoterv1alpha1.ScmProvider{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
+					Name:      resourceName,
+					Namespace: "default",
 					Spec: promoterv1alpha1.ScmProviderSpec{
 						Fake: &promoterv1alpha1.Fake{},
 					},
@@ -87,6 +87,180 @@ var _ = Describe("ScmProvider Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				// Verify that the controller has added the finalizer
 				g.Expect(scmprovider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When secretRef is changed to a different Secret", func() {
+		It("should remove the finalizer from the previously referenced Secret", func() {
+			ctx := context.Background()
+			name := "scmprovider-secretref-change-" + utils.KubeSafeUniqueName(randomString(15))
+
+			oldSecret := &v1.Secret{Name: name + "-old", Namespace: "default"}
+			newSecret := &v1.Secret{Name: name + "-new", Namespace: "default"}
+			scmProvider := &promoterv1alpha1.ScmProvider{
+				Name:      name,
+				Namespace: "default",
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					SecretRef: &v1.LocalObjectReference{Name: oldSecret.Name},
+					Fake:      &promoterv1alpha1.Fake{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, newSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))).To(Succeed())
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(scmProvider), scmProvider)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, oldSecret))).To(Succeed())
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, newSecret))).To(Succeed())
+			})
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSecret), oldSecret)).To(Succeed())
+				g.Expect(oldSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pointing the ScmProvider at the new Secret")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(scmProvider), scmProvider)).To(Succeed())
+				scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: newSecret.Name}
+				g.Expect(k8sClient.Update(ctx, scmProvider)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(newSecret), newSecret)).To(Succeed())
+				g.Expect(newSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSecret), oldSecret)).To(Succeed())
+				g.Expect(oldSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When a referencing GitRepository is terminating but not yet removed", func() {
+		const blockingFinalizer = "promoter.argoproj.io/test-will-not-remove"
+
+		var ctx context.Context
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			name, scmSecret, scmProvider, gitRepo, _ = pullRequestResources(ctx, "scmprovider-terminating-gitrepo-race")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding a bogus finalizer so the GitRepository keeps a deletionTimestamp without leaving the API")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+			base := gitRepo.DeepCopy()
+			gitRepo.Finalizers = append(gitRepo.Finalizers, blockingFinalizer)
+			Expect(k8sClient.Patch(ctx, gitRepo, client.MergeFrom(base))).To(Succeed())
+
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.DeletionTimestamp).ToNot(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			var repo promoterv1alpha1.GitRepository
+			if err := k8sClient.Get(ctx, typeNamespacedName, &repo); err == nil && repo.DeletionTimestamp != nil {
+				var kept []string
+				for _, f := range repo.Finalizers {
+					if f != blockingFinalizer {
+						kept = append(kept, f)
+					}
+				}
+				if len(kept) != len(repo.Finalizers) {
+					base := repo.DeepCopy()
+					repo.Finalizers = kept
+					_ = k8sClient.Patch(ctx, &repo, client.MergeFrom(base))
+				}
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, &repo)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))
+		})
+
+		It("should block ScmProvider deletion until the GitRepository is gone, then finish deleting", func() {
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
+				g.Expect(scmProvider.DeletionTimestamp).ToNot(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Reproducing the race: ScmProvider must not disappear while a terminating GitRepository remains in etcd")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(err).ToNot(HaveOccurred(),
+					"ScmProvider was deleted while a referencing GitRepository still exists (deletionTimestamp carveout bug)")
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer),
+					"ScmProvider finalizer should remain until all referencing GitRepositories are gone")
+
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.DeletionTimestamp).ToNot(BeNil())
+			}, 5*time.Second, 200*time.Millisecond).Should(Succeed())
+
+			By("Removing the blocking finalizer so the GitRepository object can leave the API")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+			base := gitRepo.DeepCopy()
+			var kept []string
+			for _, f := range gitRepo.Finalizers {
+				if f != blockingFinalizer {
+					kept = append(kept, f)
+				}
+			}
+			gitRepo.Finalizers = kept
+			Expect(k8sClient.Patch(ctx, gitRepo, client.MergeFrom(base))).To(Succeed())
+
+			By("Verifying the GitRepository is fully removed, not only marked for deletion")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the ScmProvider deletion completes after the GitRepository object is gone")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(),
+					"ScmProvider should be deleted after the last referencing GitRepository is removed from the API")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

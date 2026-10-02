@@ -35,6 +35,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -81,7 +82,7 @@ const (
 // via Server-Side Apply at the end of a reconcile and read from the
 // controller's informer cache at the start of the next reconcile, so the
 // controller offers AT-LEAST-ONCE HTTP delivery, not exactly-once — see the
-// "Delivery semantics" section in docs/commit-status-controllers/web-request.md
+// "Delivery semantics" section in docs/gating-promotions/built-in-gates/web-request-commit-status/index.md
 // and the godoc on TriggerModeSpec. A correct controller still converges to no
 // further HTTP under steady inputs; a regression where dedup is broken keeps
 // firing on every requeue and never stabilizes.
@@ -166,7 +167,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -201,10 +204,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-success",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-success",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -251,7 +252,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 				// Should have status for all environments (dev, staging, production)
 				// since ProposedCommitStatuses is set globally on the PromotionStrategy
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -271,7 +272,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(200))
 
 				// Verify CommitStatus was created for dev environment with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-success-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -279,6 +280,69 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-polling-success", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Polling Mode - Unreachable URL", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a test HTTP server and closing it immediately so the URL refuses connections")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			unreachableURL := testServer.URL
+			testServer.Close()
+			testServer = nil
+
+			By("Creating a WebRequestCommitStatus resource pointing at the unreachable URL")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				Name:      name + "-unreachable-url",
+				Namespace: "default",
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate:    unreachableURL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 5 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil && Response.StatusCode == 200`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up WebRequestCommitStatus")
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should emit a WebRequestFailed event when the HTTP request cannot be made", func() {
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReason(eventList, name+"-unreachable-url", constants.WebRequestFailedReason)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -299,10 +363,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-failure",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-failure",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -348,7 +410,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -362,7 +424,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-failure-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -396,10 +458,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating WebRequestCommitStatus in polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-lastsuccessfulsha",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-lastsuccessfulsha",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: promotionStrategy.Name,
@@ -432,7 +492,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {
@@ -471,6 +531,94 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+	Describe("Polling Mode - Failure Phase (environments context)", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a test HTTP server that returns 503")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status": "rejected",
+				})
+			}))
+
+			By("Creating a WebRequestCommitStatus whose success expression returns a { phase } object")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				Name:      name + "-polling-phase-failure",
+				Namespace: "default",
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response == nil ? { phase: Phase } : (Response.StatusCode >= 500 ? { phase: "failure" } : { phase: Response.StatusCode == 200 ? "success" : "pending" })`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up WebRequestCommitStatus")
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should report failure phase when the success expression returns { phase: failure }", func() {
+			By("Waiting for WebRequestCommitStatus to process environments")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-phase-failure",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
+
+				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						devEnvStatus = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+				g.Expect(devEnvStatus.LastSuccessfulSha).To(BeEmpty(), "a failed environment must not record a successful SHA")
+				g.Expect(devEnvStatus.LastResponseStatusCode).ToNot(BeNil())
+				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(503))
+
+				By("Verifying the CommitStatus carries the failure phase")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 
 	Describe("Polling Mode - Interval Short-Circuit", func() {
 		var (
@@ -496,10 +644,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus in polling mode with long interval")
 			shortCircuitWRCS = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-interval-shortcircuit",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-interval-shortcircuit",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -543,7 +689,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the request count")
 				for i := range wrcs.Status.Environments {
 					g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
 					g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
@@ -603,10 +749,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with trigger mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-mode",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-mode",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -661,7 +805,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find an environment with trigger data stored
 				var foundEnvWithData bool
@@ -704,10 +848,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}))
 
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-when-variables",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-when-variables",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -869,10 +1011,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with templates")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-template-test",
-					Namespace: "default",
-				},
+				Name:      name + "-template-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -936,7 +1076,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has rendered description and URL")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-template-test-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, webRequestCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -977,17 +1117,15 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			DeferCleanup(triggerVarServer.Close)
 
 			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-vars-http-test",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-vars-http-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
-						Method:      "POST",
+						URLTemplate:    triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
+						MethodTemplate: "POST",
 						HeaderTemplates: map[string]string{
 							"X-Env": `{{ index .TriggerVariables "env" }}`,
 						},
@@ -1034,10 +1172,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		It("should expose success.when.variables result as .SuccessVariables in description template", func() {
 			By("Creating a WRCS with success.when.variables and a description template referencing .SuccessVariables")
 			wrcsVars := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-success-vars-test",
-					Namespace: "default",
-				},
+				Name:      name + "-success-vars-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -1066,7 +1202,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus description to contain the variable value")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-success-vars-test-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, wrcsVars, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1077,10 +1213,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		It("should expose trigger.when.variables result as .TriggerVariables in description template", func() {
 			By("Creating a WRCS in trigger mode with trigger.when.variables and a description template referencing .TriggerVariables")
 			wrcsTriggerVars := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-vars-test",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-vars-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -1112,7 +1246,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus description to contain the trigger variable value")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-trigger-vars-test-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, wrcsTriggerVars, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1150,10 +1284,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup-test",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1216,9 +1348,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for at least dev environment
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
-				devCommitStatusName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-test-"+testBranchDevelopment+"-webrequest")
+				devCommitStatusName = utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      devCommitStatusName,
@@ -1266,10 +1398,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-http-error",
-					Namespace: "default",
-				},
+				Name:      name + "-http-error",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1315,7 +1445,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -1371,7 +1501,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -1418,10 +1550,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1459,7 +1589,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 
@@ -1493,10 +1623,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus that only triggers once")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1544,7 +1672,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).NotTo(BeNil())
 				firstResponseData = wrcs.Status.Environments[0].ResponseOutput.Raw
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1557,7 +1685,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				currentResponseData := wrcs.Status.Environments[0].ResponseOutput.Raw
 				g.Expect(currentResponseData).To(Equal(firstResponseData), "response output should be preserved")
@@ -1594,10 +1722,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus that uses ResponseOutput in trigger")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1643,7 +1769,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -1667,7 +1793,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Rate-Limit-Remaining", "42")
-				w.Header().Set("X-Request-Id", "abc-123")
+				w.Header().Set("X-Request-ID", "abc-123")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
@@ -1685,10 +1811,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus with response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1737,7 +1861,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 				g.Expect(devEnv.ResponseOutput).NotTo(BeNil())
@@ -1756,7 +1880,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 				// Verify the values
 				g.Expect(responseData["statusCode"]).To(Equal(float64(200)))
-				g.Expect(responseData["approved"]).To(Equal(true))
+				g.Expect(responseData["approved"]).To(BeTrue())
 				g.Expect(responseData["nestedField"]).To(Equal("value1"))
 				g.Expect(responseData["rateLimit"]).To(Equal(float64(42)))
 				g.Expect(responseData["timestamp"]).To(Equal("2024-01-15T10:30:00Z"))
@@ -1784,10 +1908,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating a WebRequestCommitStatus in polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1821,7 +1943,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Verify validation succeeded
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -1883,14 +2005,14 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmSecret)).To(Succeed())
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmProvider)).To(Succeed())
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthGitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(scmAuthPromotionStrategy)
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthPromotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(scmAuthCtx, scmAuthPromotionStrategy)
 
 			By("Creating a WebRequestCommitStatus with authentication.scm (Fake provider = no auth applied)")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      scmAuthName + "-scmauth",
-					Namespace: "default",
-				},
+				Name:      scmAuthName + "-scmauth",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: scmAuthName,
@@ -1956,7 +2078,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				var devEnv *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {
 					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
@@ -1993,10 +2115,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 		BeforeEach(func() {
 			By("Creating only a WebRequestCommitStatus resource without PromotionStrategy")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
@@ -2086,7 +2206,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -2119,10 +2241,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		It("should make the HTTP request when the URL host matches the SCM provider domain", func() {
 			By("Creating a WebRequestCommitStatus with Scm")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-host-match",
-					Namespace: "default",
-				},
+				Name:      name + "-host-match",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "scm-host-check",
@@ -2187,7 +2307,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
@@ -2224,10 +2346,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		It("should set Ready=False when the URL host does not match the SCM provider domain", func() {
 			By("Creating a WebRequestCommitStatus with Scm pointing at the test server")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-host-mismatch",
-					Namespace: "default",
-				},
+				Name:      name + "-host-mismatch",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "scm-host-check",
@@ -2304,7 +2424,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -2337,10 +2459,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-bool-success",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-bool-success",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2394,7 +2514,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      csName,
@@ -2421,10 +2541,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-bool-pending",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-bool-pending",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2472,7 +2590,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhasePending), "PhasePerBranch for %s should be pending", branch)
-					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      csName,
@@ -2503,10 +2621,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-perbranch",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-perbranch",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2562,19 +2678,19 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchProduction)).To(
 					Equal(promoterv1alpha1.CommitPhasePending), "production should be pending")
 
-				devCSName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				devCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var devCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: devCSName, Namespace: "default"}, &devCS)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
-				stagingCSName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchStaging+"-webrequest")
+				stagingCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchStaging)
 				var stagingCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: stagingCSName, Namespace: "default"}, &stagingCS)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(stagingCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 
-				prodCSName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchProduction+"-webrequest")
+				prodCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchProduction)
 				var prodCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: prodCSName, Namespace: "default"}, &prodCS)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -2597,10 +2713,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-trigger",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-trigger",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2661,7 +2775,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 					g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -2687,10 +2801,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-response-output",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-response-output",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2779,10 +2891,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-skip-opt",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-skip-opt",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2861,10 +2971,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-http-error",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-http-error",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2915,7 +3023,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(500))
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
-					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 					g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -2955,7 +3063,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		httpRequestCount = 0
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2989,10 +3099,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 
 	It("should clear promotionstrategy context and skip HTTP when no environments match the WRCS key", func() {
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-zero-app-env",
-				Namespace: "default",
-			},
+			Name:      name + "-zero-app-env",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "webrequest-key-not-on-promotionstrategy",
@@ -3061,7 +3169,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -3113,10 +3223,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		webRequestCS = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-ctx-ps-active",
-				Namespace: "default",
-			},
+			Name:      name + "-ctx-ps-active",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "ps-active-ctx-check",
@@ -3148,7 +3256,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 			g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchDevelopment)).To(
 				Equal(promoterv1alpha1.CommitPhaseSuccess))
 
-			csName := utils.KubeSafeUniqueName(ctx, webRequestCS.Name+"-"+testBranchDevelopment+"-webrequest")
+			csName := utils.CommitStatusResourceName(ctx, webRequestCS, testBranchDevelopment)
 			var cs promoterv1alpha1.CommitStatus
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)).To(Succeed())
 			g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -3184,7 +3292,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		By("Creating a test HTTP server that returns approved=true")
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3220,10 +3330,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 	It("should cleanly transition status when switching between environments and promotionstrategy contexts", func() {
 		By("Creating a WRCS with default (environments) context")
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-ctx-switch",
-				Namespace: "default",
-			},
+			Name:      name + "-ctx-switch",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "ctx-switch-check",
@@ -3252,7 +3360,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			var fetched promoterv1alpha1.WebRequestCommitStatus
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(len(fetched.Status.Environments)).To(Equal(3), "all PromotionStrategy environments should have status entries")
+			g.Expect(fetched.Status.Environments).To(HaveLen(3), "all PromotionStrategy environments should have status entries")
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil in environments context")
 
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
@@ -3288,7 +3396,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 					Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -3311,7 +3419,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil after switching back to environments context")
-			g.Expect(len(fetched.Status.Environments)).To(Equal(3), "all environments should be repopulated after switching back")
+			g.Expect(fetched.Status.Environments).To(HaveLen(3), "all environments should be repopulated after switching back")
 
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				var envSt *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -3354,7 +3462,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -3391,10 +3501,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 
 			By("Creating a WRCS that uses PromotionStrategy in success.when (no Response dependency)")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-enriched",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-enriched",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3439,7 +3547,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
@@ -3452,7 +3560,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				}
 
 				// Verify CommitStatus was created with success phase
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -3483,10 +3591,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-enriched-ps",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-enriched-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3566,10 +3672,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3614,8 +3718,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
-					"all three environments must be processed before snapshotting the HTTP request count")
+				g.Expect(fetched.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the HTTP request count")
 				for _, env := range fetched.Status.Environments {
 					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 						"environment %s should be success before snapshotting", env.Branch)
@@ -3668,10 +3771,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-expiry",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-expiry",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3720,8 +3821,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
-					"all three environments must be processed before snapshotting the HTTP hit count")
+				g.Expect(fetched.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the HTTP hit count")
 				for _, env := range fetched.Status.Environments {
 					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 						"environment %s should be success before snapshotting", env.Branch)
@@ -3734,7 +3834,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				httpHitsMu.Unlock()
 				g.Expect(h).To(BeNumerically(">=", 3), "each environment fires once on first SHA track")
 
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -3761,7 +3861,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					}
 				}
 
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -3807,7 +3907,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -3839,10 +3941,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-env-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-env-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -3883,7 +3983,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				var foundEnvWithSuccessOutput bool
 				for _, envStatus := range fetched.Status.Environments {
@@ -3914,10 +4014,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-env-no-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-env-no-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -3957,7 +4055,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, envStatus := range fetched.Status.Environments {
 					if envStatus.Phase == promoterv1alpha1.CommitPhaseSuccess {
@@ -3983,10 +4081,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4060,10 +4156,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-success-out-in-trigger",
-					Namespace: "default",
-				},
+				Name:      name + "-success-out-in-trigger",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4110,7 +4204,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				var foundWithOutput bool
 				for _, envStatus := range fetched.Status.Environments {
@@ -4161,7 +4255,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -4200,10 +4296,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dry-sha-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-dry-sha-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "dry-sha-guard",
@@ -4252,7 +4346,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
@@ -4284,7 +4378,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 
 			By("Verifying the CommitStatus resource is also pending")
 			Eventually(func(g Gomega) {
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -4330,7 +4424,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -4399,10 +4495,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 				`})`
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-drysha-ps-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-drysha-ps-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "dry-sha-ps-guard",
@@ -4482,7 +4576,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 
 			By("Verifying CommitStatus for development is pending")
 			Eventually(func(g Gomega) {
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())

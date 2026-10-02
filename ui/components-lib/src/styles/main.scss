@@ -1,10 +1,21 @@
 @use './_colors.scss' as *;
 // @import url('https://fonts.googleapis.com/css?family=Heebo:400,500,600,700&display=swap');
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   background: $background-light;
   font-family: 'Heebo', sans-serif;
   margin: 0;
   padding: 0;
   color: #222;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
 }

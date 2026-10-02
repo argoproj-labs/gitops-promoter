@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 // ensureSecretFinalizerForProvider adds a finalizer to a Secret referenced by an ScmProvider or ClusterScmProvider.
@@ -78,7 +79,8 @@ func ensureSecretFinalizerForProvider(
 			return nil
 		}
 		if controllerutil.AddFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			// Core Secrets have no /finalizers subresource; update metadata.finalizers via the main resource.
+			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
@@ -131,10 +133,40 @@ func removeSecretFinalizerForProvider(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
+}
+
+// removeUnreferencedSecretFinalizers removes finalizer from Secrets in secretNamespace that are not in referenced,
+// releasing the Secret a provider dropped when its secretRef changed.
+func removeUnreferencedSecretFinalizers(
+	ctx context.Context,
+	c client.Client,
+	secretNamespace string,
+	finalizer string,
+	referenced map[string]bool,
+) error {
+	var secrets v1.SecretList
+	if err := c.List(ctx, &secrets, client.InNamespace(secretNamespace)); err != nil {
+		return fmt.Errorf("failed to list Secrets: %w", err)
+	}
+
+	var errs []error
+	for i := range secrets.Items {
+		secret := &secrets.Items[i]
+		if referenced[secret.Name] || !controllerutil.ContainsFinalizer(secret, finalizer) {
+			continue
+		}
+		if err := removeSecretFinalizerForProvider(ctx, c, secretNamespace, secret.Name, finalizer,
+			func() (bool, error) { return false, nil }); err != nil {
+			log.FromContext(ctx).Error(err, "failed to remove finalizer from unreferenced Secret",
+				"secret", types.NamespacedName{Namespace: secretNamespace, Name: secret.Name})
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // handleResourceFinalizerWithDependencies handles the common finalizer add/remove logic for resources with dependencies.
@@ -166,7 +198,8 @@ func handleResourceFinalizerWithDependencies(
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(obj, finalizer) {
-				return c.Update(ctx, obj)
+				// CRDs have no /finalizers API subresource; update metadata.finalizers via the main resource.
+				return c.Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -215,7 +248,7 @@ func handleResourceFinalizerWithDependencies(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(obj, finalizer) {
-			return c.Update(ctx, obj)
+			return c.Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
 		}
 		return nil
 	})
@@ -254,4 +287,11 @@ func formatDependentResourceError(obj client.Object, resourceType string, depend
 	}
 
 	return fmt.Sprintf("%s still has dependent resource %s and %d more", resourceID, firstDependent, len(dependents)-1)
+}
+
+func ensureControllerInstanceIDStable(ctx context.Context, settingsMgr *settings.Manager) error {
+	if err := settingsMgr.EnsureInstanceIDStable(ctx); err != nil {
+		return fmt.Errorf("controller instance ID is not stable: %w", err)
+	}
+	return nil
 }

@@ -37,6 +37,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the promoter itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- dependentssuccessfulcommitstatus_admin_role.yaml
+- dependentssuccessfulcommitstatus_editor_role.yaml
+- dependentssuccessfulcommitstatus_viewer_role.yaml
 - gitcommitstatus_admin_role.yaml
 - gitcommitstatus_editor_role.yaml
 - gitcommitstatus_viewer_role.yaml
@@ -46,3 +49,9 @@ resources:
 - webrequestcommitstatus_admin_role.yaml
 - webrequestcommitstatus_editor_role.yaml
 - webrequestcommitstatus_viewer_role.yaml
+- scheduledcommitstatus_admin_role.yaml
+- scheduledcommitstatus_editor_role.yaml
+- scheduledcommitstatus_viewer_role.yaml
+- changetransferpolicyhistory_admin_role.yaml
+- changetransferpolicyhistory_editor_role.yaml
+- changetransferpolicyhistory_viewer_role.yaml

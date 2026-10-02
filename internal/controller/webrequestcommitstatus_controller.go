@@ -30,7 +30,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -39,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -66,15 +64,17 @@ type WebRequestCommitStatusReconciler struct {
 	httpClient  *http.Client
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
 // Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
 // environment (evaluating trigger and optionally making the HTTP request and validation), upserts
-// CommitStatus resources, cleans up orphaned CommitStatuses, and touches ChangeTransferPolicies when
+// CommitStatus resources, cleans up orphaned CommitStatuses, and enqueues ChangeTransferPolicies when
 // an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
@@ -82,8 +82,11 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
+	var previousReady *metav1.Condition
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err)
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err, &previousReady)
+	}()
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
@@ -97,7 +100,11 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(wrcs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&wrcs)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -128,6 +135,9 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 		transitionedEnvironments []string
 		requeueAfter             time.Duration
 	)
+	// Snapshot the per-branch phases persisted by the previous reconcile before the webrequest
+	// reconcile overwrites wrcs.Status, so phase-change events stay transition-only.
+	previousPhases := wrcsPhasesByBranch(&wrcs.Status)
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
 		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
 	} else {
@@ -136,9 +146,12 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process WebRequestCommitStatus: %w", err)
 	}
+	for branch, phase := range wrcsPhasesByBranch(&wrcs.Status) {
+		emitCommitStatusPhaseChangedEvent(r.Recorder, &wrcs, wrcs.Spec.Key, branch, previousPhases[branch], phase)
+	}
 
 	// 5. Clean up orphaned CommitStatus resources that are no longer in the environment list
-	err = r.cleanupOrphanedCommitStatuses(ctx, &wrcs, commitStatuses)
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, &wrcs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
@@ -146,10 +159,8 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&wrcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 7. If any validations transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
-	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
-	}
+	// 7. If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies to trigger reconciliation
+	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
@@ -177,7 +188,7 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueWebRequestCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)
@@ -200,9 +211,28 @@ func (e wrcsCommitUpserter) EmitCommitStatus(ctx context.Context, wrcs *promoter
 func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
 	resp, err := r.makeHTTPRequest(ctx, wrcs, td)
 	if err != nil {
+		// Edge-triggered rather than transition-gated: repeated identical failures are
+		// aggregated server-side into an EventSeries, and this event is what keeps HTTP
+		// failures visible now that ReconciliationError events only fire on transitions.
+		r.Recorder.Eventf(wrcs, nil, "Warning", constants.WebRequestFailedReason, "MakingHTTPRequest", constants.WebRequestFailedMessage, wrcs.Spec.Key, err)
 		return webrequest.HTTPResponse{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 	return resp, nil
+}
+
+// wrcsPhasesByBranch flattens the per-branch phases out of a WebRequestCommitStatus status,
+// regardless of which context mode produced it (Environments or PromotionStrategyContext).
+func wrcsPhasesByBranch(status *promoterv1alpha1.WebRequestCommitStatusStatus) map[string]string {
+	phases := make(map[string]string)
+	for _, env := range status.Environments {
+		phases[env.Branch] = string(env.Phase)
+	}
+	if status.PromotionStrategyContext != nil {
+		for _, item := range status.PromotionStrategyContext.PhasePerBranch {
+			phases[item.Branch] = string(item.Phase)
+		}
+	}
+	return phases
 }
 
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
@@ -387,8 +417,8 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
+	kind := reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus]().Name()
+	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 
 	// Render description template
 	var description string
@@ -400,8 +430,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		description = rendered
 	}
 
-	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec
@@ -422,12 +450,9 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-			promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:           wrcs.Spec.Key,
-		}).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -446,118 +471,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	return commitStatus, nil
-}
-
-// cleanupOrphanedCommitStatuses removes CommitStatus resources that are owned by this WebRequestCommitStatus
-// and labeled with its key but are not in validCommitStatuses (e.g. branches no longer in the strategy).
-// Called after the reconcile dispatch so the cluster state matches the current set of applicable environments.
-//
-//nolint:dupl // Similar to cleanupOrphanedChangeTransferPolicies but operates on different types
-func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
-	logger := log.FromContext(ctx)
-
-	// Create a set of valid CommitStatus names for quick lookup
-	validCommitStatusNames := make(map[string]bool)
-	for _, cs := range validCommitStatuses {
-		validCommitStatusNames[cs.Name] = true
-	}
-
-	// List all CommitStatus resources in the namespace with the WebRequestCommitStatus label
-	var commitStatusList promoterv1alpha1.CommitStatusList
-	err := r.List(ctx, &commitStatusList, client.InNamespace(wrcs.Namespace), client.MatchingLabels{
-		promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
-	}
-
-	// Delete CommitStatus resources that are not in the valid list
-	for _, cs := range commitStatusList.Items {
-		// Skip if this CommitStatus is in the valid list
-		if validCommitStatusNames[cs.Name] {
-			continue
-		}
-
-		// Verify this CommitStatus is owned by this WebRequestCommitStatus before deleting
-		if !metav1.IsControlledBy(&cs, wrcs) {
-			logger.V(4).Info("Skipping CommitStatus not owned by this WebRequestCommitStatus",
-				"commitStatusName", cs.Name,
-				"webRequestCommitStatus", wrcs.Name)
-			continue
-		}
-
-		// Delete the orphaned CommitStatus
-		logger.Info("Deleting orphaned CommitStatus",
-			"commitStatusName", cs.Name,
-			"webRequestCommitStatus", wrcs.Name,
-			"namespace", wrcs.Namespace)
-
-		if err := r.Delete(ctx, &cs); err != nil {
-			if k8serrors.IsNotFound(err) {
-				// Already deleted, which is fine
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
-				continue
-			}
-			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
-		}
-
-		r.Recorder.Eventf(wrcs, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
-	}
-
-	return nil
-}
-
-// touchChangeTransferPolicies enqueues the ChangeTransferPolicy for each environment in transitionedEnvironments,
-// so the CTP controller re-runs and can merge the PR now that this WebRequestCommitStatus has reported success.
-// Called from Reconcile when at least one environment's validation has just transitioned to success.
-func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	logger := log.FromContext(ctx)
-
-	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-
-		// Use the enqueue function to trigger reconciliation.
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ps.Namespace, ctpName)
-		}
-	}
-}
-
-// enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a
-// PromotionStrategy is created/updated (e.g. environment SHAs or status change), it enqueues every
-// WebRequestCommitStatus in the same namespace that references that strategy, so they reconcile with fresh data.
-func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		// List all WebRequestCommitStatus resources in the same namespace
-		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList, client.InNamespace(ps.Namespace)); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
-			return nil
-		}
-
-		// Enqueue all WebRequestCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, wrcs := range wrcsList.Items {
-			if wrcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&wrcs),
-				})
-			}
-		}
-
-		return requests
-	})
 }
 
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,

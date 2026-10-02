@@ -13,20 +13,35 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
+// CommitStatusGateLabelPrefix is the prefix for parent-gate label keys on CommitStatus resources
+// (for example promoter.argoproj.io/timed-commit-status for TimedCommitStatus).
+const CommitStatusGateLabelPrefix = "promoter.argoproj.io/"
+
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
-// TimedCommitStatusLabel the timed commit status which the commit status is associated with.
-const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
+// ArgoCDCommitStatusDefaultKey is the default commit status key for ArgoCDCommitStatus when spec.key is omitted.
+const ArgoCDCommitStatusDefaultKey = "argocd-health"
 
-// WebRequestCommitStatusLabel the web request commit status which the commit status is associated with.
-const WebRequestCommitStatusLabel = "promoter.argoproj.io/web-request-commit-status"
+// TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
+const TimedCommitStatusDefaultKey = "timer"
 
-// PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
-const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
+// DependentsSuccessfulCommitStatusKey is the commit status key name used to indicate that an environment's
+// dependent environments are promoted and successful.
+const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
-// CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
-const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
+// DefaultOrderCommitStatusGroup is the default API group for PromotionStrategy.spec.orderCommitStatusRef.
+const DefaultOrderCommitStatusGroup = "promoter.argoproj.io"
+
+// DefaultOrderCommitStatusKind is the default kind for PromotionStrategy.spec.orderCommitStatusRef.
+const DefaultOrderCommitStatusKind = "DependentsSuccessfulCommitStatus"
+
+// LegacyPreviousEnvironmentCommitStatusKey is the commit status key used by PromotionStrategy ≤ 0.37 for
+// linear ordering. DependentsSuccessfulCommitStatus deletes orphaned CommitStatuses with this label once
+// the replacement gate is configured.
+//
+// TODO(v1.0): Remove with cleanupLegacyPreviousEnvironmentCommitStatuses.
+const LegacyPreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
 // Finalizer constants for preventing premature resource deletion
 
@@ -55,3 +70,8 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+
+// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
+// Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
+// unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
+const InstanceIDLabel = "promoter.argoproj.io/instance-id"

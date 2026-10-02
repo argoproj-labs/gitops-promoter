@@ -19,6 +19,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - ginkgolinter
     - govet
     - lll
     - loggercheck
@@ -47,6 +48,10 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    goconst:
+      ignore-tests: true
+      ignore-string-values:
+        - '^(true|false)$' # annotation and trailer boolean flags
     gocritic:
       disabled-checks:
         - assignOp
@@ -133,6 +138,8 @@ linters:
           disabled: true
         - name: line-length-limit
           disabled: true # Monitors are wide.
+        - name: multiline-if-init
+          disabled: true # Splitting every multi-line call out of an if is noisier than the check.
         - name: unhandled-error
           disabled: true # This is handled by errcheck.
         - name: unused-receiver
@@ -154,6 +161,11 @@ linters:
       - linters:
           - govet
         path: api/.*
+      # Kubebuilder scaffold: wiring every reconciler in one place is intentionally high-complexity.
+      - linters:
+          - gocyclo
+        path: cmd/main\.go
+        text: "func `runController`"
     paths:
       - third_party$
       - builtin$

@@ -182,6 +182,23 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(false);
     });
 
+    it('returns false when only the PromotionStrategyDetails view resource is in the tree', () => {
+      const app = makeApp({
+        status: {
+          resources: [
+            {
+              kind: 'PromotionStrategyDetails',
+              group: 'view.promoter.argoproj.io',
+              name: 'ps1',
+              namespace: 'ns1',
+              status: 'Synced',
+            },
+          ],
+        },
+      });
+      expect(showExtension(app)).toBe(false);
+    });
+
     it('returns false when labels object is empty', () => {
       const app = makeApp({
         metadata: { name: 'my-app', namespace: 'default', labels: {} },

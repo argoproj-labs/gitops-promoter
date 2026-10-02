@@ -18,6 +18,10 @@ const (
 	// performed by the PromotionStrategy controller.
 	PromotionStrategyControllerFieldOwner = "promoter.argoproj.io/promotionstrategy-controller"
 
+	// ChangeTransferPolicyHistoryControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ChangeTransferPolicyHistory controller.
+	ChangeTransferPolicyHistoryControllerFieldOwner = "promoter.argoproj.io/changetransferpolicyhistory-controller"
+
 	// ChangeTransferPolicyControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ChangeTransferPolicy controller.
 	ChangeTransferPolicyControllerFieldOwner = "promoter.argoproj.io/changetransferpolicy-controller"
@@ -33,6 +37,10 @@ const (
 	// WebRequestCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the WebRequestCommitStatus controller.
 	WebRequestCommitStatusControllerFieldOwner = "promoter.argoproj.io/webrequestcommitstatus-controller"
+
+	// DependentsSuccessfulCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the DependentsSuccessfulCommitStatus controller.
+	DependentsSuccessfulCommitStatusControllerFieldOwner = "promoter.argoproj.io/dependentssuccessfulcommitstatus-controller"
 
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
@@ -54,7 +62,15 @@ const (
 	// performed by the GitCommitStatus controller.
 	GitCommitStatusControllerFieldOwner = "promoter.argoproj.io/gitcommitstatus-controller"
 
+	// ScheduledCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ScheduledCommitStatus controller.
+	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
+
 	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the CommitStatus controller.
 	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
+
+	// ControllerConfigurationControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ControllerConfiguration controller.
+	ControllerConfigurationControllerFieldOwner = "promoter.argoproj.io/controllerconfiguration-controller"
 )

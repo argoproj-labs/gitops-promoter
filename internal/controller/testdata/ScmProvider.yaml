@@ -6,7 +6,7 @@ spec:
   secretRef:
     name: example-scm-provider-secret
 
-  # You must specify either github, gitlab, forgejo, bitbucketCloud or azureDevops. Multiple are provided here as examples.
+  # You must specify exactly one provider. Multiple are shown here as examples.
   # If you do not need to specify any sub-fields, just set the field to {}.
 
   github:
@@ -18,10 +18,24 @@ spec:
     domain: gitlab.com # Optional
 
   forgejo:
-    domain:
+    domain: forgejo.example.com
+
+  gitea:
+    domain: gitea.example.com
 
   bitbucketCloud: {}
 
   azureDevOps:
     organization: example-organization
     domain: dev.azure.com # Optional
+
+  # fake: {}  # testing only
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True"
+      observedGeneration: 123

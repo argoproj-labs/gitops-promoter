@@ -42,7 +42,7 @@ Labels:
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, or list.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -57,7 +57,7 @@ Labels:
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, or list.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
@@ -128,6 +128,17 @@ Labels:
 * `ctp_found`: Whether a ChangeTransferPolicy was found for the webhook (true, false). May be false for error conditions, so check the response code.
 * `response_code`: The HTTP response code of the webhook processing. 204 is the success code, which may be returned even if no ChangeTransferPolicy was found.
 
+## webhook_miss_retry_pending
+
+A gauge of the current number of in-flight async webhook miss-retry goroutines.
+
+When a push webhook does not match any ChangeTransferPolicy on the first lookup, the receiver returns `204` immediately
+and may retry the field-index lookup in the background (bounded concurrency, exponential backoff, overall deadline).
+This gauge is the occupancy of that retry queue (0 when idle, up to the maximum of 256 pending retries; further
+misses are dropped while at capacity).
+
+No labels.
+
 ## promoter_finalizer_dependent_resources
 
 A gauge of the current number of dependent resources preventing deletion of a resource.
@@ -150,11 +161,11 @@ No labels.
 
 A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
 
-The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
+The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration. `ControllerConfiguration` is omitted (it is a singleton and uses a multi-namespace informer that cannot be counted the same way).
 
 If reading from the informer store fails for a kind, that kind's gauge is set to `0` for all readiness values and an error is logged.
 
 Labels:
 
-* `kind`: Kubernetes API kind of the custom resource (matches the thirteen root CRDs reconciled by GitOps Promoter, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `ControllerConfiguration`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
+* `kind`: Kubernetes API kind of the custom resource (matches the root CRDs reconciled by GitOps Promoter except `ControllerConfiguration`, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
 * `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).

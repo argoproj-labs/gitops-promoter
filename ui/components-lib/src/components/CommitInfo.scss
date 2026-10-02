@@ -1,6 +1,5 @@
 @use '../styles/colors' as *;
 
-// Tooltip
 .tooltip-container {
   position: absolute;
   z-index: 1000;
@@ -9,7 +8,7 @@
 
 .anchored-tooltip {
   left: 0;
-  top: calc(100% + 4px); // 4px gap below .commit-content
+  top: calc(100% + 4px);
 }
 
 .github-tooltip {
@@ -31,7 +30,6 @@
   word-break: break-word;
   white-space: pre-wrap;
 
-  // Custom scrollbar styling
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -71,21 +69,7 @@
   margin-top: -10px;
   margin-bottom: 10px;
   padding-bottom: 16px;
-}
-
-.commit-group {
-  &.proposed {
-    border-top: 3px solid $argo-running;
-    margin: 10px -24px -24px -24px;
-    background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
-    border-radius: 8px;
-    padding: 24px 24px 0 24px;
-  }
-}
-
-.history-mode .commit-group.proposed {
-  border-top-color: $argo-color-gray-4;
-  background: linear-gradient(135deg, rgba(108, 117, 125, 0.06) 0%, rgba(108, 117, 125, 0.03) 100%);
+  min-height: 96px;
 }
 
 .commit-group-header {
@@ -97,146 +81,58 @@
 
 .commit-group-title {
   font-size: 16px;
-  color: $argo-color-gray-7;
+  color: $argo-color-black;
   letter-spacing: 0.3px;
-  padding-left: 10px;
   gap: 12px;
-  margin-left: -8px;
   line-height: 1;
   display: flex;
   align-items: center;
 }
 
-.pr-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: $argo-running;
-  background: rgba(13, 173, 234, 0.08);
-  padding: 4px 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(13, 173, 234, 0.2);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-
-  &:hover {
-    background: rgba(13, 173, 234, 0.15);
-    border-color: rgba(13, 173, 234, 0.4);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(13, 173, 234, 0.2);
-  }
-
-  .pr-icon {
-    font-size: 14px;
-    color: $argo-running;
-  }
-
-  &.pr-merged {
-    color: $argo-merged;
-    background: rgba(111, 66, 193, 0.08);
-    border: 1px solid rgba(111, 66, 193, 0.2);
-
-    &:hover {
-      background: rgba(111, 66, 193, 0.15);
-      border-color: rgba(111, 66, 193, 0.4);
-      box-shadow: 0 2px 4px rgba(111, 66, 193, 0.2);
-    }
-
-    .pr-icon {
-      color: $argo-merged;
-    }
-  }
-
-  .pr-merge-time {
-    opacity: 0.7;
-    font-size: 11px;
-    font-weight: 400;
-
-    &::before {
-      content: '·';
-      margin-right: 4px;
-    }
-  }
-}
-
 .commit-info {
   margin-bottom: 12px;
-  padding: 16px 0;
-  min-width: 180px;
-  min-height: 50px;
+  padding: 4px 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   position: relative;
 }
 
 .commit-content {
-  margin-left: 50px;
   position: relative;
-  min-width: 0; // Allow flex children to shrink
+  min-width: 0;
 }
 
 .commit-icon-wrapper {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  width: 40px;
+  flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .commit-icon {
-  font-size: 35px;
+  font-size: 20px;
   color: $argo-color-gray-7;
   flex-shrink: 0;
   margin: 0;
 }
 
 .commit-code {
-  margin-left: 50px;
-  margin-top: -30px;
-  position: relative;
-
-  &::before {
-    content: '';
-    position: absolute;
-    left: -30px;
-    top: 50%;
-    width: 25px;
-    height: 2px;
-    background-color: $argo-color-gray-7;
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    left: -30px;
-    top: 8px;
-    width: 2px;
-    height: 43%;
-    background-color: $argo-color-gray-7;
-  }
+  margin-left: 24px;
 }
 
 .commit-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 6px;
-  gap: 12px;
-  min-width: 0; // Allow flex children to shrink below content size
-  overflow: hidden; // Prevent text from overflowing horizontally
+  gap: 8px;
+  min-width: 0;
 }
 
 .commit-meta {
   font-size: 12px;
   color: $argo-color-gray-5;
   min-height: 16px;
+  margin-left: 28px;
 }
 
 .commit-author {
@@ -250,35 +146,26 @@
 }
 
 .commit-sha {
-  font-family:
-    'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-  font-size: 12px;
-  color: $argo-color-gray-7;
-  background-color: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid #e0e0e0;
-  flex-shrink: 0; // Prevent SHA from shrinking
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: $argo-link;
+  flex-shrink: 0;
 }
 
 .commit-sha-link {
-  font-family:
-    'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-  font-size: 12px;
-  color: $argo-color-gray-7;
-  background-color: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid #e0e0e0;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: $argo-link;
   text-decoration: none;
   transition: all 0.2s ease;
-  flex-shrink: 0; // Prevent SHA from shrinking
+  flex-shrink: 0;
 
   &:hover {
     text-decoration: underline;
-    background-color: #e8f4fd;
-    border-color: #007bff;
-    color: #007bff;
   }
 
   &:focus {
@@ -289,12 +176,13 @@
 
 .commit-subject {
   font-family: 'Heebo', sans-serif;
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-decoration: underline;
   color: $argo-color-gray-7;
   flex: 1;
-  min-width: 0; // Allow text to shrink below content size
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
   position: relative;
 }

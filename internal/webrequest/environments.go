@@ -62,41 +62,6 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 	return envStatus.Proposed.Hydrated.Sha
 }
 
-// getApplicableEnvironments returns the PromotionStrategy environments that match a given
-// WebRequestCommitStatus key / reportOn combination. An environment is included if its key is
-// referenced in global or environment-specific ProposedCommitStatuses (when reportOn is "proposed"
-// or default) or ActiveCommitStatuses (when reportOn is "active").
-func getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
-	globalSelectors := ps.Spec.ProposedCommitStatuses
-	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-		return e.ProposedCommitStatuses
-	}
-	if reportOn == constants.CommitRefActive {
-		globalSelectors = ps.Spec.ActiveCommitStatuses
-		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-			return e.ActiveCommitStatuses
-		}
-	}
-
-	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
-		for _, sel := range selectors {
-			if sel.Key == key {
-				return true
-			}
-		}
-		return false
-	}
-	keyInGlobal := keyInSelectors(globalSelectors)
-
-	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		if keyInGlobal || keyInSelectors(getEnvSelectors(env)) {
-			applicable = append(applicable, env)
-		}
-	}
-	return applicable
-}
-
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
 // result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
 func parsePerBranchPhases(obj map[string]any) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
@@ -146,6 +111,27 @@ func parsePerBranchPhases(obj map[string]any) (promoterv1alpha1.CommitStatusPhas
 		m[branch] = phase
 	}
 	return defaultPhase, m, nil
+}
+
+// parseSinglePhase extracts the phase from an expression result object of the form { phase } used by
+// context=environments, where each evaluation is already scoped to one branch. A missing or empty phase
+// yields pending. The per-branch keys accepted in promotionstrategy context (defaultPhase, environments)
+// are rejected here so a promotionstrategy-shaped expression is not silently reduced to pending.
+func parseSinglePhase(obj map[string]any) (promoterv1alpha1.CommitStatusPhase, error) {
+	for _, key := range []string{"defaultPhase", "environments"} {
+		if _, ok := obj[key]; ok {
+			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression object must be { phase } in environments context, got key %q, which is only supported with mode.context: promotionstrategy", key)
+		}
+	}
+	phaseStr, err := getString(obj, "phase")
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression phase: %w", err)
+	}
+	phase, err := parsePhaseString(phaseStr, promoterv1alpha1.CommitPhasePending)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression phase: %w", err)
+	}
+	return phase, nil
 }
 
 // getString reads an optional string field from an expression object. Missing or nil key yields ("", nil).

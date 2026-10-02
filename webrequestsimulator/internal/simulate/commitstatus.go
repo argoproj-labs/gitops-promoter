@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
@@ -43,19 +41,11 @@ func renderCommitStatus(
 	td webrequest.TemplateData,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	cs := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: promoterv1alpha1.GroupVersion.String(),
-			Kind:       "CommitStatus",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch)),
-			Namespace: wrcs.Namespace,
-			Labels: map[string]string{
-				promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-				promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
-				promoterv1alpha1.CommitStatusLabel:           wrcs.Spec.Key,
-			},
-		},
+		APIVersion: promoterv1alpha1.GroupVersion.String(),
+		Kind:       "CommitStatus",
+		Name:       utils.CommitStatusResourceName(ctx, wrcs, branch),
+		Namespace:  wrcs.Namespace,
+		Labels:     utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key),
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: repositoryRefName},
 			Name:                wrcs.Spec.Key + "/" + branch,

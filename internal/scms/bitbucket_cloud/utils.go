@@ -24,8 +24,8 @@ func parseErrorStatusCode(err error, defaultStatusCode int) int {
 		return defaultStatusCode
 	}
 
-	var bbErr *bitbucket.UnexpectedResponseStatusError
-	if !errors.As(err, &bbErr) {
+	bbErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err)
+	if !ok {
 		return http.StatusInternalServerError
 	}
 
@@ -72,6 +72,20 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 	default:
 		return v1alpha1.CommitPhaseFailure
 	}
+}
+
+// isFullGitCommitHash reports whether s is a 40- or 64-char lowercase hex git commit hash.
+func isFullGitCommitHash(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {

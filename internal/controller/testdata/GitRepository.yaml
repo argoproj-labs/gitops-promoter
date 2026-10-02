@@ -17,6 +17,10 @@ spec:
     name:
     owner:
 
+  gitea:
+    name:
+    owner:
+
   bitbucketCloud:
     owner:
     name:
@@ -25,6 +29,19 @@ spec:
     name:
     project:
 
+  # fake:
+  #   name: example
+  #   owner: example
+
   scmProviderRef:
-    kind: ScmProvider
+    kind: ScmProvider # or ClusterScmProvider
     name: example-scm-provider
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True"
+      observedGeneration: 123

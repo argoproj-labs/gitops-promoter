@@ -1,0 +1,10 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: promoter-apiserver-selfsigned
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+spec:
+  selfSigned: {}

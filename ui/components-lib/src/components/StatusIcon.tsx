@@ -1,18 +1,28 @@
 import React from 'react';
 import {
-  FaCheckCircle,
   FaTimesCircle,
   FaCircleNotch,
   FaHeart,
   FaHeartBroken,
+  FaRegQuestionCircle,
 } from 'react-icons/fa';
+import { BsCheckCircle, BsDashCircleDotted } from 'react-icons/bs';
 import './StatusIcon.scss';
 
 export type StatusType = 'promoted' | 'pending' | 'failure' | 'unknown' | 'success';
 
-// Active and Inactive Status
 export const statusLabel = (phase: StatusType) => {
-  return phase === 'promoted' || phase === 'success' ? 'Active' : 'Inactive';
+  switch (phase) {
+    case 'promoted':
+    case 'success':
+      return 'Healthy';
+    case 'pending':
+      return 'Pending';
+    case 'failure':
+      return 'Degraded';
+    default:
+      return 'Unknown';
+  }
 };
 
 export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health' }> = ({
@@ -28,11 +38,11 @@ export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health
         return <FaCircleNotch className={iconClass + ' fa-spin'} />;
       case 'promoted':
       case 'success':
-        return <FaCheckCircle className={iconClass} />;
+        return <BsCheckCircle className={iconClass} />;
       case 'failure':
         return <FaTimesCircle className={iconClass} />;
       default:
-        return <FaCircleNotch className={iconClass} />;
+        return <BsDashCircleDotted className={iconClass} />;
     }
   }
 
@@ -46,6 +56,6 @@ export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health
     case 'failure':
       return <FaHeartBroken className={iconClass} />;
     default:
-      return <FaHeart className={iconClass} />;
+      return <FaRegQuestionCircle className={iconClass} />;
   }
 };

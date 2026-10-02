@@ -1,9 +1,46 @@
 import { create } from 'zustand';
-import { enrichFromCRD } from '@shared/utils/PSData';
-import type { PromotionStrategy } from '@shared/utils/PSData';
+import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
+import { environmentsFromBundle } from '@shared/utils/environments';
+import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import type { PromotionStrategy, CommitStatusManagerBundle } from '@shared/utils/PSData';
+import type { PromotionStrategyDetails } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
+}
+
+function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
+  return {
+    timedCommitStatuses: bundle.timedCommitStatuses,
+    gitCommitStatuses: bundle.gitCommitStatuses,
+    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
+    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
+    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+  };
+}
+
+function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
+  const ps = bundle.promotionStrategy;
+  const environments = environmentsFromBundle(
+    ps.spec,
+    bundle.changeTransferPolicies ?? [],
+    bundle.changeTransferPolicyHistories ?? [],
+  );
+  const psWithEnvironments = {
+    ...ps,
+    metadata: {
+      ...ps.metadata,
+      name: bundle.metadata.name,
+      namespace: bundle.metadata.namespace,
+    },
+    status: { ...ps.status, environments },
+  } as PromotionStrategy;
+  sortStrategyCommitStatuses(psWithEnvironments);
+  const merged = mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
+  return {
+    ...merged,
+    enriched: enrichFromCRD(merged),
+  } as T;
 }
 
 export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
@@ -24,46 +61,43 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     error: null,
     connectionStatus: 'connecting',
 
-    // Fetch items from via /list endpoint
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
+
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
         if (!res.ok) throw new Error(`Error: ${res.status}`);
-        const data = await res.json();
+        const data = (await res.json()) as PromotionStrategyDetails[] | null;
 
-        set({ items: data, loading: false });
+        set({ items: (data ?? []).map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
       }
     },
 
-    // Subscribing to SSE
     subscribe: (namespace: string) => {
       if (eventSource) eventSource.close();
 
-      // Real-Time fetch via /watch endpoint
       eventSource = new EventSource(`/watch?kind=${kind}&namespace=${namespace}`);
 
-      // Handle PromotionStrategy SSE events
       eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
         try {
-          const updated = JSON.parse(evt.data);
-          const enriched = enrichFromCRD(updated);
+          const bundle: PromotionStrategyDetails = JSON.parse(evt.data);
+          const updated = bundleToItem<T>(bundle);
           set((state) => {
             const idx = state.items.findIndex(
               (item: T) =>
-                item.metadata?.name === updated.metadata?.name &&
-                item.metadata?.namespace === updated.metadata?.namespace,
+                item.metadata.name === updated.metadata.name &&
+                item.metadata.namespace === updated.metadata.namespace,
             );
             let newItems: T[];
             if (idx >= 0) {
               newItems = [...state.items];
-              newItems[idx] = { ...updated, enriched };
+              newItems[idx] = updated;
             } else {
-              newItems = [...state.items, { ...updated, enriched }];
+              newItems = [...state.items, updated];
             }
             return { items: newItems };
           });
@@ -73,7 +107,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       });
     },
 
-    // Unsubscribe from SSE
     unsubscribe: () => {
       if (eventSource) {
         eventSource.close();
@@ -81,7 +114,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       }
     },
 
-    // Reset items
     reset: () => set({ items: [] }),
   }));
 }

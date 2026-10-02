@@ -18,12 +18,22 @@ const (
 	ControllerConfigurationName = "promoter-controller-configuration"
 )
 
+// GetInstanceID returns the live ControllerConfiguration.spec.instanceID from the informer cache.
+func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
+	cc, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cc.Spec.InstanceID, nil
+}
+
 // ControllerConfigurationTypes is a constraint that defines the set of controller configuration types
 // that include a WorkQueue specification. This type constraint is used with generic functions to
 // provide type-safe access to WorkQueue configurations across different controller types.
 //
 // The following configuration types satisfy this constraint:
 //   - PromotionStrategyConfiguration
+//   - ChangeTransferPolicyHistoryConfiguration
 //   - ChangeTransferPolicyConfiguration
 //   - PullRequestConfiguration
 //   - CommitStatusConfiguration
@@ -31,15 +41,20 @@ const (
 //   - TimedCommitStatusConfiguration
 //   - GitCommitStatusConfiguration
 //   - WebRequestCommitStatusConfiguration
+//   - DependentsSuccessfulCommitStatusConfiguration
+//   - ScheduledCommitStatusConfiguration
 type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
+		promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration |
 		promoterv1alpha1.ChangeTransferPolicyConfiguration |
 		promoterv1alpha1.PullRequestConfiguration |
 		promoterv1alpha1.CommitStatusConfiguration |
 		promoterv1alpha1.ArgoCDCommitStatusConfiguration |
 		promoterv1alpha1.TimedCommitStatusConfiguration |
 		promoterv1alpha1.GitCommitStatusConfiguration |
-		promoterv1alpha1.WebRequestCommitStatusConfiguration
+		promoterv1alpha1.WebRequestCommitStatusConfiguration |
+		promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration |
+		promoterv1alpha1.ScheduledCommitStatusConfiguration
 }
 
 // ControllerResultTypes is a constraint that defines the set of result types returned by controller
@@ -288,6 +303,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 	switch cfg := any(controllerConfig).(type) {
 	case promoterv1alpha1.PromotionStrategyConfiguration:
 		return config.Spec.PromotionStrategy.WorkQueue, nil
+	case promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration:
+		return config.Spec.ChangeTransferPolicyHistory.WorkQueue, nil
 	case promoterv1alpha1.ChangeTransferPolicyConfiguration:
 		return config.Spec.ChangeTransferPolicy.WorkQueue, nil
 	case promoterv1alpha1.PullRequestConfiguration:
@@ -302,6 +319,10 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return config.Spec.GitCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.WebRequestCommitStatusConfiguration:
 		return config.Spec.WebRequestCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration:
+		return config.Spec.DependentsSuccessfulCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
+		return config.Spec.ScheduledCommitStatus.WorkQueue, nil
 	default:
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", cfg)
 	}

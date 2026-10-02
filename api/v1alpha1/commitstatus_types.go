@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -97,6 +98,15 @@ type CommitStatusStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GetConditions returns the conditions of the CommitStatus
@@ -109,7 +119,13 @@ func (cs *CommitStatus) SetObservedGeneration(generation int64) {
 	cs.Status.ObservedGeneration = generation
 }
 
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (cs *CommitStatus) SetStatusInstanceID(v *string) {
+	cs.Status.InstanceID = v
+}
+
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#commitstatus",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -137,7 +153,37 @@ type CommitStatusList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &CommitStatus{}, &CommitStatusList{})
+		return nil
+	})
+}
+
+// GateEnvironmentCommitStatus mirrors per-environment child CommitStatus report fields
+// (phase, description, url, reportedSha). Used on gate CR status.environments[] only — not embedded in CommitStatusSpec.
+type GateEnvironmentCommitStatus struct {
+	// Phase mirrors child CommitStatus.spec.phase.
+	// +kubebuilder:validation:Enum:=pending;success;failure;""
+	// +optional
+	Phase CommitStatusPhase `json:"phase,omitempty"`
+
+	// Description mirrors child CommitStatus.spec.description.
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	// Url mirrors child CommitStatus.spec.url.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
+	Url string `json:"url,omitempty"`
+
+	// ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+	// Semantics depend on the parent gate (proposed vs active hydrated SHA).
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	ReportedSha string `json:"reportedSha,omitempty"`
 }
 
 // CommitStatusPhase represents the phase of a commit status.

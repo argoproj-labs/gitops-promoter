@@ -19,9 +19,11 @@ package v1alpha1
 import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // ContextMode represents the request-scope mode for WebRequestCommitStatus.
+// +k8s:enum
 type ContextMode string
 
 const (
@@ -116,9 +118,9 @@ type WebRequestCommitStatusSpec struct {
 //
 // Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
 //
-//   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
+//   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and returns the phase for that one environment — see SuccessSpec for the boolean and object return shapes.
 //
-//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
+//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see SuccessSpec for boolean vs per-branch object return shapes.
 //
 // When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.
 //
@@ -137,7 +139,6 @@ type ModeSpec struct {
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	// +optional
 	// +kubebuilder:default=environments
-	// +kubebuilder:validation:Enum=environments;promotionstrategy
 	Context ContextMode `json:"context,omitempty"`
 }
 
@@ -151,9 +152,31 @@ type PollingModeSpec struct {
 	Interval metav1.Duration `json:"interval,omitempty"`
 }
 
-// SuccessSpec defines when the commit status phase is success.
+// SuccessSpec defines the phase reported on the CommitStatus.
+//
+// When.Expression is evaluated every reconcile (whether or not an HTTP request was made). Its variables are
+// documented on WhenWithOutputSpec.Expression, plus Response (nil when no request was made this reconcile).
+// The accepted return values depend on spec.mode.context:
+//
+//   - "environments" (default): a boolean (true → success, false → pending), or an object { phase } where phase
+//     is "success", "pending", or "failure". An omitted or empty phase means "pending". Each evaluation is
+//     already scoped to one environment, so the per-branch keys below are rejected in this context.
+//
+//   - "promotionstrategy": a boolean (all applicable environments get success or pending), or an object
+//     { defaultPhase?, environments? } where environments is a list of { branch, phase }. Branches not listed
+//     (or all of them, when environments is omitted or empty) get defaultPhase, which is "pending" when omitted.
+//
+// Any other return type, or an unrecognized phase string, fails the reconcile.
+//
+// Examples:
+//
+//	# environments context: fail fast on a 5xx instead of waiting for a timeout
+//	- "Response == nil ? Phase == 'success' : (Response.StatusCode >= 500 ? {phase: 'failure'} : Response.StatusCode == 200)"
+//
+//	# promotionstrategy context: map a batch payload to per-branch phases
+//	- "{ defaultPhase: 'pending', environments: map(Response.Body.results, {{branch: .env, phase: .state}}) }"
 type SuccessSpec struct {
-	// When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+	// When is evaluated every reconcile. See SuccessSpec for return values and WhenWithOutputSpec.Expression for variables.
 	// +required
 	When WhenWithOutputSpec `json:"when"`
 }
@@ -220,6 +243,7 @@ type WhenWithOutputSpec struct {
 	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//   - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+	//   - NamespaceMetadata (object): labels and annotations of the WebRequestCommitStatus's namespace (NamespaceMetadata.Labels, NamespaceMetadata.Annotations)
 	//   - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
@@ -412,6 +436,15 @@ type WebRequestCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // WebRequestCommitStatusPhasePerBranchItem is one branch's resolved phase in promotionstrategy context status.
@@ -512,7 +545,8 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	LastSuccessfulSha string `json:"lastSuccessfulSha,omitempty"`
 
 	// Phase represents the current phase of the validation.
-	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
+	// A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
+	// return form documented on SuccessSpec.
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase CommitStatusPhase `json:"phase"`
@@ -550,6 +584,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -593,6 +628,14 @@ func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 	wrcs.Status.ObservedGeneration = generation
 }
 
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (wrcs *WebRequestCommitStatus) SetStatusInstanceID(v *string) {
+	wrcs.Status.InstanceID = v
+}
+
 func init() {
-	SchemeBuilder.Register(&WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+		return nil
+	})
 }

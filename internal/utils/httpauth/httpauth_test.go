@@ -31,7 +31,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -42,7 +41,7 @@ import (
 var _ = Describe("GetSecretValue", func() {
 	It("returns the value when the key exists", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
+			Name: "test-secret",
 			Data: map[string][]byte{
 				"username": []byte("alice"),
 				"password": []byte("secret"),
@@ -60,8 +59,8 @@ var _ = Describe("GetSecretValue", func() {
 
 	It("returns an error when the key is missing", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
-			Data:       map[string][]byte{"foo": []byte("bar")},
+			Name: "test-secret",
+			Data: map[string][]byte{"foo": []byte("bar")},
 		}
 
 		_, err := httpauth.GetSecretValue(secret, "missing")
@@ -74,7 +73,7 @@ var _ = Describe("GetSecretValue", func() {
 var _ = Describe("ApplyBasicAuth", func() {
 	It("sets the Authorization header with Basic credentials", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "basic-secret"},
+			Name: "basic-secret",
 			Data: map[string][]byte{
 				httpauth.UsernameKey: []byte("user"),
 				httpauth.PasswordKey: []byte("pass"),
@@ -93,8 +92,8 @@ var _ = Describe("ApplyBasicAuth", func() {
 
 	It("returns an error when username is missing from secret", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "basic-secret"},
-			Data:       map[string][]byte{httpauth.PasswordKey: []byte("pass")},
+			Name: "basic-secret",
+			Data: map[string][]byte{httpauth.PasswordKey: []byte("pass")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
@@ -105,8 +104,8 @@ var _ = Describe("ApplyBasicAuth", func() {
 
 	It("returns an error when password is missing from secret", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "basic-secret"},
-			Data:       map[string][]byte{httpauth.UsernameKey: []byte("user")},
+			Name: "basic-secret",
+			Data: map[string][]byte{httpauth.UsernameKey: []byte("user")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
@@ -119,8 +118,8 @@ var _ = Describe("ApplyBasicAuth", func() {
 var _ = Describe("ApplyBearerAuth", func() {
 	It("sets the Authorization header with Bearer token", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bearer-secret"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("my-token-123")},
+			Name: "bearer-secret",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("my-token-123")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
@@ -131,8 +130,8 @@ var _ = Describe("ApplyBearerAuth", func() {
 
 	It("returns an error when token key is missing from secret", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bearer-secret"},
-			Data:       map[string][]byte{},
+			Name: "bearer-secret",
+			Data: map[string][]byte{},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
@@ -171,7 +170,7 @@ var _ = Describe("ApplyOAuth2Auth", func() {
 
 	It("exchanges client credentials and sets Authorization header", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "oauth-secret"},
+			Name: "oauth-secret",
 			Data: map[string][]byte{
 				httpauth.ClientIDKey:     []byte("client-id"),
 				httpauth.ClientSecretKey: []byte("client-secret"),
@@ -233,7 +232,7 @@ var _ = Describe("BuildTLSClient", func() {
 
 	It("builds an HTTP client with TLS config from secret", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "tls-secret"},
+			Name: "tls-secret",
 			Data: map[string][]byte{
 				httpauth.TLSCertKey: certPEM,
 				httpauth.TLSKeyKey:  keyPEM,
@@ -250,7 +249,7 @@ var _ = Describe("BuildTLSClient", func() {
 	It("includes RootCAs when ca.crt is present in secret", func() {
 		caCert := certPEM // reuse same cert as CA for test
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "tls-secret"},
+			Name: "tls-secret",
 			Data: map[string][]byte{
 				httpauth.TLSCertKey: certPEM,
 				httpauth.TLSKeyKey:  keyPEM,
@@ -265,8 +264,8 @@ var _ = Describe("BuildTLSClient", func() {
 
 	It("returns an error when tls.crt is missing", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "tls-secret"},
-			Data:       map[string][]byte{httpauth.TLSKeyKey: keyPEM},
+			Name: "tls-secret",
+			Data: map[string][]byte{httpauth.TLSKeyKey: keyPEM},
 		}
 
 		_, err := httpauth.BuildTLSClient(context.Background(), secret, time.Second)
@@ -276,8 +275,8 @@ var _ = Describe("BuildTLSClient", func() {
 
 	It("returns an error when tls.key is missing", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "tls-secret"},
-			Data:       map[string][]byte{httpauth.TLSCertKey: certPEM},
+			Name: "tls-secret",
+			Data: map[string][]byte{httpauth.TLSCertKey: certPEM},
 		}
 
 		_, err := httpauth.BuildTLSClient(context.Background(), secret, time.Second)
@@ -289,7 +288,7 @@ var _ = Describe("BuildTLSClient", func() {
 var _ = Describe("ApplyBasicAuthFromSecret", func() {
 	It("fetches the secret and applies Basic auth to the request", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "basic-creds", Namespace: "default"},
+			Name: "basic-creds", Namespace: "default",
 			Data: map[string][]byte{
 				httpauth.UsernameKey: []byte("from-secret"),
 				httpauth.PasswordKey: []byte("secret-pass"),
@@ -319,8 +318,8 @@ var _ = Describe("ApplyBasicAuthFromSecret", func() {
 var _ = Describe("ApplyBearerAuthFromSecret", func() {
 	It("fetches the secret and applies Bearer auth to the request", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "api-token", Namespace: "default"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("fetched-bearer-token")},
+			Name: "api-token", Namespace: "default",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("fetched-bearer-token")},
 		}
 		scheme := utils.GetScheme()
 		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
@@ -364,7 +363,7 @@ var _ = Describe("ApplyOAuth2AuthFromSecret", func() {
 
 	It("fetches the secret and applies OAuth2 auth to the request", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "oauth-creds", Namespace: "default"},
+			Name: "oauth-creds", Namespace: "default",
 			Data: map[string][]byte{
 				httpauth.ClientIDKey:     []byte("oid"),
 				httpauth.ClientSecretKey: []byte("osecret"),
@@ -425,7 +424,7 @@ var _ = Describe("BuildTLSClientFromSecret", func() {
 
 	It("fetches the secret and builds a TLS client", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "client-cert", Namespace: "default"},
+			Name: "client-cert", Namespace: "default",
 			Data: map[string][]byte{
 				httpauth.TLSCertKey: certPEM,
 				httpauth.TLSKeyKey:  keyPEM,
@@ -454,8 +453,8 @@ var _ = Describe("BuildTLSClientFromSecret", func() {
 // scmProvider returns a namespaced ScmProvider with the given spec (caller sets exactly one of GitHub, GitLab, etc.).
 func scmProvider(name string, spec promoterv1alpha1.ScmProviderSpec) *promoterv1alpha1.ScmProvider {
 	return &promoterv1alpha1.ScmProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec:       spec,
+		Name: name, Namespace: "default",
+		Spec: spec,
 	}
 }
 
@@ -465,8 +464,8 @@ var _ = Describe("ApplySCMAuth", func() {
 	It("sets PRIVATE-TOKEN header for GitLab", func() {
 		provider := scmProvider("gitlab-prov", promoterv1alpha1.ScmProviderSpec{GitLab: &promoterv1alpha1.GitLab{}})
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "gitlab-secret"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("glpat-xyz")},
+			Name: "gitlab-secret",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("glpat-xyz")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://gitlab.example.com/api/", nil)
 
@@ -480,8 +479,8 @@ var _ = Describe("ApplySCMAuth", func() {
 	It("sets Authorization token for Forgejo/Gitea when token is present", func() {
 		provider := scmProvider("forgejo-prov", promoterv1alpha1.ScmProviderSpec{Forgejo: &promoterv1alpha1.Forgejo{Domain: "codeberg.org"}})
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "forgejo-secret"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("gitea-token")},
+			Name: "forgejo-secret",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("gitea-token")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/api/", nil)
 
@@ -494,7 +493,7 @@ var _ = Describe("ApplySCMAuth", func() {
 	It("sets Authorization Basic for Forgejo/Gitea when username and password are present", func() {
 		provider := scmProvider("gitea-prov", promoterv1alpha1.ScmProviderSpec{Gitea: &promoterv1alpha1.Gitea{Domain: "gitea.example.com"}})
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "gitea-secret"},
+			Name: "gitea-secret",
 			Data: map[string][]byte{
 				httpauth.UsernameKey: []byte("git"),
 				httpauth.PasswordKey: []byte("pass"),
@@ -511,7 +510,7 @@ var _ = Describe("ApplySCMAuth", func() {
 
 	It("returns error for Forgejo when neither token nor username/password", func() {
 		provider := scmProvider("forgejo-prov", promoterv1alpha1.ScmProviderSpec{Forgejo: &promoterv1alpha1.Forgejo{Domain: "codeberg.org"}})
-		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
+		secret := &corev1.Secret{Name: "empty", Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/", nil)
 
 		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
@@ -521,7 +520,7 @@ var _ = Describe("ApplySCMAuth", func() {
 
 	It("returns error for Gitea when neither token nor username/password", func() {
 		provider := scmProvider("gitea-prov", promoterv1alpha1.ScmProviderSpec{Gitea: &promoterv1alpha1.Gitea{Domain: "gitea.example.com"}})
-		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
+		secret := &corev1.Secret{Name: "empty", Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://gitea.example.com/", nil)
 
 		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
@@ -532,8 +531,8 @@ var _ = Describe("ApplySCMAuth", func() {
 	It("sets Bearer header for Bitbucket Cloud", func() {
 		provider := scmProvider("bb-prov", promoterv1alpha1.ScmProviderSpec{BitbucketCloud: &promoterv1alpha1.BitbucketCloud{}})
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bb-secret"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("bb-token")},
+			Name: "bb-secret",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("bb-token")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://api.bitbucket.org/", nil)
 
@@ -546,8 +545,8 @@ var _ = Describe("ApplySCMAuth", func() {
 	It("sets Basic auth for Azure DevOps (empty username, PAT as password)", func() {
 		provider := scmProvider("ado-prov", promoterv1alpha1.ScmProviderSpec{AzureDevOps: &promoterv1alpha1.AzureDevOps{Organization: "myorg"}})
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "ado-secret"},
-			Data:       map[string][]byte{httpauth.TokenKey: []byte("ado-pat")},
+			Name: "ado-secret",
+			Data: map[string][]byte{httpauth.TokenKey: []byte("ado-pat")},
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
 
@@ -570,7 +569,7 @@ var _ = Describe("ApplySCMAuth", func() {
 
 	It("returns error for unknown provider type", func() {
 		provider := scmProvider("empty-prov", promoterv1alpha1.ScmProviderSpec{})
-		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s"}, Data: map[string][]byte{}}
+		secret := &corev1.Secret{Name: "s", Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
 		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)

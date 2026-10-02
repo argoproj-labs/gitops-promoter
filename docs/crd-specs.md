@@ -1,8 +1,11 @@
 ### PromotionStrategy
 
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
-this CR, the user configures the list of live hydrated environment branches in their order of promotion. They'll also
-configure the checks which must pass between promotion steps.
+this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
+promotion steps. Promotion ordering requires `spec.orderCommitStatusRef`; the controller injects that gate's `spec.key`
+onto every `ChangeTransferPolicy`. The built-in gate is
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus); that gate's custom graphs use
+`spec.environments[].dependsOn` on the PromotionStrategy.
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -14,22 +17,37 @@ A ChangeTransferPolicy represents a pair hydrated environment branch pair: the p
 environment branch. When a new commit appears in the proposed branch, the ChangeTransferPolicy will open a PR against 
 the live branch. When all the configured checks pass, the ChangeTransferPolicy will merge the PR.
 
-A PromotionStrategy will create a ChangeTransferPolicy for each configured environment. For each environment besides the
-first one, the PromotionStrategy controller will inject a `proposedCommitStatus` to represent the active status of the
-previous environment. This is how the PromotionStrategy ensures that the environment PRs are merged in order, respecting
-the previous environments' active commit statuses.
+A PromotionStrategy will create a ChangeTransferPolicy for each configured environment, copy the declared
+`activeCommitStatuses` / `proposedCommitStatuses` onto that CTP, and inject the ordering gate key from
+`orderCommitStatusRef`. Without a valid ordering gate reference, the PromotionStrategy controller fails its reconcile.
+See [Gating Promotions](gating-promotions/index.md) and
+[Upgrading](upgrading.md#039-promotion-order-on-promotionstrategy) for details.
 
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
-ChangeTransferPolicies.
+ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
 
 ```yaml
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
+### ChangeTransferPolicyHistory
+
+A ChangeTransferPolicyHistory records the recent promotions for one environment. The ChangeTransferPolicy controller
+creates one for each ChangeTransferPolicy, and the ChangeTransferPolicyHistory controller reconstructs the history from
+Git — the first-parent commits of the active branch plus the
+[promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) and
+[commit trailers](debugging/git-trailers.md) — on a best-effort basis.
+
+`status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `mergeCommitSnapshotMismatch` is `true` on an entry, hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced): proposed dry SHA was reconstructed from the merge commit (and proposed hydrated SHA too for regular merges); **recorded commit statuses may not reflect the revision that actually merged**. Squash merges get the squash commit SHA from SCM `Get` like other merges, but proposed hydrated SHA is usually not recoverable from git. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes and operator guidance.
+
+```yaml
+{!internal/controller/testdata/ChangeTransferPolicyHistory.yaml!}
+```
+
 ### PullRequest
 
 A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage
-promotions.
+promotions. PullRequests carry promotion-strategy, change-transfer-policy, and environment labels for correlation; see [Labels](debugging/labels.md#promotion-and-change-transfer).
 
 ```yaml
 {!internal/controller/testdata/PullRequest.yaml!}
@@ -40,11 +58,29 @@ promotions.
 A CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for
 promotion gates. In the ideal case, the CommitStatus will write its state to the SCM's API so that the appropriate
 checkmarks/failures appear in the SCM's UI. But even if the SCM API calls fail, the ChangeTransferPolicy controller will
-use the contents of the CommitStatuses `spec` fields.
+use the contents of the CommitStatuses `spec` fields. Together, the active CommitStatuses for an environment express
+whether that environment is [successful](gating-promotions/index.md#environment-success).
+
+Controllers label CommitStatuses with three standard labels (gate `key`, environment branch, and parent gate). See [Labels](debugging/labels.md#commitstatus-gating) for label keys, derived parent-gate labels, and troubleshooting queries.
 
 ```yaml
 {!internal/controller/testdata/CommitStatus.yaml!}
 ```
+
+#### GateEnvironmentCommitStatus
+
+Shared embed for gate CR `status.environments[]` entries (not part of `CommitStatus` spec). Fields mirror the child
+`CommitStatus` report (last-known copy when the gate is not re-evaluating):
+
+| Field | Maps to `CommitStatus.spec` | Notes |
+|-------|----------------------------|-------|
+| `phase` | `phase` | `pending`, `success`, or `failure` |
+| `description` | `description` | Human-readable gate message |
+| `url` | `url` | SCM details link when configured |
+| `reportedSha` | `sha` | Hydrated SHA the child CommitStatus is attached to |
+
+DependentsSuccessfulCommitStatus is the first built-in gate to populate the full embed. See
+[Commit Status Controller Best Practices](contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
 ### GitRepository
 
@@ -73,6 +109,24 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
+### DependentsSuccessfulCommitStatus
+
+A DependentsSuccessfulCommitStatus gates promotions based on whether dependent environments are promoted and
+[successful](gating-promotions/index.md#environment-success). The DSCS controller reads the referenced
+PromotionStrategy's `spec.environments[]`: when no environment declares `dependsOn`, it infers a **linear**
+chain from list order (for example dev → staging → prod); otherwise each environment's `dependsOn` defines the DAG.
+Attach the gate with `PromotionStrategy.spec.orderCommitStatusRef`; the PromotionStrategy controller injects
+`spec.key` onto every `ChangeTransferPolicy`. See
+[Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
+
+`status.environments[]` reports per-branch upstream satisfaction, active commit statuses, and child CommitStatus mirror
+fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
+[`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus) and the gate doc for semantics.
+
+```yaml
+{!internal/controller/testdata/DependentsSuccessfulCommitStatus.yaml!}
+```
+
 ### ArgoCDCommitStatus
 
 An ArgoCDCommitStatus is used as a way to aggregate all the Argo CD Applications that are being used in the promotion strategy. It is used
@@ -80,6 +134,16 @@ to check the status of the Argo CD Applications that are being used in the promo
 
 ```yaml
 {!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
+```
+
+### ScheduledCommitStatus
+
+A ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions with durations.
+It defines recurring allow and exclusion windows that control when promotions can happen — useful for business-hours-only
+rollouts, deployment freezes, or maintenance-window policies. See [Scheduled Commit Status](gating-promotions/built-in-gates/scheduled-commit-status.md) for configuration details and examples.
+
+```yaml
+{!internal/controller/testdata/ScheduledCommitStatus.yaml!}
 ```
 
 ### TimedCommitStatus
@@ -94,9 +158,19 @@ duration before being promoted.
 {!internal/controller/testdata/TimedCommitStatus.yaml!}
 ```
 
+### GitCommitStatus
+
+A GitCommitStatus evaluates commit data with a custom expression and creates CommitStatus resources for
+promotion gating. See [Git Commit Status](gating-promotions/built-in-gates/git-commit-status.md) for configuration, expression
+variables, and examples.
+
+```yaml
+{!internal/controller/testdata/GitCommitStatus.yaml!}
+```
+
 ### WebRequestCommitStatus
 
-A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](commit-status-controllers/web-request.md) documentation for full configuration, examples, and template variables.
+A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](gating-promotions/built-in-gates/web-request-commit-status/index.md) documentation for full configuration, examples, and template variables.
 
 ```yaml
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
@@ -120,16 +194,31 @@ Every CRD which is reconciled has a `status.conditions` field. Each CRD currentl
 condition. If the `Ready` condition is `True`, then it means that 1) reconciliation of the resource has completed 
 successfully, and 2) all child resources also had a `Ready` condition of `True`.
 
+### Observed generation
+
+Reconciled CRDs set `status.observedGeneration`
+to the `metadata.generation` that produced the current status. When it equals `metadata.generation`, status is current;
+when it is lower, reconciliation has not caught up yet (or the last apply failed — see the `Ready` condition). Each
+`Ready` condition also has its own `observedGeneration` for the generation that condition reflects; on a failed apply,
+top-level `status.observedGeneration` may stay pinned to the last successful reconcile while the condition records the
+attempted generation.
+
 ### Condition Reasons
 
 All CRDs may have the following condition reasons:
 
 * `ReconciliationSuccess`
-* `ReconciliationFailed`
+* `ReconciliationError`
 
 #### `ArgoCDCommitStatus`
 
 The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+
+#### `DependentsSuccessfulCommitStatus`
+
+The `DependentsSuccessfulCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
 
@@ -143,8 +232,10 @@ The `ChangeTransferPolicy` CRD may also have the following condition reasons:
 
 The `PromotionStrategy` CRD may also have the following condition reasons:
 
-* `PreviousEnvironmentCommitStatusNotReady`
 * `ChangeTransferPolicyNotReady`
+
+Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus`, or a gate `key` not listed in the
+effective `proposedCommitStatuses` for an environment branch) surfaces as `ReconciliationError`.
 
 ## Finalizers
 
@@ -153,12 +244,24 @@ resources and ensuring proper cleanup of external resources (like pull requests 
 
 **All finalizers are managed automatically by the controllers. You do not need to set them manually via GitOps.**
 
+For a complete finalizer table (including ChangeTransferPolicy cross-resource finalizers), risks of manual removal, and how to report stuck deletes, see [Finalizers](debugging/finalizers.md). Contributors adding finalizers should read [Using Finalizers](contributing/using-finalizers.md).
+
 ### PullRequest Finalizer
 
-**Finalizer**: `pullrequest.promoter.argoporoj.io/finalizer`
+**Finalizer**: `pullrequest.promoter.argoproj.io/finalizer`
 
 When a PullRequest is deleted, the finalizer ensures that the pull request is properly closed on the SCM before the 
 Kubernetes resource is removed. This prevents orphaned pull requests in your SCM.
+
+**ChangeTransferPolicy-owned PullRequest finalizer**: `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`
+
+Set on PullRequests managed by a ChangeTransferPolicy so the CTP controller can copy PR status before the PullRequest
+resource is removed.
+
+**ChangeTransferPolicy cleanup finalizer**: `changetransferpolicy.promoter.argoproj.io/finalizer`
+
+Set on ChangeTransferPolicy while owned PullRequests may still carry the pullrequest finalizer above; cleared after
+cleanup during deletion.
 
 ### GitRepository Finalizer
 
@@ -193,6 +296,14 @@ When you delete a PromotionStrategy and its associated resources, the finalizers
 
 If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
 "Terminating" state until their dependent resources are removed. This is normal and expected behavior.
+
+## Labels
+
+Built-in controllers set promoter labels on `ChangeTransferPolicy`, `PullRequest`, and `CommitStatus` objects so promotion checks and cleanup can list related resources. Each gate-created `CommitStatus` gets **three** standard labels: `promoter.argoproj.io/commit-status`, `promoter.argoproj.io/environment`, and a derived parent-gate key (for example `promoter.argoproj.io/argo-cd-commit-status`).
+
+Label keys are defined in [`api/v1alpha1/constants.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/api/v1alpha1/constants.go); parent-gate label keys are derived from the gate Kind. Branch and name values are sanitized with `KubeSafeLabel` before they are stored.
+
+See [Labels](debugging/labels.md) for the full reference, useful `kubectl` queries, and troubleshooting when gating does not match expectations. For how commit-status labels relate to `PromotionStrategy` selectors, see [Gating Promotions](gating-promotions/index.md).
 
 ## Validation Conventions
 

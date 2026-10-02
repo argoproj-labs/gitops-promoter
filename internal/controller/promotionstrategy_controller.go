@@ -19,11 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/client-go/tools/events"
@@ -36,26 +37,69 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/ordercommitstatusgate"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
-type ctpEnqueueState struct {
-	lastEnqueueTime   time.Time
-	hasScheduledRetry bool
+// ctpDisagreement identifies one distinct effective-dry-SHA gap for a CTP:
+// its own observed value versus the newest effective dry SHA among sibling CTPs.
+// Reconcile refetches git; if the gap is unchanged afterward, git had nothing new
+// for that snapshot. The same disagreement is re-enqueued on a threshold until
+// the gap changes or the CTP converges.
+type ctpDisagreement struct {
+	// ctpEffectiveProposedDrySha is this CTP's effective proposed dry SHA
+	// (Note.DrySha if set, else Proposed.Dry.Sha).
+	ctpEffectiveProposedDrySha string
+	// newestEffectiveProposedDrySha is the effective proposed dry SHA from the
+	// sibling CTP with the newest hydrated commit — the batch convergence target.
+	newestEffectiveProposedDrySha string
 }
+
+// ctpEnqueueState tracks rate limiting and retry state for enqueuing out-of-sync CTPs.
+type ctpEnqueueState struct {
+	// lastEnqueueTime is when this CTP was last enqueued. It bounds enqueue spacing to
+	// the threshold, so a fresh disagreement arriving right after a nudge cannot bypass
+	// the rate limit.
+	lastEnqueueTime time.Time
+	// lastSeenTime is when the enqueue decision last considered this CTP. The hourly
+	// cleanup sweeps on this rather than lastEnqueueTime because retry-chain ticks
+	// refresh lastEnqueueTime: a deleted CTP would otherwise stay in the map forever
+	// while its stranded chain kept nudging. handleRateLimitedEnqueue and markConverged
+	// refresh lastSeenTime on every PromotionStrategy pass, so a live CTP stays. A
+	// deleted CTP is no longer considered, lastSeenTime goes stale, the entry is swept
+	// within the hour, and the stranded chain sees a missing state and stops.
+	lastSeenTime time.Time
+	// lastDisagreement is the disagreement this CTP is currently armed for — the value a
+	// retry chain was started with. It is the single source of truth for two things:
+	//   - Chain liveness: a chain re-nudges only while lastDisagreement still equals the
+	//     value it was armed with. A changed disagreement overwrites it (starting a new
+	//     chain and stranding the old one); convergence clears it to the zero value. In
+	//     both cases the stranded chain sees a mismatch on its next tick and stops — no
+	//     per-chain flag or generation counter is needed.
+	//   - Enqueue suppression: while lastDisagreement still matches, handleRateLimitedEnqueue
+	//     treats the disagreement as already handled by the running chain and does nothing.
+	lastDisagreement ctpDisagreement
+}
+
+const (
+	// defaultEnqueueThreshold is the minimum spacing between enqueues of the same CTP,
+	// and the spacing between chained retries.
+	defaultEnqueueThreshold = 15 * time.Second
+)
 
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
+	RESTMapper  meta.RESTMapper
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
@@ -64,14 +108,26 @@ type PromotionStrategyReconciler struct {
 
 	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
-	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
-	enqueueStateMutex sync.Mutex
+	enqueueStates map[client.ObjectKey]*ctpEnqueueState
+
+	// noteBasedHydratorPromotionStrategies is a process-lifetime set of PromotionStrategy
+	// UIDs that have exposed a non-empty Proposed.Note.DrySha on any environment.
+	// Presence means noteless sibling CTPs should be reconciled to fetch their notes.
+	noteBasedHydratorPromotionStrategies sync.Map
+	enqueueStateMutex                    sync.Mutex
+
+	// enqueueThreshold is the minimum spacing between enqueues of the same CTP.
+	// The zero value means the production default (defaultEnqueueThreshold); tests
+	// override it so retry behavior can be exercised without real 15s waits.
+	enqueueThreshold time.Duration
 }
 
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/finalizers,verbs=update
-
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;patch;create;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
@@ -87,8 +143,18 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
+	// skipStatusWrite is set on the deletion fast-path below to suppress the deferred status
+	// apply: the controller intentionally stops reconciling deleting objects, so patching
+	// status (and emitting Ready events) for them is pure noise.
+	skipStatusWrite := false
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer func() {
+		if skipStatusWrite {
+			return
+		}
+		utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err, &previousReady)
+	}()
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -102,18 +168,30 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// If the resource is being deleted, stop reconciling immediately without requeuing
 	if !ps.DeletionTimestamp.IsZero() {
+		skipStatusWrite = true
 		logger.V(4).Info("PromotionStrategy is being deleted, skipping reconciliation")
 		return ctrl.Result{}, nil
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(ps.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&ps)
+
+	// Safety check: resolve the ordering gate referenced by orderCommitStatusRef and verify it
+	// points back at this PromotionStrategy.
+	orderGateKey, err := ordercommitstatusgate.Resolve(ctx, r.Client, r.RESTMapper, &ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to resolve orderCommitStatusRef: %w", err)
+	}
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.
 	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for i, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
-		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
+		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment, orderGateKey)
 		if err != nil {
 			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
@@ -130,18 +208,13 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
-	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
-	}
-
 	// Check if any environments need to refresh their git notes.
 	// SCM's do not send webhooks when git notes are pushed, so we need to
 	// trigger CTP reconciliation when we detect stale NoteDrySha values.
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
 	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ctps)
+	r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -149,7 +222,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	return ctrl.Result{
-		Requeue:      true,
 		RequeueAfter: requeueDuration,
 	}, nil
 }
@@ -162,6 +234,10 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return []string{cs.Spec.Sha}
 	}); err != nil {
 		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
+	}
+
+	if err := RegisterGatePromotionStrategyRefFieldIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
+		return err
 	}
 
 	// Use Direct methods to read configuration from the API server without cache during setup.
@@ -187,13 +263,13 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment, orderGateKey string) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
+	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build active commit status selectors
@@ -213,42 +289,54 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	for _, cs := range ps.Spec.ProposedCommitStatuses {
 		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
 	}
+	if orderGateKey != "" && !slices.ContainsFunc(proposedCommitStatuses, func(sel *acv1alpha1.CommitStatusSelectorApplyConfiguration) bool {
+		return sel.Key != nil && *sel.Key == orderGateKey
+	}) {
+		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(orderGateKey))
+	}
 
-	// Add previous environment commit status if needed
-	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
-	previousEnvironmentIndex := environmentIndex - 1
-	if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
-		// Check if already present
-		found := false
-		for _, cs := range proposedCommitStatuses {
-			if cs.Key != nil && *cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
-				found = true
-				break
-			}
-		}
-		if !found {
-			proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.PreviousEnvironmentCommitStatusKey))
-		}
+	activePath := ps.Spec.ActivePath
+	if environment.ActivePath != "" {
+		activePath = environment.ActivePath
+	}
+
+	proposedBranch := fmt.Sprintf("%s-%s", environment.Branch, "next")
+	if activePath != "" {
+		proposedBranch = path.Join(proposedBranch, activePath)
 	}
 
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-		WithProposedBranch(fmt.Sprintf("%s-%s", environment.Branch, "next")).
+		WithProposedBranch(proposedBranch).
 		WithActiveBranch(environment.Branch).
 		WithActiveCommitStatuses(activeCommitStatuses...).
 		WithProposedCommitStatuses(proposedCommitStatuses...)
+
+	if activePath != "" {
+		ctpSpec = ctpSpec.WithActivePath(activePath)
+	}
 
 	if environment.AutoMerge != nil {
 		ctpSpec = ctpSpec.WithAutoMerge(*environment.AutoMerge)
 	}
 
+	if ps.Spec.PullRequest != nil {
+		prPolicy := acv1alpha1.PullRequestPolicySpec()
+		if ps.Spec.PullRequest.Labels != nil {
+			prPolicy = prPolicy.WithLabels(
+				acv1alpha1.ScmLabelsSpec().WithExpression(ps.Spec.PullRequest.Labels.Expression))
+		}
+		ctpSpec = ctpSpec.WithPullRequest(prPolicy)
+	}
+
 	// Build the apply configuration
+	ctpLabels := utils.StampInstanceIDLabel(map[string]string{
+		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
+		promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
+	})
 	ctpApply := acv1alpha1.ChangeTransferPolicy(ctpName, ps.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
-			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
-		}).
+		WithLabels(ctpLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -353,7 +441,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		ps.Status.Environments[i].Active = ctp.Status.Active
 		ps.Status.Environments[i].Proposed = ctp.Status.Proposed
 		ps.Status.Environments[i].PullRequest = ctp.Status.PullRequest
-		ps.Status.Environments[i].History = ctp.Status.History
 
 		// TODO: actually implement keeping track of healthy dry sha's
 		// We only want to keep the last 10 healthy dry sha's
@@ -369,8 +456,31 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // (Note.DrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
-// Rate limiting: Only enqueues a CTP once per 15 seconds. If rate limited, schedules a delayed enqueue.
-func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+//
+// Once any environment reports a non-empty Note.DrySha, the PromotionStrategy UID
+// is remembered for the lifetime of this controller process as using a note-based
+// hydrator. From then on, any sibling without a proposed note is also out of sync,
+// even when its Proposed.Dry.Sha fallback equals the batch target.
+//
+// Target selection: the target is the effective dry SHA of the CTP with the newest
+// proposed hydrated commit — the environment with the freshest knowledge of hydrator
+// output. Using the effective (note-preferred) SHA rather than the hydrator.metadata file
+// means a no-op hydration (git note updated to a newer dry SHA without a new commit)
+// moves the target too, so environments whose notes lag behind a sibling's are the ones
+// nudged, and a batch where every note already agrees is left alone.
+//
+// Retry control: a triggered reconcile refetches the branch and its git notes; if the
+// disagreement is unchanged afterwards, git held nothing the status hadn't already seen
+// at that moment. The note the disagreement is waiting on may still land shortly after
+// (note pushes have no webhooks), so the same disagreement gets one immediate enqueue
+// plus a chained series of threshold-spaced delayed retries that continue until the
+// gap changes or the CTP converges. A changed disagreement (a fetched note, a new
+// target) starts a fresh chain and is nudged promptly again.
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(
+	ctx context.Context,
+	promotionStrategyUID types.UID,
+	ctps []*promoterv1alpha1.ChangeTransferPolicy,
+) {
 	if len(ctps) == 0 {
 		return
 	}
@@ -386,50 +496,74 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		r.startCleanupTimer()
 	}
 
-	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
-	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+	// Get the effective proposed dry SHA for each CTP (Note.DrySha if set, else Proposed.Dry.Sha).
+	getEffectiveProposedDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
 		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
 			return ctp.Status.Proposed.Note.DrySha
 		}
 		return ctp.Status.Proposed.Dry.Sha
 	}
+	getProposedNoteDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+		if ctp.Status.Proposed.Note == nil {
+			return ""
+		}
+		return ctp.Status.Proposed.Note.DrySha
+	}
 
-	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
-	// We use the hydrated commit time to find the most recently hydrated environment, then use its
-	// Proposed.Dry.Sha as the target. CTPs whose effective dry SHA (from git note) doesn't match
-	// this target need to reconcile to fetch the updated git note.
-	var targetSha string
+	for _, ctp := range ctps {
+		if getProposedNoteDrySha(ctp) != "" {
+			r.noteBasedHydratorPromotionStrategies.Store(promotionStrategyUID, struct{}{})
+			break
+		}
+	}
+	_, usesNoteBasedHydrator := r.noteBasedHydratorPromotionStrategies.Load(promotionStrategyUID)
+
+	// Find the newest effective proposed dry SHA — from the CTP with the newest proposed
+	// hydrated commit. CTPs whose own effective proposed dry SHA doesn't match need to
+	// reconcile to fetch the updated git note. A single-environment strategy can never
+	// disagree with itself: its own effective SHA is the batch target.
+	var newestEffectiveProposedDrySha string
 	var newestTime metav1.Time
 	for _, ctp := range ctps {
-		proposedDrySha := ctp.Status.Proposed.Dry.Sha
-		if proposedDrySha == "" {
+		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
+		if ctpEffectiveProposedDrySha == "" {
 			continue
 		}
 		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
-		if targetSha == "" || commitTime.After(newestTime.Time) {
-			targetSha = proposedDrySha
+		if newestEffectiveProposedDrySha == "" || commitTime.After(newestTime.Time) {
+			newestEffectiveProposedDrySha = ctpEffectiveProposedDrySha
 			newestTime = commitTime
 		}
 	}
 
-	if targetSha == "" {
+	if newestEffectiveProposedDrySha == "" {
 		return
 	}
 
-	// Trigger reconcile only for CTPs that have a different effective dry SHA.
-	// Rate limiting: Only enqueue if not enqueued recently.
+	// Consider enqueuing reconcile for CTPs whose effective proposed dry SHA differs
+	// from the batch target. Rate limiting in handleRateLimitedEnqueue spaces retries
+	// of the same disagreement to one enqueue per threshold.
 	for _, ctp := range ctps {
-		effectiveSha := getEffectiveDrySha(ctp)
-		if effectiveSha == targetSha {
+		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
+		proposedNoteMissing := usesNoteBasedHydrator && getProposedNoteDrySha(ctp) == ""
+		// Matching effective SHAs is not enough once this PromotionStrategy has used
+		// notes: Proposed.Dry.Sha can equal the target while Proposed.Note is still
+		// unset, so the CTP has not actually fetched the hydrator note.
+		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha && !proposedNoteMissing {
+			r.markConverged(client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name})
 			continue
 		}
 
 		// Add SHA information to context for logging
 		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
-			"effectiveSha", effectiveSha,
-			"targetSha", targetSha,
+			"ctpEffectiveProposedDrySha", ctpEffectiveProposedDrySha,
+			"newestEffectiveProposedDrySha", newestEffectiveProposedDrySha,
+			"proposedNoteMissing", proposedNoteMissing,
 		))
-		r.handleRateLimitedEnqueue(ctxWithLog, ctp)
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp, ctpDisagreement{
+			ctpEffectiveProposedDrySha:    ctpEffectiveProposedDrySha,
+			newestEffectiveProposedDrySha: newestEffectiveProposedDrySha,
+		})
 	}
 }
 
@@ -441,16 +575,18 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	//       * Struct: 32 bytes (2 string headers, 16 bytes each)
 	//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
 	//   - *ctpEnqueueState pointer: 8 bytes
-	//   - ctpEnqueueState struct: 32 bytes
-	//       * time.Time: 24 bytes
-	//       * bool: 1 byte + 7 bytes padding = 8 bytes
+	//   - ctpEnqueueState struct: ~80 bytes
+	//       * 2x time.Time: 48 bytes
+	//       * ctpDisagreement (2 string headers): 32 bytes
+	//   - ctpDisagreement string content: 2 SHAs at 40-64 chars = ~80-128 bytes
 	//   - Map overhead: ~8 bytes per entry
-	//   Total: ~144 bytes per CTP
+	//   Total: ~300 bytes per CTP. The disagreement is a single value overwritten on
+	//   each enqueue, never an accumulating set, so entries do not grow over time.
 	//
 	// Memory bounds (assuming 32-char namespace and name):
-	//   - 100 stale entries = ~14 KB
-	//   - 1,000 stale entries = ~144 KB
-	//   - 10,000 stale entries = ~1.4 MB
+	//   - 100 stale entries = ~30 KB
+	//   - 1,000 stale entries = ~300 KB
+	//   - 10,000 stale entries = ~3 MB
 	//
 	// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
 	var scheduleCleanup func()
@@ -458,7 +594,15 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 		time.AfterFunc(1*time.Hour, func() {
 			r.enqueueStateMutex.Lock()
 			for key, state := range r.enqueueStates {
-				if time.Since(state.lastEnqueueTime) > 1*time.Hour {
+				// Sweep on lastSeenTime, not lastEnqueueTime. A live disagreement is
+				// still considered on every PromotionStrategy reconcile, which keeps
+				// lastSeenTime fresh. Entries go stale here only when the enqueue
+				// decision stops considering the CTP — it was deleted, its
+				// PromotionStrategy is gone, or it converged with the target
+				// (harmless to sweep: a future disagreement re-arms from a fresh
+				// entry anyway). A stranded retry chain then sees a missing state
+				// and stops.
+				if time.Since(state.lastSeenTime) > 1*time.Hour {
 					delete(r.enqueueStates, key)
 				}
 			}
@@ -469,338 +613,135 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	scheduleCleanup()
 }
 
-// handleRateLimitedEnqueue applies rate limiting to a CTP enqueue request.
-// It checks if the CTP was enqueued recently and either:
-// - Skips if a delayed retry is already scheduled
-// - Schedules a delayed retry if within the rate limit threshold
-// - Enqueues immediately if not rate limited
+// handleRateLimitedEnqueue nudges a CTP to reconcile for the given disagreement, rate
+// limited so the same CTP is not enqueued more than once per threshold (15s by default).
+//
+// A disagreement that differs from the one the CTP is currently armed for (a brand-new
+// gap, a fetched note, a new target) starts a fresh retry chain and enqueues
+// right away — unless the CTP was enqueued within the threshold, in which case the
+// immediate nudge is skipped and the chain delivers it on its first tick. That tick is a
+// full threshold after the chain starts (not just the time remaining in the rate-limit
+// window), so a deferred first nudge can land up to nearly two thresholds after the
+// previous enqueue; this is acceptable because the note being waited on typically lands
+// within that window anyway. A disagreement identical to the one already armed is left to
+// the existing chain, so it is ignored here. The chain (see startRetryChain) owns all
+// subsequent re-nudging and its own termination; this function never schedules directly.
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
+	disagreement ctpDisagreement,
 ) {
-	const enqueueThreshold = 15 * time.Second
+	enqueueThreshold := r.enqueueThreshold
+	if enqueueThreshold <= 0 {
+		enqueueThreshold = defaultEnqueueThreshold
+	}
 
 	logger := log.FromContext(ctx)
 	now := time.Now()
 	key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
 
-	// Helper to get or create state for a CTP (must be called with lock held)
-	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
-		state := r.enqueueStates[key]
-		if state == nil {
-			state = &ctpEnqueueState{}
-			r.enqueueStates[key] = state
-		}
-		return state
-	}
-
 	r.enqueueStateMutex.Lock()
-	state := getOrCreateState(key)
-
-	// Check if rate limited
-	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
-	if timeSinceLastEnqueue < enqueueThreshold {
-		// Already have a delayed enqueue scheduled, nothing to do
-		if state.hasScheduledRetry {
-			r.enqueueStateMutex.Unlock()
-			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
-				"ctp", ctp.Name,
-				"lastEnqueuedAgo", timeSinceLastEnqueue)
-			return
-		}
-
-		// Schedule a delayed enqueue
-		state.hasScheduledRetry = true
-		timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
+	state := r.getOrCreateState(key)
+	state.lastSeenTime = now
+	if state.lastDisagreement == disagreement {
+		// Already armed for this exact disagreement: a retry chain is ticking. There
+		// is nothing to do here until the disagreement changes or the CTP converges.
 		r.enqueueStateMutex.Unlock()
-
-		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
-			"ctp", ctp.Name,
-			"lastEnqueuedAgo", timeSinceLastEnqueue,
-			"retryIn", timeUntilThreshold)
-
-		time.AfterFunc(timeUntilThreshold, func() {
-			r.enqueueStateMutex.Lock()
-			state := getOrCreateState(key)
-
-			// Update state and enqueue
-			state.lastEnqueueTime = time.Now()
-			state.hasScheduledRetry = false
-			r.enqueueStateMutex.Unlock()
-
-			if r.EnqueueCTP != nil {
-				r.EnqueueCTP(key.Namespace, key.Name)
-				logger.V(4).Info("Delayed enqueue succeeded",
-					"ctp", key.Name)
-			}
-		})
-
+		logger.V(4).Info("Enqueue skipped, already armed for this disagreement", "ctp", ctp.Name)
 		return
 	}
-
-	// Not rate limited - enqueue immediately
-	state.lastEnqueueTime = now
-	state.hasScheduledRetry = false
+	state.lastDisagreement = disagreement
+	rateLimited := now.Sub(state.lastEnqueueTime) < enqueueThreshold
 	r.enqueueStateMutex.Unlock()
 
-	logger.V(4).Info("Enqueueing out-of-sync CTP",
-		"ctp", ctp.Name)
+	// Start a fresh chain for the new disagreement, then enqueue immediately unless the
+	// CTP was nudged within the rate-limit window — in which case the chain's first tick
+	// delivers the nudge once the window elapses. The chain keeps nudging on the
+	// threshold until the disagreement changes or the CTP converges.
+	if rateLimited {
+		logger.V(4).Info("Rate limited, deferring enqueue to retry chain", "ctp", ctp.Name)
+	} else {
+		logger.V(4).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
+		r.enqueue(key)
+	}
+	r.startRetryChain(ctx, key, disagreement)
+}
+
+// getOrCreateState returns the enqueue state for key, creating it if absent. Callers must
+// hold enqueueStateMutex.
+func (r *PromotionStrategyReconciler) getOrCreateState(key client.ObjectKey) *ctpEnqueueState {
+	state := r.enqueueStates[key]
+	if state == nil {
+		state = &ctpEnqueueState{}
+		r.enqueueStates[key] = state
+	}
+	return state
+}
+
+// enqueue records the enqueue time and triggers a CTP reconcile. Callers must NOT hold
+// enqueueStateMutex.
+func (r *PromotionStrategyReconciler) enqueue(key client.ObjectKey) {
+	r.enqueueStateMutex.Lock()
+	r.getOrCreateState(key).lastEnqueueTime = time.Now()
+	r.enqueueStateMutex.Unlock()
 
 	if r.EnqueueCTP != nil {
 		r.EnqueueCTP(key.Namespace, key.Name)
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+// startRetryChain re-nudges a CTP every threshold until the disagreement changes or the
+// CTP converges. It exists because SCMs send no webhook for git-note pushes: the note a
+// disagreement is waiting on may land in the seconds after a reconcile, and at a long CTP
+// requeue interval that would otherwise be the only retry. Each tick re-nudges only while
+// lastDisagreement still equals the disagreement the chain was armed with; a changed
+// disagreement (new chain), convergence (cleared), or a swept map entry makes the tick a
+// no-op and ends the chain. lastSeenTime is not refreshed here: only the enqueue decision
+// (handleRateLimitedEnqueue / markConverged) does, so a deleted CTP's entry goes stale
+// and the stranded chain stops after cleanup.
+func (r *PromotionStrategyReconciler) startRetryChain(
+	ctx context.Context,
+	key client.ObjectKey,
+	disagreement ctpDisagreement,
+) {
+	enqueueThreshold := r.enqueueThreshold
+	if enqueueThreshold <= 0 {
+		enqueueThreshold = defaultEnqueueThreshold
+	}
 	logger := log.FromContext(ctx)
 
-	// TODO: do we like this name proposed-<name>?
-	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
+	time.AfterFunc(enqueueThreshold, func() {
+		r.enqueueStateMutex.Lock()
+		state := r.enqueueStates[key]
+		stale := state == nil || state.lastDisagreement != disagreement
+		r.enqueueStateMutex.Unlock()
 
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+		if stale {
+			// The disagreement changed, the CTP converged, or the entry was swept;
+			// a newer chain, if any, owns it.
+			return
+		}
 
-	// If there is only one commit status, use the URL from that commit status.
-	var url string
-	if len(previousCRPCSPhases) == 1 {
-		url = previousCRPCSPhases[0].Url
-	}
-
-	statusMap := make(map[string]string)
-	for _, status := range previousCRPCSPhases {
-		statusMap[status.Key] = status.Phase
-	}
-	yamlStatusMap, err := yaml.Marshal(statusMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
-	}
-
-	description := previousEnvironmentBranch + " - synced and healthy"
-	if phase == promoterv1alpha1.CommitPhasePending && pendingReason != "" {
-		description = pendingReason
-	}
-
-	// Build the apply configuration
-	commitStatusApply := acv1alpha1.CommitStatus(csName, ctp.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-		}).
-		WithAnnotations(map[string]string{
-			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
-		}).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(ctp.Name).
-			WithUID(ctp.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().
-				WithName(ctp.Spec.RepositoryReference.Name)).
-			WithSha(ctp.Status.Proposed.Hydrated.Sha).
-			WithName(previousEnvironmentBranch + " - synced and healthy").
-			WithDescription(description).
-			WithPhase(phase).
-			WithUrl(url))
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = csName
-	commitStatus.Namespace = ctp.Namespace
-	if err = r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply previous environments CommitStatus: %w", err)
-	}
-
-	logger.V(4).Info("Applied previous environment CommitStatus")
-
-	return commitStatus, nil
+		logger.V(4).Info("Retrying enqueue for unchanged disagreement",
+			"ctp", key.Name)
+		r.enqueue(key)
+		r.startRetryChain(ctx, key, disagreement)
+	})
 }
 
-// updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
-// ps.Spec.Environments and ps.Status.Environments must be the same length and in the same order as ctps.
-func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) error {
-	logger := log.FromContext(ctx)
-	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
-	// currently processing environments proposed dry sha.
-	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(ctps))
-	for i, ctp := range ctps {
-		if i == 0 {
-			// Skip, there's no previous environment.
-			continue
-		}
+// markConverged clears the retry chain for a CTP whose effective dry SHA now matches the
+// batch target. Zeroing lastDisagreement makes the running chain's next tick a no-op
+// (see startRetryChain); lastSeenTime is refreshed so the cleanup sweep does not evict a
+// still-live entry.
+func (r *PromotionStrategyReconciler) markConverged(key client.ObjectKey) {
+	r.enqueueStateMutex.Lock()
+	defer r.enqueueStateMutex.Unlock()
 
-		if len(ps.Spec.ActiveCommitStatuses) == 0 && len(ps.Spec.Environments[i-1].ActiveCommitStatuses) == 0 {
-			// Skip, there aren't any active commit statuses configured for the PromotionStrategy or the previous environment.
-			continue
-		}
-
-		previousEnvironmentStatus := ps.Status.Environments[i-1]
-		currentEnvironmentStatus := ps.Status.Environments[i]
-
-		// Skip if there's no proposed change in the current environment (i.e., active and proposed are the same).
-		// In this case, there's no PR to put a commit status on, so we shouldn't create/update one.
-		// This prevents updating commit status on already-merged PRs when the previous environment state changes.
-		if ctp.Status.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha {
-			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment",
-				"activeBranch", ctp.Spec.ActiveBranch,
-				"activeDrySha", ctp.Status.Active.Dry.Sha,
-				"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
-				"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
-				"currentEnvironmentActiveDrySha", ctp.Status.Proposed.Dry.Sha,
-			)
-			continue
-		}
-
-		// Determine which dry SHA the current environment's hydrator has processed.
-		// The Note.DrySha (from git note) is the authoritative source because when manifests don't change
-		// between dry commits, the hydrator may only update the git note without creating a new commit.
-		// For legacy hydrators that don't use git notes, fall back to Proposed.Dry.Sha.
-		currentEnvHydratedForDrySha := getEffectiveHydratedDrySha(currentEnvironmentStatus)
-
-		// Pass all preceding environment statuses so we can look back past no-op hydrations
-		precedingEnvStatuses := ps.Status.Environments[:i]
-
-		// Recursively check ALL preceding environments to:
-		// 1. Check that each has been hydrated for the same dry SHA
-		// 2. Find the first environment that actually deployed this change (not a no-op)
-		// 3. Check that environment's commit statuses
-		//
-		// This handles cases like dev -> staging -> prod where:
-		// - A change affects dev and prod but staging is a no-op
-		// - We need to ensure dev has been hydrated, promoted, AND is healthy before prod can promote
-		isPending, pendingReason := isPreviousEnvironmentPending(precedingEnvStatuses, currentEnvHydratedForDrySha, currentEnvironmentStatus.Active.Dry.CommitTime)
-
-		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
-		if isPending {
-			commitStatusPhase = promoterv1alpha1.CommitPhasePending
-		}
-
-		logger.V(4).Info("Setting previous environment CommitStatus phase",
-			"phase", commitStatusPhase,
-			"pendingReason", pendingReason,
-			"activeBranch", ctp.Spec.ActiveBranch,
-			"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
-			"proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha,
-			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
-			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
-			"previousEnvironmentProposedDrySha", previousEnvironmentStatus.Proposed.Dry.Sha,
-			"previousEnvironmentProposedNoteSha", getNoteDrySha(previousEnvironmentStatus.Proposed.Note),
-			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
-
-		// Since there is at least one configured active check, and since this is not the first environment,
-		// we should not create a commit status for the previous environment.
-		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
-		if err != nil {
-			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
-		}
-		commitStatuses = append(commitStatuses, cs)
+	state := r.enqueueStates[key]
+	if state == nil {
+		return
 	}
 
-	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.PreviousEnvironmentCommitStatusNotReady, commitStatuses...)
-
-	return nil
-}
-
-// getNoteDrySha safely returns the DrySha from a HydratorMetadata pointer, or empty string if nil.
-func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
-	if note == nil {
-		return ""
-	}
-	return note.DrySha
-}
-
-// getEffectiveHydratedDrySha returns the dry SHA that an environment's hydrator has processed.
-// Uses Note.DrySha if available (git note), otherwise falls back to Proposed.Dry.Sha (hydrator.metadata).
-func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) string {
-	noteSha := getNoteDrySha(envStatus.Proposed.Note)
-	if noteSha != "" {
-		return noteSha
-	}
-	return envStatus.Proposed.Dry.Sha
-}
-
-// isPreviousEnvironmentPending recursively checks preceding environments (from last to first) to verify:
-// 1. The environment has been hydrated for the target dry SHA
-// 2. If the environment has real changes (not a no-op), it has been promoted and is healthy
-// 3. If the environment is a no-op, verify it is healthy, then recurse to check earlier environments
-func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (isPending bool, reason string) {
-	// Base case: no more environments to check - all were no-ops
-	// This is valid - e.g., a change that only affects production. Allow promotion.
-	if len(precedingEnvStatuses) == 0 {
-		return false, ""
-	}
-
-	// Check the last (most recent) preceding environment
-	envStatus := precedingEnvStatuses[len(precedingEnvStatuses)-1]
-	envHydratedForDrySha := getEffectiveHydratedDrySha(envStatus)
-	envProposedDrySha := envStatus.Proposed.Dry.Sha
-
-	// Check if hydrator has processed the same dry SHA as the current environment
-	if envHydratedForDrySha != targetDrySha {
-		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
-	}
-
-	// Check if this environment has merged the target dry SHA
-	envMergedTarget := envStatus.Active.Dry.Sha == targetDrySha
-
-	if envMergedTarget {
-		// Verify commit time ordering (merged env should be equal or newer)
-		envDryShaEqualOrNewer := envStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentActiveCommitTime.Time}) ||
-			envStatus.Active.Dry.CommitTime.After(currentActiveCommitTime.Time)
-		if !envDryShaEqualOrNewer {
-			// This should basically never happen.
-			return true, "Previous environment's commit is older than current environment's commit"
-		}
-
-		// This environment actually merged the target dry SHA - check its commit statuses
-		return checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch)
-	}
-
-	// Check if this environment is a no-op (git note updated but no new commit).
-	// A no-op is when Note.DrySha differs from Proposed.Dry.Sha - the git note was updated
-	// to a newer dry SHA, but hydrator.metadata still has the old value because no new commit was created.
-	envIsNoOp := envHydratedForDrySha != envProposedDrySha
-
-	// Check if this environment has pending changes (PR not yet merged).
-	// This catches the case where:
-	// - Commit 1 changed this env (autoMerge=false, PR not merged)
-	// - Commit 2 did NOT change this env (no-op for commit 2)
-	// - Downstream envs should still wait for commit 1's PR to be merged
-	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
-
-	// Only recurse (skip this environment) if it's a no-op AND has no pending changes.
-	// If it's not a no-op OR has pending changes, we need to wait for it.
-	if !envIsNoOp || envHasPendingChanges {
-		return true, "Waiting for previous environment to be promoted"
-	}
-
-	// Even for no-op environments with no pending changes, verify that the active
-	// deployment is healthy. This catches the case where a newer no-op dry SHA arrives
-	// while a real promotion is still deploying — without this check, every environment
-	// looks like a "no-op with no pending changes" and the recursion skips all health
-	// checks, allowing downstream environments to promote prematurely.
-	if isPend, reason := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch); isPend {
-		return isPend, reason
-	}
-
-	// This environment is a no-op with no pending changes and is healthy - recurse to check earlier environments
-	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
-}
-
-// checkCommitStatusesPassing checks if all commit statuses are passing and returns an appropriate
-// pending status and reason if not. If branch is empty, it uses "previous environment" as the description.
-func checkCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, branch string) (isPending bool, reason string) {
-	if utils.AreCommitStatusesPassing(commitStatuses) {
-		return false, ""
-	}
-	envDesc := fmt.Sprintf("%q environment's", branch)
-	if branch == "" {
-		envDesc = "previous environment's"
-	}
-	if len(commitStatuses) == 1 {
-		return true, fmt.Sprintf("Waiting for %s %q commit status to be successful", envDesc, commitStatuses[0].Key)
-	}
-	return true, fmt.Sprintf("Waiting for %s commit statuses to be successful", envDesc)
+	state.lastSeenTime = time.Now()
+	state.lastDisagreement = ctpDisagreement{}
 }

@@ -30,18 +30,20 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *v1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		ctx                              context.Context
+		name                             string
+		scmSecret                        *v1.Secret
+		scmProvider                      *promoterv1alpha1.ScmProvider
+		gitRepo                          *promoterv1alpha1.GitRepository
+		promotionStrategy                *promoterv1alpha1.PromotionStrategy
+		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
 	)
 
 	BeforeAll(func() {
@@ -61,10 +63,26 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		// The DependentsSuccessfulCommitStatus produces the ordering gate CommitStatus declared above.
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			Name:      name,
+			Namespace: "default",
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: name,
+				},
+				Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 	})
 
 	AfterAll(func() {
 		By("Cleaning up test resources")
+		if dependentsSuccessfulCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dependentsSuccessfulCommitStatus)
+		}
 		if promotionStrategy != nil {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
@@ -85,10 +103,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with 1 hour requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-pending",
-					Namespace: "default",
-				},
+				Name:      name + "-pending",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -131,7 +147,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0), "AtMostDurationRemaining should be > 0 when pending")
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-pending-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -152,10 +168,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with very short duration requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-time-met",
-					Namespace: "default",
-				},
+				Name:      name + "-time-met",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -203,7 +217,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining must be 0 for success phase")
 
 				// Verify CommitStatus was created for dev environment (current environment) with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -213,6 +227,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 					"CommitStatus phase should be success when gate is met")
 				g.Expect(cs.Spec.Description).To(ContainSubstring("Time-based gate requirement met"))
+				g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.TimedCommitStatusDefaultKey))
+				g.Expect(cs.Spec.Name).To(Equal(promoterv1alpha1.TimedCommitStatusDefaultKey + "/" + testBranchDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying phase remains success for 5 seconds (doesn't flip back to pending)")
@@ -235,7 +251,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should remain 0")
 
 				// Verify CommitStatus phase remains success for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -254,10 +270,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource with very long duration requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-time-not-met",
-					Namespace: "default",
-				},
+				Name:      name + "-time-not-met",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -324,7 +338,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should still be > 0 (24 hours not elapsed)")
 
 				// Verify CommitStatus phase remains pending for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-not-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -356,7 +370,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			var ctpStaging promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: "default",
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
@@ -376,10 +390,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 			By("Creating a TimedCommitStatus resource with duration starting long then shortening to 10s")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-touch-ps",
-					Namespace: "default",
-				},
+				Name:      name + "-touch-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -455,6 +467,13 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Dev environment should transition to success after duration")
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted for the transition")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 
@@ -464,10 +483,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a TimedCommitStatus resource tracking all three environments")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup",
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -511,9 +528,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(3))
 
-				oldCommitStatusDevName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-timed")
-				oldCommitStatusStagingName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchStaging+"-timed")
-				oldCommitStatusProdName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchProduction+"-timed")
+				oldCommitStatusDevName = utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment)
+				oldCommitStatusStagingName = utils.CommitStatusResourceName(ctx, &tcs, testBranchStaging)
+				oldCommitStatusProdName = utils.CommitStatusResourceName(ctx, &tcs, testBranchProduction)
 
 				// Verify all three CommitStatus resources exist
 				oldCsDev := &promoterv1alpha1.CommitStatus{}
@@ -587,6 +604,63 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Describe("commit status key", func() {
+		const customKey = "soak-time"
+
+		It("should use custom spec.key on CommitStatus label and name", func() {
+			keyCtx := context.Background()
+			keyName, scmSecret, scmProvider, gitRepo, _, _, keyPS := promotionStrategyResource(keyCtx, "timed-commit-status-key-test", "default")
+			keyPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: customKey},
+			}
+
+			setupInitialTestGitRepoOnServer(keyCtx, gitRepo)
+
+			Expect(k8sClient.Create(keyCtx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(keyCtx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(keyCtx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(keyPS)
+			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(keyCtx, keyPS)
+
+			tcs := &promoterv1alpha1.TimedCommitStatus{
+				Name:      keyName + "-custom-key",
+				Namespace: "default",
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					Key: customKey,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: keyName,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testBranchDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(keyCtx, tcs)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(keyCtx, tcs) }()
+
+			commitStatusName := utils.CommitStatusResourceName(keyCtx, tcs, testBranchDevelopment)
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(keyCtx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)).To(Succeed())
+				g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(customKey))
+				g.Expect(cs.Spec.Name).To(Equal(customKey + "/" + testBranchDevelopment))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_ = k8sClient.Delete(keyCtx, keyPS)
+			_ = k8sClient.Delete(keyCtx, gitRepo)
+			_ = k8sClient.Delete(keyCtx, scmProvider)
+			_ = k8sClient.Delete(keyCtx, scmSecret)
+		})
+	})
 })
 
 // Separate Describe block for the test that doesn't need infrastructure
@@ -601,10 +675,8 @@ var _ = Describe("TimedCommitStatus Controller - Missing PromotionStrategy", fun
 		BeforeEach(func() {
 			By("Creating only a TimedCommitStatus resource without PromotionStrategy")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",

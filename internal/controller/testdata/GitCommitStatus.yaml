@@ -1,0 +1,29 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: no-revert-in-active
+spec:
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  # Matched against proposedCommitStatuses / activeCommitStatuses key in PromotionStrategy
+  key: revert-check
+  description: Block promotions if active commit is a revert
+  # active (default) validates the deployed commit; proposed validates the incoming commit
+  target: active
+  expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True"
+      observedGeneration: 123
+  environments:
+    - branch: environment/dev
+      proposedHydratedSha: abcdef1234567890abcdef1234567890abcdef12
+      activeHydratedSha: fedcba0987654321fedcba0987654321fedcba09
+      targetedSha: fedcba0987654321fedcba0987654321fedcba09
+      phase: success # pending, success, or failure
+      expressionResult: true
