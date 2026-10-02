@@ -1,0 +1,13 @@
+{
+  "name": "gitops-promoter-ui-demo",
+  "private": true,
+  "description": "Playwright recorder for the dashboard demo GIF (see .agents/skills/record-ui-demo-gif/SKILL.md)",
+  "type": "module",
+  "scripts": {
+    "install-browser": "playwright install chromium",
+    "record": "node record.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "tag": "v2.2.0",
+    "minutesAgo": 2880,
+    "subject": "Deploy shop v2.2.0",
+    "body": "Initial rollout of the shop web frontend.",
+    "code": {
+      "minutesAgo": 2900,
+      "subject": "Release v2.2.0",
+      "body": "Cut release v2.2.0 of the shop frontend."
+    }
+  },
+  {
+    "tag": "v2.3.0",
+    "minutesAgo": 240,
+    "subject": "Roll out shop v2.3.0",
+    "body": "Ships the redesigned product cards and the faster search index.",
+    "code": {
+      "minutesAgo": 260,
+      "subject": "Redesign product cards for the catalog grid",
+      "body": "Switch to the new card layout and lazy-load images below the fold."
+    }
+  },
+  {
+    "tag": "v2.4.0",
+    "minutesAgo": 3,
+    "subject": "Roll out shop v2.4.0",
+    "body": "Picks up the checkout rounding fix for multi-currency carts.",
+    "code": {
+      "minutesAgo": 12,
+      "subject": "Fix cart total rounding on multi-currency orders",
+      "body": "Round after tax is applied instead of before it. Closes #482."
+    }
+  },
+  {
+    "tag": "v2.4.1",
+    "minutesAgo": 1,
+    "subject": "Roll out shop v2.4.1",
+    "body": "Hotfix for the checkout button contrast regression.",
+    "code": {
+      "minutesAgo": 5,
+      "subject": "Restore checkout button contrast",
+      "body": "The v2.4.0 theme update dropped the primary button below AA contrast."
+    }
+  }
+]
