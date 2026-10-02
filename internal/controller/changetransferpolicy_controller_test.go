@@ -3963,6 +3963,23 @@ var _ = Describe("revertActiveCommitSuperseded", func() {
 	)
 })
 
+var _ = Describe("commitNotInClone", func() {
+	DescribeTable("matches only a commit git could not resolve",
+		func(msg string, want bool) {
+			var err error
+			if msg != "" {
+				err = fmt.Errorf("%s", msg)
+			}
+			Expect(commitNotInClone(err)).To(Equal(want))
+		},
+		Entry("no error", "", false),
+		Entry("missing object", "fatal: Not a valid object name abc", true),
+		Entry("missing commit after a partial-clone fetch", "fatal: Not a valid commit name abc", true),
+		Entry("promisor remote does not have the commit", "fatal: git upload-pack: not our ref abc", true),
+		Entry("some other git failure", "failed to start git command: executable file not found", false),
+	)
+})
+
 var _ = Describe("skipPullRequestAfterRevert", func() {
 	const proposedDry = "3333333333333333333333333333333333333333"
 
@@ -4236,6 +4253,41 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gate, gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
+		})
+
+		supersededRevert := func(name, activeSha string) *promoterv1alpha1.RevertActiveCommit {
+			return &promoterv1alpha1.RevertActiveCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Spec: promoterv1alpha1.RevertActiveCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
+					Branch:               branch,
+					Sha:                  activeSha,
+				},
+				Status: promoterv1alpha1.RevertActiveCommitStatus{
+					ActiveSha:    activeSha,
+					RestoredFrom: activeSha,
+				},
+			}
+		}
+
+		It("leaves a RevertActiveCommit whose restore commit is not in the clone", func() {
+			missing := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			rc := supersededRevert("revert-missing", missing)
+			c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(rc).Build()
+			r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+			Expect(r.deleteSupersededRevertActiveCommits(ctx, ctp, gitOps)).To(Succeed())
+			Expect(c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RevertActiveCommit{})).To(Succeed())
+		})
+
+		It("deletes a RevertActiveCommit whose restore commit is an ancestor of the active tip", func() {
+			rc := supersededRevert("revert-ancestor", parentSha)
+			c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(rc).Build()
+			r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+			Expect(r.deleteSupersededRevertActiveCommits(ctx, ctp, gitOps)).To(Succeed())
+			err := c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RevertActiveCommit{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 	})
 })

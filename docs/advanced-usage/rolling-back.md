@@ -25,7 +25,7 @@ The restore runs once. The spec is immutable; to restore a different version, cr
 that new restore is the active tip, the ChangeTransferPolicy deletes the previous one. Deletion runs the same
 finalizer, so `Promoter-revert-unblocked-at` is stamped on the older restore commit and the new tip stays held until
 its own RevertActiveCommit is deleted. An object that has not recorded `status.activeSha` is left in place, as is one
-whose restore commit is still the tip. If the active branch already has the chosen version's content, nothing is
+whose restore commit is still the tip or is no longer in the repository. If the active branch already has the chosen version's content, nothing is
 written, `status.blockedDrySha` stays empty, and the RevertActiveCommit emits an `AlreadyRestored` event; the
 auto-merge hold still applies while the restore note is gated (or while the restore is still pending).
 

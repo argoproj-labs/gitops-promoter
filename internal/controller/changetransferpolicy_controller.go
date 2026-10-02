@@ -1699,12 +1699,28 @@ func revertActiveCommitSuperseded(activeSha, tip string, isAncestor bool) bool {
 	return isAncestor
 }
 
+// commitNotInClone reports whether err is git failing to resolve a commit that is not in the clone.
+// A partial clone tries to fetch the object first, so the text is "Not a valid commit name" or
+// "not our ref" rather than only "Not a valid object name". Other git failures do not match.
+func commitNotInClone(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Not a valid object name") ||
+		strings.Contains(msg, "Not a valid commit name") ||
+		strings.Contains(msg, "not our ref")
+}
+
 // deleteSupersededRevertActiveCommits deletes RevertActiveCommits for this policy whose recorded
 // restore commit is an ancestor of the active tip. The tip is the one calculateStatus just wrote.
 // Deletion runs the RevertActiveCommit finalizer, which stamps Promoter-revert-unblocked-at on that
-// older commit only. A pending object (no activeSha) and one whose restore is still the tip are left
-// alone. A cache that still lists a just-deleted object is harmless here: its restore is already
-// recorded, so evaluateRevertGate reads the new tip rather than treating it as pending.
+// older commit only. A pending object (no activeSha), one whose restore is still the tip, and one
+// whose restore commit is not in the clone are left alone. A missing commit is not behind the tip;
+// failing the reconcile on it would stop promotion until the object was deleted by hand. Other
+// ancestor-check errors still fail the reconcile. A cache that still lists a just-deleted object is
+// harmless here: its restore is already recorded, so evaluateRevertGate reads the new tip rather
+// than treating it as pending.
 func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	tip := ctp.Status.Active.Hydrated.Sha
 	if tip == "" {
@@ -1721,6 +1737,11 @@ func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx
 			continue
 		}
 		isAncestor, err := gitOperations.CommitIsAncestor(ctx, rc.Status.ActiveSha, tip)
+		if commitNotInClone(err) {
+			logger.Info("RevertActiveCommit restore commit is not in the clone; leaving it",
+				"revertActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip, "error", err)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("failed to check whether RevertActiveCommit %q restore %q is behind active tip %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
 		}
