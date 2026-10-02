@@ -10146,6 +10146,7 @@ rules:
   resources:
   - revertactivecommits
   verbs:
+  - delete
   - get
   - list
   - patch
