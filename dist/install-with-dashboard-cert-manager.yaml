@@ -1893,6 +1893,14 @@ spec:
                       minLength: 40
                       pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
+                    revertUnblockedAt:
+                      description: |-
+                        RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
+                        read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+                        While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
+                        moved off of is blocked from opening a pull request.
+                      format: date-time
+                      type: string
                   type: object
                 maxItems: 20
                 type: array
@@ -7572,7 +7580,9 @@ spec:
                 description: |-
                   Sha is the hydrated commit to restore onto the active branch. It must already be in the active
                   branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
-                  carries Promoter-restored-from is itself a restore and is refused. The
+                  carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
+                  restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit
+                  for the same sha is refused until the active branch moves, and that note is left unchanged. The
                   controller writes a new commit (the commit's tree, or only activePath when the policy sets
                   one) parented on the current active tip and records a promotion-history note with
                   Promoter-restored-from. When the active branch already has that content, nothing is written.
@@ -10190,6 +10200,7 @@ rules:
   - get
   - list
   - patch
+  - update
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1

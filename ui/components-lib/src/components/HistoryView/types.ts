@@ -34,10 +34,12 @@ export interface CellState {
   isLive?: boolean;
   /** RevertActiveCommit holding this environment. The proposed pill gets a stop sign and the cell shows only an open pull request. */
   revertActiveCommit?: string;
-  /** True when this proposed commit is the one that RevertActiveCommit reverted. */
+  /** True when this proposed commit is the dry SHA a restore moved off the active branch. */
   revertedByRevertActiveCommit?: boolean;
   /** Hydrated sha this cell's commit was restored to, when it came from a manual restore. */
   restoredFrom?: string;
+  /** When promotion resumed after this restore (Promoter-revert-unblocked-at), as an RFC 3339 string. */
+  revertUnblockedAt?: string;
   noopNote?: string;
   supersededById?: string;
   at?: string;

@@ -419,6 +419,14 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
 	historyEntry.RestoredFrom = getFirstTrailerValue(activeTrailers, constants.TrailerRestoredFrom)
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerRevertUnblockedAt); timeStr != "" {
+		if unblockedAt, err := time.Parse(time.RFC3339, timeStr); err != nil {
+			log.FromContext(ctx).V(4).Info("failed to parse "+constants.TrailerRevertUnblockedAt, "time", timeStr, "err", err)
+		} else {
+			t := metav1.NewTime(unblockedAt)
+			historyEntry.RevertUnblockedAt = &t
+		}
+	}
 	// The note is written on the merged target sha and history walks first-parent commits of the active
 	// branch, so the entry's own sha is that commit; no trailer records it.
 	historyEntry.PullRequest.MergedTargetSha = sha

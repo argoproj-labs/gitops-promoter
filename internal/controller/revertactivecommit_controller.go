@@ -27,10 +27,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -57,7 +60,7 @@ type RevertActiveCommitReconciler struct {
 	EnqueueCTPH CTPHEnqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
@@ -70,11 +73,15 @@ type RevertActiveCommitReconciler struct {
 // ChangeTransferPolicy, makes the policy the owner of this RevertActiveCommit, and restores the policy's
 // active branch to spec.sha exactly once. A successful status (status.restoredFrom == spec.sha) is
 // not repeated, so a later promotion is not overwritten when this resource is reconciled again. A
-// spec.sha that carries Promoter-restored-from is refused. status.blockedDrySha is the dry SHA that
-// was on the active branch; the ChangeTransferPolicy does not open a pull request that would put it
-// back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while
-// this RevertActiveCommit exists. Deleting it lifts both holds, but does not by itself propose the
-// reverted dry SHA again: see ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
+// spec.sha that carries Promoter-restored-from is refused. A spec.sha the active tip already
+// restores is also refused once that tip's note carries Promoter-revert-unblocked-at; the note is
+// not rewritten. status.blockedDrySha is the dry SHA that was on the active branch; the
+// ChangeTransferPolicy does not open a pull request that would put it
+// back while the restore commit's note lacks Promoter-revert-unblocked-at. A pull request for a different
+// proposed dry SHA may open, but nothing is auto-merged until that trailer is written. Deleting this
+// resource stamps Promoter-revert-unblocked-at on the restore commit's promotion-history note (via a
+// finalizer) and lifts both holds. It does not by itself propose the reverted dry SHA again: see
+// ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
 func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling RevertActiveCommit")
@@ -94,11 +101,11 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get RevertActiveCommit: %w", err)
 	}
 
-	previousReady = utils.RemoveReadyCondition(&rc)
-
-	if !rc.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil
+	if deleted, err := r.handleFinalizer(ctx, &rc); err != nil || deleted {
+		return ctrl.Result{}, err
 	}
+
+	previousReady = utils.RemoveReadyCondition(&rc)
 
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
@@ -167,6 +174,107 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return r.requeueResult(ctx)
 }
 
+// handleFinalizer ensures RevertActiveCommitFinalizer is on the resource while it exists so deletion
+// stamps Promoter-revert-unblocked-at on the restore commit before the object is removed. The first bool
+// is true when Reconcile should not run the restore path (the resource is terminating).
+func (r *RevertActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (bool, error) {
+	finalizer := promoterv1alpha1.RevertActiveCommitFinalizer
+
+	if rc.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(rc, finalizer) {
+			return false, nil
+		}
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+			if err := r.Get(ctx, client.ObjectKeyFromObject(rc), rc); err != nil {
+				return err //nolint:wrapcheck // error will be wrapped by caller
+			}
+			if controllerutil.AddFinalizer(rc, finalizer) {
+				return r.Update(ctx, rc) //nolint:wrapcheck // RetryOnConflict returns wrapped error
+			}
+			return nil
+		})
+	}
+
+	if !controllerutil.ContainsFinalizer(rc, finalizer) {
+		return true, nil
+	}
+
+	if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
+		return false, err
+	}
+
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		if err := r.Get(ctx, client.ObjectKeyFromObject(rc), rc); err != nil {
+			return err //nolint:wrapcheck // error will be wrapped by caller
+		}
+		if controllerutil.RemoveFinalizer(rc, finalizer) {
+			return r.Update(ctx, rc) //nolint:wrapcheck // error will be wrapped by caller
+		}
+		return nil
+	}); err != nil {
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return true, nil
+}
+
+// unblockRestoreOnDelete stamps Promoter-revert-unblocked-at on the restore commit's promotion-history
+// note when a successful restore was recorded. When the PromotionStrategy or ChangeTransferPolicy is
+// already gone (for example GC after the policy was deleted), the git write is skipped so the
+// finalizer can still release.
+func (r *RevertActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) error {
+	logger := log.FromContext(ctx)
+	if rc.Status.RestoredFrom != rc.Spec.Sha || rc.Status.ActiveSha == "" {
+		logger.Info("RevertActiveCommit deleted before a restore was recorded; nothing to unblock")
+		return nil
+	}
+
+	ctp, err := r.changeTransferPolicyForUnblock(ctx, rc)
+	if err != nil {
+		if k8s_errors.IsNotFound(err) {
+			logger.Info("ChangeTransferPolicy or PromotionStrategy gone; skipping Promoter-revert-unblocked-at", "error", err)
+			return nil
+		}
+		return fmt.Errorf("failed to resolve ChangeTransferPolicy for unblock: %w", err)
+	}
+
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, ctp)
+	if err != nil {
+		return fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
+	}
+	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
+	}
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, rc.Namespace+"/"+rc.Name+"-revert")
+	defer func() {
+		if rmErr := gitOperations.RemoveClone(); rmErr != nil {
+			logger.Error(rmErr, "failed to remove RevertActiveCommit clone during unblock")
+		}
+	}()
+	if err := gitOperations.CloneRepo(ctx); err != nil {
+		return fmt.Errorf("failed to clone repo %q for unblock: %w", ctp.Spec.RepositoryReference.Name, err)
+	}
+	if err := gitOperations.FetchNotes(ctx); err != nil {
+		return fmt.Errorf("failed to fetch git notes for unblock: %w", err)
+	}
+
+	wrote, err := gitOperations.UnblockRestore(ctx, rc.Status.ActiveSha, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to stamp Promoter-revert-unblocked-at on %q: %w", rc.Status.ActiveSha, err)
+	}
+	if wrote {
+		r.Recorder.Eventf(rc, nil, "Normal", "RevertUnblocked", "Unblocking", "Stamped Promoter-revert-unblocked-at on %s so promotion may resume", rc.Status.ActiveSha)
+	}
+
+	if r.EnqueueCTP != nil {
+		r.EnqueueCTP(ctp.Namespace, ctp.Name)
+	}
+	if r.EnqueueCTPH != nil {
+		r.EnqueueCTPH(ctp.Namespace, utils.GetChangeTransferPolicyHistoryName(ctp.Name))
+	}
+	return nil
+}
+
 // requeueResult schedules the next reconcile from ControllerConfiguration. The git restore itself
 // still runs once: a later pass returns before cloning when status.restoredFrom already matches spec.sha.
 func (r *RevertActiveCommitReconciler) requeueResult(ctx context.Context) (ctrl.Result, error) {
@@ -175,6 +283,21 @@ func (r *RevertActiveCommitReconciler) requeueResult(ctx context.Context) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for RevertActiveCommit: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// changeTransferPolicyForUnblock loads the ChangeTransferPolicy named for this RevertActiveCommit's
+// strategy and branch without requiring the branch to still be listed on the PromotionStrategy.
+// Deletion must not be blocked when an environment was removed after the restore.
+func (r *RevertActiveCommitReconciler) changeTransferPolicyForUnblock(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+	if rc.Spec.PromotionStrategyRef.Name == "" || rc.Spec.Branch == "" {
+		return nil, fmt.Errorf("RevertActiveCommit %q has empty promotionStrategyRef or branch", rc.Name)
+	}
+	ctpName := utils.ChangeTransferPolicyNameForEnvironment(rc.Spec.PromotionStrategyRef.Name, rc.Spec.Branch)
+	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: rc.Namespace, Name: ctpName}, ctp); err != nil {
+		return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctpName, err)
+	}
+	return ctp, nil
 }
 
 // resolveChangeTransferPolicy loads the PromotionStrategy and the ChangeTransferPolicy the strategy
@@ -251,7 +374,19 @@ func (r *RevertActiveCommitReconciler) SetupWithManager(ctx context.Context, mgr
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.RevertActiveCommit{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.RevertActiveCommit{}, builder.WithPredicates(predicate.Or(
+			predicate.GenerationChangedPredicate{},
+			// deletionTimestamp is metadata, so generation does not change when a delete is requested.
+			// Without this, a terminating RevertActiveCommit would never run the unblock finalizer.
+			predicate.Funcs{
+				UpdateFunc: func(e event.UpdateEvent) bool {
+					if e.ObjectOld == nil || e.ObjectNew == nil {
+						return false
+					}
+					return e.ObjectOld.GetDeletionTimestamp().IsZero() && !e.ObjectNew.GetDeletionTimestamp().IsZero()
+				},
+			},
+		))).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {

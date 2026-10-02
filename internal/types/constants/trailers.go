@@ -27,6 +27,11 @@ const (
 	// pull request. Its value is the hydrated SHA the active branch was restored to. The restore copies the
 	// note from that SHA, so without this marker the entry is indistinguishable from the original promotion.
 	TrailerRestoredFrom = "Promoter-restored-from"
+	// TrailerRevertUnblockedAt marks a restore commit whose RevertActiveCommit was deleted, so promotion may
+	// resume. Its value is an RFC 3339 timestamp. Written only to the promotion-history note (commit
+	// messages are immutable). Absence while Promoter-restored-from is present holds auto-merge and blocks
+	// the reverted dry SHA.
+	TrailerRevertUnblockedAt = "Promoter-revert-unblocked-at"
 	// TrailerShaDryActive is the trailer key used to store the SHA of the active dry commit.
 	TrailerShaDryActive = "Sha-dry-active"
 	// TrailerShaDryProposed is the trailer key used to store the SHA of the proposed dry commit.

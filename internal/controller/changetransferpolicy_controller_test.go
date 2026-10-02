@@ -263,8 +263,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the RevertActiveCommit, which allows the new dry SHA to auto-merge")
+				By("Deleting the RevertActiveCommit, which stamps Promoter-revert-unblocked-at and allows the new dry SHA to auto-merge")
 				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, rcKey, &promoterv1alpha1.RevertActiveCommit{})
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -272,8 +277,30 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(laterDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
-			})
 
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+				Expect(err).NotTo(HaveOccurred())
+				noteOut, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "list")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(noteOut).NotTo(BeEmpty())
+				// Find a note that carries Promoter-revert-unblocked-at.
+				foundUnblock := false
+				for _, line := range strings.Split(strings.TrimSpace(noteOut), "\n") {
+					parts := strings.Fields(line)
+					if len(parts) < 2 {
+						continue
+					}
+					raw, showErr := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", parts[1])
+					if showErr != nil {
+						continue
+					}
+					if strings.Contains(raw, constants.TrailerRevertUnblockedAt) {
+						foundUnblock = true
+						break
+					}
+				}
+				Expect(foundUnblock).To(BeTrue(), "Promoter-revert-unblocked-at should be on the restore commit's note after RAC deletion")
+			})
 			It("keeps an open pull request for a later proposed dry SHA when active is reverted", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -374,6 +401,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
 
 				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(laterDrySha))
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
@@ -381,7 +413,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
-
 		Context("When using commit status checks", func() {
 			var name string
 			var scmSecret *v1.Secret
@@ -3083,11 +3114,27 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
+		Expect(entry.RevertUnblockedAt).To(BeNil())
 		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
 			"the original promotion's merge time is kept on a restore entry")
 		committed := strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha))
 		Expect(entry.Active.Hydrated.CommitTime.Format(time.RFC3339)).To(Equal(committed),
 			"the entry's own commit time is what readers use as the restore time")
+	})
+
+	It("reads Promoter-revert-unblocked-at into revertUnblockedAt", func() {
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m",
+			`{"`+constants.TrailerRestoredFrom+`":["`+commitSha+`"],"`+
+				constants.TrailerRevertUnblockedAt+`":["2024-06-01T12:00:00Z"]}`, commitSha)
+		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.RestoredFrom).To(Equal(commitSha))
+		Expect(entry.RevertUnblockedAt).NotTo(BeNil())
+		Expect(entry.RevertUnblockedAt.UTC().Format(time.RFC3339)).To(Equal("2024-06-01T12:00:00Z"))
 	})
 
 	It("leaves restoredFrom empty for an ordinary promotion", func() {
@@ -3605,7 +3652,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(livePR.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps, revertGate{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
@@ -3621,7 +3668,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(livePR.DeletionTimestamp.IsZero()).To(BeFalse())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps, revertGate{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
@@ -3636,7 +3683,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			g.Expect(k8sClient.Status().Update(ctx, &livePR)).To(Succeed())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps)
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp, gitOps, revertGate{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
@@ -3724,7 +3771,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		}
 		ctp.Status.Proposed.Dry.Sha = proposedDry
-		// Never cloned. Reaching CommitIsAncestor or the restore-marker read would fail this call.
+		// Never cloned. Reaching CommitIsAncestor or RestoreGateState would fail this call.
 		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
 		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
 		rc := &promoterv1alpha1.RevertActiveCommit{
@@ -3736,7 +3783,11 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			},
 		}
 
-		skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+		gate, err := reconcilerWith(rc).evaluateRevertGate(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.pendingRevert).To(Equal(rc.Name))
+
+		skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gate, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(skip).To(BeTrue())
 	})
@@ -3762,6 +3813,17 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			out, err := runGitCmd(ctx, dir, args...)
 			Expect(err).NotTo(HaveOccurred())
 			return strings.TrimSpace(out)
+		}
+
+		gateFromGit := func() revertGate {
+			GinkgoHelper()
+			state, err := gitOps.RestoreGateState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
+			Expect(err).NotTo(HaveOccurred())
+			return revertGate{
+				isRestoreTip:  state.IsRestore,
+				unblocked:     state.Unblocked,
+				blockedDrySha: state.BlockedDrySha,
+			}
 		}
 
 		BeforeEach(func() {
@@ -3839,21 +3901,21 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		}
 
 		It("does not skip when the active tip is an ordinary commit, even if proposed is already contained", func() {
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
 		})
 
 		It("ignores a restore trailer in the status body when the commit itself is not a restore", func() {
 			ctp.Status.Active.Hydrated.Body = constants.TrailerRestoredFrom + ": " + parentSha
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
 		})
 
 		It("skips when the history note marks the active tip as a restore and proposed is contained", func() {
 			pushNote(activeSha, fmt.Sprintf(`{"%s":["%s"]}`, constants.TrailerRestoredFrom, parentSha))
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeTrue())
 		})
@@ -3861,7 +3923,8 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		It("does not skip a restore tip when proposed is not contained in active", func() {
 			pushNote(activeSha, fmt.Sprintf(`{"%s":["%s"]}`, constants.TrailerRestoredFrom, parentSha))
 			ctp.Status.Proposed.Hydrated.Sha = sideSha
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			ctp.Status.Proposed.Dry.Sha = "6666666666666666666666666666666666666666"
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
 		})
@@ -3874,7 +3937,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
 
 			ctp.Status.Active.Hydrated.Sha = restoreSha
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeTrue())
 		})
@@ -3889,12 +3952,12 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 			ctp.Status.Active.Hydrated.Sha = restoreSha
 			ctp.Status.Active.Hydrated.Body = constants.TrailerRestoredFrom + ": " + parentSha
-			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gateFromGit(), gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
 		})
 
-		It("skips when a RevertActiveCommit references the policy and proposed is contained, even if the tip is not a restore", func() {
+		It("does not gate from a RevertActiveCommit that already has status when the tip is not a restore", func() {
 			rc := &promoterv1alpha1.RevertActiveCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
 				Spec: promoterv1alpha1.RevertActiveCommitSpec{
@@ -3904,25 +3967,63 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 				},
 			}
 			rc.Status.RestoredFrom = parentSha
-			rc.Status.BlockedDrySha = "5555555555555555555555555555555555555555"
-			skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			rc.Status.BlockedDrySha = proposedDry
+			gate, err := reconcilerWith(rc).evaluateRevertGate(ctx, ctp, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(gate.pendingRevert).To(BeEmpty())
+			Expect(gate.isRestoreTip).To(BeFalse())
+
+			skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gate, gitOps)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(skip).To(BeFalse())
+		})
+
+		It("blocks the blocked dry SHA on a restore tip that lacks Promoter-revert-unblocked-at", func() {
+			Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+proposedDry+`"}`), 0o644)).To(Succeed())
+			mustRunGit(workDir, "add", "-A")
+			mustRunGit(workDir, "commit", "-m", "parent with dry")
+			parentWithDry := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "commit", "--allow-empty", "-m", fmt.Sprintf("restore\n\n%s: %s\n", constants.TrailerRestoredFrom, parentWithDry))
+			restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "push", "origin", "HEAD:"+branch)
+			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+			pushNote(restoreSha, fmt.Sprintf(`{"%s":["%s"]}`, constants.TrailerRestoredFrom, parentWithDry))
+
+			ctp.Status.Active.Hydrated.Sha = restoreSha
+			ctp.Status.Proposed.Hydrated.Sha = sideSha
+			ctp.Status.Proposed.Dry.Sha = proposedDry
+
+			gate := gateFromGit()
+			Expect(gate.isRestoreTip).To(BeTrue())
+			Expect(gate.unblocked).To(BeFalse())
+			Expect(gate.blockedDrySha).To(Equal(proposedDry))
+
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gate, gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeTrue())
 		})
 
-		It("does not skip when a RevertActiveCommit references the policy but proposed is not contained", func() {
+		It("does not block the blocked dry SHA once Promoter-revert-unblocked-at is present", func() {
+			Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+proposedDry+`"}`), 0o644)).To(Succeed())
+			mustRunGit(workDir, "add", "-A")
+			mustRunGit(workDir, "commit", "-m", "parent with dry")
+			parentWithDry := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "commit", "--allow-empty", "-m", fmt.Sprintf("restore\n\n%s: %s\n", constants.TrailerRestoredFrom, parentWithDry))
+			restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+			mustRunGit(workDir, "push", "origin", "HEAD:"+branch)
+			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+			pushNote(restoreSha, fmt.Sprintf(`{"%s":["%s"],"%s":["2024-01-01T00:00:00Z"]}`,
+				constants.TrailerRestoredFrom, parentWithDry, constants.TrailerRevertUnblockedAt))
+
+			ctp.Status.Active.Hydrated.Sha = restoreSha
 			ctp.Status.Proposed.Hydrated.Sha = sideSha
-			rc := &promoterv1alpha1.RevertActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-				Spec: promoterv1alpha1.RevertActiveCommitSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
-					Branch:               ctp.Spec.ActiveBranch,
-					Sha:                  parentSha,
-				},
-			}
-			rc.Status.RestoredFrom = parentSha
-			rc.Status.BlockedDrySha = "5555555555555555555555555555555555555555"
-			skip, err := reconcilerWith(rc).skipPullRequestAfterRevert(ctx, ctp, gitOps)
+			ctp.Status.Proposed.Dry.Sha = proposedDry
+
+			gate := gateFromGit()
+			Expect(gate.isRestoreTip).To(BeTrue())
+			Expect(gate.unblocked).To(BeTrue())
+
+			skip, err := reconcilerWith().skipPullRequestAfterRevert(ctx, ctp, gate, gitOps)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(skip).To(BeFalse())
 		})

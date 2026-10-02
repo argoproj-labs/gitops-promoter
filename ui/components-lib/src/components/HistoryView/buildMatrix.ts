@@ -275,6 +275,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       health,
       pullRequest: restoreKey ? undefined : entry.pullRequest,
       restoredFrom: entry.restoredFrom,
+      revertUnblockedAt: entry.revertUnblockedAt,
       noopNote: isNoop
         ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
         : undefined,
@@ -436,6 +437,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           // marker and timestamp have to be carried here or they are lost and the row
           // sorts by the restored version's original (older) commit time.
           restoredFrom: activeRestore?.restoredFrom,
+          revertUnblockedAt: activeRestore?.revertUnblockedAt,
           at: activeRestore ? landedAtRaw(activeRestore) : (env.active.dry.commitTime ?? undefined),
         });
       }
@@ -445,10 +447,14 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       const heldName = env.revertActiveCommit?.name;
+      // Durable across RevertActiveCommit deletion: blockedDrySha from the CR, or from history
+      // when the active tip is still the restore that moved this dry SHA off.
+      const reverted = proposedIsReverted(env);
       const pullRequest = heldPullRequest(env);
       const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
       if (row) {
-        const kind: CellKind = !heldName && health === 'failure' ? 'failed' : 'in-flight';
+        const kind: CellKind =
+          !heldName && !reverted && health === 'failure' ? 'failed' : 'in-flight';
         setCell(row, branch, {
           kind,
           commit: env.proposed.dry,
@@ -459,7 +465,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           pullRequest,
           isProposed: true,
           revertActiveCommit: heldName,
-          revertedByRevertActiveCommit: heldName ? proposedIsReverted(env) : undefined,
+          revertedByRevertActiveCommit: reverted || undefined,
           at: env.proposed.dry.commitTime ?? undefined,
         });
       }

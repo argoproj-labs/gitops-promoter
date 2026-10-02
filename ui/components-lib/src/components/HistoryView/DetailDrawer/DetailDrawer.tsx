@@ -217,11 +217,11 @@ const DetailDrawer: React.FC<{
   const kindBadge = (
     <span
       className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
-        cell.revertActiveCommit
-          ? cell.revertedByRevertActiveCommit
-            ? ' hp-drawer__kind--reverted'
-            : ' hp-drawer__kind--held'
-          : ''
+        cell.revertedByRevertActiveCommit
+          ? ' hp-drawer__kind--reverted'
+          : cell.revertActiveCommit
+            ? ' hp-drawer__kind--held'
+            : ''
       }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
     >
       {cell.revertActiveCommit && !cell.revertedByRevertActiveCommit && (
@@ -339,6 +339,13 @@ const DetailDrawer: React.FC<{
               </>
             )}
           </div>
+          {cell.restoredFrom && cell.revertUnblockedAt && (
+            <div className="hp-drawer__meta">
+              <Tooltip label={formatDate(cell.revertUnblockedAt)}>
+                <span>Promotion resumed {timeAgo(cell.revertUnblockedAt)}</span>
+              </Tooltip>
+            </div>
+          )}
           {hydrated?.sha && (
             <div className="hp-drawer__deployed">
               Deployed as{' '}
@@ -445,11 +452,11 @@ const DetailDrawer: React.FC<{
               const pill = (
                 <span
                   className={`cell__pill cell__pill--${pillKind}${
-                    c.revertActiveCommit
-                      ? c.revertedByRevertActiveCommit
-                        ? ' cell__pill--reverted'
-                        : ' cell__pill--held'
-                      : ''
+                    c.revertedByRevertActiveCommit
+                      ? ' cell__pill--reverted'
+                      : c.revertActiveCommit
+                        ? ' cell__pill--held'
+                        : ''
                   }`}
                 >
                   {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}

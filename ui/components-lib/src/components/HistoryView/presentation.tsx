@@ -22,8 +22,9 @@ export function displayKind(kind: CellKind): DisplayCellKind {
 
 /**
  * Pill and badge text for a cell. `compact` shortens the empty kinds for the drawer's
- * per-environment list. A proposed commit that a RevertActiveCommit moved off the active branch is
- * labeled REVERTED rather than PROPOSED, since it will not be promoted.
+ * per-environment list. A proposed commit that a restore moved off the active branch is labeled
+ * REVERTED rather than PROPOSED, since it will not be promoted (with or without a live
+ * RevertActiveCommit).
  */
 export function cellKindLabel(
   cell: Pick<CellState, 'kind' | 'isProposed' | 'revertedByRevertActiveCommit'>,
@@ -73,6 +74,9 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
         : `Currently live in ${branch} on a reverted dry SHA`;
     }
     case 'in-flight':
+      if (cell.isProposed && cell.revertedByRevertActiveCommit) {
+        return `Reverted off ${branch} — will not be promoted`;
+      }
       return cell.isProposed
         ? `Proposed for ${branch} — promotion pending`
         : `Open promotion PR into ${branch}`;

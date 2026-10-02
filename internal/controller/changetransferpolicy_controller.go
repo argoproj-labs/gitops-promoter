@@ -205,6 +205,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
 
+	gate, err := r.evaluateRevertGate(ctx, &ctp, gitOperations)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to evaluate revert gate: %w", err)
+	}
+
 	mergedProposedBranch, err := r.gitMergeStrategyOurs(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
@@ -221,7 +226,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 	}
 
-	pr, err := r.createOrUpdatePullRequest(ctx, &ctp, gitOperations)
+	pr, err := r.createOrUpdatePullRequest(ctx, &ctp, gitOperations, gate)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
@@ -230,7 +235,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
 	}
 
-	pr, err = r.mergePullRequests(ctx, &ctp)
+	pr, err = r.mergePullRequests(ctx, &ctp, gate)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
 	}
@@ -297,6 +302,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaDryProposed,
 		constants.TrailerMergeCommitSnapshotMismatch,
 		constants.TrailerRestoredFrom,
+		constants.TrailerRevertUnblockedAt,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -399,13 +405,15 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 			DeleteFunc:  func(event.DeleteEvent) bool { return true },
 			GenericFunc: func(event.GenericEvent) bool { return false },
 		})).
-		// A RevertActiveCommit blocks a promotion pull request for the dry SHA that was on the active
-		// branch, and blocks auto-merge of every proposed SHA while it exists. Map by the
-		// ChangeTransferPolicy name derived from spec.promotionStrategyRef and spec.branch, rather
-		// than the owner reference, so a create is seen before the RevertActiveCommit controller has
-		// stamped ownership, and a delete lifts both holds on the next reconcile. Status updates
-		// are watched only when the restore result changes, so the dry-SHA block takes effect.
-		// Auto-merge stays off until the RevertActiveCommit is deleted.
+		// A RevertActiveCommit whose restore has not landed yet (status.restoredFrom empty) blocks
+		// every promotion pull request and holds auto-merge. Once the restore is recorded, the gate
+		// is the restore commit's promotion-history note: Promoter-restored-from without
+		// Promoter-revert-unblocked-at. Map by the ChangeTransferPolicy name derived from
+		// spec.promotionStrategyRef and spec.branch, rather than the owner reference, so a create
+		// is seen before the RevertActiveCommit controller has stamped ownership, and a delete
+		// (which stamps Promoter-revert-unblocked-at via its finalizer) wakes this controller to re-read
+		// the note. Status updates are watched only when the restore result changes, so the
+		// pending-window hold lifts once status.restoredFrom is set.
 		Watches(&promoterv1alpha1.RevertActiveCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
 			rc, ok := obj.(*promoterv1alpha1.RevertActiveCommit)
 			if !ok {
@@ -1352,7 +1360,7 @@ func pullRequestStatusFreezesSpec(pr *promoterv1alpha1.PullRequest) bool {
 	}
 }
 
-func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (*promoterv1alpha1.PullRequest, error) {
+func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, gate revertGate) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
@@ -1367,7 +1375,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 
 	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", ctp.Status.Proposed.Dry.Sha, "activeDrySha", ctp.Status.Active.Dry.Sha)
 
-	skip, err := r.skipPullRequestAfterRevert(ctx, ctp, gitOperations)
+	skip, err := r.skipPullRequestAfterRevert(ctx, ctp, gate, gitOperations)
 	if err != nil {
 		return nil, err
 	}
@@ -1589,40 +1597,38 @@ func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoter
 }
 
 // skipPullRequestAfterRevert reports whether createOrUpdatePullRequest must not open a pull request
-// because of a RevertActiveCommit. An already-open pull request is for a different proposed commit and is
+// because of a restore. An already-open pull request is for a different proposed commit and is
 // left alone in both cases.
 //
-// A restore commit is parented on the old active tip and the proposed branch is left where it was,
-// so the proposed SHA can already be contained in active. Creating a pull request then is rejected
-// by the SCM ("No commits between <branch> and <branch>-next"). That can only happen after a
-// restore, so the ancestor check runs only while a RevertActiveCommit references this policy or the
-// active tip is a restore commit. A restore commit carries Promoter-restored-from on its
-// promotion-history note, or on its commit trailers when it has no note. The second case keeps
-// the check after the RevertActiveCommit is deleted: the reverted dry SHA stays unproposed until the
-// hydrator writes a new commit to the proposed branch.
-func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (bool, error) {
+// A pending RevertActiveCommit (status.restoredFrom still empty) blocks every proposed SHA without
+// touching git. Once the restore is recorded, the gate is the active tip's promotion-history note:
+// Promoter-restored-from without Promoter-revert-unblocked-at blocks the dry SHA the restore moved off
+// of. A restore commit is parented on the old active tip and the proposed branch is left where it
+// was, so the proposed SHA can already be contained in active. Creating a pull request then is
+// rejected by the SCM ("No commits between <branch> and <branch>-next"). That ancestor check runs
+// whenever the tip is a restore commit, gated or unblocked, so the reverted dry SHA stays
+// unproposed until the hydrator writes a new commit to the proposed branch.
+func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gate revertGate, gitOperations *git.EnvironmentOperations) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
-	if err != nil {
-		return false, err
-	}
-	if blocked := promotionBlockedByRevert(ctp, reverts); blocked != "" {
-		logger.Info("RevertActiveCommit blocks promotion of this dry SHA; not opening a pull request",
-			"revertActiveCommit", blocked,
+	if gate.pendingRevert != "" {
+		logger.Info("RevertActiveCommit restore is still pending; not opening a pull request",
+			"revertActiveCommit", gate.pendingRevert,
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return true, nil
 	}
 
-	if len(reverts) == 0 {
-		restore, err := gitOperations.CommitIsRestore(ctx, ctp.Status.Active.Hydrated.Sha)
-		if err != nil {
-			return false, fmt.Errorf("failed to check whether the active branch %q tip is a restore commit: %w", ctp.Spec.ActiveBranch, err)
-		}
-		if !restore {
-			return false, nil
-		}
+	if gate.isRestoreTip && !gate.unblocked && gate.blockedDrySha != "" && gate.blockedDrySha == ctp.Status.Proposed.Dry.Sha {
+		logger.Info("Restore commit blocks promotion of this dry SHA; not opening a pull request",
+			"branch", ctp.Spec.ActiveBranch,
+			"drySha", ctp.Status.Proposed.Dry.Sha,
+			"active", ctp.Status.Active.Hydrated.Sha)
+		return true, nil
+	}
+
+	if !gate.isRestoreTip {
+		return false, nil
 	}
 	contained, err := gitOperations.CommitIsAncestor(ctx, ctp.Status.Proposed.Hydrated.Sha, ctp.Status.Active.Hydrated.Sha)
 	if err != nil {
@@ -1666,34 +1672,50 @@ func (r *ChangeTransferPolicyReconciler) revertActiveCommitsForPolicy(ctx contex
 	return matched, nil
 }
 
-// promotionBlockedByRevert returns the name of the RevertActiveCommit in reverts that blocks opening a
-// promotion pull request for the current proposed dry SHA, or "" when that dry SHA is not blocked.
-//
-// A RevertActiveCommit whose restore has not been recorded yet blocks every proposed SHA, so a pull
-// request for the dry SHA being moved off active cannot land before status.blockedDrySha is
-// known. Once that field is set, only that dry SHA — the one that was on the active branch — is
-// blocked from opening a pull request. A different proposed dry SHA may open one. Auto-merge is a
-// separate hold: nothing is auto-merged while any RevertActiveCommit for this policy exists. Deleting
-// the RevertActiveCommit lifts both. The reverted dry SHA can still be skipped afterwards by the
-// ancestor check in skipPullRequestAfterRevert.
-func promotionBlockedByRevert(ctp *promoterv1alpha1.ChangeTransferPolicy, reverts []promoterv1alpha1.RevertActiveCommit) string {
+// revertGate is the restore hold for one ChangeTransferPolicy reconcile. pendingRevert is set when
+// a RevertActiveCommit for this policy has not finished its restore yet; otherwise isRestoreTip /
+// unblocked / blockedDrySha come from the active tip's promotion-history note.
+type revertGate struct {
+	pendingRevert string
+	blockedDrySha string
+	isRestoreTip  bool
+	unblocked     bool
+}
+
+// evaluateRevertGate decides the restore hold for this reconcile. A RevertActiveCommit whose restore
+// has not been recorded (status.restoredFrom != spec.sha) blocks every proposed SHA without reading
+// git. Once every live RevertActiveCommit for this policy has a status, the gate is the active tip:
+// Promoter-restored-from without Promoter-revert-unblocked-at holds auto-merge and blocks the dry SHA
+// the restore moved off of.
+func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (revertGate, error) {
+	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	if err != nil {
+		return revertGate{}, err
+	}
 	for i := range reverts {
 		rc := &reverts[i]
 		if rc.Status.RestoredFrom != rc.Spec.Sha {
-			return rc.Name
-		}
-		if rc.Status.BlockedDrySha != "" && rc.Status.BlockedDrySha == ctp.Status.Proposed.Dry.Sha {
-			return rc.Name
+			return revertGate{pendingRevert: rc.Name}, nil
 		}
 	}
-	return ""
+
+	state, err := gitOperations.RestoreGateState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
+	if err != nil {
+		return revertGate{}, fmt.Errorf("failed to read restore gate for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
+	}
+	return revertGate{
+		isRestoreTip:  state.IsRestore,
+		unblocked:     state.Unblocked,
+		blockedDrySha: state.BlockedDrySha,
+	}, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the
-// environment is set to auto merge. A live RevertActiveCommit for this policy holds auto-merge for every
-// proposed dry SHA. Deleting it is what lets an open pull request merge, such as one opened for a
-// dry SHA that arrived after the restore.
-func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
+// environment is set to auto merge. A pending RevertActiveCommit, or a restore tip whose note lacks
+// Promoter-revert-unblocked-at, holds auto-merge for every proposed dry SHA. Deleting the
+// RevertActiveCommit stamps that trailer and is what lets an open pull request merge, such as one
+// opened for a dry SHA that arrived after the restore.
+func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gate revertGate) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
@@ -1707,22 +1729,24 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return nil, nil
 	}
 
-	// Any live RevertActiveCommit holds auto-merge, whether or not its dry SHA matches proposed.
-	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
-	if err != nil {
-		return nil, err
-	}
-	if len(reverts) > 0 {
-		logger.Info("RevertActiveCommit is present; not auto-merging",
-			"revertActiveCommit", reverts[0].Name,
+	if gate.pendingRevert != "" {
+		logger.Info("RevertActiveCommit restore is still pending; not auto-merging",
+			"revertActiveCommit", gate.pendingRevert,
 			"branch", ctp.Spec.ActiveBranch,
+			"drySha", ctp.Status.Proposed.Dry.Sha)
+		return nil, nil
+	}
+	if gate.isRestoreTip && !gate.unblocked {
+		logger.Info("Restore commit holds auto-merge until Promoter-revert-unblocked-at is stamped",
+			"branch", ctp.Spec.ActiveBranch,
+			"active", ctp.Status.Active.Hydrated.Sha,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil
 	}
 
 	prl := promoterv1alpha1.PullRequestList{}
 	// Find the PRs that match the proposed commit and the environment. There should only be one.
-	err = r.List(ctx, &prl, &client.ListOptions{
+	err := r.List(ctx, &prl, &client.ListOptions{
 		Namespace: ctp.Namespace,
 		LabelSelector: labels.SelectorFromSet(map[string]string{
 			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),

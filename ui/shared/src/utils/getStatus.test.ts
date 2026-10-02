@@ -74,6 +74,24 @@ describe('getEnvironmentStatus', () => {
     expect(getEnvironmentStatus(reverted)).toBe('promoted');
   });
 
+  it('is still promoted for the reverted dry SHA after the RevertActiveCommit is gone, using history', () => {
+    const reverted = env({ activeSha: 'abc', proposedSha: 'def' });
+    reverted.active = {
+      dry: { sha: 'abc' },
+      hydrated: { sha: 'restore-hydrated' },
+    };
+    reverted.history = [
+      {
+        restoredFrom: 'older-hydrated',
+        active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-hydrated' } },
+      },
+      {
+        active: { dry: { sha: 'def' }, hydrated: { sha: 'reverted-hydrated' } },
+      },
+    ];
+    expect(getEnvironmentStatus(reverted)).toBe('promoted');
+  });
+
   it('is still pending when a RevertActiveCommit holds a newer proposed commit', () => {
     const held = env({ activeSha: 'abc', proposedSha: 'ghi' });
     held.revertActiveCommit = { name: 'revert-staging', blockedDrySha: 'def' };

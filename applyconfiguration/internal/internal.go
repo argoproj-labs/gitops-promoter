@@ -1119,6 +1119,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: restoredFrom
       type:
         scalar: string
+    - name: revertUnblockedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HydratorMetadata
   map:
     fields:

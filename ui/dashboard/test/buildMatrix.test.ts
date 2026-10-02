@@ -285,7 +285,7 @@ describe('buildMatrix restore rows', () => {
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
     expect(cell.revertActiveCommit).toBe('revert-staging');
-    expect(cell.revertedByRevertActiveCommit).toBe(false);
+    expect(cell.revertedByRevertActiveCommit).toBeFalsy();
     expect(cell.pullRequest?.id).toBe('3020');
     expect(envs[0]!.proposedPR?.id).toBe('3020');
     expect(rows.find((r) => r.restoredFrom)!.cells[BRANCH]!.pullRequest).toBeUndefined();
@@ -301,12 +301,37 @@ describe('buildMatrix restore rows', () => {
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
-    expect(cell.revertedByRevertActiveCommit).toBe(false);
+    expect(cell.revertedByRevertActiveCommit).toBeFalsy();
     expect(cell.pullRequest).toBeUndefined();
     expect(envs[0]!.proposedPR).toBeUndefined();
     const restoreRow = rows.find((r) => r.restoredFrom)!;
     expect(restoreRow.cells[BRANCH]!.pullRequest).toBeUndefined();
     expect(restoreRow.prId).toBeUndefined();
+  });
+
+  it('still marks the reverted proposed dry SHA after the RevertActiveCommit is deleted', () => {
+    const strategy = strategyWithHistory(true);
+    const env = strategy.status!.environments![0] as Environment;
+    // After restore, proposed still points at the dry SHA that was moved off (NEW_DRY).
+    env.proposed = {
+      dry: dryCommit(NEW_DRY, 'chore: bump version to v1.0.1997', '2026-09-22T14:22:40Z'),
+      hydrated: { sha: NEW_HYDRATED },
+      commitStatuses: [],
+    };
+    env.pullRequest = {
+      id: '2972',
+      url: 'https://github.com/org/repo/pull/2972',
+      state: 'merged',
+    };
+    // No live RevertActiveCommit — blockedDrySha must come from history.
+    expect(env.revertActiveCommit).toBeUndefined();
+
+    const { rows } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
+    expect(cell.isProposed).toBe(true);
+    expect(cell.revertActiveCommit).toBeUndefined();
+    expect(cell.revertedByRevertActiveCommit).toBe(true);
+    expect(cell.kind).toBe('in-flight');
   });
 });
 

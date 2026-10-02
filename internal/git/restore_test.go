@@ -319,4 +319,142 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development"))).To(Equal(sha))
 	})
+
+	It("UnblockRestore stamps Promoter-revert-unblocked-at and is idempotent", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1\n\nPull-request-id: 9\n")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"5555555555555555555555555555555555555555"}`), 0o644)).To(Succeed())
+		mustGit(workDir, "add", "hydrator.metadata")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		at := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+		wrote, err := g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, at)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(wrote).To(BeTrue())
+
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		got, err := g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got[constants.TrailerRevertUnblockedAt]).To(Equal([]string{"2024-06-01T12:00:00Z"}))
+		Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1}))
+
+		again, err := g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, at.Add(time.Hour))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(again).To(BeTrue())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		got, err = g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got[constants.TrailerRevertUnblockedAt]).To(Equal([]string{"2024-06-01T12:00:00Z"}), "idempotent: first timestamp kept")
+	})
+
+	It("UnblockRestore builds a note from commit trailers when the restore has no history note", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Drop the note the restore wrote so UnblockRestore falls back to commit trailers.
+		mustGit(workDir, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+		mustGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "remove", "--ignore-missing", restored.ActiveSha)
+		mustGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+
+		wrote, err := g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(wrote).To(BeTrue())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		got, err := g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1}))
+		Expect(got[constants.TrailerRevertUnblockedAt]).To(Equal([]string{"2024-07-01T00:00:00Z"}))
+	})
+
+	It("UnblockRestore is a no-op for a non-restore commit", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		g := newOps()
+		wrote, err := g.UnblockRestore(GinkgoT().Context(), v1, time.Now())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(wrote).To(BeFalse())
+	})
+
+	It("RestoreGateState reports blocked dry SHA and unblock state", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		activeDry := "5555555555555555555555555555555555555555"
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+activeDry+`"}`), 0o644)).To(Succeed())
+		mustGit(workDir, "add", "hydrator.metadata")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		gate, err := g.RestoreGateState(GinkgoT().Context(), restored.ActiveSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, BlockedDrySha: activeDry}))
+
+		_, err = g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, time.Date(2024, 8, 1, 0, 0, 0, 0, time.UTC))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+
+		gate, err = g.RestoreGateState(GinkgoT().Context(), restored.ActiveSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, Unblocked: true, BlockedDrySha: activeDry}))
+
+		ordinary, err := g.RestoreGateState(GinkgoT().Context(), v1, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ordinary).To(Equal(git.RestoreGate{}))
+	})
+
+	It("refuses a restore of a tip that already carries Promoter-revert-unblocked-at", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"5555555555555555555555555555555555555555"}`), 0o644)).To(Succeed())
+		mustGit(workDir, "add", "hydrator.metadata")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC))
+		Expect(err).NotTo(HaveOccurred())
+
+		// The tip is already this restore and the previous RevertActiveCommit was released.
+		// A new restore of the same target is refused, and the unblock trailer stays on the note.
+		_, err = g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).To(MatchError(ContainSubstring(constants.TrailerRevertUnblockedAt)))
+		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development"))).To(Equal(restored.ActiveSha))
+
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		got, err := g.GetHistoryNote(GinkgoT().Context(), restored.ActiveSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got[constants.TrailerRevertUnblockedAt]).To(Equal([]string{"2024-09-01T00:00:00Z"}))
+		Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1}))
+
+		gate, err := g.RestoreGateState(GinkgoT().Context(), restored.ActiveSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.IsRestore).To(BeTrue())
+		Expect(gate.Unblocked).To(BeTrue())
+	})
 })

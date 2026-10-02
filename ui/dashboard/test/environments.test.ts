@@ -90,3 +90,48 @@ describe('environmentsFromBundle', () => {
     expect(envs[0].history).toBeUndefined();
   });
 });
+
+describe('proposedIsReverted', () => {
+  it('matches RevertActiveCommit.status.blockedDrySha while the CR exists', () => {
+    const env = {
+      active: { dry: { sha: 'abc' }, hydrated: { sha: 'h1' } },
+      proposed: { dry: { sha: 'def' }, hydrated: {} },
+      revertActiveCommit: { name: 'revert-prod', blockedDrySha: 'def' },
+    };
+    expect(proposedIsReverted(env as never)).toBe(true);
+  });
+
+  it('recovers the blocked dry SHA from history after the RevertActiveCommit is deleted', () => {
+    const env = {
+      active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
+      proposed: { dry: { sha: 'def' }, hydrated: {} },
+      history: [
+        {
+          restoredFrom: 'abc-h',
+          active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
+        },
+        {
+          active: { dry: { sha: 'def' }, hydrated: { sha: 'old-h' } },
+        },
+      ],
+    };
+    expect(proposedIsReverted(env as never)).toBe(true);
+  });
+
+  it('does not treat a newer proposed dry SHA as reverted after the CR is gone', () => {
+    const env = {
+      active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
+      proposed: { dry: { sha: 'ghi' }, hydrated: {} },
+      history: [
+        {
+          restoredFrom: 'abc-h',
+          active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
+        },
+        {
+          active: { dry: { sha: 'def' }, hydrated: { sha: 'old-h' } },
+        },
+      ],
+    };
+    expect(proposedIsReverted(env as never)).toBe(false);
+  });
+});

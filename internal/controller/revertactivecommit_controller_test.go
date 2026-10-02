@@ -253,6 +253,7 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 				g.Expect(rc.Status.RestoredFrom).To(Equal(v1Sha))
 				g.Expect(rc.Status.ActiveSha).NotTo(BeEmpty())
 				g.Expect(rc.Status.BlockedDrySha).To(Equal(activeDry))
+				g.Expect(rc.Finalizers).To(ContainElement(promoterv1alpha1.RevertActiveCommitFinalizer))
 				g.Expect(rc.OwnerReferences).To(HaveLen(1))
 				g.Expect(rc.OwnerReferences[0].Name).To(Equal(ctp.Name))
 				g.Expect(rc.OwnerReferences[0].UID).To(Equal(ctp.UID))
@@ -279,6 +280,106 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1Sha}))
 			Expect(got[constants.TrailerPullRequestID]).To(Equal([]string{"9"}))
 			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal([]string{"2020-01-01T00:00:00Z"}))
+
+			By("Deleting the RevertActiveCommit stamps Promoter-revert-unblocked-at and releases the finalizer")
+			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+			rawNote = mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
+			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
+			Expect(got[constants.TrailerRevertUnblockedAt]).To(HaveLen(1))
+			_, err = time.Parse(time.RFC3339, got[constants.TrailerRevertUnblockedAt][0])
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("releases the finalizer when the ChangeTransferPolicy is already gone", func() {
+			ctx := context.Background()
+			name, scmSecret, scmProvider, gitRepo, _, ctp := changeTransferPolicyResources(ctx, "revert-gone-ctp", "default")
+			strategyName := name + "-ps"
+			ctp.Name = utils.ChangeTransferPolicyNameForEnvironment(strategyName, testBranchDevelopment)
+			ctp.Spec.ActiveBranch = testBranchDevelopment
+			ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+			autoMerge := false
+			ctp.Spec.AutoMerge = &autoMerge
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, ctp)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, gitRepo)
+				_ = k8sClient.Delete(ctx, scmProvider)
+				_ = k8sClient.Delete(ctx, scmSecret)
+			})
+
+			gitPath, err := os.MkdirTemp("", "revert-gone-ctp-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+			mustRun := func(args ...string) string {
+				GinkgoHelper()
+				out, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+				return strings.TrimSpace(out)
+			}
+			mustRun("clone", testGitRepoCloneURL(gitRepo), ".")
+			mustRun("config", "user.name", "testuser")
+			mustRun("config", "user.email", "testemail@test.com")
+			mustRun("config", "commit.gpgsign", "false")
+			mustRun("checkout", testBranchDevelopment)
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v1\n"), 0o644)).To(Succeed())
+			mustRun("add", "version.txt")
+			mustRun("commit", "-m", "version v1")
+			v1Sha := mustRun("rev-parse", "HEAD")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v2\n"), 0o644)).To(Succeed())
+			mustRun("add", "version.txt")
+			mustRun("commit", "-m", "version v2")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+
+			ps := promotionStrategyForRevert(strategyName, gitRepo.Name, testBranchDevelopment)
+			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
+			rc := &promoterv1alpha1.RevertActiveCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: name + "-rc", Namespace: "default"},
+				Spec: promoterv1alpha1.RevertActiveCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
+					Branch:               testBranchDevelopment,
+					Sha:                  v1Sha,
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())
+				g.Expect(rc.Status.RestoredFrom).To(Equal(v1Sha))
+				g.Expect(rc.Finalizers).To(ContainElement(promoterv1alpha1.RevertActiveCommitFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Removing the owner reference and deleting the ChangeTransferPolicy so unblock cannot resolve it")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())
+				rc.OwnerReferences = nil
+				g.Expect(k8sClient.Update(ctx, rc)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, ctp)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: ctp.Name, Namespace: "default"}, &promoterv1alpha1.ChangeTransferPolicy{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the RevertActiveCommit still releases the finalizer")
+			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 
@@ -329,6 +430,16 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 			By("Deleting the RevertActiveCommit so the later dry SHA can promote through every environment")
 			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
 			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			s.mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+			rawNote = s.mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
+			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
+			Expect(got[constants.TrailerRevertUnblockedAt]).To(HaveLen(1))
+
+			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
 				g.Expect(s.promotionStrategy.Status.Environments).To(HaveLen(3))
 				for _, env := range s.promotionStrategy.Status.Environments {
@@ -336,7 +447,6 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
-
 		It("does not promote the reverted dry SHA after the RevertActiveCommit is deleted", func() {
 			ctx := context.Background()
 			s := setupRestoredPromotionStrategy()

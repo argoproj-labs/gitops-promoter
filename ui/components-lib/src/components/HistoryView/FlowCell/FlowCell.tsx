@@ -49,18 +49,23 @@ const FlowCell: React.FC<{
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
   const held = cell.revertActiveCommit;
+  const reverted = !!cell.revertedByRevertActiveCommit;
   // A restore cell's dry sha is the version it restored, so a lookup by that sha finds the
   // earlier promotion and its pull request. The restore commit has no pull request of its own.
   const isRestore = !!cell.restoredFrom;
   const prId =
-    held || isRestore ? cell.pullRequest?.id : (cell.pullRequest?.id ?? rowForCell?.prId);
+    held || reverted || isRestore
+      ? cell.pullRequest?.id
+      : (cell.pullRequest?.id ?? rowForCell?.prId);
   const prUrl =
-    held || isRestore ? cell.pullRequest?.url : (cell.pullRequest?.url ?? rowForCell?.prUrl);
+    held || reverted || isRestore
+      ? cell.pullRequest?.url
+      : (cell.pullRequest?.url ?? rowForCell?.prUrl);
   const revertSha = isRestore ? cell.hydrated?.sha : undefined;
   const revertRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
   const revertUrl = revertSha ? getCommitUrl(revertRepoUrl, revertSha) : '';
   const pillTooltip = held
-    ? revertHoldTooltip(held, !!cell.revertedByRevertActiveCommit)
+    ? revertHoldTooltip(held, reverted)
     : cellPillTooltip(cell, branch);
 
   return (
@@ -68,7 +73,7 @@ const FlowCell: React.FC<{
       className={[
         'cell',
         `cell--${visualKind}`,
-        held ? (cell.revertedByRevertActiveCommit ? 'cell--reverted' : 'cell--held') : '',
+        reverted ? 'cell--reverted' : held ? 'cell--held' : '',
         isRestore ? 'cell--restore' : '',
         isSelected ? 'cell--selected' : '',
       ]
@@ -86,7 +91,7 @@ const FlowCell: React.FC<{
       aria-label={`${
         visualKind === 'in-flight'
           ? cell.isProposed
-            ? cell.revertedByRevertActiveCommit
+            ? reverted
               ? 'Reverted'
               : 'Proposed'
             : 'PR open'
@@ -102,11 +107,7 @@ const FlowCell: React.FC<{
           <Tooltip label={pillTooltip}>
             <span
               className={`cell__pill cell__pill--${visualKind}${
-                held
-                  ? cell.revertedByRevertActiveCommit
-                    ? ' cell__pill--reverted'
-                    : ' cell__pill--held'
-                  : ''
+                reverted ? ' cell__pill--reverted' : held ? ' cell__pill--held' : ''
               }${isRestore ? ' cell__pill--restore' : ''}`}
             >
               {visualKind === 'no-op' && (
@@ -114,7 +115,7 @@ const FlowCell: React.FC<{
                   <FaBan aria-hidden="true" />{' '}
                 </>
               )}
-              {held && !cell.revertedByRevertActiveCommit && (
+              {held && !reverted && (
                 <GoBlocked className="cell__pill__stop" aria-hidden="true" />
               )}
               {cellKindLabel(cell)}

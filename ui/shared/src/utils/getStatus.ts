@@ -37,9 +37,9 @@ export function getEnvironmentStatus(
     return 'promoted';
   }
 
-  // After a RevertActiveCommit restores the active branch, the proposed branch still points at the
-  // commit that was reverted. That is not a new change waiting to promote; the environment is
-  // settled until a newer commit arrives.
+  // After a restore, the proposed branch can still point at the dry SHA that was moved off active.
+  // That is not a new change waiting to promote; the environment is settled until a newer commit
+  // arrives. blockedDrySha comes from a live RevertActiveCommit, or from history once that CR is gone.
   if (proposedIsReverted(env)) {
     return 'promoted';
   }

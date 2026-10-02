@@ -83,3 +83,4 @@ status:
         url: https://github.com/org/repo/pull/848
         mergedTargetSha: "5555555555555555555555555555555555555555"
       restoredFrom: "4444444444444444444444444444444444444444"
+      revertUnblockedAt: 2023-09-03T02:00:00Z

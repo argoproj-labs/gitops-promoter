@@ -77,8 +77,30 @@ export function revertHoldTooltip(name: string, reverted: boolean): string {
     : `RevertActiveCommit ${name} is holding this environment in its reverted state, so this pull request will not auto-merge. Delete the RevertActiveCommit to resume promotion.`;
 }
 
-/** Whether the environment's current proposed commit is the one its RevertActiveCommit reverted. */
+/**
+ * Dry SHA the active branch was restored off of, when the tip is still that restore commit.
+ * Prefer RevertActiveCommit.status.blockedDrySha while the CR exists; after it is deleted, recover
+ * the same value from promotion history (the entry immediately older than the live restore).
+ */
+export function revertedDrySha(env: Environment): string | undefined {
+  const fromRevert = env.revertActiveCommit?.blockedDrySha;
+  if (fromRevert) return fromRevert;
+
+  const history = env.history;
+  const activeHydrated = env.active?.hydrated?.sha;
+  if (!history?.length || !activeHydrated) return undefined;
+
+  for (let i = 0; i < history.length; i++) {
+    const entry = history[i];
+    if (!entry.restoredFrom) continue;
+    if (entry.active?.hydrated?.sha !== activeHydrated) continue;
+    return history[i + 1]?.active?.dry?.sha;
+  }
+  return undefined;
+}
+
+/** Whether the environment's current proposed commit is the one a restore moved off the active branch. */
 export function proposedIsReverted(env: Environment): boolean {
-  const blocked = env.revertActiveCommit?.blockedDrySha;
-  return !!blocked && blocked === env.proposed.dry?.sha;
+  const blocked = revertedDrySha(env);
+  return !!blocked && blocked === env.proposed?.dry?.sha;
 }

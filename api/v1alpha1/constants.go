@@ -71,6 +71,10 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
 
+// RevertActiveCommitFinalizer holds deletion until the controller stamps Promoter-revert-unblocked-at on
+// the restore commit's promotion-history note, so the ChangeTransferPolicy can resume auto-merge.
+const RevertActiveCommitFinalizer = "revertactivecommit.promoter.argoproj.io/finalizer"
+
 // InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.

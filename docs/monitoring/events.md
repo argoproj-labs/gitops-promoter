@@ -61,6 +61,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|--------------|-------------|
 | Normal     | Restored     | The active branch was restored to `spec.sha`. The message names the branch and the new restore commit. |
 | Normal     | AlreadyRestored | The active branch already had `spec.sha`'s content, so no commit was written and no dry SHA is blocked. |
+| Normal     | RevertUnblocked | The RevertActiveCommit was deleted and `Promoter-revert-unblocked-at` was stamped on the restore commit's promotion-history note so promotion may resume. |
 
 ## TimedCommitStatus
 
