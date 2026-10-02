@@ -29,8 +29,8 @@ var kubernetesResources = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
 		Name: "promoter_kubernetes_resources",
 		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
-			"Updated on an interval by listing from the controller informer cache (no per-tick API server calls); does not include resources on " +
-			"remote clusters reconciled via multicluster setup. ControllerConfiguration is omitted (singleton).",
+			"Updated on an interval from the controller informer stores (no per-tick API server calls); does not include resources on remote clusters " +
+			"reconciled via multicluster setup. ControllerConfiguration is omitted (singleton).",
 	},
 	[]string{"kind", "readiness"},
 )
@@ -67,8 +67,6 @@ func init() {
 }
 
 // resourceCountInformerSource is the cache subset used for promoter_kubernetes_resources. It matches cache.Cache.
-// List reads the informer cache (no API server call) and works for every cache layout controller-runtime builds:
-// a namespace-scoped cache hands out informers wrapped in a type that exposes no store.
 type resourceCountInformerSource interface {
 	List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error
 }
@@ -86,9 +84,7 @@ func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerS
 	if !ok {
 		return nil, fmt.Errorf("%T is not a client.ObjectList", listObj)
 	}
-	// No namespace option: the count follows whatever the cache watches (install namespace in
-	// namespaced mode, all namespaces otherwise). Items are only read, never mutated, so the
-	// per-item deep copy is not needed.
+	// Items are only read, never mutated, so the per-item deep copy is not needed.
 	if err := c.List(ctx, list, client.UnsafeDisableDeepCopy); err != nil {
 		return nil, fmt.Errorf("listing from cache: %w", err)
 	}
@@ -106,8 +102,7 @@ func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInforme
 	scheme := utils.GetScheme()
 	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
-		// ControllerConfiguration is a singleton pinned to one name in the install namespace, so
-		// counting it carries no information. Skip it.
+		// ControllerConfiguration is a singleton. Skip it.
 		if kind == kinds.ControllerConfigurationKind {
 			continue
 		}
