@@ -87,7 +87,7 @@ export function revertedDrySha(env: Environment): string | undefined {
   if (fromRevert) return fromRevert;
 
   const history = env.history;
-  const activeHydrated = env.active?.hydrated?.sha;
+  const activeHydrated = env.active.hydrated?.sha;
   if (!history?.length || !activeHydrated) return undefined;
 
   for (let i = 0; i < history.length; i++) {
@@ -102,5 +102,5 @@ export function revertedDrySha(env: Environment): string | undefined {
 /** Whether the environment's current proposed commit is the one a restore moved off the active branch. */
 export function proposedIsReverted(env: Environment): boolean {
   const blocked = revertedDrySha(env);
-  return !!blocked && blocked === env.proposed?.dry?.sha;
+  return !!blocked && blocked === env.proposed.dry?.sha;
 }
