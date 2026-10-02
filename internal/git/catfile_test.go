@@ -16,9 +16,10 @@ import (
 )
 
 // logRecord assembles one `git log -z --pretty=format:` record as git would emit it. Fields and
-// records share the same NUL separator, so records are joined with it too.
-func logRecord(sha, author, commitTime, subject, body, message string) string {
-	return strings.Join([]string{sha, author, commitTime, subject, body, message}, "\x00")
+// records share the same NUL separator, so records are joined with it too. Pass "" for trailers
+// when the commit has none.
+func logRecord(sha, author, commitTime, subject, body, message, trailers string) string {
+	return strings.Join([]string{sha, author, commitTime, subject, body, message, trailers}, "\x00")
 }
 
 var _ = Describe("parseCommitLogOutput", func() {
@@ -26,8 +27,8 @@ var _ = Describe("parseCommitLogOutput", func() {
 		stdout := strings.Join([]string{
 			logRecord("abc123", "Alice Example", "2023-11-14T22:33:20-04:00", "feat: do something important",
 				"Body paragraph one.\n\nSigned-off-by: Alice Example <alice@example.com>\n",
-				"feat: do something important\n\nBody paragraph one.\n\nSigned-off-by: Alice Example <alice@example.com>\n"),
-			logRecord("def456", "Bob Example", "2023-11-14T22:33:20+00:00", "subject only", "", "subject only\n"),
+				"feat: do something important\n\nBody paragraph one.\n\nSigned-off-by: Alice Example <alice@example.com>\n", ""),
+			logRecord("def456", "Bob Example", "2023-11-14T22:33:20+00:00", "subject only", "", "subject only\n", ""),
 		}, "\x00")
 
 		results, err := git.ParseCommitLogOutput(stdout)
@@ -57,8 +58,8 @@ var _ = Describe("parseCommitLogOutput", func() {
 
 	It("preserves the empty fields of a commit with no message", func() {
 		stdout := strings.Join([]string{
-			logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "", "", ""),
-			logRecord("def456", "Bob", "2023-11-14T22:33:20+00:00", "subject", "", "subject\n"),
+			logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "", "", "", ""),
+			logRecord("def456", "Bob", "2023-11-14T22:33:20+00:00", "subject", "", "subject\n", ""),
 		}, "\x00")
 
 		results, err := git.ParseCommitLogOutput(stdout)
@@ -71,18 +72,35 @@ var _ = Describe("parseCommitLogOutput", func() {
 
 	It("keeps a message that contains the field separator's printable predecessors", func() {
 		results, err := git.ParseCommitLogOutput(
-			logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "before\x1fafter\n", "s\n\nbefore\x1fafter\n"))
+			logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "before\x1fafter\n", "s\n\nbefore\x1fafter\n", ""))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(results["abc123"].State.Body).To(Equal("before\x1fafter"))
 	})
 
 	It("rejects output that does not divide into whole records", func() {
 		_, err := git.ParseCommitLogOutput("abc123\x00Alice")
-		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 6 fields")))
+		Expect(err).To(MatchError(ContainSubstring("expected a multiple of 7 fields")))
+	})
+
+	It("parses the trailers field into a map with repeated keys", func() {
+		results, err := git.ParseCommitLogOutput(logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "", "s\n",
+			"Signed-off-by: A\nSigned-off-by: B\nPromoter-Description: \"a: b\"\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(results["abc123"].Trailers()).To(Equal(map[string][]string{
+			"Signed-off-by":        {"A", "B"},
+			"Promoter-Description": {`"a: b"`},
+		}))
+	})
+
+	It("returns an empty, non-nil trailer map for a commit without trailers", func() {
+		results, err := git.ParseCommitLogOutput(logRecord("abc123", "Alice", "2023-11-14T22:33:20+00:00", "s", "", "s\n", ""))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(results["abc123"].Trailers()).NotTo(BeNil())
+		Expect(results["abc123"].Trailers()).To(BeEmpty())
 	})
 
 	It("rejects an unparsable committer time", func() {
-		_, err := git.ParseCommitLogOutput(logRecord("abc123", "Alice", "not-a-time", "s", "", "s\n"))
+		_, err := git.ParseCommitLogOutput(logRecord("abc123", "Alice", "not-a-time", "s", "", "s\n", ""))
 		Expect(err).To(MatchError(ContainSubstring("parse committer time")))
 	})
 })
