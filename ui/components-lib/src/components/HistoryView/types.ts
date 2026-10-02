@@ -12,6 +12,7 @@ export type CellKind =
   | 'live'
   | 'in-flight'
   | 'was-here'
+  | 'was-failed'
   | 'failed'
   | 'no-op'
   | 'no-changes'

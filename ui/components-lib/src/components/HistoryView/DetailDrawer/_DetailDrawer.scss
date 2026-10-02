@@ -161,6 +161,11 @@
   &--failed {
     background: $failure-ink;
   }
+  &--was-failed {
+    background: $bg-surface;
+    color: $failure-ink;
+    border: 1px solid $failure-border;
+  }
   &--no-op {
     background: $text-muted;
   }
