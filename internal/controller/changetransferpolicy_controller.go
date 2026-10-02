@@ -102,7 +102,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch;create;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -204,6 +204,10 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
 	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
+
+	if err := r.deleteSupersededRevertActiveCommits(ctx, &ctp, gitOperations); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RevertActiveCommits: %w", err)
+	}
 
 	gate, err := r.evaluateRevertGate(ctx, &ctp, gitOperations)
 	if err != nil {
@@ -1680,6 +1684,60 @@ type revertGate struct {
 	blockedDrySha string
 	isRestoreTip  bool
 	unblocked     bool
+}
+
+// revertActiveCommitSuperseded reports whether a recorded restore commit is strictly behind the active
+// tip, so the RevertActiveCommit that wrote it should be deleted. activeSha is status.activeSha.
+// isAncestor is CommitIsAncestor(activeSha, tip). An empty activeSha has not recorded a restore. An
+// empty tip means this reconcile has no active commit to compare against. The tip itself is kept even
+// when isAncestor is wrongly true: CommitIsAncestor is false for the same SHA, and a second
+// RevertActiveCommit that retried that restore records the same activeSha.
+func revertActiveCommitSuperseded(activeSha, tip string, isAncestor bool) bool {
+	if activeSha == "" || tip == "" || activeSha == tip {
+		return false
+	}
+	return isAncestor
+}
+
+// deleteSupersededRevertActiveCommits deletes RevertActiveCommits for this policy whose recorded
+// restore commit is an ancestor of the active tip. The tip is the one calculateStatus just wrote.
+// Deletion runs the RevertActiveCommit finalizer, which stamps Promoter-revert-unblocked-at on that
+// older commit only. A pending object (no activeSha) and one whose restore is still the tip are left
+// alone. A cache that still lists a just-deleted object is harmless here: its restore is already
+// recorded, so evaluateRevertGate reads the new tip rather than treating it as pending.
+func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+	tip := ctp.Status.Active.Hydrated.Sha
+	if tip == "" {
+		return nil
+	}
+	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	if err != nil {
+		return err
+	}
+	logger := log.FromContext(ctx)
+	for i := range reverts {
+		rc := &reverts[i]
+		if rc.Status.ActiveSha == "" {
+			continue
+		}
+		isAncestor, err := gitOperations.CommitIsAncestor(ctx, rc.Status.ActiveSha, tip)
+		if err != nil {
+			return fmt.Errorf("failed to check whether RevertActiveCommit %q restore %q is behind active tip %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
+		}
+		if !revertActiveCommitSuperseded(rc.Status.ActiveSha, tip, isAncestor) {
+			continue
+		}
+		logger.Info("Deleting RevertActiveCommit whose restore is behind the active tip",
+			"revertActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip)
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.RevertSupersededReason, "Deleting", constants.RevertSupersededMessage, rc.Name, rc.Status.ActiveSha, tip)
+		if err := r.Delete(ctx, rc); err != nil {
+			if k8s_errors.IsNotFound(err) {
+				continue
+			}
+			return fmt.Errorf("failed to delete superseded RevertActiveCommit %q: %w", rc.Name, err)
+		}
+	}
+	return nil
 }
 
 // evaluateRevertGate decides the restore hold for this reconcile. A RevertActiveCommit whose restore

@@ -32,6 +32,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Normal     | PromotionStarted    | A new dry sha was detected on the proposed branch and its promotion to the environment started.                  |
 | Normal/Warning | PromotionBlocked | A pending promotion is blocked by a proposed commit status that is not in the `success` phase. Warning when the gate phase is `failure`. |
 | Normal     | PromotionCompleted  | The environment's active branch advanced to a new dry sha.                                                       |
+| Normal     | RevertSuperseded    | A RevertActiveCommit whose recorded restore is behind the active tip was deleted. Its finalizer unblocks that older restore commit. |
 | Normal     | ResolvedConflict    | A git merge conflict was resolved for a ChangeTransferPolicy.                                                    |
 | Normal     | PullRequestCreated  | A pull request was created for a ChangeTransferPolicy.                                                           |
 | Normal     | PullRequestMerged   | A pull request was merged for a ChangeTransferPolicy.                                                            |

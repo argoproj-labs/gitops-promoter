@@ -499,6 +499,116 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			It("deletes a RevertActiveCommit whose restore is behind a newer restore", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Promoting one commit and recording the active commit it moved off")
+				firstDry, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "first dry commit", "")
+				initialActive, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				initialActive = strings.TrimSpace(initialActive)
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(true)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(firstDry))
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				firstHydrated, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				firstHydrated = strings.TrimSpace(firstHydrated)
+				Expect(firstHydrated).NotTo(Equal(initialActive))
+
+				By("Promoting a second commit so the first can be restored")
+				secondDry, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(secondDry))
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Restoring active to the first promotion")
+				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+				older := &promoterv1alpha1.RevertActiveCommit{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-old", Namespace: "default"},
+					Spec: promoterv1alpha1.RevertActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+						Branch:               testBranchDevelopment,
+						Sha:                  firstHydrated,
+					},
+				}
+				Expect(k8sClient.Create(ctx, older)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, older) })
+				olderKey := types.NamespacedName{Name: older.Name, Namespace: "default"}
+				var firstRestore string
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, olderKey, older)).To(Succeed())
+					g.Expect(older.Status.RestoredFrom).To(Equal(firstHydrated))
+					g.Expect(older.Status.ActiveSha).NotTo(BeEmpty())
+					firstRestore = older.Status.ActiveSha
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Restoring further back, which supersedes the first RevertActiveCommit")
+				newer := &promoterv1alpha1.RevertActiveCommit{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-new", Namespace: "default"},
+					Spec: promoterv1alpha1.RevertActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+						Branch:               testBranchDevelopment,
+						Sha:                  initialActive,
+					},
+				}
+				Expect(k8sClient.Create(ctx, newer)).To(Succeed())
+				DeferCleanup(func() { _ = k8sClient.Delete(ctx, newer) })
+				newerKey := types.NamespacedName{Name: newer.Name, Namespace: "default"}
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, newerKey, newer)).To(Succeed())
+					g.Expect(newer.Status.RestoredFrom).To(Equal(initialActive))
+					g.Expect(newer.Status.ActiveSha).NotTo(BeEmpty())
+					g.Expect(newer.Status.ActiveSha).NotTo(Equal(firstRestore))
+					err := k8sClient.Get(ctx, olderKey, &promoterv1alpha1.RevertActiveCommit{})
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+				Expect(err).NotTo(HaveOccurred())
+				olderNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", firstRestore)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(olderNote).To(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				newerNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", newer.Status.ActiveSha)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(newerNote).NotTo(ContainSubstring(constants.TrailerRevertUnblockedAt))
+
+				By("Holding auto-merge while the newer RevertActiveCommit remains")
+				laterDry, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "a later dry commit after the second restore", "")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDry))
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(k8sClient.Get(ctx, newerKey, newer)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				Consistently(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			})
 		})
 		Context("When using commit status checks", func() {
 			var name string
@@ -3838,6 +3948,19 @@ var _ = Describe("commit status description trailers", func() {
 		Expect(history.Proposed.CommitStatuses[0].Key).To(Equal("gate"))
 		Expect(history.Proposed.CommitStatuses[0].Description).To(Equal("proposed description"))
 	})
+})
+
+var _ = Describe("revertActiveCommitSuperseded", func() {
+	DescribeTable("decides whether a recorded restore is behind the active tip",
+		func(activeSha, tip string, isAncestor, want bool) {
+			Expect(revertActiveCommitSuperseded(activeSha, tip, isAncestor)).To(Equal(want))
+		},
+		Entry("no recorded restore", "", "tip", true, false),
+		Entry("no active tip", "restore", "", true, false),
+		Entry("restore is the tip", "same", "same", true, false),
+		Entry("restore is an ancestor of the tip", "restore", "tip", true, true),
+		Entry("restore is unrelated to the tip", "restore", "tip", false, false),
+	)
 })
 
 var _ = Describe("skipPullRequestAfterRevert", func() {

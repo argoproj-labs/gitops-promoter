@@ -59,7 +59,8 @@ A RevertActiveCommit restores one environment's active branch to a previously pr
 for that environment until it is deleted. `spec.promotionStrategyRef` names the PromotionStrategy and `spec.branch`
 names the environment; the controller resolves those to the environment's ChangeTransferPolicy, which supplies the
 repository, branches, and `activePath`. `spec.sha` is the hydrated commit to restore. The spec is immutable, so
-restoring something else means creating a new RevertActiveCommit. The controller makes the ChangeTransferPolicy its owner,
+restoring something else means creating a new RevertActiveCommit. Once the active tip moves past the restore commit an
+object recorded, the ChangeTransferPolicy deletes that object. The controller makes the ChangeTransferPolicy its owner,
 so deleting the policy removes its RevertActiveCommits.
 
 The restore is a new commit on top of the active branch, not a force-push, and runs once. `status.blockedDrySha`
