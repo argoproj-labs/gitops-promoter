@@ -1390,6 +1390,79 @@ func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
 	return nil
 }
 
+// restoreActiveBranchViaGit writes a restore commit the same way RestoreActiveBranch does, but
+// only with git CLI: a new commit parented on the current active tip whose tree matches restoreTo,
+// Promoter-restored-from in the message and promotion-history note, then note push + branch push.
+// Fires a webhook with the pre-restore tip so CTP reconciles. Returns the restore commit SHA.
+func restoreActiveBranchViaGit(ctx context.Context, gitPath, activeBranch, restoreTo string) string {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip = strings.TrimSpace(activeTip)
+
+	tree, err := runGitCmd(ctx, gitPath, "rev-parse", restoreTo+"^{tree}")
+	Expect(err).NotTo(HaveOccurred())
+	tree = strings.TrimSpace(tree)
+
+	short := restoreTo
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	message := fmt.Sprintf("Revert %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, restoreTo)
+	restoreSha, err := runGitCmd(ctx, gitPath, "commit-tree", tree, "-p", activeTip, "-m", message)
+	Expect(err).NotTo(HaveOccurred())
+	restoreSha = strings.TrimSpace(restoreSha)
+
+	notePayload, err := json.Marshal(map[string][]string{
+		constants.TrailerRestoredFrom: {restoreTo},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	if err != nil && !strings.Contains(err.Error(), "couldn't find remote ref") {
+		Expect(err).NotTo(HaveOccurred())
+	}
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(notePayload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	lease := "refs/heads/" + activeBranch + ":" + activeTip
+	refspec := restoreSha + ":refs/heads/" + activeBranch
+	_, err = runGitCmd(ctx, gitPath, "push", "--force-with-lease="+lease, "origin", refspec)
+	Expect(err).NotTo(HaveOccurred())
+
+	sendWebhookForPush(ctx, activeTip, activeBranch)
+	return restoreSha
+}
+
+// unblockRestoreViaGit stamps Promoter-revert-unblocked-at on restoreSha's promotion-history note
+// via git notes only (no RevertActiveCommit, no UnblockRestore Go helper). Callers should enqueue
+// CTP afterward: SCMs do not webhook on notes pushes.
+func unblockRestoreViaGit(ctx context.Context, gitPath, restoreSha string, at time.Time) {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	trailers := map[string][]string{}
+	raw, showErr := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
+	if showErr == nil && strings.TrimSpace(raw) != "" {
+		Expect(json.Unmarshal([]byte(raw), &trailers)).To(Succeed())
+	}
+	trailers[constants.TrailerRevertUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	payload, err := json.Marshal(trailers)
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(payload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+}
+
 // fetchNotesRef force-fetches the hydrator notes ref from origin into the
 // local clone. It tolerates the case where the remote does not yet have the
 // notes ref (first hydrator run on a brand-new repo).

@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -456,5 +457,49 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(gate.IsRestore).To(BeTrue())
 		Expect(gate.Unblocked).To(BeTrue())
+	})
+
+	It("gates and unblocks when restore and unblock are done only with git commands", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+
+		activeDry := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+activeDry+`"}`), 0o644)).To(Succeed())
+		mustGit(workDir, "add", "hydrator.metadata")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		mustGit(workDir, "fetch", "origin", "environment/development")
+		activeTip := strings.TrimSpace(mustGit(workDir, "rev-parse", "origin/environment/development"))
+		tree := strings.TrimSpace(mustGit(workDir, "rev-parse", v1+"^{tree}"))
+		message := "Revert environment/development to " + v1[:7] + "\n\n" + constants.TrailerRestoredFrom + ": " + v1 + "\n"
+		restoreSha := strings.TrimSpace(mustGit(workDir, "commit-tree", tree, "-p", activeTip, "-m", message))
+
+		notePayload, err := json.Marshal(map[string][]string{constants.TrailerRestoredFrom: {v1}})
+		Expect(err).NotTo(HaveOccurred())
+		mustGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(notePayload), restoreSha)
+		mustGit(workDir, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+		mustGit(workDir, "push", "--force-with-lease=refs/heads/environment/development:"+activeTip, "origin", restoreSha+":refs/heads/environment/development")
+
+		g := newOps()
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		gate, err := g.RestoreGateState(GinkgoT().Context(), restoreSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, BlockedDrySha: activeDry}))
+
+		unblockPayload, err := json.Marshal(map[string][]string{
+			constants.TrailerRestoredFrom:      {v1},
+			constants.TrailerRevertUnblockedAt: {"2024-10-02T18:00:00Z"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		mustGit(workDir, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+		mustGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(unblockPayload), restoreSha)
+		mustGit(workDir, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		gate, err = g.RestoreGateState(GinkgoT().Context(), restoreSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, Unblocked: true, BlockedDrySha: activeDry}))
 	})
 })
