@@ -1784,6 +1784,11 @@ func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context,
 		}
 	}
 
+	// One git log for the active tip's promotion-history note. RestoreGateState reads that note
+	// twice when the tip is a restore, and GetHistoryNote does not fill the cache on a miss.
+	if err := gitOperations.LoadHistoryNotes(ctx, ctp.Status.Active.Hydrated.Sha); err != nil {
+		return revertGate{}, fmt.Errorf("failed to prefetch history note for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
+	}
 	state, err := gitOperations.RestoreGateState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
 	if err != nil {
 		return revertGate{}, fmt.Errorf("failed to read restore gate for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)

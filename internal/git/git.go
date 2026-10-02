@@ -1219,6 +1219,9 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		// -f overwrites an existing note, which keeps retried reconciles idempotent.
 		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
 		g.forgetLocalRef(PromoterHistoryNotesRef)
+		// LoadHistoryNotes may have cached the previous note for this commit. Drop it so a later
+		// GetHistoryNote reads the note just written instead of the pre-write text.
+		delete(g.historyNotes, strings.ToLower(sha))
 		if err != nil {
 			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
 			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
@@ -1519,16 +1522,21 @@ type RestoreResult struct {
 // Promoter-restored-from is itself a restore and is refused. The commit a restore moved off does
 // not carry that trailer, so it can be restored again.
 //
-// Operates on the object DB only. Requires CloneRepo to have run. Fetches the active branch and
-// both notes refs (hydrator.metadata and promoter.history).
+// Operates on the object DB only. Requires CloneRepo to have run. Snapshots the active branch and
+// both notes refs, then fetches only the refs whose local copy differs. A clone that just ran
+// already has the branch, so that fetch is skipped when the snapshot matches.
 //
 // The git commands run, in order (A = activeBranch, T = targetSha):
 //
-//	git fetch origin A                      && git rev-parse origin/A          # activeTip
+//	git ls-remote <url> refs/heads/A refs/notes/hydrator.metadata refs/notes/promoter.history
+//	git for-each-ref ...                                                       # local tips for the snapshot
+//	git fetch origin A                      && git rev-parse origin/A          # activeTip; skipped when origin/A matches the snapshot
 //	git cat-file -e T^{commit}                                                 # T must be a commit
 //	git merge-base --is-ancestor T <activeTip>                                 # skipped when T is activeTip
-//	git fetch origin +refs/notes/hydrator.metadata:refs/notes/hydrator.metadata
-//	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
+//	git fetch origin +refs/notes/hydrator.metadata:refs/notes/hydrator.metadata  # skipped when the snapshot matches
+//	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history    # skipped when the snapshot matches
+//	git log --no-walk=unsorted --stdin -z --no-notes --notes=refs/notes/promoter.history --pretty=format:%H%x00%N
+//	                                                                         # activeTip and T; later notes show calls are served from this
 //
 //	# tree to restore
 //	git rev-parse --verify T^{tree}                                            # no activePath
@@ -1546,15 +1554,15 @@ type RestoreResult struct {
 //	# Promoter-revert-unblocked-at (a previous RevertActiveCommit was deleted), refuse and leave
 //	# the note unchanged. Equal tree without the marker: Unchanged, return here.
 //	git rev-parse --verify <activeTip>^{tree}
-//	git notes --ref=refs/notes/promoter.history show <activeTip>               # only when trees are equal
-//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message
+//	# activeTip's history note comes from the prefetch above (no notes show)
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message, only when that note is absent
 //	git interpret-trailers --only-trailers < message                           # fallback: trailers
-//	git notes --ref=refs/notes/promoter.history show <activeTip>               # refuse when the marker matched and the note has Promoter-revert-unblocked-at
+//	# refuse when the marker matched and the prefetched note has Promoter-revert-unblocked-at
 //
 //	# otherwise, refuse a target that carries Promoter-restored-from. That trailer is written on the
 //	# restore commit only. The commit the restore moved off keeps its own note and stays eligible.
-//	git notes --ref=refs/notes/promoter.history show <target>                     # Promoter-restored-from?
-//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <target>        # fallback: message
+//	# target's history note comes from the prefetch above (no notes show)
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <target>        # fallback: message, only when that note is absent
 //	git interpret-trailers --only-trailers < message                              # fallback: trailers
 //
 //	# otherwise create the restore commit, note, and push (note first).
@@ -1568,7 +1576,7 @@ type RestoreResult struct {
 //
 //	<T's trailers, sorted by key>
 //	Promoter-restored-from: T'
-//	git notes --ref=refs/notes/promoter.history show T                         # copy T's note
+//	# copy T's note from the prefetch above
 //	# when that note is absent, empty, or not valid JSON, build it from T's commit trailers (cached above)
 //	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
 //	git notes --ref=refs/notes/promoter.history add -f -m '<json>' <restoreSha>
@@ -1586,6 +1594,12 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 		return RestoreResult{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
+	// One ls-remote for the branch and both notes refs. GetBranchSha and FetchNotes below skip
+	// anything the clone already has. On failure they probe on their own.
+	if err := g.SnapshotRemoteRefs(ctx, activeBranch); err != nil {
+		logger.V(4).Info("failed to snapshot remote refs, falling back to per-ref probes", "error", err)
+	}
+
 	activeTip, err := g.GetBranchSha(ctx, activeBranch, "")
 	if err != nil {
 		return RestoreResult{}, err
@@ -1595,6 +1609,11 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 	}
 	if err := g.FetchNotes(ctx); err != nil {
 		return RestoreResult{}, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+	// The target note is read twice (refuse, then copy) and the active tip can be read twice on a
+	// repeat call. One git log fills the per-reconcile cache for both.
+	if err := g.LoadHistoryNotes(ctx, activeTip, targetSha); err != nil {
+		return RestoreResult{}, fmt.Errorf("failed to prefetch history notes: %w", err)
 	}
 
 	wantTree, err := g.restoreTree(ctx, "origin/"+activeBranch, targetSha, activePath)
@@ -2016,10 +2035,17 @@ func (g *EnvironmentOperations) commitTree(ctx context.Context, tree string, par
 // commitSha is parented on expectedTip, so a plain push would already reject a branch that moved
 // forward; the lease also rejects one that was rewound to an ancestor, where a plain push would
 // fast-forward and put back the commits that were removed.
+//
+// The push moves the clone's origin/<branch> tracking ref. The branch is dropped from the remote
+// snapshot and the local ref cache either way, so a later GetBranchSha re-probes instead of
+// returning the pre-push tip.
 func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitSha, branch, expectedTip string) error {
 	lease := "refs/heads/" + branch + ":" + expectedTip
 	refspec := commitSha + ":refs/heads/" + branch
-	if _, stderr, err := g.runCmd(ctx, g.ClonePath(), "push", "--force-with-lease="+lease, "origin", refspec); err != nil {
+	_, stderr, err := g.runCmd(ctx, g.ClonePath(), "push", "--force-with-lease="+lease, "origin", refspec)
+	g.forgetRemoteRef(branchRef(branch))
+	g.forgetLocalRef(trackingRef(branch))
+	if err != nil {
 		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
 	}
 	return nil
