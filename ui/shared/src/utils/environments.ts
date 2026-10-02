@@ -19,7 +19,8 @@ export const INSTANCE_ID_LABEL = 'promoter.argoproj.io/instance-id';
  * spec.activeBranch, in the order declared by the PromotionStrategy spec. Promotion history is
  * sourced from the per-environment ChangeTransferPolicyHistory resources, keyed the same way.
  * RevertActiveCommits are matched to an environment by spec.branch. The bundle is already one
- * PromotionStrategy, so the branch is unique within it.
+ * PromotionStrategy, so the branch is unique within it. Several RevertActiveCommits can target
+ * that branch; only the one whose restore commit is still the active tip supplies blockedDrySha.
  */
 export function environmentsFromBundle(
   spec: PromotionStrategy['spec'],
@@ -39,32 +40,63 @@ export function environmentsFromBundle(
     if (branch) historiesByBranch.set(branch, ctph);
   }
 
-  const revertsByBranch = new Map<string, EnvironmentRevertActiveCommit>();
+  const revertsByBranch = new Map<string, RevertActiveCommit[]>();
   for (const rc of revertActiveCommits) {
     const branch = rc.spec?.branch;
     const name = rc.metadata?.name;
     if (!branch || !name || rc.metadata?.deletionTimestamp) continue;
-    if (!revertsByBranch.has(branch)) {
-      revertsByBranch.set(branch, { name, blockedDrySha: rc.status?.blockedDrySha });
-    }
+    const existing = revertsByBranch.get(branch);
+    if (existing) existing.push(rc);
+    else revertsByBranch.set(branch, [rc]);
   }
 
   return spec.environments.map((env) => {
     const ctp = byBranch.get(env.branch);
     const status = ctp?.status ?? {};
     const ctpName = ctp?.metadata?.name;
+    const active = status.active ?? { dry: {}, hydrated: {} };
     return {
       branch: env.branch,
       changeTransferPolicyName: ctpName,
       instanceId: ctp?.metadata?.labels?.[INSTANCE_ID_LABEL],
-      active: status.active ?? { dry: {}, hydrated: {} },
+      active,
       proposed: status.proposed ?? { dry: {}, hydrated: {} },
       pullRequest: status.pullRequest,
-      revertActiveCommit: revertsByBranch.get(env.branch),
+      revertActiveCommit: revertForEnvironment(
+        revertsByBranch.get(env.branch),
+        active.hydrated?.sha,
+      ),
       history: historiesByBranch.get(env.branch)?.status?.history,
       lastHealthyDryShas: [],
     };
   });
+}
+
+/**
+ * The RevertActiveCommit the UI attributes this environment's hold to.
+ *
+ * blockedDrySha comes only from the object whose status.activeSha is the live active tip. An
+ * older RevertActiveCommit for the same branch still names the dry SHA its own restore moved off,
+ * which is not the one the current tip moved off. When none match, the first live object is still
+ * returned so the hold stays visible, and revertedDrySha recovers the dry SHA from history.
+ */
+function revertForEnvironment(
+  rcs: RevertActiveCommit[] | undefined,
+  activeHydratedSha: string | undefined,
+): EnvironmentRevertActiveCommit | undefined {
+  if (!rcs?.length) return undefined;
+
+  const current = rcs.find(
+    (rc) => rc.status?.activeSha !== undefined && rc.status.activeSha === activeHydratedSha,
+  );
+  const chosen = current ?? rcs[0];
+  const name = chosen.metadata?.name;
+  if (!name) return undefined;
+
+  const projected: EnvironmentRevertActiveCommit = { name };
+  if (chosen.status?.activeSha) projected.activeSha = chosen.status.activeSha;
+  if (current?.status?.blockedDrySha) projected.blockedDrySha = current.status.blockedDrySha;
+  return projected;
 }
 
 /**
@@ -79,15 +111,17 @@ export function revertHoldTooltip(name: string, reverted: boolean): string {
 
 /**
  * Dry SHA the active branch was restored off of, when the tip is still that restore commit.
- * Prefer RevertActiveCommit.status.blockedDrySha while the CR exists; after it is deleted, recover
- * the same value from promotion history (the entry immediately older than the live restore).
+ * Prefer RevertActiveCommit.status.blockedDrySha when that object's activeSha is the live tip
+ * (or when activeSha was not projected). Otherwise recover the same value from promotion history:
+ * the entry immediately older than the live restore.
  */
 export function revertedDrySha(env: Environment): string | undefined {
-  const fromRevert = env.revertActiveCommit?.blockedDrySha;
-  if (fromRevert) return fromRevert;
+  const revert = env.revertActiveCommit;
+  const activeHydrated = env.active.hydrated?.sha;
+  const tipMatches = !revert?.activeSha || revert.activeSha === activeHydrated;
+  if (revert?.blockedDrySha && tipMatches) return revert.blockedDrySha;
 
   const history = env.history;
-  const activeHydrated = env.active.hydrated?.sha;
   if (!history?.length || !activeHydrated) return undefined;
 
   for (let i = 0; i < history.length; i++) {

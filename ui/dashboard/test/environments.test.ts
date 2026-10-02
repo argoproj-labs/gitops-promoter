@@ -19,7 +19,7 @@ const ctps = [
     },
     spec: { activeBranch: 'environment/prod' },
     status: {
-      active: { dry: { sha: 'prod-active' }, hydrated: {} },
+      active: { dry: { sha: 'prod-active' }, hydrated: { sha: 'prod-hydrated' } },
       proposed: { dry: { sha: 'prod-proposed' }, hydrated: {} },
       pullRequest: { id: '42' },
     },
@@ -46,7 +46,7 @@ const revertActiveCommits = [
   {
     metadata: { name: 'revert-prod' },
     spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
-    status: { blockedDrySha: 'prod-proposed' },
+    status: { activeSha: 'prod-hydrated', blockedDrySha: 'prod-proposed' },
   },
   {
     metadata: { name: 'revert-going-away', deletionTimestamp: '2026-09-25T00:00:00Z' },
@@ -64,6 +64,7 @@ describe('environmentsFromBundle', () => {
     expect(envs[1].pullRequest?.id).toBe('42');
     expect(envs[1].revertActiveCommit).toEqual({
       name: 'revert-prod',
+      activeSha: 'prod-hydrated',
       blockedDrySha: 'prod-proposed',
     });
     expect(envs[0].revertActiveCommit).toBeUndefined();
@@ -82,6 +83,79 @@ describe('environmentsFromBundle', () => {
     expect(envs[1].history).toBeUndefined();
   });
 
+  it('uses the RevertActiveCommit whose restore is still the active tip', () => {
+    const envs = environmentsFromBundle(spec, ctps, histories, [
+      {
+        metadata: { name: 'revert-a' },
+        spec: { branch: 'environment/prod' },
+        status: { activeSha: 'r1', blockedDrySha: 'd3' },
+      },
+      {
+        metadata: { name: 'revert-b' },
+        spec: { branch: 'environment/prod' },
+        status: { activeSha: 'prod-hydrated', blockedDrySha: 'd2' },
+      },
+    ] as unknown as RevertActiveCommit[]);
+
+    expect(envs[1].revertActiveCommit).toEqual({
+      name: 'revert-b',
+      activeSha: 'prod-hydrated',
+      blockedDrySha: 'd2',
+    });
+    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
+      true,
+    );
+    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
+      false,
+    );
+  });
+
+  it('keeps the hold and falls back to history when no RevertActiveCommit matches the tip', () => {
+    const envs = environmentsFromBundle(
+      spec,
+      ctps,
+      [
+        {
+          spec: { activeBranch: 'environment/prod' },
+          status: {
+            history: [
+              {
+                restoredFrom: 'h1',
+                active: { dry: { sha: 'd-target' }, hydrated: { sha: 'prod-hydrated' } },
+              },
+              {
+                active: { dry: { sha: 'd2' }, hydrated: { sha: 'r1' } },
+              },
+            ],
+          },
+        },
+      ] as unknown as ChangeTransferPolicyHistory[],
+      [
+        {
+          metadata: { name: 'revert-a' },
+          spec: { branch: 'environment/prod' },
+          status: { activeSha: 'r1', blockedDrySha: 'd3' },
+        },
+        {
+          metadata: { name: 'revert-pending' },
+          spec: { branch: 'environment/prod' },
+          status: {},
+        },
+      ] as unknown as RevertActiveCommit[],
+    );
+
+    expect(envs[1].revertActiveCommit).toEqual({
+      name: 'revert-a',
+      activeSha: 'r1',
+    });
+    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
+      true,
+    );
+    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
+      false,
+    );
+  });
+
   it('renders empty branch states when an environment has no CTP yet', () => {
     const envs = environmentsFromBundle(spec, [], []);
 
@@ -96,9 +170,30 @@ describe('proposedIsReverted', () => {
     const env = {
       active: { dry: { sha: 'abc' }, hydrated: { sha: 'h1' } },
       proposed: { dry: { sha: 'def' }, hydrated: {} },
-      revertActiveCommit: { name: 'revert-prod', blockedDrySha: 'def' },
+      revertActiveCommit: { name: 'revert-prod', activeSha: 'h1', blockedDrySha: 'def' },
     };
     expect(proposedIsReverted(env as never)).toBe(true);
+  });
+
+  it('ignores blockedDrySha when activeSha is not the live tip and uses history', () => {
+    const env = {
+      active: { dry: { sha: 'abc' }, hydrated: { sha: 'r2' } },
+      proposed: { dry: { sha: 'd3' }, hydrated: {} },
+      revertActiveCommit: { name: 'revert-a', activeSha: 'r1', blockedDrySha: 'd3' },
+      history: [
+        {
+          restoredFrom: 'h1',
+          active: { dry: { sha: 'd-target' }, hydrated: { sha: 'r2' } },
+        },
+        {
+          active: { dry: { sha: 'd2' }, hydrated: { sha: 'r1' } },
+        },
+      ],
+    };
+    expect(proposedIsReverted(env as never)).toBe(false);
+    expect(
+      proposedIsReverted({ ...env, proposed: { dry: { sha: 'd2' }, hydrated: {} } } as never),
+    ).toBe(true);
   });
 
   it('recovers the blocked dry SHA from history after the RevertActiveCommit is deleted', () => {

@@ -37,6 +37,11 @@ export type Environment = components['schemas']['EnvironmentStatus'] & {
 /** The parts of a RevertActiveCommit the UI needs to explain why a promotion is held. */
 export interface EnvironmentRevertActiveCommit {
   name: string;
+  /**
+   * Hydrated SHA of the restore commit this RevertActiveCommit wrote (`status.activeSha`).
+   * `blockedDrySha` applies only while this is still the environment's active hydrated SHA.
+   */
+  activeSha?: string;
   /** Dry SHA the RevertActiveCommit moved off the active branch. */
   blockedDrySha?: string;
 }
