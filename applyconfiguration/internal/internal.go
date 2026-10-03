@@ -586,6 +586,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestConfiguration
+    - name: revertActiveCommit
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
@@ -1113,6 +1116,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestCommonStatus
+    - name: restoredFrom
+      type:
+        scalar: string
+    - name: revertUnblockedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HydratorMetadata
   map:
     fields:
@@ -1471,7 +1480,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: output
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommit
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommit
   map:
     fields:
     - name: apiVersion
@@ -1485,28 +1494,54 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
     - name: status
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
   map:
     fields:
-    - name: foo
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
+  map:
+    fields:
+    - name: branch
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
   map:
-    elementType:
-      scalar: untyped
-      list:
-        elementType:
-          namedType: __untyped_atomic_
-        elementRelationship: atomic
-      map:
-        elementType:
-          namedType: __untyped_deduced_
-        elementRelationship: separable
+    fields:
+    - name: activeSha
+      type:
+        scalar: string
+    - name: blockedDrySha
+      type:
+        scalar: string
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: restoredFrom
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevisionReference
   map:
     fields:

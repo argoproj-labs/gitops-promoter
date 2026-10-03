@@ -1,5 +1,6 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, timeAgo } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
+import { proposedIsReverted } from './environments';
 import type { components } from '../types/generated/view.gen';
 import type {
   BranchCommitStatus,
@@ -220,10 +221,12 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
       : null;
   const activePr = index > 0 ? historyWithPr : (historyWithPr ?? mergedEnvPr);
 
-  // Resolve merge time: prefer prMergeTime, fall back to hydrated commitTime
+  // Resolve when the entry landed: prefer prMergeTime, fall back to hydrated commitTime. A restore
+  // keeps the restored version's prMergeTime, so its own time is the restore commit's commitTime.
   let historyMergeTimeAgo: RelativeTimeAgo | null = null;
   if (index > 0) {
     const mergeTimeStr =
+      (history[index]?.restoredFrom ? history[index]?.active?.hydrated?.commitTime : undefined) ||
       history[index]?.pullRequest?.prMergeTime ||
       history[index]?.active?.hydrated?.commitTime ||
       null;
@@ -276,8 +279,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
     proposedChecks,
     proposedChecksSummary,
-
-    // History
+    revertActiveCommit: isHistoric ? undefined : environment.revertActiveCommit?.name,
+    proposedIsReverted: !isHistoric && proposedIsReverted(environment),
     historyMergeTimeAgo,
   };
 }

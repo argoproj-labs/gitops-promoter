@@ -93,6 +93,13 @@ const (
 	// PromotionCompletedMessage is the message for a completed promotion.
 	PromotionCompletedMessage = "Environment branch %s promoted to dry sha %s (previously %s)"
 
+	// RevertSupersededReason indicates that a RevertActiveCommit was deleted because its restore commit
+	// is behind the active tip. The object's finalizer unblocks that older restore.
+	RevertSupersededReason = "RevertSuperseded"
+	// RevertSupersededMessage is the message for a superseded RevertActiveCommit.
+	// Args: RevertActiveCommit name, its status.activeSha, the active tip.
+	RevertSupersededMessage = "Deleted RevertActiveCommit %s; its restore %s is behind active tip %s"
+
 	// CommitStatusPhaseChangedReason indicates that the phase computed by a commit status gate
 	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) changed for an environment.
 	CommitStatusPhaseChangedReason = "CommitStatusPhaseChanged"

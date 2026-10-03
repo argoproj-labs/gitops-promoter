@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 // HistoryApplyConfiguration represents a declarative configuration of the History type for use
 // with apply.
 //
@@ -38,6 +42,18 @@ type HistoryApplyConfiguration struct {
 	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
 	// revision rather than what actually merged.
 	MergeCommitSnapshotMismatch *bool `json:"mergeCommitSnapshotMismatch,omitempty"`
+	// RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+	// pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+	// tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+	// pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+	// version and describe the original promotion, not the restore. active.hydrated is the restore commit
+	// itself, so active.hydrated.commitTime is when the restore was written.
+	RestoredFrom *string `json:"restoredFrom,omitempty"`
+	// RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
+	// read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+	// While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
+	// moved off of is blocked from opening a pull request.
+	RevertUnblockedAt *v1.Time `json:"revertUnblockedAt,omitempty"`
 }
 
 // HistoryApplyConfiguration constructs a declarative configuration of the History type for use with
@@ -75,5 +91,21 @@ func (b *HistoryApplyConfiguration) WithPullRequest(value *PullRequestCommonStat
 // If called multiple times, the MergeCommitSnapshotMismatch field is set to the value of the last call.
 func (b *HistoryApplyConfiguration) WithMergeCommitSnapshotMismatch(value bool) *HistoryApplyConfiguration {
 	b.MergeCommitSnapshotMismatch = &value
+	return b
+}
+
+// WithRestoredFrom sets the RestoredFrom field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RestoredFrom field is set to the value of the last call.
+func (b *HistoryApplyConfiguration) WithRestoredFrom(value string) *HistoryApplyConfiguration {
+	b.RestoredFrom = &value
+	return b
+}
+
+// WithRevertUnblockedAt sets the RevertUnblockedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RevertUnblockedAt field is set to the value of the last call.
+func (b *HistoryApplyConfiguration) WithRevertUnblockedAt(value v1.Time) *HistoryApplyConfiguration {
+	b.RevertUnblockedAt = &value
 	return b
 }

@@ -177,3 +177,13 @@ spec:
         exponentialFailure:
           baseDelay: "500ms"
           maxDelay: "1m"
+
+  # RevertActiveCommit controller restores an environment's active branch to a previous hydrated commit
+  revertActiveCommit:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"

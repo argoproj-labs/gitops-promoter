@@ -41,7 +41,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// GateCommitStatusKinds is discovered from the promoter scheme (any type with
+// GateCommitStatusKinds is discovered from the promoter scheme (commit-status kinds with
 // Spec.PromotionStrategyRef). These specs assert the view aggregate still wires
 // each discovered gate into PromotionStrategyDetails / buildBundle / PS mapping /
 // apiserver RBAC — the parts that cannot be inferred automatically.

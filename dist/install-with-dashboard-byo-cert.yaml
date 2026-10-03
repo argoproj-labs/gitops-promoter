@@ -1881,6 +1881,26 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoredFrom:
+                      description: |-
+                        RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+                        pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+                        tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+                        pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+                        version and describe the original promotion, not the restore. active.hydrated is the restore commit
+                        itself, so active.hydrated.commitTime is when the restore was written.
+                      maxLength: 64
+                      minLength: 40
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
+                    revertUnblockedAt:
+                      description: |-
+                        RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
+                        read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+                        While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
+                        moved off of is blocked from opening a pull request.
+                      format: date-time
+                      type: string
                   type: object
                 maxItems: 20
                 type: array
@@ -4158,6 +4178,215 @@ spec:
                 - template
                 - workQueue
                 type: object
+              revertActiveCommit:
+                description: |-
+                  RevertActiveCommit contains the configuration for the RevertActiveCommit controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the RevertActiveCommit controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               scheduledCommitStatus:
                 description: |-
                   ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
@@ -4794,6 +5023,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
+            - revertActiveCommit
             - scheduledCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus
@@ -7256,20 +7486,43 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: revertcommits.promoter.argoproj.io
+  name: revertactivecommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: RevertCommit
-    listKind: RevertCommitList
-    plural: revertcommits
-    singular: revertcommit
+    kind: RevertActiveCommit
+    listKind: RevertActiveCommitList
+    plural: revertactivecommits
+    singular: revertactivecommit
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .spec.branch
+      name: Branch
+      type: string
+    - jsonPath: .spec.sha
+      name: Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.activeSha
+      name: Active Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RevertCommit is the Schema for the revertcommits API
+        description: |-
+          RevertActiveCommit restores one environment's active branch to a previously hydrated commit and records
+          the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+          Creating the resource is the authorization boundary: whoever can create a RevertActiveCommit in the
+          strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+          The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
         properties:
           apiVersion:
             description: |-
@@ -7289,15 +7542,182 @@ spec:
           metadata:
             type: object
           spec:
-            description: RevertCommitSpec defines the desired state of RevertCommit
+            description: |-
+              RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
+              once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
+              existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
+              reverted. To restore something else, create a new RevertActiveCommit.
             properties:
-              foo:
-                description: Foo is an example field of RevertCommit. Edit revertcommit_types.go
-                  to remove/update
+              branch:
+                description: |-
+                  Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
+                  it to the ChangeTransferPolicy the strategy created for this branch, which supplies the
+                  repository, the active and proposed branches, and activePath.
+                maxLength: 100
+                minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
+              promotionStrategyRef:
+                description: PromotionStrategyRef selects the PromotionStrategy that
+                  owns the environment to restore.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              sha:
+                description: |-
+                  Sha is the hydrated commit to restore onto the active branch. It must already be in the active
+                  branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
+                  carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
+                  restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit
+                  for the same sha is refused until the active branch moves, and that note is left unchanged. The
+                  controller writes a new commit (the commit's tree, or only activePath when the policy sets
+                  one) parented on the current active tip and records a promotion-history note with
+                  Promoter-restored-from. When the active branch already has that content, nothing is written.
+                  The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
+                  a promotion pull request that would put the active branch's dry SHA back. A pull request
+                  for a different proposed dry SHA may open, but nothing is auto-merged while this
+                  RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
+                  reverted change again; see status.blockedDrySha.
+                  The restore runs once. Later promotions are left alone.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+            required:
+            - branch
+            - promotionStrategyRef
+            - sha
             type: object
+            x-kubernetes-validations:
+            - message: spec is immutable; create a new RevertActiveCommit to restore
+                a different commit, strategy, or branch
+              rule: self == oldSelf
           status:
-            description: RevertCommitStatus defines the observed state of RevertCommit
+            description: RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
+            properties:
+              activeSha:
+                description: ActiveSha is the commit on the active branch after a
+                  successful restore.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              blockedDrySha:
+                description: |-
+                  BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
+                  moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
+                  proposed dry SHA still equals this value, so the reverted change is not put back. A different
+                  proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
+                  exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
+                  had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
+                  this block, but a promotion pull request only opens when the proposed branch has a commit the
+                  active branch does not already contain. The restore commit is parented on the tip it moved
+                  off of, so when that tip already contains the proposed commit (a merge-commit promotion),
+                  this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+              restoredFrom:
+                description: |-
+                  RestoredFrom is the spec.sha this status applied. It is written in the same status update as
+                  activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha
+                  the controller does not restore again, so a later promotion is not overwritten on resync.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
             type: object
         type: object
     served: true
@@ -9194,6 +9614,7 @@ rules:
   - promotionstrategies
   - changetransferpolicyhistories
   - changetransferpolicies
+  - revertactivecommits
   - pullrequests
   - commitstatuses
   - argocdcommitstatuses
@@ -9668,7 +10089,6 @@ rules:
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
-  - revertcommits
   - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
@@ -9707,6 +10127,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - revertactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -9771,6 +10192,17 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - revertactivecommits
+  verbs:
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -10590,6 +11022,19 @@ spec:
       title: Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{
         end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{
         .ChangeTransferPolicy.Spec.ActiveBranch }}`
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  revertActiveCommit:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

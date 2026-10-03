@@ -1,0 +1,12 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: RevertActiveCommit
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: revertactivecommit-sample
+spec:
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  branch: environment/development
+  sha: abcdef1234567890abcdef1234567890abcdef12

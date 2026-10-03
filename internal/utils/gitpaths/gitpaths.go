@@ -42,3 +42,9 @@ func GetValues() []string {
 func Set(key Key, path string) {
 	storage.Store(key, path)
 }
+
+// Delete removes the path associated with the given key from the storage. It does not touch the
+// directory on disk.
+func Delete(key Key) {
+	storage.Delete(key)
+}

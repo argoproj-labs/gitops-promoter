@@ -73,6 +73,7 @@ nav:
       - Configuring Multi-Tenancy: advanced-usage/multi-tenancy.md
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
+      - Rolling Back an Environment: advanced-usage/rolling-back.md
   - CRD Specs: crd-specs.md
   - Contributing:
       - Overview: contributing/index.md

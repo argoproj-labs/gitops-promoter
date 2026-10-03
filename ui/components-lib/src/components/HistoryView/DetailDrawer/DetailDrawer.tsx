@@ -1,6 +1,6 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import {
   timeAgo,
@@ -14,10 +14,45 @@ import { getChecks } from '@shared/utils/PSData';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS } from '../presentation';
+import {
+  DRAWER_MIN_WIDTH,
+  DRAWER_MAX_WIDTH,
+  HEALTH_LABELS,
+  cellKindLabel,
+  displayKind,
+} from '../presentation';
 import { isEmptyCellKind } from '../helpers';
+import { buildRevertActiveCommitApplyCommand, canShowRevertCommand } from '../revertCommand';
+import { revertHoldTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
 import { StatusIcon, StatusType } from '../../StatusIcon';
+
+const CopyCommandButton: React.FC<{ command: string }> = ({ command }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const onCopy = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable (insecure context / denied permission).
+    }
+  }, [command]);
+
+  return (
+    <button
+      type="button"
+      className="hp-drawer__copy"
+      onClick={() => {
+        void onCopy();
+      }}
+      aria-label={copied ? 'Copied' : 'Copy kubectl command'}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+};
 
 const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
@@ -102,6 +137,8 @@ const DetailDrawer: React.FC<{
   row: CommitRow | null;
   cell: CellState | null;
   branch: string | null;
+  namespace?: string;
+  promotionStrategyName?: string;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
   width: number;
@@ -116,6 +153,8 @@ const DetailDrawer: React.FC<{
   row,
   cell,
   branch,
+  namespace,
+  promotionStrategyName,
   envs,
   rowsById,
   width,
@@ -156,10 +195,41 @@ const DetailDrawer: React.FC<{
     : undefined;
   const refs = cell.references ?? [];
 
-  const [prId, prUrl] =
-    cell.pullRequest?.id && cell.pullRequest?.url
+  const [prId, prUrl] = cell.revertActiveCommit
+    ? [cell.pullRequest?.id, cell.pullRequest?.url]
+    : cell.pullRequest?.id && cell.pullRequest?.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
+
+  const env = envs.find((e) => e.branch === branch);
+  const showRevert = canShowRevertCommand(cell);
+  const revertCommand =
+    showRevert && hydrated?.sha && namespace && promotionStrategyName
+      ? buildRevertActiveCommitApplyCommand({
+          namespace,
+          promotionStrategyName,
+          instanceId: env?.instanceId,
+          branch,
+          sha: hydrated.sha,
+        })
+      : null;
+
+  const kindBadge = (
+    <span
+      className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
+        cell.revertedByRevertActiveCommit
+          ? ' hp-drawer__kind--reverted'
+          : cell.revertActiveCommit
+            ? ' hp-drawer__kind--held'
+            : ''
+      }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
+    >
+      {cell.revertActiveCommit && !cell.revertedByRevertActiveCommit && (
+        <GoBlocked className="hp-drawer__kind__stop" aria-hidden="true" />
+      )}
+      {cellKindLabel(cell)}
+    </span>
+  );
 
   return (
     <aside
@@ -203,15 +273,18 @@ const DetailDrawer: React.FC<{
       <div className="hp-drawer__scroll">
         <div className="hp-drawer__header">
           <div className="hp-drawer__badges">
-            <span className={`hp-drawer__kind hp-drawer__kind--${cell.kind}`}>
-              {cell.kind === 'live' && 'LIVE'}
-              {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'REPLACED'}
-              {cell.kind === 'failed' && 'FAILED'}
-              {cell.kind === 'no-op' && 'NO-OP'}
-              {cell.kind === 'no-changes' && 'NO CHANGES'}
-              {cell.kind === 'unknown-history' && 'HISTORY UNAVAILABLE'}
-            </span>
+            {cell.revertActiveCommit ? (
+              <Tooltip
+                label={revertHoldTooltip(
+                  cell.revertActiveCommit,
+                  !!cell.revertedByRevertActiveCommit,
+                )}
+              >
+                {kindBadge}
+              </Tooltip>
+            ) : (
+              kindBadge
+            )}
             <span className="hp-drawer__branch">{branch}</span>
           </div>
           <h2 className="hp-drawer__subject">{row.subject}</h2>
@@ -266,6 +339,13 @@ const DetailDrawer: React.FC<{
               </>
             )}
           </div>
+          {cell.restoredFrom && cell.revertUnblockedAt && (
+            <div className="hp-drawer__meta">
+              <Tooltip label={formatDate(cell.revertUnblockedAt)}>
+                <span>Promotion resumed {timeAgo(cell.revertUnblockedAt)}</span>
+              </Tooltip>
+            </div>
+          )}
           {hydrated?.sha && (
             <div className="hp-drawer__deployed">
               Deployed as{' '}
@@ -368,26 +448,41 @@ const DetailDrawer: React.FC<{
               const c = row.cells[e.branch];
               const isHere = e.branch === branch;
               const selectable = !isHere && !isEmptyCellKind(c.kind);
+              const pillKind = displayKind(c.kind);
+              const pill = (
+                <span
+                  className={`cell__pill cell__pill--${pillKind}${
+                    c.revertedByRevertActiveCommit
+                      ? ' cell__pill--reverted'
+                      : c.revertActiveCommit
+                        ? ' cell__pill--held'
+                        : ''
+                  }`}
+                >
+                  {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
+                  {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
+                  {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
+                  {c.revertActiveCommit && !c.revertedByRevertActiveCommit && (
+                    <GoBlocked className="cell__pill__stop" aria-hidden="true" />
+                  )}
+                  {cellKindLabel(c, true)}
+                </span>
+              );
               const inner = (
                 <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
-                  <span className={`cell__pill cell__pill--${c.kind}`}>
-                    {c.kind === 'live' && 'LIVE'}
-                    {c.kind === 'in-flight' && (c.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                    {c.kind === 'was-here' && 'REPLACED'}
-                    {c.kind === 'failed' && (
-                      <>
-                        <FaTimesCircle aria-hidden="true" /> FAILED
-                      </>
-                    )}
-                    {c.kind === 'no-op' && (
-                      <>
-                        <FaBan aria-hidden="true" /> NO-OP
-                      </>
-                    )}
-                    {c.kind === 'no-changes' && '—'}
-                    {c.kind === 'unknown-history' && '?'}
-                  </span>
+                  {c.revertActiveCommit ? (
+                    <Tooltip
+                      label={revertHoldTooltip(
+                        c.revertActiveCommit,
+                        !!c.revertedByRevertActiveCommit,
+                      )}
+                    >
+                      {pill}
+                    </Tooltip>
+                  ) : (
+                    pill
+                  )}
                   {c.at && (
                     <Tooltip label={formatDate(c.at)}>
                       <span className="hp-drawer__presence-time">{timeAgo(c.at)}</span>
@@ -434,6 +529,16 @@ const DetailDrawer: React.FC<{
               <FaArrowRight aria-hidden="true" />
               <span>{rowsById.get(cell.supersededById)!.subject}</span>
             </button>
+          </div>
+        )}
+
+        {revertCommand && (
+          <div className="hp-drawer__section">
+            <div className="hp-drawer__restore-header">
+              <h3>Restore this version on {branch}</h3>
+              <CopyCommandButton command={revertCommand} />
+            </div>
+            <pre className="hp-drawer__command">{revertCommand}</pre>
           </div>
         )}
       </div>

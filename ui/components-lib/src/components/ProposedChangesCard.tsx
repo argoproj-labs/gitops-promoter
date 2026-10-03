@@ -10,6 +10,9 @@ import {
   PrTooltip,
   ReferenceCommit,
 } from '@shared/types/promotion';
+import { GoBlocked } from 'react-icons/go';
+import Tooltip from './HistoryView/Tooltip/Tooltip';
+import { revertHoldTooltip } from '@shared/utils/environments';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
@@ -23,6 +26,10 @@ export interface ProposedChangesCardProps {
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
+  /** RevertActiveCommit holding the environment; the banner shows a blocked mark and explains the hold. */
+  revertActiveCommit?: string;
+  /** True when the proposed commit is the one that RevertActiveCommit reverted. */
+  proposedIsReverted?: boolean;
 }
 
 function progressMessage(
@@ -56,13 +63,18 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   prUrl,
   prNumber,
   prTooltip,
+  revertActiveCommit,
+  proposedIsReverted = false,
 }) => {
   const message = progressMessage(healthSummary, checks);
-
-  return (
-    <div className="proposed-changes-card">
-      <div className="promote-flow" aria-hidden="true" />
-      <div className="promote-banner">
+  const banner = (
+    <div className={`promote-banner${revertActiveCommit ? ' promote-banner--held' : ''}`}>
+      {revertActiveCommit ? (
+        <GoBlocked
+          className="promote-banner__icon promote-banner__icon--blocked"
+          aria-hidden="true"
+        />
+      ) : (
         <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
           <path
             d="M1 6 L8 1 L15 6"
@@ -72,8 +84,21 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
             strokeLinejoin="round"
           />
         </svg>
-        <span className="promote-banner__label">Pushing to Active</span>
-      </div>
+      )}
+      <span className="promote-banner__label">Pushing to Active</span>
+    </div>
+  );
+
+  return (
+    <div className="proposed-changes-card">
+      <div className="promote-flow" aria-hidden="true" />
+      {revertActiveCommit ? (
+        <Tooltip label={revertHoldTooltip(revertActiveCommit, proposedIsReverted)}>
+          {banner}
+        </Tooltip>
+      ) : (
+        banner
+      )}
 
       <div className="proposed-changes-card__header">
         <div className="proposed-changes-card__header-row">
