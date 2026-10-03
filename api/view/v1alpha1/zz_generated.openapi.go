@@ -2338,6 +2338,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"namespaced": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Namespaced, when true, configures the controller-runtime cache to list/watch only in the controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace). This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus"},
 			},

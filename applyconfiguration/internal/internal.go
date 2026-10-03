@@ -580,6 +580,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: instanceID
       type:
         scalar: string
+    - name: namespaced
+      type:
+        scalar: boolean
     - name: promotionStrategy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration

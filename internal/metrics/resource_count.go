@@ -8,11 +8,13 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	toolscache "k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
@@ -27,8 +29,8 @@ var kubernetesResources = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
 		Name: "promoter_kubernetes_resources",
 		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
-			"Updated on an interval from the controller informer stores (no per-tick list/deep-copy); does not include resources on remote clusters " +
-			"reconciled via multicluster setup. ControllerConfiguration is omitted (singleton, multi-namespace informer).",
+			"Updated on an interval from the controller informer stores (no per-tick API server calls); does not include resources on remote clusters " +
+			"reconciled via multicluster setup. ControllerConfiguration is omitted (singleton).",
 	},
 	[]string{"kind", "readiness"},
 )
@@ -66,22 +68,32 @@ func init() {
 
 // resourceCountInformerSource is the cache subset used for promoter_kubernetes_resources. It matches cache.Cache.
 type resourceCountInformerSource interface {
-	GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error)
+	List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error
 }
 
-func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (map[string]int, error) {
-	informer, err := c.GetInformer(ctx, obj)
+func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerSource, scheme *runtime.Scheme, obj client.Object) (map[string]int, error) {
+	gvk, err := apiutil.GVKForObject(obj, scheme)
 	if err != nil {
-		return nil, fmt.Errorf("getting informer: %w", err)
+		return nil, fmt.Errorf("getting GVK: %w", err)
 	}
-	si, ok := informer.(toolscache.SharedIndexInformer)
+	listObj, err := scheme.New(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
+	if err != nil {
+		return nil, fmt.Errorf("building list type: %w", err)
+	}
+	list, ok := listObj.(client.ObjectList)
 	if !ok {
-		return nil, fmt.Errorf("informer does not implement SharedIndexInformer (got %T)", informer)
+		return nil, fmt.Errorf("%T is not a client.ObjectList", listObj)
+	}
+	// Items are only read, never mutated, so the per-item deep copy is not needed.
+	if err := c.List(ctx, list, client.UnsafeDisableDeepCopy); err != nil {
+		return nil, fmt.Errorf("listing from cache: %w", err)
 	}
 	counts := make(map[string]int)
-	for _, item := range si.GetStore().List() {
-		readiness := readinessFromObject(item)
-		counts[readiness]++
+	if err := apimeta.EachListItem(list, func(item runtime.Object) error {
+		counts[readinessFromObject(item)]++
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("iterating list items: %w", err)
 	}
 	return counts, nil
 }
@@ -90,12 +102,11 @@ func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInforme
 	scheme := utils.GetScheme()
 	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
-		// ControllerConfiguration is cached with ByObject.Namespaces, so GetInformer returns a
-		// multiNamespaceInformer that is not a SharedIndexInformer. Skip it — it is a singleton.
+		// ControllerConfiguration is a singleton. Skip it.
 		if kind == kinds.ControllerConfigurationKind {
 			continue
 		}
-		counts, err := countsByReadinessFromInformer(ctx, c, obj)
+		counts, err := countsByReadinessFromInformer(ctx, c, scheme, obj)
 		if err != nil {
 			log.Error(err, "counting resources for promoter_kubernetes_resources metric", "kind", kind)
 			for _, readiness := range readinessBuckets {

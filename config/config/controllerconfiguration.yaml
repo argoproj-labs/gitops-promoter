@@ -200,3 +200,4 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  namespaced: false

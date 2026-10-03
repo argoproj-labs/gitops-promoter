@@ -14,13 +14,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	toolscache "k8s.io/client-go/tools/cache"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,44 +35,37 @@ func TestMetrics(t *testing.T) {
 	RunSpecs(t, "Metrics Suite")
 }
 
-var errInjectedGetInformer = errors.New("injected get informer failure")
+var errInjectedList = errors.New("injected list failure")
 
-// stubResourceCountInformerSource implements resourceCountInformerSource for tests.
+// stubResourceCountInformerSource implements resourceCountInformerSource for tests. Maps are keyed
+// by the item GVK, not the List GVK.
 type stubResourceCountInformerSource struct {
-	scheme   *runtime.Scheme
-	gvkErr   map[schema.GroupVersionKind]error
-	gvkInf   map[schema.GroupVersionKind]toolscache.SharedIndexInformer
-	getCount *atomic.Int32
+	scheme    *runtime.Scheme
+	gvkErr    map[schema.GroupVersionKind]error
+	gvkItems  map[schema.GroupVersionKind][]client.Object
+	listCount *atomic.Int32
 }
 
-func (s *stubResourceCountInformerSource) GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error) {
-	if s.getCount != nil {
-		s.getCount.Add(1)
+func (s *stubResourceCountInformerSource) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if s.listCount != nil {
+		s.listCount.Add(1)
 	}
-	gvk, err := apiutil.GVKForObject(obj, s.scheme)
+	listGVK, err := apiutil.GVKForObject(list, s.scheme)
 	if err != nil {
-		return nil, fmt.Errorf("gvk for object: %w", err)
+		return fmt.Errorf("gvk for list: %w", err)
 	}
+	gvk := listGVK.GroupVersion().WithKind(strings.TrimSuffix(listGVK.Kind, "List"))
 	if e, ok := s.gvkErr[gvk]; ok {
-		return nil, e
+		return e
 	}
-	if inf, ok := s.gvkInf[gvk]; ok {
-		return inf, nil
+	items := make([]runtime.Object, 0, len(s.gvkItems[gvk]))
+	for _, item := range s.gvkItems[gvk] {
+		items = append(items, item)
 	}
-	return nil, fmt.Errorf("stub: no informer for %v", gvk)
-}
-
-func informerWithExampleAndItems(example runtime.Object, items ...runtime.Object) toolscache.SharedIndexInformer {
-	inf := toolscache.NewSharedIndexInformer(
-		&toolscache.ListWatch{},
-		example,
-		0,
-		toolscache.Indexers{toolscache.NamespaceIndex: toolscache.MetaNamespaceIndexFunc},
-	)
-	for _, it := range items {
-		_ = inf.GetStore().Add(it)
+	if err := apimeta.SetList(list, items); err != nil {
+		return fmt.Errorf("setting list items: %w", err)
 	}
-	return inf
+	return nil
 }
 
 func testMetricsScheme() *runtime.Scheme {
@@ -91,16 +83,15 @@ func gvkKey(sc *runtime.Scheme, obj client.Object) schema.GroupVersionKind {
 
 func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 	s := testMetricsScheme()
-	gvkInf := make(map[schema.GroupVersionKind]toolscache.SharedIndexInformer)
+	gvkItems := make(map[schema.GroupVersionKind][]client.Object)
 	for _, obj := range kinds.All(s) {
 		gvk := gvkKey(s, obj)
 		kind := kinds.Kind(s, obj)
-		var items []runtime.Object
 		switch kind {
 		case "PromotionStrategy":
 			readyTrue := metav1.ConditionTrue
 			readyFalse := metav1.ConditionFalse
-			items = []runtime.Object{
+			gvkItems[gvk] = []client.Object{
 				&promoterv1alpha1.PromotionStrategy{
 					Name: "one", Namespace: "ns",
 					Status: promoterv1alpha1.PromotionStrategyStatus{
@@ -115,15 +106,14 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 				},
 			}
 		case "GitRepository":
-			items = []runtime.Object{
+			gvkItems[gvk] = []client.Object{
 				&promoterv1alpha1.GitRepository{Name: "repo-a", Namespace: "ns"},
 			}
 		default:
-			items = nil
+			// Other kinds list empty.
 		}
-		gvkInf[gvk] = informerWithExampleAndItems(obj, items...)
 	}
-	return &stubResourceCountInformerSource{scheme: s, gvkInf: gvkInf}
+	return &stubResourceCountInformerSource{scheme: s, gvkItems: gvkItems}
 }
 
 func resetPromoterKubernetesResourceGauges() {
@@ -180,7 +170,7 @@ var _ = Describe("Resource count metrics", func() {
 	})
 
 	Describe("refreshKubernetesResourceCounts", func() {
-		It("logs an error and sets the gauge to zero when getting an informer fails", func() {
+		It("logs an error and sets the gauge to zero when listing fails", func() {
 			var logLines []string
 			log := funcr.New(func(prefix, args string) {
 				if prefix != "" {
@@ -192,7 +182,7 @@ var _ = Describe("Resource count metrics", func() {
 
 			stub := buildStubInformerSourceWithCounts()
 			psGVK := gvkKey(stub.scheme, &promoterv1alpha1.PromotionStrategy{})
-			stub.gvkErr = map[schema.GroupVersionKind]error{psGVK: errInjectedGetInformer}
+			stub.gvkErr = map[schema.GroupVersionKind]error{psGVK: errInjectedList}
 
 			refreshKubernetesResourceCounts(context.Background(), stub, log)
 
@@ -206,11 +196,11 @@ var _ = Describe("Resource count metrics", func() {
 			Expect(combined).To(And(
 				ContainSubstring("counting resources for promoter_kubernetes_resources metric"),
 				ContainSubstring("PromotionStrategy"),
-				ContainSubstring("injected get informer failure"),
+				ContainSubstring("injected list failure"),
 			))
 		})
 
-		It("skips ControllerConfiguration without calling GetInformer", func() {
+		It("skips ControllerConfiguration without listing it", func() {
 			var logLines []string
 			log := funcr.New(func(prefix, args string) {
 				if prefix != "" {
@@ -221,14 +211,14 @@ var _ = Describe("Resource count metrics", func() {
 			}, funcr.Options{})
 
 			stub := buildStubInformerSourceWithCounts()
-			stub.getCount = &atomic.Int32{}
+			stub.listCount = &atomic.Int32{}
 			ccGVK := gvkKey(stub.scheme, &promoterv1alpha1.ControllerConfiguration{})
-			// No informer registered — would error if GetInformer were called for this kind.
-			delete(stub.gvkInf, ccGVK)
+			// Would surface as a logged error if this kind were listed.
+			stub.gvkErr = map[schema.GroupVersionKind]error{ccGVK: errInjectedList}
 
 			refreshKubernetesResourceCounts(context.Background(), stub, log)
 
-			Expect(stub.getCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 1)))
+			Expect(stub.listCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 1)))
 			Expect(strings.Join(logLines, "\n")).NotTo(ContainSubstring("ControllerConfiguration"))
 		})
 	})
@@ -246,7 +236,7 @@ var _ = Describe("Resource count metrics", func() {
 
 		It("runs an immediate refresh, updates gauges, and refreshes again on the ticker until the context is cancelled", func() {
 			stub := buildStubInformerSourceWithCounts()
-			stub.getCount = &atomic.Int32{}
+			stub.listCount = &atomic.Int32{}
 			r := &ResourceCountRunnable{Cache: stub, tickInterval: 25 * time.Millisecond}
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -260,9 +250,9 @@ var _ = Describe("Resource count metrics", func() {
 			}()
 
 			// ControllerConfiguration is skipped, so each refresh lists one fewer kind.
-			minGets := 2 * (len(kinds.All(utils.GetScheme())) - 1)
-			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
-				Should(BeNumerically(">=", minGets))
+			minLists := 2 * (len(kinds.All(utils.GetScheme())) - 1)
+			Eventually(func() int32 { return stub.listCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
+				Should(BeNumerically(">=", minLists))
 
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "True"))).To(Equal(1.0))
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "False"))).To(Equal(1.0))

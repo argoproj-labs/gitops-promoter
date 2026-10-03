@@ -62,6 +62,8 @@ import (
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -127,6 +129,9 @@ func runController(
 	if err != nil {
 		setupLog.Error(err, "failed to get namespace")
 		os.Exit(1)
+	}
+	if controllerNamespace == "" {
+		return errors.New("kubeconfig must set a default (install) namespace")
 	}
 
 	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
@@ -194,6 +199,11 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
+	namespaced, err := getNamespaced(processSignalsCtx, restConfig, controllerNamespace)
+	if err != nil {
+		return fmt.Errorf("read namespaced mode config: %w", err)
+	}
+
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
 	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
@@ -202,6 +212,18 @@ func runController(
 	)
 	if err != nil {
 		return fmt.Errorf("build instance-id cache options: %w", err)
+	}
+
+	// Namespace scoping composes with the instance-id partition above: DefaultNamespaces applies
+	// to every ByObject entry that does not set its own Namespaces. Cluster-scoped kinds (for
+	// example ClusterScmProvider) keep cluster-wide watches and still require ClusterRole RBAC.
+	if namespaced {
+		setupLog.Info("restricting controller-runtime cache to controller install namespace; "+
+			"list/watch requests will be namespace-scoped (compatible with a namespaced Role)",
+			"namespace", controllerNamespace)
+		cacheOpts.DefaultNamespaces = map[string]cache.Config{
+			controllerNamespace: {},
+		}
 	}
 
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
@@ -456,6 +478,26 @@ func runController(
 		setupLog.Info("cleaning directory", "directory", path)
 	}
 	return nil
+}
+
+// getNamespaced reads ControllerConfiguration.spec.namespaced directly from the API server. It runs
+// before the manager cache starts, so it must not use a cached client.
+func getNamespaced(ctx context.Context, restCfg *rest.Config, controllerNamespace string) (bool, error) {
+	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return false, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+	}
+	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
+		ControllerNamespace: controllerNamespace,
+	})
+
+	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	useRestrictedCache, err := bootstrapSettings.GetNamespacedDirect(readCtx)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return useRestrictedCache, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {

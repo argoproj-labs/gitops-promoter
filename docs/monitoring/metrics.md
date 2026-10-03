@@ -161,7 +161,7 @@ No labels.
 
 A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
 
-The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration. `ControllerConfiguration` is omitted (it is a singleton and uses a multi-namespace informer that cannot be counted the same way).
+The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration. `ControllerConfiguration` is omitted (it is a singleton).
 
 If reading from the informer store fails for a kind, that kind's gauge is set to `0` for all readiness values and an error is logged.
 
