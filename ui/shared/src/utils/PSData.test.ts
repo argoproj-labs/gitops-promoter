@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mergeCommitStatusManagers } from './PSData';
+import {
+  mergeCommitStatusManagers,
+  getChecks,
+  enrichFromCRD,
+  enrichFromEnvironments,
+} from './PSData';
 import type { CommitStatusManagerBundle } from './PSData';
 import type {
   Environment,
@@ -61,6 +66,15 @@ function webRequest(key: string, branches: string[]) {
   } as unknown as NonNullable<CommitStatusManagerBundle['webRequestCommitStatuses']>[number];
 }
 
+function dependentsSuccessful(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' } },
+    status: { environments: branches.map((branch) => ({ branch, phase: 'pending' })) },
+  } as unknown as NonNullable<
+    CommitStatusManagerBundle['dependentsSuccessfulCommitStatuses']
+  >[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -95,6 +109,11 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['GitCommitStatus', 'gitCommitStatuses', git],
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
+    [
+      'DependentsSuccessfulCommitStatus',
+      'dependentsSuccessfulCommitStatuses',
+      dependentsSuccessful,
+    ],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);
@@ -228,6 +247,28 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     }
   });
 
+  it('reads kind/apiVersion off the manager when the server stamps them', () => {
+    const manager = {
+      ...timed('gate', [BRANCH]),
+      kind: 'TimedCommitStatus',
+      apiVersion: 'promoter.argoproj.io/v1beta1',
+    };
+    const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), { timedCommitStatuses: [manager] });
+
+    expect(check.kind).toBe('TimedCommitStatus');
+    expect(check.apiVersion).toBe('promoter.argoproj.io/v1beta1');
+    expect(check.manager).toBe(manager);
+  });
+
+  it('falls back to the inferred kind when the manager has no kind/apiVersion', () => {
+    const manager = timed('gate', [BRANCH]);
+    const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), { timedCommitStatuses: [manager] });
+
+    expect(check.kind).toBe('TimedCommitStatus');
+    expect(check.apiVersion).toBeUndefined();
+    expect(check.manager).toBe(manager);
+  });
+
   it('does not mutate the input promotion strategy', () => {
     const environment = envWithKeys(BRANCH, ['gate']);
     const ps = { status: { environments: [environment] } } as unknown as PromotionStrategy;
@@ -237,5 +278,94 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     const original = environment.active.commitStatuses?.[0] as EnrichedBranchCommitStatus;
     expect(original.kind).toBeUndefined();
     expect(original.manager).toBeUndefined();
+  });
+});
+
+describe('getChecks - widened context', () => {
+  const statuses: EnrichedBranchCommitStatus[] = [{ key: 'gate', phase: 'success' }];
+
+  it('leaves the new context fields undefined when no context is given', () => {
+    const [check] = getChecks(statuses, BRANCH);
+
+    expect(check.promotionStrategy).toBeUndefined();
+    expect(check.environment).toBeUndefined();
+  });
+
+  it('stamps every check with the supplied context', () => {
+    const ps = { metadata: { name: 'my-strategy' } } as unknown as PromotionStrategy;
+
+    const [check] = getChecks(statuses, BRANCH, { promotionStrategy: ps });
+
+    expect(check.promotionStrategy).toBe(ps);
+  });
+});
+
+describe('enrichFromCRD / enrichFromEnvironments - widened context', () => {
+  it('enrichFromCRD stamps checks with the promotion strategy', () => {
+    const environment = envWithKeys(BRANCH, ['gate']);
+    const ps = {
+      metadata: { name: 'my-strategy' },
+      status: { environments: [environment] },
+    } as unknown as PromotionStrategy;
+
+    const [details] = enrichFromCRD(ps, 0);
+
+    expect(details.activeChecks[0].promotionStrategy).toBe(ps);
+    expect(details.activeChecks[0].environment).toBe(environment);
+  });
+
+  it('enrichFromEnvironments has no promotionStrategy to supply and leaves it undefined', () => {
+    const environment = envWithKeys(BRANCH, ['gate']);
+
+    const [details] = enrichFromEnvironments([environment]);
+
+    expect(details.activeChecks[0].promotionStrategy).toBeUndefined();
+    expect(details.activeChecks[0].environment).toBe(environment);
+  });
+
+  it('populates proposedHydratedSha from the hydrated commit, not the dry commit, on the live view', () => {
+    const environment = {
+      branch: BRANCH,
+      active: {
+        dry: { sha: 'active-dry' },
+        hydrated: { sha: 'active-hydrated' },
+        commitStatuses: [],
+      },
+      proposed: {
+        dry: { sha: 'proposed-dry' },
+        hydrated: { sha: 'proposed-hydrated' },
+        commitStatuses: [{ key: 'gate', phase: 'success' }],
+      },
+      lastHealthyDryShas: [],
+    } as unknown as Environment;
+
+    const [details] = enrichFromEnvironments([environment]);
+
+    expect(details.proposedChecks[0].proposedDrySha).toBe('proposed-dry');
+    expect(details.proposedChecks[0].proposedHydratedSha).toBe('proposed-hydrated');
+  });
+
+  it('populates proposedHydratedSha from history when viewing a historical index', () => {
+    const environment = {
+      branch: BRANCH,
+      active: { dry: {}, hydrated: {}, commitStatuses: [] },
+      proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+      history: [
+        {},
+        {
+          active: { dry: {}, hydrated: {}, commitStatuses: [] },
+          proposed: {
+            hydrated: { sha: 'history-proposed-hydrated' },
+            commitStatuses: [{ key: 'gate', phase: 'success' }],
+          },
+        },
+      ],
+      lastHealthyDryShas: [],
+    } as unknown as Environment;
+
+    const [details] = enrichFromEnvironments([environment], 1);
+
+    expect(details.proposedChecks[0].proposedDrySha).toBeUndefined();
+    expect(details.proposedChecks[0].proposedHydratedSha).toBe('history-proposed-hydrated');
   });
 });

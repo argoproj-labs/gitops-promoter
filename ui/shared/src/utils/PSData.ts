@@ -20,48 +20,92 @@ import type {
   RelativeTimeAgo,
 } from '../types/promotion';
 
+export interface CheckContext {
+  promotionStrategy?: PromotionStrategy;
+  environment?: Environment;
+  activeDrySha?: string;
+  activeHydratedSha?: string;
+  proposedDrySha?: string;
+  proposedHydratedSha?: string;
+}
+
 export interface CommitStatusManagerBundle {
   timedCommitStatuses?: components['schemas']['TimedCommitStatus'][];
   gitCommitStatuses?: components['schemas']['GitCommitStatus'][];
   scheduledCommitStatuses?: components['schemas']['ScheduledCommitStatus'][];
   argoCDCommitStatuses?: components['schemas']['ArgoCDCommitStatus'][];
   webRequestCommitStatuses?: components['schemas']['WebRequestCommitStatus'][];
+  dependentsSuccessfulCommitStatuses?: components['schemas']['DependentsSuccessfulCommitStatus'][];
+}
+
+// Older promoter servers predate GVK-stamping on nested manager objects; this
+// warns once so plugin authors know why kind-based matching still works but
+// isn't coming from the wire, without spamming the console per check.
+let warnedMissingGvk = false;
+function warnMissingGvkOnce(): void {
+  if (warnedMissingGvk) {
+    return;
+  }
+  warnedMissingGvk = true;
+  console.warn(
+    'PSData: commit status manager missing kind/apiVersion; falling back to inferred commit status kind. Upgrade the promoter server to receive kind/apiVersion directly.',
+  );
 }
 
 function findManager(
   key: string,
   branch: string,
   managers: CommitStatusManagerBundle,
-): { kind: CommitStatusManagerKind; manager: CommitStatusManager } | undefined {
+): { kind: string; apiVersion?: string; manager: CommitStatusManager } | undefined {
+  const withFallback = (
+    manager: CommitStatusManager,
+    fallbackKind: CommitStatusManagerKind,
+  ): { kind: string; apiVersion?: string; manager: CommitStatusManager } => {
+    if (manager.kind) {
+      return { kind: manager.kind, apiVersion: manager.apiVersion, manager };
+    }
+    warnMissingGvkOnce();
+    return { kind: fallbackKind, manager };
+  };
+
   for (const tcs of managers.timedCommitStatuses ?? []) {
     if (tcs.spec.key === key && tcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'TimedCommitStatus', manager: tcs };
+      return withFallback(tcs, 'TimedCommitStatus');
     }
   }
   for (const gcs of managers.gitCommitStatuses ?? []) {
     if (gcs.spec.key === key && gcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'GitCommitStatus', manager: gcs };
+      return withFallback(gcs, 'GitCommitStatus');
     }
   }
   for (const scs of managers.scheduledCommitStatuses ?? []) {
     if (scs.spec.key === key && scs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'ScheduledCommitStatus', manager: scs };
+      return withFallback(scs, 'ScheduledCommitStatus');
     }
   }
   for (const acs of managers.argoCDCommitStatuses ?? []) {
     if (acs.spec?.key === key) {
-      return { kind: 'ArgoCDCommitStatus', manager: acs };
+      return withFallback(acs, 'ArgoCDCommitStatus');
     }
   }
   for (const wrcs of managers.webRequestCommitStatuses ?? []) {
     if (wrcs.spec.key === key && wrcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'WebRequestCommitStatus', manager: wrcs };
+      return withFallback(wrcs, 'WebRequestCommitStatus');
+    }
+  }
+  for (const dscs of managers.dependentsSuccessfulCommitStatuses ?? []) {
+    if (dscs.spec.key === key && dscs.status?.environments?.some((e) => e.branch === branch)) {
+      return withFallback(dscs, 'DependentsSuccessfulCommitStatus');
     }
   }
   return undefined;
 }
 
-export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
+export function getChecks(
+  commitStatuses: EnrichedBranchCommitStatus[],
+  branch: string,
+  context?: CheckContext,
+): Check[] {
   return commitStatuses.map((cs: EnrichedBranchCommitStatus) => ({
     name: cs.key,
     status: cs.phase,
@@ -69,7 +113,9 @@ export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: 
     url: cs.url,
     branch,
     kind: cs.kind,
+    apiVersion: cs.apiVersion,
     manager: cs.manager,
+    ...context,
   }));
 }
 
@@ -92,7 +138,7 @@ export function mergeCommitStatusManagers(
   ): EnrichedBranchCommitStatus[] | undefined =>
     commitStatuses?.map((cs) => {
       const match = findManager(cs.key, branch, managers);
-      return { ...cs, kind: match?.kind, manager: match?.manager };
+      return { ...cs, kind: match?.kind, apiVersion: match?.apiVersion, manager: match?.manager };
     });
 
   const environments: Environment[] = ps.status.environments.map((environment: Environment) => {
@@ -182,7 +228,11 @@ function deriveActivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | n
   return derivePrTooltip(pr);
 }
 
-function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
+function getEnvDetails(
+  environment: Environment,
+  index: number = 0,
+  extra?: Pick<CheckContext, 'promotionStrategy'>,
+): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
   const branch = environment.branch || '';
 
@@ -190,19 +240,30 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const activeHistory = history[index]?.active || active;
   const activeCommitInfo = activeHistory.dry || {};
 
+  // PROPOSED DATA - use historical proposed when viewing history
+  const proposedSource = index > 0 ? history[index]?.proposed : proposed;
+  const proposedDry = index > 0 ? proposedSource?.hydrated || {} : proposed.dry || {};
+
+  const checkContext: CheckContext = {
+    ...extra,
+    environment,
+    activeDrySha: activeCommitInfo.sha,
+    activeHydratedSha: activeHistory.hydrated?.sha,
+    proposedDrySha: index > 0 ? undefined : proposed.dry?.sha,
+    proposedHydratedSha: index > 0 ? proposedDry.sha : proposed.hydrated?.sha,
+  };
+
   // Use active field for current view, history field for history view
   const activeChecks = getChecks(
     index > 0 ? history[index]?.active?.commitStatuses || [] : active.commitStatuses || [],
     branch,
+    checkContext,
   );
 
   const activeChecksSummary = calculateHealthSummary(activeChecks);
   const activeReferenceData = extractReferenceCommitData(activeCommitInfo);
 
-  // PROPOSED DATA - use historical proposed when viewing history
-  const proposedSource = index > 0 ? history[index]?.proposed : proposed;
-  const proposedDry = index > 0 ? proposedSource?.hydrated || {} : proposed.dry || {};
-  const proposedChecks = getChecks(proposedSource?.commitStatuses || [], branch);
+  const proposedChecks = getChecks(proposedSource?.commitStatuses || [], branch, checkContext);
   const proposedChecksSummary = calculateHealthSummary(proposedChecks);
   const proposedReferenceData = extractReferenceCommitData(proposedDry);
 
@@ -318,7 +379,7 @@ export function enrichFromCRD(
   }
 
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment, historyIndex),
+    getEnvDetails(environment, historyIndex, { promotionStrategy: ps }),
   );
 }
 
@@ -326,8 +387,11 @@ export function enrichFromCRD(
 export function enrichFromEnvironments(
   environments: Environment[],
   historyIndex: number = 0,
+  extra?: Pick<CheckContext, 'promotionStrategy'>,
 ): EnrichedEnvDetails[] {
-  return environments.map((environment: Environment) => getEnvDetails(environment, historyIndex));
+  return environments.map((environment: Environment) =>
+    getEnvDetails(environment, historyIndex, extra),
+  );
 }
 
 // Get overall promotion status and counts

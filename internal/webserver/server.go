@@ -1,14 +1,19 @@
 package webserver
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,8 +42,20 @@ const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Event  *Event
+	// distFS is the dashboard's embedded static asset tree, set by StartDashboard.
+	// httpPlugins reads plugin bundles out of it alongside PluginsDir so that
+	// plugins copied into the build output at build time (ui/dashboard's
+	// build:embed step) are served from the same /plugins.js response as
+	// plugins dropped into PluginsDir at runtime.
+	distFS     fs.FS
+	Scheme     *runtime.Scheme
+	Event      *Event
+	PluginsDir string
+	// pluginsBundle and pluginsETag are the concatenated plugin bundle body and
+	// its ETag, computed once at startup by buildPluginsBundle. Plugins added to
+	// PluginsDir after startup are not picked up until the process restarts.
+	pluginsETag   string
+	pluginsBundle []byte
 }
 
 // Event represents a server-sent event that can be broadcast to clients.
@@ -163,11 +180,19 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sub FS: %w", err)
 	}
+	ws.distFS = distFS
 
 	assetsFS, err := fs.Sub(distFS, "assets")
 	if err != nil {
 		return fmt.Errorf("failed to create assets sub FS: %w", err)
 	}
+
+	pluginsBundle, pluginsETag, err := ws.buildPluginsBundle()
+	if err != nil {
+		return fmt.Errorf("failed to build plugins bundle: %w", err)
+	}
+	ws.pluginsBundle = pluginsBundle
+	ws.pluginsETag = pluginsETag
 
 	router := gin.New()
 	router.Use(webserverlogr.Ginlogr(logger, time.RFC3339, true))
@@ -184,6 +209,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 
 	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 	router.GET("/list", ws.httpList)
+	router.GET("/plugins.js", ws.httpPlugins)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -240,7 +266,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 
 		// Skip if it's an API or static asset
 		if section == "watch" || section == "list" || section == "healthz" ||
-			section == "assets" {
+			section == "assets" || section == "plugins.js" {
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -294,6 +320,113 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	logger.Info("web server exited properly")
 
 	return nil
+}
+
+// isPluginFilename reports whether a file name matches the plugin bundle naming
+// convention shared by both plugin sources httpPlugins reads from.
+func isPluginFilename(name string) bool {
+	return strings.HasPrefix(name, "plugin") && strings.HasSuffix(name, ".js")
+}
+
+// writePluginFile appends one plugin bundle's contents to body, wrapped in its own
+// try/catch so a broken plugin doesn't take down the others in the response.
+func writePluginFile(body *bytes.Buffer, source string, content []byte) {
+	fmt.Fprintf(body, "// source: %s\n", source)
+	body.WriteString("try {\n")
+	body.Write(content)
+	fmt.Fprintf(body, "\n} catch(e) { console.error('Plugin %s failed to load:', e); }\n", path.Base(source))
+}
+
+// buildPluginsBundle concatenates every external plugin bundle - both build-time-bundled
+// plugins embedded into the dashboard's own static assets and runtime plugins found in
+// ws.PluginsDir - into a single script body, along with a content-based ETag. Each file
+// is wrapped in its own try/catch so one broken plugin doesn't take down the others,
+// mirroring ArgoCD's /extensions.js handler. It is called once at startup; a plugin
+// dropped into PluginsDir afterward is not picked up until the process restarts.
+func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
+	var body bytes.Buffer
+
+	// Build-time-bundled plugins (copied into the dashboard's build output by
+	// ui/dashboard's build:embed step) are written first, so a plugin dropped
+	// into PluginsDir at runtime registers after and can override one shipped
+	// at build time - the same "last registration wins" rule the plugin
+	// registry itself uses.
+	if ws.distFS != nil {
+		embeddedEntries, err := fs.ReadDir(ws.distFS, ".")
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read embedded plugin files: %w", err)
+		}
+		for _, entry := range embeddedEntries {
+			if !isPluginFilename(entry.Name()) {
+				continue
+			}
+			if entry.IsDir() {
+				logger.Info("skipping embedded plugin entry: not a file", "file", entry.Name())
+				continue
+			}
+			content, err := fs.ReadFile(ws.distFS, entry.Name())
+			if err != nil {
+				logger.Info("skipping embedded plugin file: failed to read", "file", entry.Name(), "error", err)
+				continue
+			}
+			writePluginFile(&body, entry.Name(), content)
+		}
+	}
+
+	diskEntries, err := os.ReadDir(ws.PluginsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, "", fmt.Errorf("failed to read plugins directory: %w", err)
+		}
+		diskEntries = nil
+	}
+
+	for _, entry := range diskEntries {
+		if !isPluginFilename(entry.Name()) {
+			continue
+		}
+
+		if entry.Type()&os.ModeSymlink != 0 {
+			logger.Info("skipping plugin file: symlinks are not followed", "file", entry.Name())
+			continue
+		}
+
+		if entry.IsDir() {
+			logger.Info("skipping plugin entry: not a file", "file", entry.Name())
+			continue
+		}
+
+		filePath := filepath.Join(ws.PluginsDir, entry.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			logger.Info("skipping plugin file: failed to read", "file", entry.Name(), "error", err)
+			continue
+		}
+
+		writePluginFile(&body, filePath, content)
+	}
+
+	sum := sha256.Sum256(body.Bytes())
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+
+	return body.Bytes(), etag, nil
+}
+
+// httpPlugins serves the plugin bundle computed once at startup by buildPluginsBundle.
+// Unlike ArgoCD's /extensions.js handler, the response carries a content-based ETag
+// checked against If-None-Match, giving operators real cache revalidation instead of
+// ArgoCD's no-cache-headers-at-all behavior.
+func (ws *WebServer) httpPlugins(c *gin.Context) {
+	c.Header("Content-Type", "application/javascript")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("ETag", ws.pluginsETag)
+
+	if match := c.GetHeader("If-None-Match"); match == ws.pluginsETag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	c.Data(http.StatusOK, "application/javascript", ws.pluginsBundle)
 }
 
 func (ws *WebServer) httpList(c *gin.Context) {

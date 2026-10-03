@@ -368,6 +368,10 @@ lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-stor
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
 
+.PHONY: test-ui-test-shared
+test-ui-test-shared: install-ui-deps ## Run shared unit tests (with coverage)
+	cd ui/shared && npm test
+
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/build/buildkit/

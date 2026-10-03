@@ -1,9 +1,7 @@
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
-import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
-import { Tooltip } from './Tooltip';
 import { Check, HealthSummaryResult } from '@shared/types/promotion';
-import { commitStatusPlugins } from '@shared/components/plugins';
+import { HealthCheckItem } from './HealthCheckItem';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -51,34 +49,6 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
     }
   };
 
-  const renderCheckItem = (check: Check, key: React.Key) => {
-    const Plugin = check.kind ? commitStatusPlugins[check.kind] : undefined;
-
-    return (
-      <Tooltip key={key} content={check.description}>
-        <div className="health-check-item">
-          <StatusIcon phase={check.status as StatusType} type="status" />
-          <div className="health-check-body">
-            {Plugin && check.manager ? (
-              <Plugin.rowHeader check={check} manager={check.manager} />
-            ) : check.url ? (
-              <a
-                href={check.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="health-check-name-link"
-              >
-                {check.name}
-              </a>
-            ) : (
-              <span className="check-name-text">{check.name}</span>
-            )}
-          </div>
-        </div>
-      </Tooltip>
-    );
-  };
-
   return (
     <div className="health-summary">
       {isAlwaysExpanded ? (
@@ -101,7 +71,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
 
       {showDetails && (
         <div className="health-details">
-          {checks.map((check, index) => renderCheckItem(check, index))}
+          {checks.map((check, index) => (
+            <HealthCheckItem key={index} check={check} />
+          ))}
         </div>
       )}
     </div>

@@ -5,11 +5,8 @@ import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import type { PromotionStrategyDetails } from '@shared/types/view';
-import { mergeCommitStatusManagers } from '@shared/utils/PSData';
-import { environmentsFromBundle } from '@shared/utils/environments';
-import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
+import { mergePromotionStrategyFromBundle } from '@shared/utils/bundleToUI';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -23,36 +20,9 @@ interface StrategyItem {
   promotionStrategy: PromotionStrategy;
 }
 
-function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
-  return {
-    timedCommitStatuses: bundle.timedCommitStatuses,
-    gitCommitStatuses: bundle.gitCommitStatuses,
-    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
-    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
-    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
-  };
-}
-
 function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
-  const ps = bundle.promotionStrategy;
-  const environments = environmentsFromBundle(
-    ps.spec,
-    bundle.changeTransferPolicies ?? [],
-    bundle.changeTransferPolicyHistories ?? [],
-  );
-  const promotionStrategy = {
-    ...ps,
-    metadata: {
-      ...ps.metadata,
-      name: bundle.metadata.name,
-      namespace: bundle.metadata.namespace,
-    },
-    status: { ...ps.status, environments },
-  } as PromotionStrategy;
-  sortStrategyCommitStatuses(promotionStrategy);
-  return {
-    promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
-  };
+  const promotionStrategy = mergePromotionStrategyFromBundle(bundle);
+  return { promotionStrategy };
 }
 
 interface SelectOption {
@@ -264,7 +234,10 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
         )}
       </div>
       {selected && view === 'card' && (
-        <Card environments={selected.promotionStrategy.status?.environments || []} />
+        <Card
+          environments={selected.promotionStrategy.status?.environments || []}
+          promotionStrategy={selected.promotionStrategy}
+        />
       )}
       {selected && view === 'history' && (
         <div className="gp-history-wrapper">

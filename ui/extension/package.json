@@ -1,11 +1,11 @@
 {
-  "name": "argocd-extension-prcard",
+  "name": "argocd-extension-promoter",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/extension-prcard.js",
+  "main": "dist/extension-promoter.js",
   "scripts": {
-    "build": "webpack --config webpack.config.mjs",
+    "build": "webpack --config webpack.config.mjs && node concat-plugins.mjs",
     "dev": "webpack --config webpack.config.mjs --watch",
     "dev-local": "webpack --config webpack.config.mjs --watch --output-path /tmp/extensions",
     "type-check": "tsc --noEmit",
