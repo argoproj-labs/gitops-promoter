@@ -290,8 +290,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("RevertActiveCommit"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-		EnqueueCTPH: ctphReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create RevertActiveCommit controller: %w", err))
 	}

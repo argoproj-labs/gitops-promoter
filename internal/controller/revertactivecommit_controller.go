@@ -52,12 +52,6 @@ type RevertActiveCommitReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
-
-	// EnqueueCTP wakes the ChangeTransferPolicy controller after a restore so it observes the new
-	// active tip and status.blockedDrySha without waiting for its requeue interval.
-	EnqueueCTP CTPEnqueueFunc
-	// EnqueueCTPH wakes the history controller so the restore shows up in promotion history.
-	EnqueueCTPH CTPHEnqueueFunc
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;update;patch
@@ -159,13 +153,6 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	rc.Status.BlockedDrySha = restored.BlockedDrySha
 	rc.Status.RestoredFrom = rc.Spec.Sha
 
-	if r.EnqueueCTP != nil {
-		r.EnqueueCTP(ctp.Namespace, ctp.Name)
-	}
-	if r.EnqueueCTPH != nil {
-		r.EnqueueCTPH(ctp.Namespace, utils.GetChangeTransferPolicyHistoryName(ctp.Name))
-	}
-
 	if restored.Unchanged {
 		r.Recorder.Eventf(&rc, nil, "Normal", "AlreadyRestored", "Restoring", "%s already matches %s at %s; nothing was written", ctp.Spec.ActiveBranch, rc.Spec.Sha, restored.ActiveSha)
 	} else {
@@ -264,13 +251,6 @@ func (r *RevertActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Contex
 	}
 	if wrote {
 		r.Recorder.Eventf(rc, nil, "Normal", "RevertUnblocked", "Unblocking", "Stamped Promoter-revert-unblocked-at on %s so promotion may resume", rc.Status.ActiveSha)
-	}
-
-	if r.EnqueueCTP != nil {
-		r.EnqueueCTP(ctp.Namespace, ctp.Name)
-	}
-	if r.EnqueueCTPH != nil {
-		r.EnqueueCTPH(ctp.Namespace, utils.GetChangeTransferPolicyHistoryName(ctp.Name))
 	}
 	return nil
 }

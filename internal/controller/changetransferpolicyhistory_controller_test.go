@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -242,6 +243,70 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 			false,
 		),
 	)
+
+	Describe("revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate", func() {
+		p := revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate()
+
+		It("ignores creates", func() {
+			Expect(p.Create(event.CreateEvent{Object: &promoterv1alpha1.RevertActiveCommit{}})).To(BeFalse())
+		})
+
+		It("wakes on delete", func() {
+			Expect(p.Delete(event.DeleteEvent{Object: &promoterv1alpha1.RevertActiveCommit{}})).To(BeTrue())
+		})
+
+		It("ignores generic events", func() {
+			Expect(p.Generic(event.GenericEvent{Object: &promoterv1alpha1.RevertActiveCommit{}})).To(BeFalse())
+		})
+
+		DescribeTable("updates",
+			func(oldRestoredFrom, newRestoredFrom string, expected bool) {
+				e := event.UpdateEvent{
+					ObjectOld: &promoterv1alpha1.RevertActiveCommit{Status: promoterv1alpha1.RevertActiveCommitStatus{RestoredFrom: oldRestoredFrom}},
+					ObjectNew: &promoterv1alpha1.RevertActiveCommit{Status: promoterv1alpha1.RevertActiveCommitStatus{RestoredFrom: newRestoredFrom}},
+				}
+				Expect(p.Update(e)).To(Equal(expected))
+			},
+			Entry("fires when the restore is recorded", "", "abc", true),
+			Entry("filters out a status rewrite that leaves restoredFrom unchanged", "abc", "abc", false),
+			Entry("filters out an update before any restore", "", "", false),
+		)
+
+		It("filters out an update of a different type", func() {
+			e := event.UpdateEvent{
+				ObjectOld: &promoterv1alpha1.ChangeTransferPolicy{},
+				ObjectNew: &promoterv1alpha1.ChangeTransferPolicy{},
+			}
+			Expect(p.Update(e)).To(BeFalse())
+		})
+	})
+
+	Describe("mapRevertActiveCommitToChangeTransferPolicyHistories", func() {
+		r := &ChangeTransferPolicyHistoryReconciler{}
+
+		It("maps a revert to the history object for its strategy and branch", func() {
+			rc := &promoterv1alpha1.RevertActiveCommit{}
+			rc.Namespace = "dev"
+			rc.Spec.PromotionStrategyRef.Name = "my-strategy"
+			rc.Spec.Branch = "environment/prod"
+			ctpName := utils.ChangeTransferPolicyNameForEnvironment("my-strategy", "environment/prod")
+			Expect(r.mapRevertActiveCommitToChangeTransferPolicyHistories(ctx, rc)).To(Equal([]reconcile.Request{{
+				Namespace: "dev",
+				Name:      utils.GetChangeTransferPolicyHistoryName(ctpName),
+			}}))
+		})
+
+		It("maps nothing when the strategy or branch is empty", func() {
+			rc := &promoterv1alpha1.RevertActiveCommit{}
+			rc.Namespace = "dev"
+			rc.Spec.Branch = "environment/prod"
+			Expect(r.mapRevertActiveCommitToChangeTransferPolicyHistories(ctx, rc)).To(BeNil())
+		})
+
+		It("maps nothing for a different type", func() {
+			Expect(r.mapRevertActiveCommitToChangeTransferPolicyHistories(ctx, &promoterv1alpha1.ChangeTransferPolicy{})).To(BeNil())
+		})
+	})
 
 	DescribeTable("shouldSkipHistoryRecalculation",
 		func(history []promoterv1alpha1.History, activeSha string, expected bool) {
