@@ -102,8 +102,11 @@ proposed branch is left where it is. The author of the new commit is your `user.
 
 Once the note is on the active tip, the ChangeTransferPolicy reads the same gate it reads after a RevertActiveCommit
 finishes: `Promoter-restored-from` without `Promoter-revert-unblocked-at` holds auto-merge, and the dry SHA in
-`hydrator.metadata` on the parent commit (the tip this restore moved off of) cannot open a pull request. There is no
-RevertActiveCommit in this flow, so that hold starts when the push lands.
+`hydrator.metadata` on the parent commit (the tip this restore moved off of) cannot open a pull request. The
+ChangeTransferPolicy also creates a RevertActiveCommit for that restore (when the policy has none yet and the tip is
+still gated), so deleting that object is how you lift the hold — the same finalizer path as a controller-written
+restore. You can still stamp `Promoter-revert-unblocked-at` with the script under [Lift the hold](#lift-the-hold) if
+you prefer to leave no RevertActiveCommit.
 
 The new commit message copies the target commit's [message trailers](../debugging/git-trailers.md). The new note copies
 the target's promotion-history note, with `Promoter-restored-from` set to the target SHA. When that note is missing,

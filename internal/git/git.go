@@ -1766,6 +1766,9 @@ type RestoreGate struct {
 	// BlockedDrySha is the dry SHA from hydrator.metadata on sha's first parent (the tip the restore
 	// moved off of). Empty when sha is not a restore, has no parent, or that file is absent.
 	BlockedDrySha string
+	// RestoredFrom is the first Promoter-restored-from value (note preferred, then commit trailers).
+	// Empty when sha is not a restore.
+	RestoredFrom string
 	// IsRestore is true when sha carries Promoter-restored-from (note preferred, then commit trailers).
 	IsRestore bool
 	// Unblocked is true when the history note carries Promoter-revert-unblocked-at. The commit message is
@@ -1791,7 +1794,7 @@ func (g *EnvironmentOperations) RestoreGateState(ctx context.Context, sha, activ
 	if len(trailers[constants.TrailerRestoredFrom]) == 0 {
 		return RestoreGate{}, nil
 	}
-	gate := RestoreGate{IsRestore: true}
+	gate := RestoreGate{IsRestore: true, RestoredFrom: trailers[constants.TrailerRestoredFrom][0]}
 
 	note, err := g.GetHistoryNote(ctx, sha)
 	if err != nil {

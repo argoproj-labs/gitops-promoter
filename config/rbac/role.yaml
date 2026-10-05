@@ -152,6 +152,7 @@ rules:
   resources:
   - revertactivecommits
   verbs:
+  - create
   - delete
   - get
   - list

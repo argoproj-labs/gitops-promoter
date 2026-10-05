@@ -410,7 +410,7 @@ var _ = Describe("RestoreActiveBranch", func() {
 
 		gate, err := g.RestoreGateState(GinkgoT().Context(), restored.ActiveSha, "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, BlockedDrySha: activeDry}))
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, RestoredFrom: v1, BlockedDrySha: activeDry}))
 
 		_, err = g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, time.Date(2024, 8, 1, 0, 0, 0, 0, time.UTC))
 		Expect(err).NotTo(HaveOccurred())
@@ -418,7 +418,7 @@ var _ = Describe("RestoreActiveBranch", func() {
 
 		gate, err = g.RestoreGateState(GinkgoT().Context(), restored.ActiveSha, "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, Unblocked: true, BlockedDrySha: activeDry}))
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, RestoredFrom: v1, Unblocked: true, BlockedDrySha: activeDry}))
 
 		ordinary, err := g.RestoreGateState(GinkgoT().Context(), v1, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -486,7 +486,7 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
 		gate, err := g.RestoreGateState(GinkgoT().Context(), restoreSha, "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, BlockedDrySha: activeDry}))
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, RestoredFrom: v1, BlockedDrySha: activeDry}))
 
 		unblockPayload, err := json.Marshal(map[string][]string{
 			constants.TrailerRestoredFrom:      {v1},
@@ -500,6 +500,6 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
 		gate, err = g.RestoreGateState(GinkgoT().Context(), restoreSha, "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, Unblocked: true, BlockedDrySha: activeDry}))
+		Expect(gate).To(Equal(git.RestoreGate{IsRestore: true, RestoredFrom: v1, Unblocked: true, BlockedDrySha: activeDry}))
 	})
 })

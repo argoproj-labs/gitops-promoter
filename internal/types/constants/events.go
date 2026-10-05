@@ -100,6 +100,14 @@ const (
 	// Args: RevertActiveCommit name, its status.activeSha, the active tip.
 	RevertSupersededMessage = "Deleted RevertActiveCommit %s; its restore %s is behind active tip %s"
 
+	// RevertAdoptedReason indicates that a RevertActiveCommit was created because the active tip is
+	// already a gated restore commit (Promoter-restored-from without Promoter-revert-unblocked-at)
+	// and no RevertActiveCommit existed for the policy — typically a restore written by hand.
+	RevertAdoptedReason = "RevertAdopted"
+	// RevertAdoptedMessage is the message for an adopted restore tip.
+	// Args: RevertActiveCommit name, the Promoter-restored-from SHA, the active tip.
+	RevertAdoptedMessage = "Created RevertActiveCommit %s for restore of %s at tip %s"
+
 	// CommitStatusPhaseChangedReason indicates that the phase computed by a commit status gate
 	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) changed for an environment.
 	CommitStatusPhaseChangedReason = "CommitStatusPhaseChanged"

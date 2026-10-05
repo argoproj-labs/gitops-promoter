@@ -102,7 +102,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch;create;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;create;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -214,6 +214,10 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	if err := r.deleteSupersededRevertActiveCommits(ctx, &ctp, gitOperations); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RevertActiveCommits: %w", err)
+	}
+
+	if err := r.ensureRevertActiveCommitForRestoreTip(ctx, &ctp, gitOperations); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to adopt restore tip as RevertActiveCommit: %w", err)
 	}
 
 	gate, err := r.evaluateRevertGate(ctx, &ctp, gitOperations)
@@ -1764,6 +1768,78 @@ func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx
 			return fmt.Errorf("failed to delete superseded RevertActiveCommit %q: %w", rc.Name, err)
 		}
 	}
+	return nil
+}
+
+// ensureRevertActiveCommitForRestoreTip creates a RevertActiveCommit when the active tip is already a
+// gated restore (Promoter-restored-from without Promoter-revert-unblocked-at) and this policy has no
+// live RevertActiveCommit. That covers restores written by hand (or any other path that pushed a
+// restore commit without creating the CR): the object becomes the delete handle that stamps
+// Promoter-revert-unblocked-at. An unblocked tip is left alone so adopting it cannot re-hold
+// promotion. A tip that is not a restore, or one that lacks Promoter-restored-from's value, is a
+// no-op. The ChangeTransferPolicy must still be owned by a PromotionStrategy so
+// spec.promotionStrategyRef can be set; without that owner the create is skipped.
+func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+	tip := ctp.Status.Active.Hydrated.Sha
+	if tip == "" {
+		return nil
+	}
+
+	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	if err != nil {
+		return err
+	}
+	if len(reverts) > 0 {
+		return nil
+	}
+
+	if err := gitOperations.LoadHistoryNotes(ctx, tip); err != nil {
+		return fmt.Errorf("failed to prefetch history note for active tip %q: %w", tip, err)
+	}
+	state, err := gitOperations.RestoreGateState(ctx, tip, ctp.Spec.ActivePath)
+	if err != nil {
+		return fmt.Errorf("failed to read restore gate for active tip %q: %w", tip, err)
+	}
+	if !state.IsRestore || state.Unblocked || state.RestoredFrom == "" {
+		return nil
+	}
+
+	ps, err := r.getPromotionStrategy(ctx, ctp)
+	if err != nil {
+		return err
+	}
+	if ps == nil {
+		log.FromContext(ctx).V(4).Info("active tip is a gated restore but ChangeTransferPolicy has no PromotionStrategy owner; skipping RevertActiveCommit adopt",
+			"tip", tip, "restoredFrom", state.RestoredFrom)
+		return nil
+	}
+
+	name := utils.KubeSafeUniqueName(ctp.Name + "-restore-" + state.RestoredFrom)
+	rc := &promoterv1alpha1.RevertActiveCommit{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ctp.Namespace,
+			Labels: utils.StampInstanceIDLabel(map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ps.Name),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+			}),
+		},
+		Spec: promoterv1alpha1.RevertActiveCommitSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
+			Branch:               ctp.Spec.ActiveBranch,
+			Sha:                  state.RestoredFrom,
+		},
+	}
+	if err := r.Create(ctx, rc); err != nil {
+		if k8s_errors.IsAlreadyExists(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to create RevertActiveCommit %q for restore tip %q: %w", name, tip, err)
+	}
+	log.FromContext(ctx).Info("Created RevertActiveCommit for gated restore tip",
+		"revertActiveCommit", name, "restoredFrom", state.RestoredFrom, "tip", tip)
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.RevertAdoptedReason, "Adopting", constants.RevertAdoptedMessage, name, state.RestoredFrom, tip)
 	return nil
 }
 
