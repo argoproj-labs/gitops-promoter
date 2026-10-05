@@ -69,7 +69,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	Context("When reconciling a resource", func() {
 		Context("When no commit status checks are configured", func() {
 			var name string
-			var revertStrategyName string
+			var restoreStrategyName string
 			var gitRepo *promoterv1alpha1.GitRepository
 			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
 			var typeNamespacedName types.NamespacedName
@@ -81,10 +81,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-without-commit-checks", "default")
 
-				revertStrategyName = name + "-ps"
+				restoreStrategyName = name + "-ps"
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(revertStrategyName, testBranchDevelopment)
+				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(restoreStrategyName, testBranchDevelopment)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      changeTransferPolicy.Name,
@@ -175,7 +175,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("does not open a pull request for the dry SHA that was reverted", func() {
+			It("does not open a pull request for the dry SHA that was blocked", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 
@@ -213,13 +213,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				proposedTip = strings.TrimSpace(proposedTip)
 
 				By("Restoring active to the previous commit")
-				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRestore(restoreStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
-				rc := &promoterv1alpha1.RevertActiveCommit{
+				rc := &promoterv1alpha1.RestoreActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertActiveCommitSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  restoreTo,
 					},
@@ -263,7 +263,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Setting spec.blockEnvironment to false, which stamps Promoter-revert-unblocked-at and allows the new dry SHA to auto-merge")
+				By("Setting spec.blockEnvironment to false, which stamps Promoter-restore-unblocked-at and allows the new dry SHA to auto-merge")
 				clearRevertBlockEnvironment(ctx, rcKey)
 
 				Eventually(func(g Gomega) {
@@ -278,7 +278,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				noteOut, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "list")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(noteOut).NotTo(BeEmpty())
-				// Find a note that carries Promoter-revert-unblocked-at.
+				// Find a note that carries Promoter-restore-unblocked-at.
 				foundUnblock := false
 				for _, line := range strings.Split(strings.TrimSpace(noteOut), "\n") {
 					parts := strings.Fields(line)
@@ -289,20 +289,20 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					if showErr != nil {
 						continue
 					}
-					if strings.Contains(raw, constants.TrailerRevertUnblockedAt) {
+					if strings.Contains(raw, constants.TrailerRestoreUnblockedAt) {
 						foundUnblock = true
 						break
 					}
 				}
-				Expect(foundUnblock).To(BeTrue(), "Promoter-revert-unblocked-at should be on the restore commit's note after RAC deletion")
+				Expect(foundUnblock).To(BeTrue(), "Promoter-restore-unblocked-at should be on the restore commit's note after RAC deletion")
 			})
 
-			It("adopts a restore written via git by creating a RevertActiveCommit when none exists", func() {
+			It("adopts a restore written via git by creating a RestoreActiveCommit when none exists", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 
 				By("Attaching a PromotionStrategy owner so CTP can adopt restores")
-				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRestore(restoreStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
@@ -342,7 +342,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Restoring active via git only (no RevertActiveCommit)")
+				By("Restoring active via git only (no RestoreActiveCommit)")
 				restoreSha := restoreActiveBranchViaGit(ctx, gitPath, testBranchDevelopment, restoreTo)
 
 				Eventually(func(g Gomega) {
@@ -351,16 +351,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(blockedDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("CTP adopting the restore tip as a RevertActiveCommit")
-				var adopted promoterv1alpha1.RevertActiveCommit
+				By("CTP adopting the restore tip as a RestoreActiveCommit")
+				var adopted promoterv1alpha1.RestoreActiveCommit
 				Eventually(func(g Gomega) {
-					var racList promoterv1alpha1.RevertActiveCommitList
+					var racList promoterv1alpha1.RestoreActiveCommitList
 					g.Expect(k8sClient.List(ctx, &racList)).To(Succeed())
 					g.Expect(racList.Items).To(HaveLen(1))
 					adopted = racList.Items[0]
 					g.Expect(adopted.Spec.Sha).To(Equal(restoreTo))
 					g.Expect(adopted.Spec.Branch).To(Equal(testBranchDevelopment))
-					g.Expect(adopted.Spec.PromotionStrategyRef.Name).To(Equal(revertStrategyName))
+					g.Expect(adopted.Spec.PromotionStrategyRef.Name).To(Equal(restoreStrategyName))
 					g.Expect(adopted.Status.RestoredFrom).To(Equal(restoreTo))
 					g.Expect(adopted.Status.ActiveSha).To(Equal(restoreSha))
 					g.Expect(adopted.Status.BlockedDrySha).To(Equal(blockedDrySha))
@@ -387,7 +387,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Setting spec.blockEnvironment to false on the adopted RevertActiveCommit to stamp Promoter-revert-unblocked-at and resume auto-merge")
+				By("Setting spec.blockEnvironment to false on the adopted RestoreActiveCommit to stamp Promoter-restore-unblocked-at and resume auto-merge")
 				clearRevertBlockEnvironment(ctx, types.NamespacedName{Name: adopted.Name, Namespace: adopted.Namespace})
 
 				Eventually(func(g Gomega) {
@@ -401,15 +401,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				noteRaw, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(noteRaw).To(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				Expect(noteRaw).To(ContainSubstring(constants.TrailerRestoreUnblockedAt))
 			})
 
-			It("gates promotion from a restore written and unblocked only via git when the adopted RevertActiveCommit is left in place", func() {
+			It("blocks promotion from a restore written and unblocked only via git when the adopted RestoreActiveCommit is left in place", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 
 				By("Attaching a PromotionStrategy owner so CTP can adopt restores")
-				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRestore(restoreStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
@@ -449,7 +449,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Restoring active via git only (no RevertActiveCommit)")
+				By("Restoring active via git only (no RestoreActiveCommit)")
 				restoreSha := restoreActiveBranchViaGit(ctx, gitPath, testBranchDevelopment, restoreTo)
 
 				Eventually(func(g Gomega) {
@@ -458,9 +458,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(blockedDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("CTP adopting the restore tip as a RevertActiveCommit")
+				By("CTP adopting the restore tip as a RestoreActiveCommit")
 				Eventually(func(g Gomega) {
-					var racList promoterv1alpha1.RevertActiveCommitList
+					var racList promoterv1alpha1.RestoreActiveCommitList
 					g.Expect(k8sClient.List(ctx, &racList)).To(Succeed())
 					g.Expect(racList.Items).To(HaveLen(1))
 					g.Expect(racList.Items[0].Spec.Sha).To(Equal(restoreTo))
@@ -488,7 +488,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Stamping Promoter-revert-unblocked-at via git notes only, then waking CTP")
+				By("Stamping Promoter-restore-unblocked-at via git notes only, then waking CTP")
 				unblockAt := time.Date(2026, 10, 2, 18, 0, 0, 0, time.UTC)
 				unblockRestoreViaGit(ctx, gitPath, restoreSha, unblockAt)
 				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
@@ -504,16 +504,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				noteRaw, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(noteRaw).To(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				Expect(noteRaw).To(ContainSubstring(constants.TrailerRestoreUnblockedAt))
 				Expect(noteRaw).To(ContainSubstring("2026-10-02T18:00:00Z"))
 			})
 
-			It("keeps an open pull request for a later proposed dry SHA when active is reverted", func() {
+			It("keeps an open pull request for a later proposed dry SHA when active is restored", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 
 				By("Promoting one commit so it is the active dry SHA")
-				revertedDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				blockedDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				restoreTo, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
 				Expect(err).NotTo(HaveOccurred())
 				restoreTo = strings.TrimSpace(restoreTo)
@@ -535,7 +535,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(revertedDrySha))
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(blockedDrySha))
 					err := k8sClient.Get(ctx, prKey, &pr)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -557,13 +557,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Restoring the active branch, which does not close that pull request")
-				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRestore(restoreStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
-				rc := &promoterv1alpha1.RevertActiveCommit{
+				rc := &promoterv1alpha1.RestoreActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertActiveCommitSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  restoreTo,
 					},
@@ -574,12 +574,12 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())
 					g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
-					g.Expect(rc.Status.BlockedDrySha).To(Equal(revertedDrySha))
+					g.Expect(rc.Status.BlockedDrySha).To(Equal(blockedDrySha))
 					g.Expect(rc.Status.BlockedDrySha).NotTo(Equal(laterDrySha))
 					// The open pull request is for a later dry SHA, so it stays open. Auto-merge is
-					// still held until the RevertActiveCommit is deleted.
+					// still held until the RestoreActiveCommit is deleted.
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(revertedDrySha))
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(blockedDrySha))
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(laterDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -589,7 +589,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Leaving that pull request open, and not auto-merging it while the RevertActiveCommit exists")
+				By("Leaving that pull request open, and not auto-merging it while the RestoreActiveCommit exists")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					changeTransferPolicy.Spec.AutoMerge = new(true)
@@ -615,7 +615,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("deletes a RevertActiveCommit whose restore is behind a newer restore", func() {
+			It("deletes a RestoreActiveCommit whose restore is behind a newer restore", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 
@@ -658,13 +658,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Restoring active to the first promotion")
-				ps := promotionStrategyForRevert(revertStrategyName, gitRepo.Name, testBranchDevelopment)
+				ps := promotionStrategyForRestore(restoreStrategyName, gitRepo.Name, testBranchDevelopment)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
-				older := &promoterv1alpha1.RevertActiveCommit{
+				older := &promoterv1alpha1.RestoreActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-old", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertActiveCommitSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  firstHydrated,
 					},
@@ -680,11 +680,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					firstRestore = older.Status.ActiveSha
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Restoring further back, which supersedes the first RevertActiveCommit")
-				newer := &promoterv1alpha1.RevertActiveCommit{
+				By("Restoring further back, which supersedes the first RestoreActiveCommit")
+				newer := &promoterv1alpha1.RestoreActiveCommit{
 					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-new", Namespace: "default"},
-					Spec: promoterv1alpha1.RevertActiveCommitSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: revertStrategyName},
+					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
 						Sha:                  initialActive,
 					},
@@ -697,7 +697,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(newer.Status.RestoredFrom).To(Equal(initialActive))
 					g.Expect(newer.Status.ActiveSha).NotTo(BeEmpty())
 					g.Expect(newer.Status.ActiveSha).NotTo(Equal(firstRestore))
-					err := k8sClient.Get(ctx, olderKey, &promoterv1alpha1.RevertActiveCommit{})
+					err := k8sClient.Get(ctx, olderKey, &promoterv1alpha1.RestoreActiveCommit{})
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -705,12 +705,12 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				olderNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", firstRestore)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(olderNote).NotTo(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				Expect(olderNote).NotTo(ContainSubstring(constants.TrailerRestoreUnblockedAt))
 				newerNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", newer.Status.ActiveSha)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(newerNote).NotTo(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				Expect(newerNote).NotTo(ContainSubstring(constants.TrailerRestoreUnblockedAt))
 
-				By("Holding auto-merge while the newer RevertActiveCommit remains")
+				By("Holding auto-merge while the newer RestoreActiveCommit remains")
 				laterDry, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "a later dry commit after the second restore", "")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -3426,7 +3426,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
-		Expect(entry.RevertUnblockedAt).To(BeNil())
+		Expect(entry.RestoreUnblockedAt).To(BeNil())
 		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
 			"the original promotion's merge time is kept on a restore entry")
 		committed := strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha))
@@ -3434,10 +3434,10 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 			"the entry's own commit time is what readers use as the restore time")
 	})
 
-	It("reads Promoter-revert-unblocked-at into revertUnblockedAt", func() {
+	It("reads Promoter-restore-unblocked-at into restoreUnblockedAt", func() {
 		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m",
 			`{"`+constants.TrailerRestoredFrom+`":["`+commitSha+`"],"`+
-				constants.TrailerRevertUnblockedAt+`":["2024-06-01T12:00:00Z"]}`, commitSha)
+				constants.TrailerRestoreUnblockedAt+`":["2024-06-01T12:00:00Z"]}`, commitSha)
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
@@ -3445,8 +3445,8 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
-		Expect(entry.RevertUnblockedAt).NotTo(BeNil())
-		Expect(entry.RevertUnblockedAt.UTC().Format(time.RFC3339)).To(Equal("2024-06-01T12:00:00Z"))
+		Expect(entry.RestoreUnblockedAt).NotTo(BeNil())
+		Expect(entry.RestoreUnblockedAt.UTC().Format(time.RFC3339)).To(Equal("2024-06-01T12:00:00Z"))
 	})
 
 	It("leaves restoredFrom empty for an ordinary promotion", func() {
@@ -3912,7 +3912,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			Scheme:      k8sClient.Scheme(),
 			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
 		}
-		// No RevertActiveCommit, and the active tip is an ordinary commit, so the restore-marker read
+		// No RestoreActiveCommit, and the active tip is an ordinary commit, so the restore-marker read
 		// returns false and the ancestor check is not reached.
 		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: gitPath}, "default/"+name)
 		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
@@ -4065,10 +4065,10 @@ var _ = Describe("commit status description trailers", func() {
 	})
 })
 
-var _ = Describe("revertActiveCommitSuperseded", func() {
+var _ = Describe("restoreActiveCommitSuperseded", func() {
 	DescribeTable("decides whether a recorded restore is behind the active tip",
 		func(activeSha, tip string, isAncestor, want bool) {
-			Expect(revertActiveCommitSuperseded(activeSha, tip, isAncestor)).To(Equal(want))
+			Expect(restoreActiveCommitSuperseded(activeSha, tip, isAncestor)).To(Equal(want))
 		},
 		Entry("no recorded restore", "", "tip", true, false),
 		Entry("no active tip", "restore", "", true, false),
@@ -4103,7 +4103,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		return &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(100)}
 	}
 
-	It("blocks without touching git while a RevertActiveCommit's restore is still pending", func() {
+	It("blocks without touching git while a RestoreActiveCommit's restore is still pending", func() {
 		ctx := context.Background()
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -4113,12 +4113,12 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		}
 		ctp.Status.Proposed.Dry.Sha = proposedDry
-		// Never cloned. Reaching CommitIsAncestor or RestoreGateState would fail this call.
+		// Never cloned. Reaching CommitIsAncestor or RestoreBlockState would fail this call.
 		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
 		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
-		rc := &promoterv1alpha1.RevertActiveCommit{
-			ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-			Spec: promoterv1alpha1.RevertActiveCommitSpec{
+		rc := &promoterv1alpha1.RestoreActiveCommit{
+			ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+			Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 				Branch:               "environment/dev",
 				Sha:                  "4444444444444444444444444444444444444444",
@@ -4159,7 +4159,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 		gateFromGit := func() revertGate {
 			GinkgoHelper()
-			state, err := gitOps.RestoreGateState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
+			state, err := gitOps.RestoreBlockState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
 			Expect(err).NotTo(HaveOccurred())
 			return revertGate{
 				isRestoreTip:  state.IsRestore,
@@ -4299,10 +4299,10 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeFalse())
 		})
 
-		It("does not gate from a RevertActiveCommit that already has status when the tip is not a restore", func() {
-			rc := &promoterv1alpha1.RevertActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: "revert-dev", Namespace: "default"},
-				Spec: promoterv1alpha1.RevertActiveCommitSpec{
+		It("does not block from a RestoreActiveCommit that already has status when the tip is not a restore", func() {
+			rc := &promoterv1alpha1.RestoreActiveCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               ctp.Spec.ActiveBranch,
 					Sha:                  parentSha,
@@ -4320,7 +4320,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeFalse())
 		})
 
-		It("blocks the blocked dry SHA on a restore tip that lacks Promoter-revert-unblocked-at", func() {
+		It("blocks the blocked dry SHA on a restore tip that lacks Promoter-restore-unblocked-at", func() {
 			Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+proposedDry+`"}`), 0o644)).To(Succeed())
 			mustRunGit(workDir, "add", "-A")
 			mustRunGit(workDir, "commit", "-m", "parent with dry")
@@ -4345,7 +4345,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeTrue())
 		})
 
-		It("does not block the blocked dry SHA once Promoter-revert-unblocked-at is present", func() {
+		It("does not block the blocked dry SHA once Promoter-restore-unblocked-at is present", func() {
 			Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+proposedDry+`"}`), 0o644)).To(Succeed())
 			mustRunGit(workDir, "add", "-A")
 			mustRunGit(workDir, "commit", "-m", "parent with dry")
@@ -4355,7 +4355,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			mustRunGit(workDir, "push", "origin", "HEAD:"+branch)
 			Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
 			pushNote(restoreSha, fmt.Sprintf(`{"%s":["%s"],"%s":["2024-01-01T00:00:00Z"]}`,
-				constants.TrailerRestoredFrom, parentWithDry, constants.TrailerRevertUnblockedAt))
+				constants.TrailerRestoredFrom, parentWithDry, constants.TrailerRestoreUnblockedAt))
 
 			ctp.Status.Active.Hydrated.Sha = restoreSha
 			ctp.Status.Proposed.Hydrated.Sha = sideSha
@@ -4370,38 +4370,38 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(skip).To(BeFalse())
 		})
 
-		supersededRevert := func(name, activeSha string) *promoterv1alpha1.RevertActiveCommit {
-			return &promoterv1alpha1.RevertActiveCommit{
+		supersededRevert := func(name, activeSha string) *promoterv1alpha1.RestoreActiveCommit {
+			return &promoterv1alpha1.RestoreActiveCommit{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-				Spec: promoterv1alpha1.RevertActiveCommitSpec{
+				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               branch,
 					Sha:                  activeSha,
 				},
-				Status: promoterv1alpha1.RevertActiveCommitStatus{
+				Status: promoterv1alpha1.RestoreActiveCommitStatus{
 					ActiveSha:    activeSha,
 					RestoredFrom: activeSha,
 				},
 			}
 		}
 
-		It("leaves a RevertActiveCommit whose restore commit is not in the clone", func() {
+		It("leaves a RestoreActiveCommit whose restore commit is not in the clone", func() {
 			missing := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-			rc := supersededRevert("revert-missing", missing)
+			rc := supersededRevert("restore-missing", missing)
 			c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(rc).Build()
 			r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
 
-			Expect(r.deleteSupersededRevertActiveCommits(ctx, ctp, gitOps)).To(Succeed())
-			Expect(c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RevertActiveCommit{})).To(Succeed())
+			Expect(r.deleteSupersededRestoreActiveCommits(ctx, ctp, gitOps)).To(Succeed())
+			Expect(c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RestoreActiveCommit{})).To(Succeed())
 		})
 
-		It("deletes a RevertActiveCommit whose restore commit is an ancestor of the active tip", func() {
-			rc := supersededRevert("revert-ancestor", parentSha)
+		It("deletes a RestoreActiveCommit whose restore commit is an ancestor of the active tip", func() {
+			rc := supersededRevert("restore-ancestor", parentSha)
 			c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(rc).Build()
 			r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
 
-			Expect(r.deleteSupersededRevertActiveCommits(ctx, ctp, gitOps)).To(Succeed())
-			err := c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RevertActiveCommit{})
+			Expect(r.deleteSupersededRestoreActiveCommits(ctx, ctp, gitOps)).To(Succeed())
+			err := c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RestoreActiveCommit{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 	})

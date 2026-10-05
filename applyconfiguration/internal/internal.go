@@ -586,9 +586,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestConfiguration
-    - name: revertActiveCommit
+    - name: restoreActiveCommit
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitConfiguration
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
@@ -1116,12 +1116,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestCommonStatus
+    - name: restoreUnblockedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
     - name: restoredFrom
       type:
         scalar: string
-    - name: revertUnblockedAt
-      type:
-        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HydratorMetadata
   map:
     fields:
@@ -1480,7 +1480,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: output
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommit
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommit
   map:
     fields:
     - name: apiVersion
@@ -1494,17 +1494,17 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitSpec
     - name: status
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitConfiguration
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitConfiguration
   map:
     fields:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitSpec
   map:
     fields:
     - name: blockEnvironment
@@ -1520,7 +1520,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: sha
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitStatus
   map:
     fields:
     - name: activeSha

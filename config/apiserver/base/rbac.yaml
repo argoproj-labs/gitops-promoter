@@ -15,7 +15,7 @@ rules:
       - promotionstrategies
       - changetransferpolicyhistories
       - changetransferpolicies
-      - revertactivecommits
+      - restoreactivecommits
       - pullrequests
       - commitstatuses
       - argocdcommitstatuses

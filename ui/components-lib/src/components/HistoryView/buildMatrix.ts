@@ -9,7 +9,7 @@ import type {
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
-import { proposedIsReverted } from '@shared/utils/environments';
+import { proposedIsBlocked } from '@shared/utils/environments';
 
 /**
  * Pull the upstream code commits registered on a dry commit into `ReferenceCommit[]`,
@@ -45,7 +45,7 @@ function buildEnvColumn(
   const proposedSha = env.proposed?.dry?.sha;
   const proposedDistinct =
     env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
-  const pr = heldPullRequest(env);
+  const pr = blockedEnvPullRequest(env);
 
   return {
     branch: env.branch,
@@ -63,13 +63,13 @@ function buildEnvColumn(
   };
 }
 
-// While a RevertActiveCommit holds the environment, status.pullRequest is the promotion that landed
-// the commit the revert moved off the active branch. That merged pull request belongs on the
-// reverted commit. An open one belongs on a newer proposed commit that is waiting out the hold.
+// While a RestoreActiveCommit blocks the environment, status.pullRequest is the promotion that landed
+// the commit the restore moved off the active branch. That merged pull request belongs on the
+// blocked commit. An open one belongs on a newer proposed commit that is waiting out the block.
 // A merged pull request on any other proposed commit is a previous promotion, not this commit's.
-function heldPullRequest(env: StatusEnvironment): PullRequest | undefined {
-  if (!env.revertActiveCommit) return env.pullRequest;
-  if (env.pullRequest?.state === 'open' || proposedIsReverted(env)) return env.pullRequest;
+function blockedEnvPullRequest(env: StatusEnvironment): PullRequest | undefined {
+  if (!env.restoreActiveCommit) return env.pullRequest;
+  if (env.pullRequest?.state === 'open' || proposedIsBlocked(env)) return env.pullRequest;
   return undefined;
 }
 
@@ -199,15 +199,15 @@ function wentLiveAt(entry: HistoryEntry | undefined): number | null {
  * Row key for a restore entry, or null when the entry is an ordinary promotion.
  *
  * A restore reuses the restored version's tree, so its dry sha repeats the row the
- * original promotion already owns. The same dry key plus `-revert` keeps that row
+ * original promotion already owns. The same dry key plus `-restore` keeps that row
  * distinct, and every environment restored back to that commit shares it. Each
- * environment's own revert commit stays on the cell.
+ * environment's own restore commit stays on the cell.
  */
 function restoreRowKey(entry: HistoryEntry | undefined): string | null {
   if (!entry?.restoredFrom) return null;
   const key = commitKey(entry.active?.dry);
   if (!key) return null;
-  return `${key}-revert`;
+  return `${key}-restore`;
 }
 
 /**
@@ -243,7 +243,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
 
     // A restore copies the restored version's history note, so its pull request id is that
     // earlier promotion's, not a pull request that created the restore. Leave it off this row;
-    // the promotion that the revert moved off the branch is attached to the reverted commit.
+    // the promotion that the restore moved off the branch is attached to the blocked commit.
     const row = getRow(
       rowsById,
       commit,
@@ -275,7 +275,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       health,
       pullRequest: restoreKey ? undefined : entry.pullRequest,
       restoredFrom: entry.restoredFrom,
-      revertUnblockedAt: entry.revertUnblockedAt,
+      restoreUnblockedAt: entry.restoreUnblockedAt,
       noopNote: isNoop
         ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
         : undefined,
@@ -437,7 +437,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           // marker and timestamp have to be carried here or they are lost and the row
           // sorts by the restored version's original (older) commit time.
           restoredFrom: activeRestore?.restoredFrom,
-          revertUnblockedAt: activeRestore?.revertUnblockedAt,
+          restoreUnblockedAt: activeRestore?.restoreUnblockedAt,
           at: activeRestore ? landedAtRaw(activeRestore) : (env.active.dry.commitTime ?? undefined),
         });
       }
@@ -446,15 +446,15 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (proposedIsDistinct && env.proposed?.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const heldName = env.revertActiveCommit?.name;
-      // Durable across RevertActiveCommit deletion: blockedDrySha from the CR, or from history
+      const blockName = env.restoreActiveCommit?.name;
+      // Durable across RestoreActiveCommit deletion: blockedDrySha from the CR, or from history
       // when the active tip is still the restore that moved this dry SHA off.
-      const reverted = proposedIsReverted(env);
-      const pullRequest = heldPullRequest(env);
+      const blocked = proposedIsBlocked(env);
+      const pullRequest = blockedEnvPullRequest(env);
       const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
       if (row) {
         const kind: CellKind =
-          !heldName && !reverted && health === 'failure' ? 'failed' : 'in-flight';
+          !blockName && !blocked && health === 'failure' ? 'failed' : 'in-flight';
         setCell(row, branch, {
           kind,
           commit: env.proposed.dry,
@@ -464,8 +464,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
           health,
           pullRequest,
           isProposed: true,
-          revertActiveCommit: heldName,
-          revertedByRevertActiveCommit: reverted || undefined,
+          restoreActiveCommit: blockName,
+          blockedByRestoreActiveCommit: blocked || undefined,
           at: env.proposed.dry.commitTime ?? undefined,
         });
       }

@@ -12,7 +12,7 @@ import {
 } from '@shared/types/promotion';
 import { GoBlocked } from 'react-icons/go';
 import Tooltip from './HistoryView/Tooltip/Tooltip';
-import { revertHoldTooltip } from '@shared/utils/environments';
+import { restoreBlockTooltip } from '@shared/utils/environments';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
@@ -26,10 +26,10 @@ export interface ProposedChangesCardProps {
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
-  /** RevertActiveCommit holding the environment; the banner shows a blocked mark and explains the hold. */
-  revertActiveCommit?: string;
-  /** True when the proposed commit is the one that RevertActiveCommit reverted. */
-  proposedIsReverted?: boolean;
+  /** RestoreActiveCommit blocking the environment; the banner shows a blocked mark and explains the block. */
+  restoreActiveCommit?: string;
+  /** True when the proposed commit is the dry SHA the restore moved off the active branch. */
+  proposedIsBlocked?: boolean;
 }
 
 function progressMessage(
@@ -63,13 +63,13 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   prUrl,
   prNumber,
   prTooltip,
-  revertActiveCommit,
-  proposedIsReverted = false,
+  restoreActiveCommit,
+  proposedIsBlocked = false,
 }) => {
   const message = progressMessage(healthSummary, checks);
   const banner = (
-    <div className={`promote-banner${revertActiveCommit ? ' promote-banner--held' : ''}`}>
-      {revertActiveCommit ? (
+    <div className={`promote-banner${restoreActiveCommit ? ' promote-banner--blocked' : ''}`}>
+      {restoreActiveCommit ? (
         <GoBlocked
           className="promote-banner__icon promote-banner__icon--blocked"
           aria-hidden="true"
@@ -92,8 +92,8 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   return (
     <div className="proposed-changes-card">
       <div className="promote-flow" aria-hidden="true" />
-      {revertActiveCommit ? (
-        <Tooltip label={revertHoldTooltip(revertActiveCommit, proposedIsReverted)}>
+      {restoreActiveCommit ? (
+        <Tooltip label={restoreBlockTooltip(restoreActiveCommit, proposedIsBlocked)}>
           {banner}
         </Tooltip>
       ) : (

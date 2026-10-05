@@ -32,14 +32,14 @@ export interface CellState {
   isProposed?: boolean;
   /** True for the cell describing the environment's current active commit. */
   isLive?: boolean;
-  /** RevertActiveCommit holding this environment. The proposed pill gets a stop sign and the cell shows only an open pull request. */
-  revertActiveCommit?: string;
+  /** RestoreActiveCommit holding this environment. The proposed pill gets a stop sign and the cell shows only an open pull request. */
+  restoreActiveCommit?: string;
   /** True when this proposed commit is the dry SHA a restore moved off the active branch. */
-  revertedByRevertActiveCommit?: boolean;
+  blockedByRestoreActiveCommit?: boolean;
   /** Hydrated sha this cell's commit was restored to, when it came from a manual restore. */
   restoredFrom?: string;
-  /** When promotion resumed after this restore (Promoter-revert-unblocked-at), as an RFC 3339 string. */
-  revertUnblockedAt?: string;
+  /** When promotion resumed after this restore (Promoter-restore-unblocked-at), as an RFC 3339 string. */
+  restoreUnblockedAt?: string;
   noopNote?: string;
   supersededById?: string;
   at?: string;
@@ -86,7 +86,7 @@ export interface CommitRow {
   refUrl?: string;
   /**
    * Set on rows built from a restore entry. Those rows share a dry sha with the
-   * original promotion and are keyed `{dry sha}-revert` to keep the two distinct.
+   * original promotion and are keyed `{dry sha}-restore` to keep the two distinct.
    * The value is one environment's restored-from sha; each cell carries its own.
    */
   restoredFrom?: string;

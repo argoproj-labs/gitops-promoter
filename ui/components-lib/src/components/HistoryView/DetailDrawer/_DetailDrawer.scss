@@ -158,7 +158,7 @@
   &--in-flight {
     background: $pending-ink;
   }
-  &--held {
+  &--blocked-env {
     background: $pending-ink;
     display: inline-flex;
     align-items: center;
@@ -171,7 +171,7 @@
     stroke-width: 1.4;
     overflow: visible;
   }
-  &--reverted {
+  &--blocked {
     background: $text-secondary;
   }
   &--was-here {

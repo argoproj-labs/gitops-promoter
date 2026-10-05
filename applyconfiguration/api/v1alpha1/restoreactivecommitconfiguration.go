@@ -17,29 +17,29 @@ limitations under the License.
 
 package v1alpha1
 
-// RevertActiveCommitConfigurationApplyConfiguration represents a declarative configuration of the RevertActiveCommitConfiguration type for use
+// RestoreActiveCommitConfigurationApplyConfiguration represents a declarative configuration of the RestoreActiveCommitConfiguration type for use
 // with apply.
 //
-// RevertActiveCommitConfiguration defines the configuration for the RevertActiveCommit controller.
+// RestoreActiveCommitConfiguration defines the configuration for the RestoreActiveCommit controller.
 //
-// This configuration controls how the RevertActiveCommit controller processes reconciliation
+// This configuration controls how the RestoreActiveCommit controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type RevertActiveCommitConfigurationApplyConfiguration struct {
-	// WorkQueue contains the work queue configuration for the RevertActiveCommit controller.
+type RestoreActiveCommitConfigurationApplyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RestoreActiveCommit controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 }
 
-// RevertActiveCommitConfigurationApplyConfiguration constructs a declarative configuration of the RevertActiveCommitConfiguration type for use with
+// RestoreActiveCommitConfigurationApplyConfiguration constructs a declarative configuration of the RestoreActiveCommitConfiguration type for use with
 // apply.
-func RevertActiveCommitConfiguration() *RevertActiveCommitConfigurationApplyConfiguration {
-	return &RevertActiveCommitConfigurationApplyConfiguration{}
+func RestoreActiveCommitConfiguration() *RestoreActiveCommitConfigurationApplyConfiguration {
+	return &RestoreActiveCommitConfigurationApplyConfiguration{}
 }
 
 // WithWorkQueue sets the WorkQueue field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WorkQueue field is set to the value of the last call.
-func (b *RevertActiveCommitConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *RevertActiveCommitConfigurationApplyConfiguration {
+func (b *RestoreActiveCommitConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *RestoreActiveCommitConfigurationApplyConfiguration {
 	b.WorkQueue = value
 	return b
 }

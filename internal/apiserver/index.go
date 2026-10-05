@@ -114,7 +114,7 @@ func (p *BundleProvider) childKinds() []client.Object {
 		&promoterv1alpha1.PromotionStrategy{},
 		&promoterv1alpha1.ChangeTransferPolicyHistory{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
-		&promoterv1alpha1.RevertActiveCommit{},
+		&promoterv1alpha1.RestoreActiveCommit{},
 		&promoterv1alpha1.PullRequest{},
 		&promoterv1alpha1.CommitStatus{},
 		&promoterv1alpha1.GitRepository{},
@@ -243,7 +243,7 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.ChangeTransferPolicyHistory:
 		return keyFromLabel(o.Namespace, o.Labels)
-	case *promoterv1alpha1.RevertActiveCommit:
+	case *promoterv1alpha1.RestoreActiveCommit:
 		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.PullRequest:
 		return keyFromLabel(o.Namespace, o.Labels)

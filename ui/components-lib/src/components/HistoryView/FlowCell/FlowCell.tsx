@@ -6,7 +6,7 @@ import type { CellState, CommitRow } from '../types';
 import { commitKey, shortSha } from '../helpers';
 import { CELL_KIND_LABELS, cellKindLabel, cellPillTooltip, displayKind } from '../presentation';
 import Tooltip from '../Tooltip/Tooltip';
-import { revertHoldTooltip } from '@shared/utils/environments';
+import { restoreBlockTooltip } from '@shared/utils/environments';
 
 const FlowCell: React.FC<{
   cell: CellState;
@@ -48,30 +48,32 @@ const FlowCell: React.FC<{
   const visualKind = displayKind(cell.kind);
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
-  const held = cell.revertActiveCommit;
-  const reverted = !!cell.revertedByRevertActiveCommit;
+  const blockedEnv = cell.restoreActiveCommit;
+  const blocked = !!cell.blockedByRestoreActiveCommit;
   // A restore cell's dry sha is the version it restored, so a lookup by that sha finds the
   // earlier promotion and its pull request. The restore commit has no pull request of its own.
   const isRestore = !!cell.restoredFrom;
   const prId =
-    held || reverted || isRestore
+    blockedEnv || blocked || isRestore
       ? cell.pullRequest?.id
       : (cell.pullRequest?.id ?? rowForCell?.prId);
   const prUrl =
-    held || reverted || isRestore
+    blockedEnv || blocked || isRestore
       ? cell.pullRequest?.url
       : (cell.pullRequest?.url ?? rowForCell?.prUrl);
-  const revertSha = isRestore ? cell.hydrated?.sha : undefined;
-  const revertRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
-  const revertUrl = revertSha ? getCommitUrl(revertRepoUrl, revertSha) : '';
-  const pillTooltip = held ? revertHoldTooltip(held, reverted) : cellPillTooltip(cell, branch);
+  const restoreSha = isRestore ? cell.hydrated?.sha : undefined;
+  const restoreRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
+  const restoreUrl = restoreSha ? getCommitUrl(restoreRepoUrl, restoreSha) : '';
+  const pillTooltip = blockedEnv
+    ? restoreBlockTooltip(blockedEnv, blocked)
+    : cellPillTooltip(cell, branch);
 
   return (
     <div
       className={[
         'cell',
         `cell--${visualKind}`,
-        reverted ? 'cell--reverted' : held ? 'cell--held' : '',
+        blocked ? 'cell--blocked' : blockedEnv ? 'cell--blocked-env' : '',
         isRestore ? 'cell--restore' : '',
         isSelected ? 'cell--selected' : '',
       ]
@@ -89,8 +91,8 @@ const FlowCell: React.FC<{
       aria-label={`${
         visualKind === 'in-flight'
           ? cell.isProposed
-            ? reverted
-              ? 'Reverted'
+            ? blocked
+              ? 'Blocked'
               : 'Proposed'
             : 'PR open'
           : CELL_KIND_LABELS[visualKind]
@@ -105,7 +107,7 @@ const FlowCell: React.FC<{
           <Tooltip label={pillTooltip}>
             <span
               className={`cell__pill cell__pill--${visualKind}${
-                reverted ? ' cell__pill--reverted' : held ? ' cell__pill--held' : ''
+                blocked ? ' cell__pill--blocked' : blockedEnv ? ' cell__pill--blocked-env' : ''
               }${isRestore ? ' cell__pill--restore' : ''}`}
             >
               {visualKind === 'no-op' && (
@@ -113,7 +115,9 @@ const FlowCell: React.FC<{
                   <FaBan aria-hidden="true" />{' '}
                 </>
               )}
-              {held && !reverted && <GoBlocked className="cell__pill__stop" aria-hidden="true" />}
+              {blockedEnv && !blocked && (
+                <GoBlocked className="cell__pill__stop" aria-hidden="true" />
+              )}
               {cellKindLabel(cell)}
             </span>
           </Tooltip>
@@ -151,14 +155,14 @@ const FlowCell: React.FC<{
           </div>
         </div>
       ) : (
-        revertSha &&
-        revertUrl && (
+        restoreSha &&
+        restoreUrl && (
           <div className="cell__commit">
             <div className="cell__commit-meta">
               <Tooltip
                 label={
                   <>
-                    Revert commit <code>{shortSha(revertSha)}</code>
+                    Restore commit <code>{shortSha(restoreSha)}</code>
                     <br />
                     Open on remote
                   </>
@@ -166,13 +170,13 @@ const FlowCell: React.FC<{
               >
                 <a
                   className="cell__pr"
-                  href={revertUrl}
+                  href={restoreUrl}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  aria-label={`Revert commit ${shortSha(revertSha)} in ${branch}, opens in new tab`}
+                  aria-label={`Restore commit ${shortSha(restoreSha)} in ${branch}, opens in new tab`}
                 >
-                  <GoGitCommit aria-hidden="true" /> {shortSha(revertSha)}
+                  <GoGitCommit aria-hidden="true" /> {shortSha(restoreSha)}
                 </a>
               </Tooltip>
             </div>

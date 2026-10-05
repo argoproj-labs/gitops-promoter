@@ -49,11 +49,11 @@ type HistoryApplyConfiguration struct {
 	// version and describe the original promotion, not the restore. active.hydrated is the restore commit
 	// itself, so active.hydrated.commitTime is when the restore was written.
 	RestoredFrom *string `json:"restoredFrom,omitempty"`
-	// RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
-	// has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339).
-	// While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
+	// RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+	// has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).
+	// While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore
 	// moved off of is blocked from opening a pull request.
-	RevertUnblockedAt *v1.Time `json:"revertUnblockedAt,omitempty"`
+	RestoreUnblockedAt *v1.Time `json:"restoreUnblockedAt,omitempty"`
 }
 
 // HistoryApplyConfiguration constructs a declarative configuration of the History type for use with
@@ -102,10 +102,10 @@ func (b *HistoryApplyConfiguration) WithRestoredFrom(value string) *HistoryApply
 	return b
 }
 
-// WithRevertUnblockedAt sets the RevertUnblockedAt field in the declarative configuration to the given value
+// WithRestoreUnblockedAt sets the RestoreUnblockedAt field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the RevertUnblockedAt field is set to the value of the last call.
-func (b *HistoryApplyConfiguration) WithRevertUnblockedAt(value v1.Time) *HistoryApplyConfiguration {
-	b.RevertUnblockedAt = &value
+// If called multiple times, the RestoreUnblockedAt field is set to the value of the last call.
+func (b *HistoryApplyConfiguration) WithRestoreUnblockedAt(value v1.Time) *HistoryApplyConfiguration {
+	b.RestoreUnblockedAt = &value
 	return b
 }

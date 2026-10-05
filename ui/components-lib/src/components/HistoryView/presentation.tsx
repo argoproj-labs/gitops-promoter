@@ -23,18 +23,18 @@ export function displayKind(kind: CellKind): DisplayCellKind {
 /**
  * Pill and badge text for a cell. `compact` shortens the empty kinds for the drawer's
  * per-environment list. A proposed commit that a restore moved off the active branch is labeled
- * REVERTED rather than PROPOSED, since it will not be promoted (with or without a live
- * RevertActiveCommit).
+ * BLOCKED rather than PROPOSED, since it will not be promoted (with or without a live
+ * RestoreActiveCommit).
  */
 export function cellKindLabel(
-  cell: Pick<CellState, 'kind' | 'isProposed' | 'revertedByRevertActiveCommit'>,
+  cell: Pick<CellState, 'kind' | 'isProposed' | 'blockedByRestoreActiveCommit'>,
   compact = false,
 ): string {
   switch (displayKind(cell.kind)) {
     case 'live':
       return 'LIVE';
     case 'in-flight':
-      if (cell.isProposed) return cell.revertedByRevertActiveCommit ? 'REVERTED' : 'PROPOSED';
+      if (cell.isProposed) return cell.blockedByRestoreActiveCommit ? 'BLOCKED' : 'PROPOSED';
       return 'PR OPEN';
     case 'was-here':
       return 'REPLACED';
@@ -70,12 +70,12 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
       if (!cell.restoredFrom) return `Currently live in ${branch}`;
       const dry = cell.commit?.sha?.slice(0, 7);
       return dry
-        ? `Currently live in ${branch} on reverted dry SHA ${dry}`
-        : `Currently live in ${branch} on a reverted dry SHA`;
+        ? `Currently live in ${branch} on blocked dry SHA ${dry}`
+        : `Currently live in ${branch} on a blocked dry SHA`;
     }
     case 'in-flight':
-      if (cell.isProposed && cell.revertedByRevertActiveCommit) {
-        return `Reverted off ${branch} — will not be promoted`;
+      if (cell.isProposed && cell.blockedByRestoreActiveCommit) {
+        return `Blocked off ${branch} — will not be promoted`;
       }
       return cell.isProposed
         ? `Proposed for ${branch} — promotion pending`

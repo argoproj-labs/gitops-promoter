@@ -1762,14 +1762,14 @@ spec:
                 - template
                 - workQueue
                 type: object
-              revertActiveCommit:
+              restoreActiveCommit:
                 description: |-
-                  RevertActiveCommit contains the configuration for the RevertActiveCommit controller,
+                  RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
                   workQueue:
                     description: |-
-                      WorkQueue contains the work queue configuration for the RevertActiveCommit controller.
+                      WorkQueue contains the work queue configuration for the RestoreActiveCommit controller.
                       This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
                     properties:
                       maxConcurrentReconciles:
@@ -2607,7 +2607,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
-            - revertActiveCommit
+            - restoreActiveCommit
             - scheduledCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus

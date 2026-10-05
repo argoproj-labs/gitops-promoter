@@ -661,6 +661,14 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoreUnblockedAt:
+                      description: |-
+                        RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+                        has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).
+                        While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore
+                        moved off of is blocked from opening a pull request.
+                      format: date-time
+                      type: string
                     restoredFrom:
                       description: |-
                         RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
@@ -672,14 +680,6 @@ spec:
                       maxLength: 64
                       minLength: 40
                       pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                      type: string
-                    revertUnblockedAt:
-                      description: |-
-                        RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
-                        has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339).
-                        While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
-                        moved off of is blocked from opening a pull request.
-                      format: date-time
                       type: string
                   type: object
                 maxItems: 20

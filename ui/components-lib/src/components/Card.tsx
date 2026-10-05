@@ -63,8 +63,8 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
-          // status.pullRequest keeps the last merged one; under a RevertActiveCommit only an open one is this commit's.
-          const heldWithoutOpenPr = !!env.revertActiveCommit && env.prTooltip?.status !== 'opened';
+          // status.pullRequest keeps the last merged one; under a RestoreActiveCommit only an open one is this commit's.
+          const heldWithoutOpenPr = !!env.restoreActiveCommit && env.prTooltip?.status !== 'opened';
 
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
@@ -123,8 +123,8 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       prUrl={heldWithoutOpenPr ? null : env.prUrl}
                       prNumber={heldWithoutOpenPr ? undefined : env.prNumber?.toString()}
                       prTooltip={env.prTooltip}
-                      revertActiveCommit={env.revertActiveCommit}
-                      proposedIsReverted={env.proposedIsReverted}
+                      restoreActiveCommit={env.restoreActiveCommit}
+                      proposedIsBlocked={env.proposedIsBlocked}
                     />
                   ) : null}
                 </div>

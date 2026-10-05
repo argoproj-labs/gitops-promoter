@@ -39,7 +39,7 @@ function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
     ps.spec,
     bundle.changeTransferPolicies ?? [],
     bundle.changeTransferPolicyHistories ?? [],
-    bundle.revertActiveCommits ?? [],
+    bundle.restoreActiveCommits ?? [],
   );
   const promotionStrategy = {
     ...ps,

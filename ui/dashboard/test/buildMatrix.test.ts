@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildMatrix } from '@lib/components/HistoryView/buildMatrix';
-import { canShowRevertCommand } from '@lib/components/HistoryView/revertCommand';
+import { canShowRestoreCommand } from '@lib/components/HistoryView/restoreCommand';
 import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 const BRANCH = 'environments/development';
@@ -55,7 +55,7 @@ function strategyWithHistory(restored: boolean): PromotionStrategy {
       // The restore commit itself; its commit time is when the restore was written.
       hydrated: {
         sha: RESTORE_HYDRATED,
-        subject: `Revert ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
+        subject: `Restore ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
         author: 'Zach Aller <zach@example.com>',
         commitTime: '2026-09-25T12:53:44Z',
       },
@@ -83,7 +83,7 @@ function strategyWithHistory(restored: boolean): PromotionStrategy {
       hydrated: restored
         ? {
             sha: RESTORE_HYDRATED,
-            subject: `Revert ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
+            subject: `Restore ${BRANCH} to ${OLD_HYDRATED.slice(0, 7)}`,
             author: 'Zach Aller <zach@example.com>',
             commitTime: '2026-09-25T12:53:44Z',
           }
@@ -134,7 +134,7 @@ describe('buildMatrix restore rows', () => {
 
     expect(restoreRow.subject).toBe(originalRow.subject);
     expect(restoreRow.dryShaShort).toBe(originalRow.dryShaShort);
-    expect(restoreRow.id).toBe(`${OLD_DRY.slice(0, 7)}-revert`);
+    expect(restoreRow.id).toBe(`${OLD_DRY.slice(0, 7)}-restore`);
     expect(originalRow.id).toBe(OLD_DRY.slice(0, 7));
   });
 
@@ -151,7 +151,7 @@ describe('buildMatrix restore rows', () => {
     const { rows } = buildMatrix(strategy);
     const restores = rows.filter((r) => r.restoredFrom);
     expect(restores).toHaveLength(1);
-    expect(restores[0]!.id).toBe(`${OLD_DRY.slice(0, 7)}-revert`);
+    expect(restores[0]!.id).toBe(`${OLD_DRY.slice(0, 7)}-restore`);
     expect(restores[0]!.cells[BRANCH]!.kind).toBe('live');
     expect(restores[0]!.cells[staging.branch]!.kind).toBe('live');
     expect(restores[0]!.cells[BRANCH]!.hydrated?.sha).toBe(RESTORE_HYDRATED);
@@ -177,7 +177,7 @@ describe('buildMatrix restore rows', () => {
     env.history = [newer, older, ...env.history!.slice(1)];
 
     const { rows } = buildMatrix(strategy);
-    const cell = rows.find((r) => r.id.endsWith('-revert'))!.cells[BRANCH]!;
+    const cell = rows.find((r) => r.id.endsWith('-restore'))!.cells[BRANCH]!;
     expect(cell.kind).toBe('restored');
     expect(cell.hydrated?.sha).toBe(newerHydrated);
     expect(cell.at).toBe('2026-09-25T18:00:00Z');
@@ -237,7 +237,7 @@ describe('buildMatrix restore rows', () => {
     const cell = restoreRow.cells[BRANCH]!;
     expect(cell.kind).toBe('restored');
     expect(cell.restoredFrom).toBe(OLD_HYDRATED);
-    expect(canShowRevertCommand(cell)).toBe(false);
+    expect(canShowRestoreCommand(cell)).toBe(false);
   });
 
   const heldStrategy = (
@@ -253,21 +253,21 @@ describe('buildMatrix restore rows', () => {
       commitStatuses: [],
     };
     env.pullRequest = pullRequest;
-    env.revertActiveCommit = { name: 'revert-staging', blockedDrySha };
+    env.restoreActiveCommit = { name: 'restore-staging', blockedDrySha };
     return strategy;
   };
 
-  it('puts the merged pull request on the reverted commit, not the live restore', () => {
-    const reverted = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  it('puts the merged pull request on the blocked commit, not the live restore', () => {
+    const blocked = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const merged = { id: '3018', url: 'https://github.com/org/repo/pull/3018', state: 'merged' };
-    const strategy = heldStrategy(reverted, merged, reverted);
+    const strategy = heldStrategy(blocked, merged, blocked);
 
     const { rows, envs } = buildMatrix(strategy);
-    const cell = rows.find((r) => r.dryShaFull === reverted)!.cells[BRANCH]!;
+    const cell = rows.find((r) => r.dryShaFull === blocked)!.cells[BRANCH]!;
     expect(cell.kind).toBe('in-flight');
     expect(cell.isProposed).toBe(true);
-    expect(cell.revertActiveCommit).toBe('revert-staging');
-    expect(cell.revertedByRevertActiveCommit).toBe(true);
+    expect(cell.restoreActiveCommit).toBe('restore-staging');
+    expect(cell.blockedByRestoreActiveCommit).toBe(true);
     expect(cell.pullRequest?.id).toBe('3018');
     expect(envs[0]!.proposedPR?.id).toBe('3018');
 
@@ -277,21 +277,21 @@ describe('buildMatrix restore rows', () => {
     expect(rows.find((r) => r.restoredFrom)!.prId).toBeUndefined();
   });
 
-  it('keeps the open pull request on a newer commit held by the RevertActiveCommit', () => {
+  it('keeps the open pull request on a newer commit blocked by the RestoreActiveCommit', () => {
     const newer = 'cccccccccccccccccccccccccccccccccccccccc';
     const open = { id: '3020', url: 'https://github.com/org/repo/pull/3020', state: 'open' };
     const strategy = heldStrategy(newer, open, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
-    expect(cell.revertActiveCommit).toBe('revert-staging');
-    expect(cell.revertedByRevertActiveCommit).toBeFalsy();
+    expect(cell.restoreActiveCommit).toBe('restore-staging');
+    expect(cell.blockedByRestoreActiveCommit).toBeFalsy();
     expect(cell.pullRequest?.id).toBe('3020');
     expect(envs[0]!.proposedPR?.id).toBe('3020');
     expect(rows.find((r) => r.restoredFrom)!.cells[BRANCH]!.pullRequest).toBeUndefined();
   });
 
-  it('drops a merged pull request that is not the reverted commit and keeps it off the restore', () => {
+  it('drops a merged pull request that is not the blocked commit and keeps it off the restore', () => {
     const newer = 'cccccccccccccccccccccccccccccccccccccccc';
     const strategy = heldStrategy(
       newer,
@@ -301,7 +301,7 @@ describe('buildMatrix restore rows', () => {
 
     const { rows, envs } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
-    expect(cell.revertedByRevertActiveCommit).toBeFalsy();
+    expect(cell.blockedByRestoreActiveCommit).toBeFalsy();
     expect(cell.pullRequest).toBeUndefined();
     expect(envs[0]!.proposedPR).toBeUndefined();
     const restoreRow = rows.find((r) => r.restoredFrom)!;
@@ -309,7 +309,7 @@ describe('buildMatrix restore rows', () => {
     expect(restoreRow.prId).toBeUndefined();
   });
 
-  it('still marks the reverted proposed dry SHA after the RevertActiveCommit is deleted', () => {
+  it('still marks the blocked proposed dry SHA after the RestoreActiveCommit is deleted', () => {
     const strategy = strategyWithHistory(true);
     const env = strategy.status!.environments![0] as Environment;
     // After restore, proposed still points at the dry SHA that was moved off (NEW_DRY).
@@ -323,14 +323,14 @@ describe('buildMatrix restore rows', () => {
       url: 'https://github.com/org/repo/pull/2972',
       state: 'merged',
     };
-    // No live RevertActiveCommit — blockedDrySha must come from history.
-    expect(env.revertActiveCommit).toBeUndefined();
+    // No live RestoreActiveCommit — blockedDrySha must come from history.
+    expect(env.restoreActiveCommit).toBeUndefined();
 
     const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
     expect(cell.isProposed).toBe(true);
-    expect(cell.revertActiveCommit).toBeUndefined();
-    expect(cell.revertedByRevertActiveCommit).toBe(true);
+    expect(cell.restoreActiveCommit).toBeUndefined();
+    expect(cell.blockedByRestoreActiveCommit).toBe(true);
     expect(cell.kind).toBe('in-flight');
   });
 });
@@ -342,7 +342,7 @@ describe('buildMatrix restore command eligibility', () => {
     const { rows } = buildMatrix(strategyWithHistory(false));
     const cell = rows.find((r) => r.dryShaFull === OLD_DRY)!.cells[BRANCH]!;
     expect(cell.kind).toBe('was-here');
-    expect(canShowRevertCommand(cell)).toBe(true);
+    expect(canShowRestoreCommand(cell)).toBe(true);
   });
 
   it('does not offer it on a failing live commit', () => {
@@ -353,7 +353,7 @@ describe('buildMatrix restore command eligibility', () => {
     const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
     expect(cell.kind).toBe('failed');
-    expect(canShowRevertCommand(cell)).toBe(false);
+    expect(canShowRestoreCommand(cell)).toBe(false);
   });
 
   it('does not offer it on a failing proposed commit, which was never promoted', () => {
@@ -369,7 +369,7 @@ describe('buildMatrix restore command eligibility', () => {
     const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === proposedDry)!.cells[BRANCH]!;
     expect(cell.kind).toBe('failed');
-    expect(canShowRevertCommand(cell)).toBe(false);
+    expect(canShowRestoreCommand(cell)).toBe(false);
   });
 });
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { environmentsFromBundle, proposedIsReverted } from '@shared/utils/environments';
+import { environmentsFromBundle, proposedIsBlocked } from '@shared/utils/environments';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type {
   ChangeTransferPolicy,
   ChangeTransferPolicyHistory,
-  RevertActiveCommit,
+  RestoreActiveCommit,
 } from '@shared/types/view';
 
 const spec = {
@@ -42,7 +42,7 @@ const histories = [
   },
 ] as unknown as ChangeTransferPolicyHistory[];
 
-const revertActiveCommits = [
+const restoreActiveCommits = [
   {
     metadata: { name: 'revert-prod' },
     spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
@@ -52,23 +52,23 @@ const revertActiveCommits = [
     metadata: { name: 'revert-going-away', deletionTimestamp: '2026-09-25T00:00:00Z' },
     spec: { promotionStrategyRef: { name: 'my-strategy' }, branch: 'environment/prod' },
   },
-] as unknown as RevertActiveCommit[];
+] as unknown as RestoreActiveCommit[];
 
 describe('environmentsFromBundle', () => {
   it('orders environments by the strategy spec and keys CTP status by activeBranch', () => {
-    const envs = environmentsFromBundle(spec, ctps, histories, revertActiveCommits);
+    const envs = environmentsFromBundle(spec, ctps, histories, restoreActiveCommits);
 
     expect(envs.map((e) => e.branch)).toEqual(['environment/dev', 'environment/prod']);
     expect(envs[0].active.dry?.sha).toBe('dev-active');
     expect(envs[1].active.dry?.sha).toBe('prod-active');
     expect(envs[1].pullRequest?.id).toBe('42');
-    expect(envs[1].revertActiveCommit).toEqual({
+    expect(envs[1].restoreActiveCommit).toEqual({
       name: 'revert-prod',
       activeSha: 'prod-hydrated',
       blockedDrySha: 'prod-proposed',
     });
-    expect(envs[0].revertActiveCommit).toBeUndefined();
-    expect(proposedIsReverted(envs[1])).toBe(true);
+    expect(envs[0].restoreActiveCommit).toBeUndefined();
+    expect(proposedIsBlocked(envs[1])).toBe(true);
     expect(envs[1].changeTransferPolicyName).toBe('strategy-environment-prod-abcd');
     expect(envs[0].changeTransferPolicyName).toBeUndefined();
     expect(envs[1].instanceId).toBe('team-a');
@@ -83,7 +83,7 @@ describe('environmentsFromBundle', () => {
     expect(envs[1].history).toBeUndefined();
   });
 
-  it('uses the RevertActiveCommit whose restore is still the active tip', () => {
+  it('uses the RestoreActiveCommit whose restore is still the active tip', () => {
     const envs = environmentsFromBundle(spec, ctps, histories, [
       {
         metadata: { name: 'revert-a' },
@@ -95,22 +95,22 @@ describe('environmentsFromBundle', () => {
         spec: { branch: 'environment/prod' },
         status: { activeSha: 'prod-hydrated', blockedDrySha: 'd2' },
       },
-    ] as unknown as RevertActiveCommit[]);
+    ] as unknown as RestoreActiveCommit[]);
 
-    expect(envs[1].revertActiveCommit).toEqual({
+    expect(envs[1].restoreActiveCommit).toEqual({
       name: 'revert-b',
       activeSha: 'prod-hydrated',
       blockedDrySha: 'd2',
     });
-    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
+    expect(proposedIsBlocked({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
       true,
     );
-    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
+    expect(proposedIsBlocked({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
       false,
     );
   });
 
-  it('keeps the hold and falls back to history when no RevertActiveCommit matches the tip', () => {
+  it('keeps the hold and falls back to history when no RestoreActiveCommit matches the tip', () => {
     const envs = environmentsFromBundle(
       spec,
       ctps,
@@ -141,17 +141,17 @@ describe('environmentsFromBundle', () => {
           spec: { branch: 'environment/prod' },
           status: {},
         },
-      ] as unknown as RevertActiveCommit[],
+      ] as unknown as RestoreActiveCommit[],
     );
 
-    expect(envs[1].revertActiveCommit).toEqual({
+    expect(envs[1].restoreActiveCommit).toEqual({
       name: 'revert-a',
       activeSha: 'r1',
     });
-    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
+    expect(proposedIsBlocked({ ...envs[1], proposed: { dry: { sha: 'd2' }, hydrated: {} } })).toBe(
       true,
     );
-    expect(proposedIsReverted({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
+    expect(proposedIsBlocked({ ...envs[1], proposed: { dry: { sha: 'd3' }, hydrated: {} } })).toBe(
       false,
     );
   });
@@ -165,21 +165,21 @@ describe('environmentsFromBundle', () => {
   });
 });
 
-describe('proposedIsReverted', () => {
-  it('matches RevertActiveCommit.status.blockedDrySha while the CR exists', () => {
+describe('proposedIsBlocked', () => {
+  it('matches RestoreActiveCommit.status.blockedDrySha while the CR exists', () => {
     const env = {
       active: { dry: { sha: 'abc' }, hydrated: { sha: 'h1' } },
       proposed: { dry: { sha: 'def' }, hydrated: {} },
-      revertActiveCommit: { name: 'revert-prod', activeSha: 'h1', blockedDrySha: 'def' },
+      restoreActiveCommit: { name: 'revert-prod', activeSha: 'h1', blockedDrySha: 'def' },
     };
-    expect(proposedIsReverted(env as never)).toBe(true);
+    expect(proposedIsBlocked(env as never)).toBe(true);
   });
 
   it('ignores blockedDrySha when activeSha is not the live tip and uses history', () => {
     const env = {
       active: { dry: { sha: 'abc' }, hydrated: { sha: 'r2' } },
       proposed: { dry: { sha: 'd3' }, hydrated: {} },
-      revertActiveCommit: { name: 'revert-a', activeSha: 'r1', blockedDrySha: 'd3' },
+      restoreActiveCommit: { name: 'revert-a', activeSha: 'r1', blockedDrySha: 'd3' },
       history: [
         {
           restoredFrom: 'h1',
@@ -190,13 +190,13 @@ describe('proposedIsReverted', () => {
         },
       ],
     };
-    expect(proposedIsReverted(env as never)).toBe(false);
+    expect(proposedIsBlocked(env as never)).toBe(false);
     expect(
-      proposedIsReverted({ ...env, proposed: { dry: { sha: 'd2' }, hydrated: {} } } as never),
+      proposedIsBlocked({ ...env, proposed: { dry: { sha: 'd2' }, hydrated: {} } } as never),
     ).toBe(true);
   });
 
-  it('recovers the blocked dry SHA from history after the RevertActiveCommit is deleted', () => {
+  it('recovers the blocked dry SHA from history after the RestoreActiveCommit is deleted', () => {
     const env = {
       active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
       proposed: { dry: { sha: 'def' }, hydrated: {} },
@@ -210,10 +210,10 @@ describe('proposedIsReverted', () => {
         },
       ],
     };
-    expect(proposedIsReverted(env as never)).toBe(true);
+    expect(proposedIsBlocked(env as never)).toBe(true);
   });
 
-  it('does not treat a newer proposed dry SHA as reverted after the CR is gone', () => {
+  it('does not treat a newer proposed dry SHA as blocked after the CR is gone', () => {
     const env = {
       active: { dry: { sha: 'abc' }, hydrated: { sha: 'restore-h' } },
       proposed: { dry: { sha: 'ghi' }, hydrated: {} },
@@ -227,6 +227,6 @@ describe('proposedIsReverted', () => {
         },
       ],
     };
-    expect(proposedIsReverted(env as never)).toBe(false);
+    expect(proposedIsBlocked(env as never)).toBe(false);
   });
 });

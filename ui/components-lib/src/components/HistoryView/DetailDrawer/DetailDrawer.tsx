@@ -22,8 +22,8 @@ import {
   displayKind,
 } from '../presentation';
 import { isEmptyCellKind } from '../helpers';
-import { buildRevertActiveCommitApplyCommand, canShowRevertCommand } from '../revertCommand';
-import { revertHoldTooltip } from '@shared/utils/environments';
+import { buildRestoreActiveCommitApplyCommand, canShowRestoreCommand } from '../restoreCommand';
+import { restoreBlockTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
 import { StatusIcon, StatusType } from '../../StatusIcon';
 
@@ -195,17 +195,17 @@ const DetailDrawer: React.FC<{
     : undefined;
   const refs = cell.references ?? [];
 
-  const [prId, prUrl] = cell.revertActiveCommit
+  const [prId, prUrl] = cell.restoreActiveCommit
     ? [cell.pullRequest?.id, cell.pullRequest?.url]
     : cell.pullRequest?.id && cell.pullRequest?.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
 
   const env = envs.find((e) => e.branch === branch);
-  const showRevert = canShowRevertCommand(cell);
-  const revertCommand =
-    showRevert && hydrated?.sha && namespace && promotionStrategyName
-      ? buildRevertActiveCommitApplyCommand({
+  const showRestore = canShowRestoreCommand(cell);
+  const restoreCommand =
+    showRestore && hydrated?.sha && namespace && promotionStrategyName
+      ? buildRestoreActiveCommitApplyCommand({
           namespace,
           promotionStrategyName,
           instanceId: env?.instanceId,
@@ -217,14 +217,14 @@ const DetailDrawer: React.FC<{
   const kindBadge = (
     <span
       className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
-        cell.revertedByRevertActiveCommit
-          ? ' hp-drawer__kind--reverted'
-          : cell.revertActiveCommit
-            ? ' hp-drawer__kind--held'
+        cell.blockedByRestoreActiveCommit
+          ? ' hp-drawer__kind--blocked'
+          : cell.restoreActiveCommit
+            ? ' hp-drawer__kind--blocked-env'
             : ''
       }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
     >
-      {cell.revertActiveCommit && !cell.revertedByRevertActiveCommit && (
+      {cell.restoreActiveCommit && !cell.blockedByRestoreActiveCommit && (
         <GoBlocked className="hp-drawer__kind__stop" aria-hidden="true" />
       )}
       {cellKindLabel(cell)}
@@ -273,11 +273,11 @@ const DetailDrawer: React.FC<{
       <div className="hp-drawer__scroll">
         <div className="hp-drawer__header">
           <div className="hp-drawer__badges">
-            {cell.revertActiveCommit ? (
+            {cell.restoreActiveCommit ? (
               <Tooltip
-                label={revertHoldTooltip(
-                  cell.revertActiveCommit,
-                  !!cell.revertedByRevertActiveCommit,
+                label={restoreBlockTooltip(
+                  cell.restoreActiveCommit,
+                  !!cell.blockedByRestoreActiveCommit,
                 )}
               >
                 {kindBadge}
@@ -339,10 +339,10 @@ const DetailDrawer: React.FC<{
               </>
             )}
           </div>
-          {cell.restoredFrom && cell.revertUnblockedAt && (
+          {cell.restoredFrom && cell.restoreUnblockedAt && (
             <div className="hp-drawer__meta">
-              <Tooltip label={formatDate(cell.revertUnblockedAt)}>
-                <span>Promotion resumed {timeAgo(cell.revertUnblockedAt)}</span>
+              <Tooltip label={formatDate(cell.restoreUnblockedAt)}>
+                <span>Promotion resumed {timeAgo(cell.restoreUnblockedAt)}</span>
               </Tooltip>
             </div>
           )}
@@ -452,17 +452,17 @@ const DetailDrawer: React.FC<{
               const pill = (
                 <span
                   className={`cell__pill cell__pill--${pillKind}${
-                    c.revertedByRevertActiveCommit
-                      ? ' cell__pill--reverted'
-                      : c.revertActiveCommit
-                        ? ' cell__pill--held'
+                    c.blockedByRestoreActiveCommit
+                      ? ' cell__pill--blocked'
+                      : c.restoreActiveCommit
+                        ? ' cell__pill--blocked-env'
                         : ''
                   }`}
                 >
                   {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
                   {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
                   {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
-                  {c.revertActiveCommit && !c.revertedByRevertActiveCommit && (
+                  {c.restoreActiveCommit && !c.blockedByRestoreActiveCommit && (
                     <GoBlocked className="cell__pill__stop" aria-hidden="true" />
                   )}
                   {cellKindLabel(c, true)}
@@ -471,11 +471,11 @@ const DetailDrawer: React.FC<{
               const inner = (
                 <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
-                  {c.revertActiveCommit ? (
+                  {c.restoreActiveCommit ? (
                     <Tooltip
-                      label={revertHoldTooltip(
-                        c.revertActiveCommit,
-                        !!c.revertedByRevertActiveCommit,
+                      label={restoreBlockTooltip(
+                        c.restoreActiveCommit,
+                        !!c.blockedByRestoreActiveCommit,
                       )}
                     >
                       {pill}
@@ -532,13 +532,13 @@ const DetailDrawer: React.FC<{
           </div>
         )}
 
-        {revertCommand && (
+        {restoreCommand && (
           <div className="hp-drawer__section">
             <div className="hp-drawer__restore-header">
               <h3>Restore this version on {branch}</h3>
-              <CopyCommandButton command={revertCommand} />
+              <CopyCommandButton command={restoreCommand} />
             </div>
-            <pre className="hp-drawer__command">{revertCommand}</pre>
+            <pre className="hp-drawer__command">{restoreCommand}</pre>
           </div>
         )}
       </div>

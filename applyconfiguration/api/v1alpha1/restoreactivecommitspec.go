@@ -17,17 +17,17 @@ limitations under the License.
 
 package v1alpha1
 
-// RevertActiveCommitSpecApplyConfiguration represents a declarative configuration of the RevertActiveCommitSpec type for use
+// RestoreActiveCommitSpecApplyConfiguration represents a declarative configuration of the RestoreActiveCommitSpec type for use
 // with apply.
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef,
+// RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef,
 // branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
-// active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha,
-// strategy, or branch would lose track of what it reverted. To restore something else, create a new
-// RevertActiveCommit. blockEnvironment may change.
-type RevertActiveCommitSpecApplyConfiguration struct {
+// active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha,
+// strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new
+// RestoreActiveCommit. blockEnvironment may change.
+type RestoreActiveCommitSpecApplyConfiguration struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
 	// Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
@@ -37,7 +37,7 @@ type RevertActiveCommitSpecApplyConfiguration struct {
 	// Sha is the hydrated commit to restore onto the active branch. It must already be in the active
 	// branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
 	// carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
-	// restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit
+	// restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit
 	// for the same sha is refused until the active branch moves, and that note is left unchanged. The
 	// controller writes a new commit (the commit's tree, or only activePath when the policy sets
 	// one) parented on the current active tip and records a promotion-history note with
@@ -45,29 +45,29 @@ type RevertActiveCommitSpecApplyConfiguration struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
-	// reverted change again; see status.blockedDrySha.
+	// RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the
+	// blocked dry SHA again; see status.blockedDrySha.
 	// The restore runs once. Later promotions are left alone.
 	Sha *string `json:"sha,omitempty"`
-	// BlockEnvironment holds promotion for this environment while true. It defaults to true.
-	// Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history
+	// BlockEnvironment blocks promotion for this environment while true. It defaults to true.
+	// Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history
 	// note and delete this object. Deleting it while the field is still true does not stamp that
-	// trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is
-	// still a gated restore, the ChangeTransferPolicy recreates this object (with the default true)
+	// trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is
+	// still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true)
 	// so the field can be set false again.
 	BlockEnvironment *bool `json:"blockEnvironment,omitempty"`
 }
 
-// RevertActiveCommitSpecApplyConfiguration constructs a declarative configuration of the RevertActiveCommitSpec type for use with
+// RestoreActiveCommitSpecApplyConfiguration constructs a declarative configuration of the RestoreActiveCommitSpec type for use with
 // apply.
-func RevertActiveCommitSpec() *RevertActiveCommitSpecApplyConfiguration {
-	return &RevertActiveCommitSpecApplyConfiguration{}
+func RestoreActiveCommitSpec() *RestoreActiveCommitSpecApplyConfiguration {
+	return &RestoreActiveCommitSpecApplyConfiguration{}
 }
 
 // WithPromotionStrategyRef sets the PromotionStrategyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
-func (b *RevertActiveCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *RevertActiveCommitSpecApplyConfiguration {
+func (b *RestoreActiveCommitSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *RestoreActiveCommitSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
 	return b
 }
@@ -75,7 +75,7 @@ func (b *RevertActiveCommitSpecApplyConfiguration) WithPromotionStrategyRef(valu
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *RevertActiveCommitSpecApplyConfiguration) WithBranch(value string) *RevertActiveCommitSpecApplyConfiguration {
+func (b *RestoreActiveCommitSpecApplyConfiguration) WithBranch(value string) *RestoreActiveCommitSpecApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -83,7 +83,7 @@ func (b *RevertActiveCommitSpecApplyConfiguration) WithBranch(value string) *Rev
 // WithSha sets the Sha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Sha field is set to the value of the last call.
-func (b *RevertActiveCommitSpecApplyConfiguration) WithSha(value string) *RevertActiveCommitSpecApplyConfiguration {
+func (b *RestoreActiveCommitSpecApplyConfiguration) WithSha(value string) *RestoreActiveCommitSpecApplyConfiguration {
 	b.Sha = &value
 	return b
 }
@@ -91,7 +91,7 @@ func (b *RevertActiveCommitSpecApplyConfiguration) WithSha(value string) *Revert
 // WithBlockEnvironment sets the BlockEnvironment field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the BlockEnvironment field is set to the value of the last call.
-func (b *RevertActiveCommitSpecApplyConfiguration) WithBlockEnvironment(value bool) *RevertActiveCommitSpecApplyConfiguration {
+func (b *RestoreActiveCommitSpecApplyConfiguration) WithBlockEnvironment(value bool) *RestoreActiveCommitSpecApplyConfiguration {
 	b.BlockEnvironment = &value
 	return b
 }

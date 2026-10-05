@@ -1,6 +1,6 @@
 # Rolling Back an Environment
 
-A [RevertActiveCommit](../crd-specs.md#revertactivecommit) puts one environment's active branch back to a version that was
+A [RestoreActiveCommit](../crd-specs.md#restoreactivecommit) puts one environment's active branch back to a version that was
 promoted earlier, and stops the bad change from being promoted again until you say so. Use it when a change is already
 live and you need the previous version back now, before a fix can go through the normal promotion flow.
 
@@ -13,26 +13,26 @@ live and you need the previous version back now, before a fix can go through the
    promotion-history note into its own note, each with `Promoter-restored-from` added. When the chosen version has no
    note, the note is built from its commit-message trailers instead. The copied pull request details, including
    `Pull-request-merge-time`, still describe that version's original promotion.
-2. **Block.** Until the restore lands, the RevertActiveCommit itself holds every promotion pull request and auto-merge
-   for that environment (there is no marker in git yet). Once `status.restoredFrom` is set, the gate moves to the
+2. **Block.** Until the restore lands, the RestoreActiveCommit itself blocks every promotion pull request and auto-merge
+   for that environment (there is no marker in git yet). Once `status.restoredFrom` is set, the block moves to the
    restore commit's promotion-history note: the dry SHA that was live before the restore (also recorded in
    `status.blockedDrySha`) cannot open a pull request, and nothing is auto-merged, while that note carries
-   `Promoter-restored-from` and lacks `Promoter-revert-unblocked-at`.
-3. **Hold.** A pull request for a newer dry SHA can still open and run its checks, but it waits until the note is
-   unblocked.
+   `Promoter-restored-from` and lacks `Promoter-restore-unblocked-at`.
+3. **Wait.** A pull request for a newer dry SHA can still open and run its checks, but auto-merge waits until the
+   environment is unblocked.
 
 The restore runs once. `promotionStrategyRef`, `branch`, and `sha` are immutable; to restore a different version,
-create another RevertActiveCommit. `spec.blockEnvironment` defaults to true and may be changed. Once
+create another RestoreActiveCommit. `spec.blockEnvironment` defaults to true and may be changed. Once
 that new restore is the active tip, the ChangeTransferPolicy deletes the previous one. Deletion does not stamp
-`Promoter-revert-unblocked-at`; the new tip stays held until its own `spec.blockEnvironment` is set to false. An object that has not recorded `status.activeSha` is left in place, as is one
+`Promoter-restore-unblocked-at`; the new tip stays blocked until its own `spec.blockEnvironment` is set to false. An object that has not recorded `status.activeSha` is left in place, as is one
 whose restore commit is still the tip or is no longer in the repository. If the active branch already has the chosen version's content, nothing is
-written, `status.blockedDrySha` stays empty, and the RevertActiveCommit emits an `AlreadyRestored` event; the
-auto-merge hold still applies while the restore note is gated (or while the restore is still pending).
+written, `status.blockedDrySha` stays empty, and the RestoreActiveCommit emits an `AlreadyRestored` event; the
+auto-merge block still applies while the restore note is blocked (or while the restore is still pending).
 
 > [!IMPORTANT]
 > The restore commit is pushed directly to the active branch with the controller's git credentials; it does not go
 > through a pull request. If the active branch is protected against direct pushes, the push is rejected and the
-> RevertActiveCommit stays `Ready=False`. Allow the controller's identity (for example the GitHub App or deploy key) to
+> RestoreActiveCommit stays `Ready=False`. Allow the controller's identity (for example the GitHub App or deploy key) to
 > bypass that protection. When `activePath` is empty, you can make the same git writes yourself; see
 > [Restoring by hand (no activePath)](#restoring-by-hand-no-activepath).
 
@@ -43,9 +43,9 @@ In the dashboard's history view, select an earlier version in the environment's 
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: RevertActiveCommit
+kind: RestoreActiveCommit
 metadata:
-  name: revert-production
+  name: restore-production
   namespace: <namespace of the PromotionStrategy>
   # With multiple controller installs, copy the ChangeTransferPolicy's instance-id label:
   # labels:
@@ -61,41 +61,41 @@ spec:
 
 When `status.activeSha` is set and the Ready condition is `True`, the active Git branch has been restored. Confirm
 that Argo CD has synced the restore commit (`status.activeSha`) and that the workloads are healthy before you remove
-the promotion hold. With auto-sync disabled, a sync window blocking deployment, or a failed rollout, the Git restore
+the promotion block. With auto-sync disabled, a sync window blocking deployment, or a failed rollout, the Git restore
 can succeed while the previous workload is still serving.
 
-The restore also shows up in the environment's promotion history, marked by `restoredFrom`. A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit that carries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the restore commit only. The commit the restore moved off does not carry it, so that commit can be restored again. Once the active tip is already the restore of `sha` and its note carries `Promoter-revert-unblocked-at`, another RevertActiveCommit for that same `sha` is refused until the active branch moves. The note is left unchanged, so the unblock stays in history. While that refused RevertActiveCommit exists, `status.restoredFrom` stays empty and it holds promotion for the environment; delete it to release that pending hold. Deleting a RevertActiveCommit whose restore succeeded does not stamp `Promoter-revert-unblocked-at`.
+The restore also shows up in the environment's promotion history, marked by `restoredFrom`. A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit that carries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the restore commit only. The commit the restore moved off does not carry it, so that commit can be restored again. Once the active tip is already the restore of `sha` and its note carries `Promoter-restore-unblocked-at`, another RestoreActiveCommit for that same `sha` is refused until the active branch moves. The note is left unchanged, so the unblock stays in history. While that refused RestoreActiveCommit exists, `status.restoredFrom` stays empty and it blocks promotion for the environment; delete it to release that pending block. Deleting a RestoreActiveCommit whose restore succeeded does not stamp `Promoter-restore-unblocked-at`.
 
 > [!NOTE]
-> Creating a RevertActiveCommit is the authorization boundary: anyone who can create one in the PromotionStrategy's
+> Creating a RestoreActiveCommit is the authorization boundary: anyone who can create one in the PromotionStrategy's
 > namespace can restore that environment, and the push uses the controller's git credentials. Grant `create` on
-> `revertactivecommits` accordingly.
+> `restoreactivecommits` accordingly.
 
 ## Resuming promotion
 
 > [!WARNING]
-> Deleting the RevertActiveCommit does **not** by itself put the reverted change back, and usually does not open a pull
-> request for it at all. The restore commit sits on top of the reverted one, so when promotions use merge commits the
-> active branch already contains the proposed commit, and no pull request opens for the reverted dry SHA until a new
+> Deleting the RestoreActiveCommit does **not** by itself put the blocked dry SHA back, and usually does not open a pull
+> request for it at all. The restore commit sits on top of the blocked dry SHA, so when promotions use merge commits the
+> active branch already contains the proposed commit, and no pull request opens for the blocked dry SHA until a new
 > commit lands on the proposed branch. Plan to fix forward.
 
 1. Fix forward: get a new dry commit hydrated onto the environment's proposed branch.
-2. Set `spec.blockEnvironment` to `false` on the RevertActiveCommit. The controller stamps
-   `Promoter-revert-unblocked-at: <RFC3339>` on the restore commit's promotion-history note, then deletes the
-   RevertActiveCommit. A finalizer holds that delete until the note is written. Auto-merge is allowed again, and
-   the new commit promotes as usual. The unblock time shows up on the restore history entry as `revertUnblockedAt`.
-   If the git repository is unreachable, the RevertActiveCommit stays until the note can be written. Deleting the
-   RevertActiveCommit while `blockEnvironment` is still true does not stamp the trailer, so deleting the
-   PromotionStrategy leaves the hold in place. While the active tip is still that gated restore, the
-   ChangeTransferPolicy creates a RevertActiveCommit (with `blockEnvironment` defaulting to true) if one is missing,
+2. Set `spec.blockEnvironment` to `false` on the RestoreActiveCommit. The controller stamps
+   `Promoter-restore-unblocked-at: <RFC3339>` on the restore commit's promotion-history note, then deletes the
+   RestoreActiveCommit. A finalizer blocks that delete until the note is written. Auto-merge is allowed again, and
+   the new commit promotes as usual. The unblock time shows up on the restore history entry as `restoreUnblockedAt`.
+   If the git repository is unreachable, the RestoreActiveCommit stays until the note can be written. Deleting the
+   RestoreActiveCommit while `blockEnvironment` is still true does not stamp the trailer, so deleting the
+   PromotionStrategy leaves the block in place. While the active tip is still that blocked restore, the
+   ChangeTransferPolicy creates a RestoreActiveCommit (with `blockEnvironment` defaulting to true) if one is missing,
    and setting the field to false on that object is how you release it. A restore done
    [by hand](#restoring-by-hand-no-activepath) gets that object the same way; you can still stamp the trailer with
-   the script under [Lift the hold](#lift-the-hold).
+   the script under [Lift the block](#lift-the-block).
 
 ## Restoring by hand (no activePath)
 
 When the environment's ChangeTransferPolicy leaves `activePath` empty, the restore commit's tree is the whole tree of
-the hydrated commit you are putting back. The scripts below perform that restore, and lift the hold afterwards, with
+the hydrated commit you are putting back. The scripts below perform that restore, and lift the block afterwards, with
 git. Run them from a clone that can push the active branch and `refs/notes/promoter.history`. `jq` is required. The
 target commit has to be the active tip or one of its ancestors. The script fetches that branch; a shallow clone that
 does not contain the target fails at `git cat-file`.
@@ -105,13 +105,13 @@ after the fetch is rejected; fetch and run the script again. The note is pushed 
 rejected, that note sits on a commit that never became the tip, and the retry writes a new commit and a new note. The
 proposed branch is left where it is. The author of the new commit is your `user.name` / `user.email`.
 
-Once the note is on the active tip, the ChangeTransferPolicy reads the same gate it reads after a RevertActiveCommit
-finishes: `Promoter-restored-from` without `Promoter-revert-unblocked-at` holds auto-merge, and the dry SHA in
+Once the note is on the active tip, the ChangeTransferPolicy reads the same gate it reads after a RestoreActiveCommit
+finishes: `Promoter-restored-from` without `Promoter-restore-unblocked-at` blocks auto-merge, and the dry SHA in
 `hydrator.metadata` on the parent commit (the tip this restore moved off of) cannot open a pull request. The
-ChangeTransferPolicy also creates a RevertActiveCommit for that restore (when the policy has none yet and the tip is
-still gated), with `spec.blockEnvironment` defaulting to true. Set that field to `false` to lift the hold — the controller
-writes the note, then deletes the RevertActiveCommit. You can still stamp `Promoter-revert-unblocked-at` with the script under
-[Lift the hold](#lift-the-hold).
+ChangeTransferPolicy also creates a RestoreActiveCommit for that restore (when the policy has none yet and the tip is
+still blocked), with `spec.blockEnvironment` defaulting to true. Set that field to `false` to lift the block — the controller
+writes the note, then deletes the RestoreActiveCommit. You can still stamp `Promoter-restore-unblocked-at` with the script under
+[Lift the block](#lift-the-block).
 
 The new commit message copies the target commit's [message trailers](../debugging/git-trailers.md). The new note copies
 the target's promotion-history note, with `Promoter-restored-from` set to the target SHA. When that note is missing,
@@ -180,8 +180,8 @@ if [[ "$WANT_TREE" == "$TIP_TREE" ]]; then
   marker=$(promotion_json "$ACTIVE_TIP" | jq -r '."Promoter-restored-from"[0] // empty')
   if [[ "$marker" == "$TARGET_SHA" ]]; then
     if git notes --ref="$NOTES_REF" show "$ACTIVE_TIP" 2>/dev/null \
-      | jq -e '."Promoter-revert-unblocked-at" | length > 0' >/dev/null 2>&1; then
-      echo "active tip ${ACTIVE_TIP} already restores ${TARGET_SHA} and carries Promoter-revert-unblocked-at; it cannot be restored again until the active branch moves" >&2
+      | jq -e '."Promoter-restore-unblocked-at" | length > 0' >/dev/null 2>&1; then
+      echo "active tip ${ACTIVE_TIP} already restores ${TARGET_SHA} and carries Promoter-restore-unblocked-at; it cannot be restored again until the active branch moves" >&2
       exit 1
     fi
     echo "active tip ${ACTIVE_TIP} already restores ${TARGET_SHA}; nothing to write"
@@ -201,7 +201,7 @@ lines=$(trailer_json "$TARGET_SHA" "Promoter-restored-from" \
   | jq -r 'to_entries[] | .key as $k | .value[] | "\($k): \(.)"')
 msg_file=$(mktemp "${TMPDIR:-/tmp}/promoter-restore.XXXXXX")
 {
-  printf 'Revert %s to %s\n\n' "$ACTIVE_BRANCH" "$short"
+  printf 'Restore %s to %s\n\n' "$ACTIVE_BRANCH" "$short"
   if [[ -n "$lines" ]]; then
     printf '%s\n' "$lines"
   fi
@@ -221,7 +221,7 @@ git push --force-with-lease="refs/heads/${ACTIVE_BRANCH}:${ACTIVE_TIP}" \
 echo "restored ${ACTIVE_BRANCH} to ${TARGET_SHA} as ${RESTORE_SHA}"
 ```
 
-The script prints the new commit SHA. Its subject is `Revert <branch> to <short sha>`, the trailer block ends with
+The script prints the new commit SHA. Its subject is `Restore <branch> to <short sha>`, the trailer block ends with
 `Promoter-restored-from: <target>`, and the note on that SHA is the copied history JSON.
 
 ```bash
@@ -229,17 +229,17 @@ git log -1 --format=%B <restore-sha>
 git notes --ref=refs/notes/promoter.history show <restore-sha>
 ```
 
-Running it again, while that commit is still the tip and the note has no `Promoter-revert-unblocked-at`, prints
+Running it again, while that commit is still the tip and the note has no `Promoter-restore-unblocked-at`, prints
 `nothing to write`. After the note has been unblocked, another run for the same target is refused until the active
 branch moves. A target that already carries `Promoter-restored-from` is refused. A commit that is not in the active
 branch's history is refused.
 
-### Lift the hold
+### Lift the block
 
-This stamps `Promoter-revert-unblocked-at` on the restore commit's note, which is the write the RevertActiveCommit
+This stamps `Promoter-restore-unblocked-at` on the restore commit's note, which is the write the RestoreActiveCommit
 controller makes when `spec.blockEnvironment` is set to `false`. The commit message stays as it is. The trailer is note-only.
 
-[Resuming promotion](#resuming-promotion) still applies: the stamp allows auto-merge again, and the reverted dry SHA
+[Resuming promotion](#resuming-promotion) still applies: the stamp allows auto-merge again, and the blocked dry SHA
 stays contained in the active branch until a new commit lands on the proposed branch.
 
 `RESTORE_SHA` defaults to the current active tip. Set it when the restore commit you are releasing is an older one.
@@ -284,16 +284,16 @@ else
   exit 1
 fi
 
-if printf '%s' "$note" | jq -e '."Promoter-revert-unblocked-at" | length > 0' >/dev/null; then
-  echo "${RESTORE_SHA} already carries Promoter-revert-unblocked-at"
+if printf '%s' "$note" | jq -e '."Promoter-restore-unblocked-at" | length > 0' >/dev/null; then
+  echo "${RESTORE_SHA} already carries Promoter-restore-unblocked-at"
   exit 0
 fi
 
 now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 updated=$(printf '%s' "$note" | jq -c --arg t "$now" '
-  . + {"Promoter-revert-unblocked-at": [$t]} | to_entries | sort_by(.key) | from_entries
+  . + {"Promoter-restore-unblocked-at": [$t]} | to_entries | sort_by(.key) | from_entries
 ')
 git notes --ref="$NOTES_REF" add -f -m "$updated" "$RESTORE_SHA"
 git push origin "${NOTES_REF}:${NOTES_REF}"
-echo "stamped Promoter-revert-unblocked-at ${now} on ${RESTORE_SHA}"
+echo "stamped Promoter-restore-unblocked-at ${now} on ${RESTORE_SHA}"
 ```

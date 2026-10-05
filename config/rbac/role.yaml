@@ -82,7 +82,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
-  - revertactivecommits/status
+  - restoreactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -97,7 +97,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - pullrequests
-  - revertactivecommits
+  - restoreactivecommits
   verbs:
   - create
   - delete

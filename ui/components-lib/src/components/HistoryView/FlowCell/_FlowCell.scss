@@ -70,18 +70,18 @@
     background: $pending-ink;
   }
 }
-// A proposed commit held by a RevertActiveCommit keeps the in-flight blue; the stop sign in
+// A proposed commit blocked by a RestoreActiveCommit keeps the in-flight blue; the stop sign in
 // its pill is what says it will not auto-merge.
-.cell--held {
+.cell--blocked-env {
   background: $pending-soft;
   border-color: $pending-border;
   &::before {
     background: $pending-ink;
   }
 }
-// The proposed commit a RevertActiveCommit moved off the active branch. It is settled, not failing,
-// so the body reads like a replaced cell; only the REVERTED pill carries the color.
-.cell--reverted {
+// The proposed commit a RestoreActiveCommit moved off the active branch. It is settled, not failing,
+// so the body reads like a replaced cell; only the BLOCKED pill carries the color.
+.cell--blocked {
   background: $bg-soft;
   border-color: $stroke-strong;
   &::before {
@@ -188,11 +188,11 @@
     background: $pending-ink;
     color: #fff;
   }
-  &--held {
+  &--blocked-env {
     background: $pending-ink;
     color: #fff;
   }
-  &--reverted {
+  &--blocked {
     background: $bg-surface;
     color: $text-secondary;
     border: 1px solid $stroke-strong;

@@ -1,20 +1,20 @@
-# permissions for end users to edit revertactivecommits.
+# permissions for end users to edit restoreactivecommits.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: revertactivecommit-editor-role
+    app.kubernetes.io/instance: restoreactivecommit-editor-role
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/part-of: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: revertactivecommit-editor-role
+  name: restoreactivecommit-editor-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - revertactivecommits
+  - restoreactivecommits
   verbs:
   - create
   - delete
@@ -26,6 +26,6 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - revertactivecommits/status
+  - restoreactivecommits/status
   verbs:
   - get

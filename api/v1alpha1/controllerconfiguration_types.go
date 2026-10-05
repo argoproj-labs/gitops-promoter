@@ -98,10 +98,10 @@ type ControllerConfigurationSpec struct {
 	// +required
 	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 
-	// RevertActiveCommit contains the configuration for the RevertActiveCommit controller,
+	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	RevertActiveCommit RevertActiveCommitConfiguration `json:"revertActiveCommit"`
+	RestoreActiveCommit RestoreActiveCommitConfiguration `json:"restoreActiveCommit"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -238,12 +238,12 @@ type ScheduledCommitStatusConfiguration struct {
 	WorkQueue WorkQueue `json:"workQueue"`
 }
 
-// RevertActiveCommitConfiguration defines the configuration for the RevertActiveCommit controller.
+// RestoreActiveCommitConfiguration defines the configuration for the RestoreActiveCommit controller.
 //
-// This configuration controls how the RevertActiveCommit controller processes reconciliation
+// This configuration controls how the RestoreActiveCommit controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type RevertActiveCommitConfiguration struct {
-	// WorkQueue contains the work queue configuration for the RevertActiveCommit controller.
+type RestoreActiveCommitConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RestoreActiveCommit controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

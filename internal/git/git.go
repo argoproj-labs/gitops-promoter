@@ -1507,9 +1507,9 @@ type RestoreResult struct {
 // the branch.
 //
 // A repeat call is a no-op when the active tip already has the restore marker for targetSha and
-// the matching tree and its note does not carry Promoter-revert-unblocked-at. That is the same
+// the matching tree and its note does not carry Promoter-restore-unblocked-at. That is the same
 // restore retrying after the commit was already pushed. When that note does carry the trailer, a
-// previous RevertActiveCommit set spec.blockEnvironment to false: the call is refused and the note is left as it is, so
+// previous RestoreActiveCommit set spec.blockEnvironment to false: the call is refused and the note is left as it is, so
 // the unblock stays in history. The branch has not moved, so there is no new commit to gate on.
 // When the active tip already has the matching tree without the restore marker, the branch is
 // running that version already: nothing is written, nothing moved off the branch, and the result
@@ -1551,13 +1551,13 @@ type RestoreResult struct {
 //	# Promoter-restored-from: T on the history note. Commit trailers are read only when that note
 //	# is absent, empty, or not valid JSON; a note that parses and merely lacks the key is kept.
 //	# Equal tree with the marker: repeat call. If the tip's note also carries
-//	# Promoter-revert-unblocked-at (spec.blockEnvironment was set to false), refuse and leave
+//	# Promoter-restore-unblocked-at (spec.blockEnvironment was set to false), refuse and leave
 //	# the note unchanged. Equal tree without the marker: Unchanged, return here.
 //	git rev-parse --verify <activeTip>^{tree}
 //	# activeTip's history note comes from the prefetch above (no notes show)
 //	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message, only when that note is absent
 //	git interpret-trailers --only-trailers < message                           # fallback: trailers
-//	# refuse when the marker matched and the prefetched note has Promoter-revert-unblocked-at
+//	# refuse when the marker matched and the prefetched note has Promoter-restore-unblocked-at
 //
 //	# otherwise, refuse a target that carries Promoter-restored-from. That trailer is written on the
 //	# restore commit only. The commit the restore moved off keeps its own note and stays eligible.
@@ -1697,7 +1697,7 @@ func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeB
 	return restoreSha, nil
 }
 
-// restoreCommitMessage builds the restore commit's message: a "Revert <branch> to <short sha>" subject
+// restoreCommitMessage builds the restore commit's message: a "Restore <branch> to <short sha>" subject
 // followed by a trailer block. The trailers are copied from targetSha's commit message, the same way
 // writeRestoreNote copies targetSha's note, so the restore keeps the promotion bookkeeping of the version
 // it puts back (pull request, SHAs, commit statuses) and history rebuilt from the message alone still
@@ -1723,7 +1723,7 @@ func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, active
 	slices.Sort(keys)
 
 	var message strings.Builder
-	fmt.Fprintf(&message, "Revert %s to %s\n\n", activeBranch, short)
+	fmt.Fprintf(&message, "Restore %s to %s\n\n", activeBranch, short)
 	for _, key := range keys {
 		for _, value := range copied[key] {
 			fmt.Fprintf(&message, "%s: %s\n", key, value)
@@ -1750,7 +1750,7 @@ func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha strin
 	return trailers, nil
 }
 
-// CommitIsRestore reports whether sha is a commit written by a RevertActiveCommit restore. The marker is
+// CommitIsRestore reports whether sha is a commit written by a RestoreActiveCommit restore. The marker is
 // Promoter-restored-from on the promotion-history note, or on the commit trailers when that note is
 // absent, empty, or not valid JSON.
 func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string) (bool, error) {
@@ -1761,8 +1761,8 @@ func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string)
 	return len(trailers[constants.TrailerRestoredFrom]) > 0, nil
 }
 
-// RestoreGate is what RestoreGateState observed about a commit on the active branch.
-type RestoreGate struct {
+// RestoreBlock is what RestoreBlockState observed about a commit on the active branch.
+type RestoreBlock struct {
 	// BlockedDrySha is the dry SHA from hydrator.metadata on sha's first parent (the tip the restore
 	// moved off of). Empty when sha is not a restore, has no parent, or that file is absent.
 	BlockedDrySha string
@@ -1771,55 +1771,55 @@ type RestoreGate struct {
 	RestoredFrom string
 	// IsRestore is true when sha carries Promoter-restored-from (note preferred, then commit trailers).
 	IsRestore bool
-	// Unblocked is true when the history note carries Promoter-revert-unblocked-at. The commit message is
+	// Unblocked is true when the history note carries Promoter-restore-unblocked-at. The commit message is
 	// never consulted: that trailer is note-only.
 	Unblocked bool
 }
 
-// RestoreGateState reports whether sha is a restore commit, whether promotion has been unblocked for
-// it, and the dry SHA that restore moved off of. Callers that gate on a pending RevertActiveCommit
+// RestoreBlockState reports whether sha is a restore commit, whether promotion has been unblocked for
+// it, and the dry SHA that restore moved off of. Callers that gate on a pending RestoreActiveCommit
 // (status.restoredFrom still empty) should not call this: that hold is decided from the CR alone.
 //
-// Promoter-restored-from is read via promotionTrailers (note, then commit trailers). Promoter-revert-unblocked-at
+// Promoter-restored-from is read via promotionTrailers (note, then commit trailers). Promoter-restore-unblocked-at
 // is read from the history note only. BlockedDrySha comes from the first parent's hydrator.metadata,
 // the same derivation RestoreActiveBranch uses on a repeat call.
-func (g *EnvironmentOperations) RestoreGateState(ctx context.Context, sha, activePath string) (RestoreGate, error) {
+func (g *EnvironmentOperations) RestoreBlockState(ctx context.Context, sha, activePath string) (RestoreBlock, error) {
 	if sha == "" {
-		return RestoreGate{}, nil
+		return RestoreBlock{}, nil
 	}
 	trailers, err := g.promotionTrailers(ctx, sha)
 	if err != nil {
-		return RestoreGate{}, err
+		return RestoreBlock{}, err
 	}
 	if len(trailers[constants.TrailerRestoredFrom]) == 0 {
-		return RestoreGate{}, nil
+		return RestoreBlock{}, nil
 	}
-	gate := RestoreGate{IsRestore: true, RestoredFrom: trailers[constants.TrailerRestoredFrom][0]}
+	gate := RestoreBlock{IsRestore: true, RestoredFrom: trailers[constants.TrailerRestoredFrom][0]}
 
 	note, err := g.GetHistoryNote(ctx, sha)
 	if err != nil {
-		return RestoreGate{}, err
+		return RestoreBlock{}, err
 	}
-	if len(note[constants.TrailerRevertUnblockedAt]) > 0 {
+	if len(note[constants.TrailerRestoreUnblockedAt]) > 0 {
 		gate.Unblocked = true
 	}
 
 	parents, err := g.GetCommitParents(ctx, sha)
 	if err != nil {
-		return RestoreGate{}, err
+		return RestoreBlock{}, err
 	}
 	if len(parents) == 0 {
 		return gate, nil
 	}
 	activeMeta, err := g.GetShaMetadataFromFile(ctx, parents[0], activePath)
 	if err != nil {
-		return RestoreGate{}, fmt.Errorf("failed to read hydrator metadata for restore parent %q: %w", parents[0], err)
+		return RestoreBlock{}, fmt.Errorf("failed to read hydrator metadata for restore parent %q: %w", parents[0], err)
 	}
 	gate.BlockedDrySha = activeMeta.Sha
 	return gate, nil
 }
 
-// UnblockRestore stamps Promoter-revert-unblocked-at on restoreSha's promotion-history note so the
+// UnblockRestore stamps Promoter-restore-unblocked-at on restoreSha's promotion-history note so the
 // ChangeTransferPolicy can resume auto-merge. at is written as RFC 3339 UTC. Returns true when the
 // note was written (or already had the trailer). Returns false with no error when restoreSha is not
 // a restore commit. Idempotent: a note that already carries the trailer is left alone.
@@ -1839,7 +1839,7 @@ func (g *EnvironmentOperations) UnblockRestore(ctx context.Context, restoreSha s
 	if err != nil {
 		return false, fmt.Errorf("read promotion-history note for %q: %w", restoreSha, err)
 	}
-	if len(note[constants.TrailerRevertUnblockedAt]) > 0 {
+	if len(note[constants.TrailerRestoreUnblockedAt]) > 0 {
 		return true, nil
 	}
 
@@ -1854,16 +1854,16 @@ func (g *EnvironmentOperations) UnblockRestore(ctx context.Context, restoreSha s
 	for key, values := range trailers {
 		copied[key] = values
 	}
-	copied[constants.TrailerRevertUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	copied[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
 	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
-		return false, fmt.Errorf("write Promoter-revert-unblocked-at for %q: %w", restoreSha, err)
+		return false, fmt.Errorf("write Promoter-restore-unblocked-at for %q: %w", restoreSha, err)
 	}
 	return true, nil
 }
 
 // refuseReleasedRestore rejects a restore whose active tip already has the restore marker for
-// targetSha and whose promotion-history note carries Promoter-revert-unblocked-at. That trailer is
-// stamped when the RevertActiveCommit that wrote the tip is deleted. The branch has not moved, so
+// targetSha and whose promotion-history note carries Promoter-restore-unblocked-at. That trailer is
+// stamped when the RestoreActiveCommit that wrote the tip is deleted. The branch has not moved, so
 // there is no new commit to gate on, and the note is left in place so the unblock stays in history.
 // A repeat call before that trailer exists is not an error: it is the same restore retrying after
 // the commit was already pushed.
@@ -1872,10 +1872,10 @@ func (g *EnvironmentOperations) refuseReleasedRestore(ctx context.Context, activ
 	if err != nil {
 		return fmt.Errorf("read promotion-history note for %q: %w", activeTip, err)
 	}
-	if len(note[constants.TrailerRevertUnblockedAt]) == 0 {
+	if len(note[constants.TrailerRestoreUnblockedAt]) == 0 {
 		return nil
 	}
-	return fmt.Errorf("active tip %q already restores %q and carries %s; it cannot be restored again until the active branch moves", activeTip, targetSha, constants.TrailerRevertUnblockedAt)
+	return fmt.Errorf("active tip %q already restores %q and carries %s; it cannot be restored again until the active branch moves", activeTip, targetSha, constants.TrailerRestoreUnblockedAt)
 }
 
 // hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
@@ -1990,7 +1990,7 @@ func (g *EnvironmentOperations) refuseRestoreTarget(ctx context.Context, targetS
 
 // ensureInHistory makes sure sha is a commit that the active branch already contains: its tip
 // or one of the tip's ancestors. A restore only puts back something that was on the branch before,
-// so a RevertActiveCommit cannot push a commit that never went through promotion (another environment's
+// so a RestoreActiveCommit cannot push a commit that never went through promotion (another environment's
 // branch, an unmerged pull request head) straight to the active branch.
 //
 // The active branch was just fetched, so every commit in its history is already in the clone and

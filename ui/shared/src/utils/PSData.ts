@@ -1,6 +1,6 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, timeAgo } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
-import { proposedIsReverted } from './environments';
+import { proposedIsBlocked } from './environments';
 import type { components } from '../types/generated/view.gen';
 import type {
   BranchCommitStatus,
@@ -279,8 +279,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
     proposedChecks,
     proposedChecksSummary,
-    revertActiveCommit: isHistoric ? undefined : environment.revertActiveCommit?.name,
-    proposedIsReverted: !isHistoric && proposedIsReverted(environment),
+    restoreActiveCommit: isHistoric ? undefined : environment.restoreActiveCommit?.name,
+    proposedIsBlocked: !isHistoric && proposedIsBlocked(environment),
     historyMergeTimeAgo,
   };
 }

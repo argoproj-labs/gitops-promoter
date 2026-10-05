@@ -32,7 +32,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Normal     | PromotionStarted    | A new dry sha was detected on the proposed branch and its promotion to the environment started.                  |
 | Normal/Warning | PromotionBlocked | A pending promotion is blocked by a proposed commit status that is not in the `success` phase. Warning when the gate phase is `failure`. |
 | Normal     | PromotionCompleted  | The environment's active branch advanced to a new dry sha.                                                       |
-| Normal     | RevertSuperseded    | A RevertActiveCommit whose recorded restore is behind the active tip was deleted. The delete does not unblock that older restore commit. |
+| Normal     | RestoreSuperseded    | A RestoreActiveCommit whose recorded restore is behind the active tip was deleted. The delete does not unblock that older restore commit. |
 | Normal     | ResolvedConflict    | A git merge conflict was resolved for a ChangeTransferPolicy.                                                    |
 | Normal     | PullRequestCreated  | A pull request was created for a ChangeTransferPolicy.                                                           |
 | Normal     | PullRequestMerged   | A pull request was merged for a ChangeTransferPolicy.                                                            |
@@ -54,15 +54,15 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | PullRequestCreateFailed              | Creating the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.     |
 | Warning    | PullRequestMergeFailed               | Merging the pull request on the SCM failed. Emitted on the first failure after a healthy reconcile, not on every retry.      |
 
-## RevertActiveCommit
+## RestoreActiveCommit
 
-[RevertActiveCommits](../crd-specs.md#revertactivecommit) may produce the following events:
+[RestoreActiveCommits](../crd-specs.md#restoreactivecommit) may produce the following events:
 
 | Event Type | Event Reason | Description |
 |------------|--------------|-------------|
 | Normal     | Restored     | The active branch was restored to `spec.sha`. The message names the branch and the new restore commit. |
 | Normal     | AlreadyRestored | The active branch already had `spec.sha`'s content, so no commit was written and no dry SHA is blocked. |
-| Normal     | RevertUnblocked | `spec.blockEnvironment` was set to false and `Promoter-revert-unblocked-at` was stamped on the restore commit's promotion-history note. The RevertActiveCommit is then deleted. |
+| Normal     | RestoreUnblocked | `spec.blockEnvironment` was set to false and `Promoter-restore-unblocked-at` was stamped on the restore commit's promotion-history note. The RestoreActiveCommit is then deleted. |
 
 ## TimedCommitStatus
 

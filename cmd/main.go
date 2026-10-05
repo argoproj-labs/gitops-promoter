@@ -285,13 +285,13 @@ func runController(
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
 	}
 
-	if err = (&controller.RevertActiveCommitReconciler{
+	if err = (&controller.RestoreActiveCommitReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("RevertActiveCommit"),
+		Recorder:    localManager.GetEventRecorder("RestoreActiveCommit"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create RevertActiveCommit controller: %w", err))
+		panic(fmt.Errorf("unable to create RestoreActiveCommit controller: %w", err))
 	}
 
 	if err = (&controller.CommitStatusReconciler{

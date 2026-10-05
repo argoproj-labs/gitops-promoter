@@ -4,9 +4,9 @@ import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 const BRANCH = 'environments/staging';
 const LIVE = 'e077303c44639639a42140b19cf5e1b66731f781';
-const REVERTED = '23966a8b70c6e6ff08a5849e2e8458679947b0e3';
+const BLOCKED_DRY = '23966a8b70c6e6ff08a5849e2e8458679947b0e3';
 const NEWER = 'fb294e4cc39e838f2816eccd50d82827a3258c02';
-const REVERT_ACTIVE_COMMIT = 'revert-environments-staging-22d5a51';
+const RESTORE_ACTIVE_COMMIT = 'revert-environments-staging-22d5a51';
 
 const dry = (sha: string, subject: string) => ({
   sha,
@@ -39,7 +39,7 @@ function strategyWith(
             commitStatuses: [],
           },
           pullRequest,
-          revertActiveCommit: { name: REVERT_ACTIVE_COMMIT, blockedDrySha: REVERTED },
+          restoreActiveCommit: { name: RESTORE_ACTIVE_COMMIT, blockedDrySha: BLOCKED_DRY },
           history: [
             {
               active: {
@@ -76,16 +76,16 @@ const render = (strategy: PromotionStrategy, rowSha: string) => (
   </div>
 );
 
-/** Proposed is still the commit the RevertActiveCommit moved off active; no pull request opens. */
+/** Proposed is still the commit the RestoreActiveCommit moved off active; no pull request opens. */
 export const RevertedCommit: Story = {
   render: () =>
     render(
-      strategyWith(REVERTED, 'chore: bump version to v1.0.2004', {
+      strategyWith(BLOCKED_DRY, 'chore: bump version to v1.0.2004', {
         id: '3017',
         url: 'https://github.com/argoproj-labs/gitops-promoter/pull/3017',
         state: 'merged',
       }),
-      REVERTED,
+      BLOCKED_DRY,
     ),
 };
 
@@ -99,7 +99,7 @@ function restoreEnv(branch: string, hydratedSha: string, restoredFrom: string) {
   const dryCommit = dry(RESTORED_DRY, 'chore: bump version to v1.0.2027');
   const hydrated = {
     sha: hydratedSha,
-    subject: `Revert ${branch} to ${restoredFrom.slice(0, 7)}`,
+    subject: `Restore ${branch} to ${restoredFrom.slice(0, 7)}`,
     commitTime: '2026-09-28T18:00:00Z',
     repoURL: 'https://github.com/argoproj-labs/gitops-promoter',
   };
@@ -141,7 +141,7 @@ export const CollapsedRestore: Story = {
   ),
 };
 
-/** A newer commit opened a pull request, which does not auto-merge while the RevertActiveCommit exists. */
+/** A newer commit opened a pull request, which does not auto-merge while the RestoreActiveCommit exists. */
 export const NewerCommit: Story = {
   render: () =>
     render(

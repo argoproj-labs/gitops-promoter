@@ -4,10 +4,10 @@ import { createRoot } from 'react-dom/client';
 import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
 import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
 import {
-  buildRevertActiveCommitApplyCommand,
-  canShowRevertCommand,
-  revertActiveCommitResourceName,
-} from '@lib/components/HistoryView/revertCommand';
+  buildRestoreActiveCommitApplyCommand,
+  canShowRestoreCommand,
+  restoreActiveCommitResourceName,
+} from '@lib/components/HistoryView/restoreCommand';
 import { cellKindLabel } from '@lib/components/HistoryView/presentation';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import { commitStatusPlugins } from '@shared/components/plugins';
@@ -75,9 +75,9 @@ const envs: EnvColumn[] = [
 
 const noop = () => {};
 
-describe('revertCommand helpers', () => {
-  it('builds a kubectl apply of a RevertActiveCommit for the environment and hydrated sha', () => {
-    const cmd = buildRevertActiveCommitApplyCommand({
+describe('restoreCommand helpers', () => {
+  it('builds a kubectl apply of a RestoreActiveCommit for the environment and hydrated sha', () => {
+    const cmd = buildRestoreActiveCommitApplyCommand({
       namespace: 'promoter-system',
       promotionStrategyName: 'argocon-demo',
       branch: 'environment/staging',
@@ -87,9 +87,9 @@ describe('revertCommand helpers', () => {
     expect(cmd).toBe(
       `sh -c 'kubectl apply -f - <<EOF\n${[
         'apiVersion: promoter.argoproj.io/v1alpha1',
-        'kind: RevertActiveCommit',
+        'kind: RestoreActiveCommit',
         'metadata:',
-        '  name: revert-environment-staging-abcdef0',
+        '  name: restore-environment-staging-abcdef0',
         '  namespace: promoter-system',
         'spec:',
         '  promotionStrategyRef:',
@@ -101,8 +101,8 @@ describe('revertCommand helpers', () => {
     expect(cmd).not.toContain('git ');
   });
 
-  it("labels the RevertActiveCommit with the policy's instance id so a non-default install sees it", () => {
-    const cmd = buildRevertActiveCommitApplyCommand({
+  it("labels the RestoreActiveCommit with the policy's instance id so a non-default install sees it", () => {
+    const cmd = buildRestoreActiveCommitApplyCommand({
       namespace: 'promoter-system',
       promotionStrategyName: 'argocon-demo',
       instanceId: '123',
@@ -123,7 +123,7 @@ describe('revertCommand helpers', () => {
   });
 
   it('wraps the apply in one POSIX sh command accepted by bash, zsh, and fish', () => {
-    const cmd = buildRevertActiveCommitApplyCommand({
+    const cmd = buildRestoreActiveCommitApplyCommand({
       namespace: 'promoter-system',
       promotionStrategyName: 'argocon-demo',
       branch: 'staging',
@@ -137,7 +137,7 @@ describe('revertCommand helpers', () => {
   });
 
   it('keeps the resource name inside the DNS-1123 subdomain limit', () => {
-    const name = revertActiveCommitResourceName(
+    const name = restoreActiveCommitResourceName(
       'environment/'.repeat(40) + 'staging',
       HYDRATED_SHA,
     );
@@ -148,27 +148,27 @@ describe('revertCommand helpers', () => {
 
   it('shows the command for was-here and failed cells with a hydrated sha', () => {
     const hydrated = { sha: HYDRATED_SHA };
-    expect(canShowRevertCommand({ kind: 'was-here', hydrated })).toBe(true);
-    expect(canShowRevertCommand({ kind: 'failed', hydrated })).toBe(true);
-    expect(canShowRevertCommand({ kind: 'live', hydrated })).toBe(false);
-    expect(canShowRevertCommand({ kind: 'in-flight', hydrated })).toBe(false);
-    expect(canShowRevertCommand({ kind: 'was-here' })).toBe(false);
+    expect(canShowRestoreCommand({ kind: 'was-here', hydrated })).toBe(true);
+    expect(canShowRestoreCommand({ kind: 'failed', hydrated })).toBe(true);
+    expect(canShowRestoreCommand({ kind: 'live', hydrated })).toBe(false);
+    expect(canShowRestoreCommand({ kind: 'in-flight', hydrated })).toBe(false);
+    expect(canShowRestoreCommand({ kind: 'was-here' })).toBe(false);
   });
 
   it('hides the command when the cell carries Promoter-restored-from', () => {
     const hydrated = { sha: HYDRATED_SHA };
-    expect(canShowRevertCommand({ kind: 'restored', hydrated, restoredFrom: 'abc1234' })).toBe(
+    expect(canShowRestoreCommand({ kind: 'restored', hydrated, restoredFrom: 'abc1234' })).toBe(
       false,
     );
-    expect(canShowRevertCommand({ kind: 'was-here', hydrated, restoredFrom: 'abc1234' })).toBe(
+    expect(canShowRestoreCommand({ kind: 'was-here', hydrated, restoredFrom: 'abc1234' })).toBe(
       false,
     );
   });
 
   it('hides the command on failed live and proposed cells', () => {
     const hydrated = { sha: HYDRATED_SHA };
-    expect(canShowRevertCommand({ kind: 'failed', hydrated, isLive: true })).toBe(false);
-    expect(canShowRevertCommand({ kind: 'failed', hydrated, isProposed: true })).toBe(false);
+    expect(canShowRestoreCommand({ kind: 'failed', hydrated, isLive: true })).toBe(false);
+    expect(canShowRestoreCommand({ kind: 'failed', hydrated, isProposed: true })).toBe(false);
   });
 });
 
@@ -334,7 +334,7 @@ describe('DetailDrawer restore command', () => {
     });
   };
 
-  it('shows a kubectl apply of a RevertActiveCommit for was-here cells with a hydrated sha', () => {
+  it('shows a kubectl apply of a RestoreActiveCommit for was-here cells with a hydrated sha', () => {
     render(
       makeCell([], {
         kind: 'was-here',
@@ -346,7 +346,7 @@ describe('DetailDrawer restore command', () => {
     const command = container.querySelector('.hp-drawer__command');
     expect(command).not.toBeNull();
     expect(command?.textContent).toContain('kubectl apply -f -');
-    expect(command?.textContent).toContain('kind: RevertActiveCommit');
+    expect(command?.textContent).toContain('kind: RestoreActiveCommit');
     expect(command?.textContent).toContain('name: my-strategy');
     expect(command?.textContent).toContain('branch: production');
     expect(command?.textContent).toContain(`sha: ${HYDRATED_SHA}`);
@@ -368,35 +368,35 @@ describe('DetailDrawer restore command', () => {
     expect(container.textContent).not.toContain('Restore this version');
   });
 
-  it('says the proposed commit is held by the RevertActiveCommit', () => {
+  it('says the proposed commit is held by the RestoreActiveCommit', () => {
     render(
       makeCell([], {
         kind: 'in-flight',
         health: 'pending',
         isProposed: true,
-        revertActiveCommit: 'revert-staging',
+        restoreActiveCommit: 'restore-staging',
         pullRequest: { id: '3020', url: 'https://github.com/org/repo/pull/3020', state: 'open' },
       }),
     );
-    const badge = container.querySelector('.hp-drawer__kind--held');
+    const badge = container.querySelector('.hp-drawer__kind--blocked-env');
     expect(badge?.textContent).toContain('PROPOSED');
     expect(container.querySelector('.hp-drawer__pr')?.textContent).toContain('3020');
   });
 
-  it('labels the proposed commit REVERTED when it is the one the RevertActiveCommit reverted', () => {
+  it('labels the proposed commit BLOCKED when it is the one the RestoreActiveCommit blocked', () => {
     render(
       makeCell([], {
         kind: 'in-flight',
         health: 'pending',
         isProposed: true,
-        revertActiveCommit: 'revert-staging',
-        revertedByRevertActiveCommit: true,
+        restoreActiveCommit: 'restore-staging',
+        blockedByRestoreActiveCommit: true,
       }),
     );
-    const badge = container.querySelector('.hp-drawer__kind--reverted');
-    expect(badge?.textContent).toContain('REVERTED');
+    const badge = container.querySelector('.hp-drawer__kind--blocked');
+    expect(badge?.textContent).toContain('BLOCKED');
     expect(badge?.textContent).not.toContain('PROPOSED');
-    expect(container.querySelector('.hp-drawer__kind--held')).toBeNull();
+    expect(container.querySelector('.hp-drawer__kind--blocked-env')).toBeNull();
   });
 
   it('labels a superseded restore cell REPLACED in the badge and the environment list', () => {
@@ -440,10 +440,10 @@ describe('cellKindLabel', () => {
     expect(cellKindLabel({ kind: 'live' })).toBe('LIVE');
     expect(cellKindLabel({ kind: 'in-flight', isProposed: true })).toBe('PROPOSED');
     expect(
-      cellKindLabel({ kind: 'in-flight', isProposed: true, revertedByRevertActiveCommit: true }),
-    ).toBe('REVERTED');
+      cellKindLabel({ kind: 'in-flight', isProposed: true, blockedByRestoreActiveCommit: true }),
+    ).toBe('BLOCKED');
     expect(
-      cellKindLabel({ kind: 'in-flight', isProposed: true, revertedByRevertActiveCommit: false }),
+      cellKindLabel({ kind: 'in-flight', isProposed: true, blockedByRestoreActiveCommit: false }),
     ).toBe('PROPOSED');
     expect(cellKindLabel({ kind: 'in-flight' })).toBe('PR OPEN');
     expect(cellKindLabel({ kind: 'was-here' })).toBe('REPLACED');

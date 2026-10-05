@@ -10,7 +10,7 @@ import { INSTANCE_ID_LABEL } from '@shared/utils/environments';
  * the branch, and the proposed one was never promoted, so restoring it would skip
  * its gates.
  */
-export function canShowRevertCommand(
+export function canShowRestoreCommand(
   cell: Pick<CellState, 'kind' | 'hydrated' | 'isLive' | 'isProposed' | 'restoredFrom'>,
 ): boolean {
   if (!cell.hydrated?.sha || cell.isLive || cell.isProposed || cell.restoredFrom) return false;
@@ -27,12 +27,12 @@ function dns1123(value: string): string {
 }
 
 /**
- * RevertActiveCommit metadata.name. Includes the environment branch and a short sha so two
+ * RestoreActiveCommit metadata.name. Includes the environment branch and a short sha so two
  * environments restoring the same commit, or one environment restored to two commits,
  * do not collide. Stays inside the 253-character DNS-1123 subdomain limit.
  */
-export function revertActiveCommitResourceName(branch: string, sha: string): string {
-  const prefix = 'revert-';
+export function restoreActiveCommitResourceName(branch: string, sha: string): string {
+  const prefix = 'restore-';
   const suffix = `-${sha.slice(0, 7)}`;
   const budget = 253 - prefix.length - suffix.length;
   let stem = dns1123(branch);
@@ -42,12 +42,12 @@ export function revertActiveCommitResourceName(branch: string, sha: string): str
   return `${prefix}${stem}${suffix}`;
 }
 
-export interface RevertActiveCommitApplyInput {
+export interface RestoreActiveCommitApplyInput {
   namespace: string;
   promotionStrategyName: string;
   /**
    * The environment's ChangeTransferPolicy instance-id label. A non-default install only watches
-   * resources carrying its instance id, so the RevertActiveCommit must carry the same one.
+   * resources carrying its instance id, so the RestoreActiveCommit must carry the same one.
    */
   instanceId?: string;
   branch: string;
@@ -55,18 +55,18 @@ export interface RevertActiveCommitApplyInput {
 }
 
 /**
- * `kubectl apply` of a RevertActiveCommit for this environment and hydrated commit.
+ * `kubectl apply` of a RestoreActiveCommit for this environment and hydrated commit.
  *
  * Wrapped in `sh -c` so the heredoc is accepted when pasted into bash, zsh, or fish.
  * Creating the resource restores the active branch; deleting it lets promotion pull
- * requests auto-merge again. The reverted change itself may not be proposed again until
+ * requests auto-merge again. The blocked dry SHA itself may not be proposed again until
  * a new commit lands on the proposed branch.
  */
-export function buildRevertActiveCommitApplyCommand(input: RevertActiveCommitApplyInput): string {
-  const name = revertActiveCommitResourceName(input.branch, input.sha);
+export function buildRestoreActiveCommitApplyCommand(input: RestoreActiveCommitApplyInput): string {
+  const name = restoreActiveCommitResourceName(input.branch, input.sha);
   const manifest = [
     'apiVersion: promoter.argoproj.io/v1alpha1',
-    'kind: RevertActiveCommit',
+    'kind: RestoreActiveCommit',
     'metadata:',
     `  name: ${name}`,
     `  namespace: ${input.namespace}`,

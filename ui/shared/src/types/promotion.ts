@@ -30,19 +30,19 @@ export type Environment = components['schemas']['EnvironmentStatus'] & {
    * environment need the same label, or a non-default install's controller never sees them.
    */
   instanceId?: string;
-  /** RevertActiveCommit holding this environment in its reverted state, from the bundle. */
-  revertActiveCommit?: EnvironmentRevertActiveCommit;
+  /** RestoreActiveCommit blocking this environment, from the bundle. */
+  restoreActiveCommit?: EnvironmentRestoreActiveCommit;
 };
 
-/** The parts of a RevertActiveCommit the UI needs to explain why a promotion is held. */
-export interface EnvironmentRevertActiveCommit {
+/** The parts of a RestoreActiveCommit the UI needs to explain why a promotion is held. */
+export interface EnvironmentRestoreActiveCommit {
   name: string;
   /**
-   * Hydrated SHA of the restore commit this RevertActiveCommit wrote (`status.activeSha`).
+   * Hydrated SHA of the restore commit this RestoreActiveCommit wrote (`status.activeSha`).
    * `blockedDrySha` applies only while this is still the environment's active hydrated SHA.
    */
   activeSha?: string;
-  /** Dry SHA the RevertActiveCommit moved off the active branch. */
+  /** Dry SHA the RestoreActiveCommit moved off the active branch. */
   blockedDrySha?: string;
 }
 
@@ -170,10 +170,10 @@ export interface EnrichedEnvDetails {
   proposedChecks: Check[];
   proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
-  /** RevertActiveCommit holding the environment; unset in history views. */
-  revertActiveCommit?: string;
-  /** True when the proposed commit is the one that RevertActiveCommit reverted. */
-  proposedIsReverted?: boolean;
+  /** RestoreActiveCommit holding the environment; unset in history views. */
+  restoreActiveCommit?: string;
+  /** True when the proposed commit is the one that RestoreActiveCommit blocked. */
+  proposedIsBlocked?: boolean;
 
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;

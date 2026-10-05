@@ -24,13 +24,13 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef,
+// RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef,
 // branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
-// active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha,
-// strategy, or branch would lose track of what it reverted. To restore something else, create a new
-// RevertActiveCommit. blockEnvironment may change.
-// +kubebuilder:validation:XValidation:rule="self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch == oldSelf.branch && self.sha == oldSelf.sha",message="promotionStrategyRef, branch, and sha are immutable; create a new RevertActiveCommit to restore a different commit, strategy, or branch"
-type RevertActiveCommitSpec struct {
+// active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha,
+// strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new
+// RestoreActiveCommit. blockEnvironment may change.
+// +kubebuilder:validation:XValidation:rule="self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch == oldSelf.branch && self.sha == oldSelf.sha",message="promotionStrategyRef, branch, and sha are immutable; create a new RestoreActiveCommit to restore a different commit, strategy, or branch"
+type RestoreActiveCommitSpec struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	// +kubebuilder:validation:Required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
@@ -49,7 +49,7 @@ type RevertActiveCommitSpec struct {
 	// Sha is the hydrated commit to restore onto the active branch. It must already be in the active
 	// branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
 	// carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
-	// restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit
+	// restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit
 	// for the same sha is refused until the active branch moves, and that note is left unchanged. The
 	// controller writes a new commit (the commit's tree, or only activePath when the policy sets
 	// one) parented on the current active tip and records a promotion-history note with
@@ -57,8 +57,8 @@ type RevertActiveCommitSpec struct {
 	// The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
 	// a promotion pull request that would put the active branch's dry SHA back. A pull request
 	// for a different proposed dry SHA may open, but nothing is auto-merged while this
-	// RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the
-	// reverted change again; see status.blockedDrySha.
+	// RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the
+	// blocked dry SHA again; see status.blockedDrySha.
 	// The restore runs once. Later promotions are left alone.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=40
@@ -66,25 +66,25 @@ type RevertActiveCommitSpec struct {
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 
-	// BlockEnvironment holds promotion for this environment while true. It defaults to true.
-	// Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history
+	// BlockEnvironment blocks promotion for this environment while true. It defaults to true.
+	// Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history
 	// note and delete this object. Deleting it while the field is still true does not stamp that
-	// trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is
-	// still a gated restore, the ChangeTransferPolicy recreates this object (with the default true)
+	// trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is
+	// still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true)
 	// so the field can be set false again.
 	// +kubebuilder:default=true
 	// +optional
 	BlockEnvironment *bool `json:"blockEnvironment,omitempty"`
 }
 
-// BlocksEnvironment reports whether this revert should keep holding promotion. A nil
+// BlocksEnvironment reports whether this restore should keep blocking promotion. A nil
 // BlockEnvironment is true, matching the CRD default, so an object that omits the field stays blocked.
-func (s *RevertActiveCommitSpec) BlocksEnvironment() bool {
+func (s *RestoreActiveCommitSpec) BlocksEnvironment() bool {
 	return s.BlockEnvironment == nil || *s.BlockEnvironment
 }
 
-// RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
-type RevertActiveCommitStatus struct {
+// RestoreActiveCommitStatus defines the observed state of RestoreActiveCommit.
+type RestoreActiveCommitStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -101,10 +101,10 @@ type RevertActiveCommitStatus struct {
 
 	// BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
-	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
+	// proposed dry SHA still equals this value, so the blocked dry SHA is not put back. A different
 	// proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment
-	// is set to false. That stamps Promoter-revert-unblocked-at and deletes this object. Deleting it
-	// while the field is still true does not stamp the trailer, so the hold stays. Empty when that
+	// is set to false. That stamps Promoter-restore-unblocked-at and deletes this object. Deleting it
+	// while the field is still true does not stamp the trailer, so the block stays. Empty when that
 	// active tip had no hydrator.metadata, or when the active branch already had spec.sha's content
 	// so nothing was moved off it. A
 	// promotion pull request only opens when the proposed branch has a commit the
@@ -142,18 +142,18 @@ type RevertActiveCommitStatus struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// GetConditions returns the conditions of the RevertActiveCommit.
-func (r *RevertActiveCommit) GetConditions() *[]metav1.Condition {
+// GetConditions returns the conditions of the RestoreActiveCommit.
+func (r *RestoreActiveCommit) GetConditions() *[]metav1.Condition {
 	return &r.Status.Conditions
 }
 
 // SetObservedGeneration records the object generation that produced the current status.
-func (r *RevertActiveCommit) SetObservedGeneration(generation int64) {
+func (r *RestoreActiveCommit) SetObservedGeneration(generation int64) {
 	r.Status.ObservedGeneration = generation
 }
 
 // SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
-func (r *RevertActiveCommit) SetStatusInstanceID(v *string) {
+func (r *RestoreActiveCommit) SetStatusInstanceID(v *string) {
 	r.Status.InstanceID = v
 }
 
@@ -161,36 +161,36 @@ func (r *RevertActiveCommit) SetStatusInstanceID(v *string) {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// RevertActiveCommit restores one environment's active branch to a previously hydrated commit and records
+// RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records
 // the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
-// Creating the resource is the authorization boundary: whoever can create a RevertActiveCommit in the
+// Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the
 // strategy's namespace can restore that environment, and the controller's git credentials perform the push.
-// The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.
+// The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores.
 // +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
 // +kubebuilder:printcolumn:name="Branch",type=string,JSONPath=`.spec.branch`
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.spec.sha`,priority=1
 // +kubebuilder:printcolumn:name="Active Sha",type=string,JSONPath=`.status.activeSha`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-type RevertActiveCommit struct {
+type RestoreActiveCommit struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RevertActiveCommitSpec   `json:"spec,omitempty"`
-	Status RevertActiveCommitStatus `json:"status,omitempty"`
+	Spec   RestoreActiveCommitSpec   `json:"spec,omitempty"`
+	Status RestoreActiveCommitStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// RevertActiveCommitList contains a list of RevertActiveCommit
-type RevertActiveCommitList struct {
+// RestoreActiveCommitList contains a list of RestoreActiveCommit
+type RestoreActiveCommitList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RevertActiveCommit `json:"items"`
+	Items           []RestoreActiveCommit `json:"items"`
 }
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &RevertActiveCommit{}, &RevertActiveCommitList{})
+		s.AddKnownTypes(SchemeGroupVersion, &RestoreActiveCommit{}, &RestoreActiveCommitList{})
 		return nil
 	})
 }

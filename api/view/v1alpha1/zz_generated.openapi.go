@@ -137,11 +137,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.RateLimiter{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref),
 		apiv1alpha1.RateLimiterTypes{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiterTypes(ref),
 		apiv1alpha1.ResponseOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref),
-		apiv1alpha1.RevertActiveCommit{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommit(ref),
-		apiv1alpha1.RevertActiveCommitConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitConfiguration(ref),
-		apiv1alpha1.RevertActiveCommitList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitList(ref),
-		apiv1alpha1.RevertActiveCommitSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(ref),
-		apiv1alpha1.RevertActiveCommitStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitStatus(ref),
+		apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommit(ref),
+		apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitConfiguration(ref),
+		apiv1alpha1.RestoreActiveCommitList{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitList(ref),
+		apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitSpec(ref),
+		apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitStatus(ref),
 		apiv1alpha1.RevisionReference{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
 		apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatus(ref),
 		apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusConfiguration(ref),
@@ -2339,19 +2339,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
-					"revertActiveCommit": {
+					"restoreActiveCommit": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RevertActiveCommit contains the configuration for the RevertActiveCommit controller, including WorkQueue settings that control reconciliation behavior.",
+							Description: "RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.RevertActiveCommitConfiguration{}.OpenAPIModelName()),
+							Ref:         ref(apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName()),
 						},
 					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "revertActiveCommit"},
+				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RevertActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -4075,9 +4075,9 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 							Format:      "",
 						},
 					},
-					"revertUnblockedAt": {
+					"restoreUnblockedAt": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore moved off of is blocked from opening a pull request.",
+							Description: "RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore moved off of is blocked from opening a pull request.",
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
 						},
 					},
@@ -5188,11 +5188,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref co
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommit(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommit(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RevertActiveCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its reverts.",
+				Description: "RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5218,33 +5218,33 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommit(ref co
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.RevertActiveCommitSpec{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.RevertActiveCommitStatus{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.RevertActiveCommitSpec{}.OpenAPIModelName(), apiv1alpha1.RevertActiveCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommitConfiguration defines the configuration for the RevertActiveCommit controller.\n\nThis configuration controls how the RevertActiveCommit controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Description: "RestoreActiveCommitConfiguration defines the configuration for the RestoreActiveCommit controller.\n\nThis configuration controls how the RestoreActiveCommit controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"workQueue": {
 						SchemaProps: spec.SchemaProps{
-							Description: "WorkQueue contains the work queue configuration for the RevertActiveCommit controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Description: "WorkQueue contains the work queue configuration for the RestoreActiveCommit controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
@@ -5258,11 +5258,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitConfigu
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommitList contains a list of RevertActiveCommit",
+				Description: "RestoreActiveCommitList contains a list of RestoreActiveCommit",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5291,7 +5291,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitList(re
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.RevertActiveCommit{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5302,15 +5302,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitList(re
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.RevertActiveCommit{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef, branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it reverted. To restore something else, create a new RevertActiveCommit. blockEnvironment may change.",
+				Description: "RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef, branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha, strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new RestoreActiveCommit. blockEnvironment may change.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"promotionStrategyRef": {
@@ -5330,7 +5330,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(re
 					},
 					"sha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. Once the active tip already restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit for the same sha is refused until the active branch moves, and that note is left unchanged. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the reverted change again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.",
+							Description: "Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. Once the active tip already restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit for the same sha is refused until the active branch moves, and that note is left unchanged. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the blocked dry SHA again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -5338,7 +5338,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(re
 					},
 					"blockEnvironment": {
 						SchemaProps: spec.SchemaProps{
-							Description: "BlockEnvironment holds promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is still a gated restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again.",
+							Description: "BlockEnvironment blocks promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
@@ -5352,11 +5352,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(re
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommitStatus defines the observed state of RevertActiveCommit.",
+				Description: "RestoreActiveCommitStatus defines the observed state of RestoreActiveCommit.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"observedGeneration": {
@@ -5375,7 +5375,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitStatus(
 					},
 					"blockedDrySha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment is set to false. That stamps Promoter-revert-unblocked-at and deletes this object. Deleting it while the field is still true does not stamp the trailer, so the hold stays. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. A promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
+							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the blocked dry SHA is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment is set to false. That stamps Promoter-restore-unblocked-at and deletes this object. Deleting it while the field is still true does not stamp the trailer, so the block stays. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. A promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -7198,14 +7198,14 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
-					"revertActiveCommits": {
+					"restoreActiveCommits": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RevertActiveCommits are the RevertActiveCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged.",
+							Description: "RestoreActiveCommits are the RestoreActiveCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.RevertActiveCommit{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -7338,7 +7338,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RevertActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 

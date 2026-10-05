@@ -262,10 +262,10 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&RevertActiveCommitReconciler{
+	err = (&RestoreActiveCommitReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("RevertActiveCommit"),
+		Recorder:    k8sManager.GetEventRecorder("RestoreActiveCommit"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -1409,7 +1409,7 @@ func restoreActiveBranchViaGit(ctx context.Context, gitPath, activeBranch, resto
 	if len(short) > 7 {
 		short = short[:7]
 	}
-	message := fmt.Sprintf("Revert %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, restoreTo)
+	message := fmt.Sprintf("Restore %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, restoreTo)
 	restoreSha, err := runGitCmd(ctx, gitPath, "commit-tree", tree, "-p", activeTip, "-m", message)
 	Expect(err).NotTo(HaveOccurred())
 	restoreSha = strings.TrimSpace(restoreSha)
@@ -1437,8 +1437,8 @@ func restoreActiveBranchViaGit(ctx context.Context, gitPath, activeBranch, resto
 	return restoreSha
 }
 
-// unblockRestoreViaGit stamps Promoter-revert-unblocked-at on restoreSha's promotion-history note
-// via git notes only (no RevertActiveCommit, no UnblockRestore Go helper). Callers should enqueue
+// unblockRestoreViaGit stamps Promoter-restore-unblocked-at on restoreSha's promotion-history note
+// via git notes only (no RestoreActiveCommit, no UnblockRestore Go helper). Callers should enqueue
 // CTP afterward: SCMs do not webhook on notes pushes.
 func unblockRestoreViaGit(ctx context.Context, gitPath, restoreSha string, at time.Time) {
 	GinkgoHelper()
@@ -1451,7 +1451,7 @@ func unblockRestoreViaGit(ctx context.Context, gitPath, restoreSha string, at ti
 	if showErr == nil && strings.TrimSpace(raw) != "" {
 		Expect(json.Unmarshal([]byte(raw), &trailers)).To(Succeed())
 	}
-	trailers[constants.TrailerRevertUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	trailers[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
 	payload, err := json.Marshal(trailers)
 	Expect(err).NotTo(HaveOccurred())
 

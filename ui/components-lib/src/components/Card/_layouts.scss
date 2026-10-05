@@ -229,7 +229,7 @@ $extension-wrapper-gap: 20px;
 
   // Same blue as an ordinary proposed badge. The blocked mark carries the hold, in the
   // same red as the history pill ($held-stop).
-  .proposed-changes-card .promote-banner--held {
+  .proposed-changes-card .promote-banner--blocked {
     background: $argo-running;
     box-shadow: 0 1px 4px rgba(13, 173, 234, 0.45);
     color: #ff5a4e;

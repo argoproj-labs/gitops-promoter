@@ -102,7 +102,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;patch;create
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories,verbs=get;list;watch;create;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch;create;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch;create;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -212,12 +212,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
 
-	if err := r.deleteSupersededRevertActiveCommits(ctx, &ctp, gitOperations); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RevertActiveCommits: %w", err)
+	if err := r.deleteSupersededRestoreActiveCommits(ctx, &ctp, gitOperations); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RestoreActiveCommits: %w", err)
 	}
 
-	if err := r.ensureRevertActiveCommitForRestoreTip(ctx, &ctp, gitOperations); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to adopt restore tip as RevertActiveCommit: %w", err)
+	if err := r.ensureRestoreActiveCommitForRestoreTip(ctx, &ctp, gitOperations); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to adopt restore tip as RestoreActiveCommit: %w", err)
 	}
 
 	gate, err := r.evaluateRevertGate(ctx, &ctp, gitOperations)
@@ -317,7 +317,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaDryProposed,
 		constants.TrailerMergeCommitSnapshotMismatch,
 		constants.TrailerRestoredFrom,
-		constants.TrailerRevertUnblockedAt,
+		constants.TrailerRestoreUnblockedAt,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -420,19 +420,19 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 			DeleteFunc:  func(event.DeleteEvent) bool { return true },
 			GenericFunc: func(event.GenericEvent) bool { return false },
 		})).
-		// A RevertActiveCommit whose restore has not landed yet (status.restoredFrom empty) blocks
-		// every promotion pull request and holds auto-merge. Once the restore is recorded, the gate
+		// A RestoreActiveCommit whose restore has not landed yet (status.restoredFrom empty) blocks
+		// every promotion pull request and blocks auto-merge. Once the restore is recorded, the gate
 		// is the restore commit's promotion-history note: Promoter-restored-from without
-		// Promoter-revert-unblocked-at. Map by the ChangeTransferPolicy name derived from
+		// Promoter-restore-unblocked-at. Map by the ChangeTransferPolicy name derived from
 		// spec.promotionStrategyRef and spec.branch, rather than the owner reference, so a create
-		// is seen before the RevertActiveCommit controller has stamped ownership, and a delete
+		// is seen before the RestoreActiveCommit controller has stamped ownership, and a delete
 		// wakes this controller to re-read the note. Setting spec.blockEnvironment to false deletes the
-		// object; its finalizer stamps Promoter-revert-unblocked-at before the object disappears, and
+		// object; its finalizer stamps Promoter-restore-unblocked-at before the object disappears, and
 		// that delete is what lifts the note gate. A delete while the field is still true does not
 		// stamp the trailer. Status updates are watched only when the restore result changes, so the
 		// pending-window hold lifts once status.restoredFrom is set.
-		Watches(&promoterv1alpha1.RevertActiveCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-			rc, ok := obj.(*promoterv1alpha1.RevertActiveCommit)
+		Watches(&promoterv1alpha1.RestoreActiveCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+			rc, ok := obj.(*promoterv1alpha1.RestoreActiveCommit)
 			if !ok {
 				return nil
 			}
@@ -444,8 +444,8 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		}), builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(event.CreateEvent) bool { return true },
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RevertActiveCommit)
-				newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RevertActiveCommit)
+				oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RestoreActiveCommit)
+				newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RestoreActiveCommit)
 				if !okOld || !okNew {
 					return false
 				}
@@ -1616,20 +1616,20 @@ func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoter
 // because of a restore. An already-open pull request is for a different proposed commit and is
 // left alone in both cases.
 //
-// A pending RevertActiveCommit (status.restoredFrom still empty) blocks every proposed SHA without
+// A pending RestoreActiveCommit (status.restoredFrom still empty) blocks every proposed SHA without
 // touching git. Once the restore is recorded, the gate is the active tip's promotion-history note:
-// Promoter-restored-from without Promoter-revert-unblocked-at blocks the dry SHA the restore moved off
+// Promoter-restored-from without Promoter-restore-unblocked-at blocks the dry SHA the restore moved off
 // of. A restore commit is parented on the old active tip and the proposed branch is left where it
 // was, so the proposed SHA can already be contained in active. Creating a pull request then is
 // rejected by the SCM ("No commits between <branch> and <branch>-next"). That ancestor check runs
-// whenever the tip is a restore commit, gated or unblocked, so the reverted dry SHA stays
+// whenever the tip is a restore commit, blocked or unblocked, so the blocked dry SHA stays
 // unproposed until the hydrator writes a new commit to the proposed branch.
 func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gate revertGate, gitOperations *git.EnvironmentOperations) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if gate.pendingRevert != "" {
-		logger.Info("RevertActiveCommit restore is still pending; not opening a pull request",
-			"revertActiveCommit", gate.pendingRevert,
+		logger.Info("RestoreActiveCommit restore is still pending; not opening a pull request",
+			"restoreActiveCommit", gate.pendingRevert,
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return true, nil
@@ -1659,25 +1659,25 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 	return contained, nil
 }
 
-// changeTransferPolicyNameForRevert is the ChangeTransferPolicy object name a RevertActiveCommit selects:
+// changeTransferPolicyNameForRevert is the ChangeTransferPolicy object name a RestoreActiveCommit selects:
 // the name the PromotionStrategy controller assigns to spec.branch.
-func changeTransferPolicyNameForRevert(rc *promoterv1alpha1.RevertActiveCommit) string {
+func changeTransferPolicyNameForRevert(rc *promoterv1alpha1.RestoreActiveCommit) string {
 	if rc.Spec.PromotionStrategyRef.Name == "" || rc.Spec.Branch == "" {
 		return ""
 	}
 	return utils.ChangeTransferPolicyNameForEnvironment(rc.Spec.PromotionStrategyRef.Name, rc.Spec.Branch)
 }
 
-// revertActiveCommitsForPolicy lists live RevertActiveCommits that select this policy.
-func (r *ChangeTransferPolicyReconciler) revertActiveCommitsForPolicy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.RevertActiveCommit, error) {
-	list := &promoterv1alpha1.RevertActiveCommitList{}
+// restoreActiveCommitsForPolicy lists live RestoreActiveCommits that select this policy.
+func (r *ChangeTransferPolicyReconciler) restoreActiveCommitsForPolicy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.RestoreActiveCommit, error) {
+	list := &promoterv1alpha1.RestoreActiveCommitList{}
 	// Namespace list, filtered in memory. A field index only works on the cache client, and this
-	// check also runs from tests that use a direct client. A namespace has few RevertActiveCommits.
+	// check also runs from tests that use a direct client. A namespace has few RestoreActiveCommits.
 	err := r.List(ctx, list, client.InNamespace(ctp.Namespace))
 	if err != nil {
-		return nil, fmt.Errorf("failed to list RevertActiveCommits for ChangeTransferPolicy %q: %w", ctp.Name, err)
+		return nil, fmt.Errorf("failed to list RestoreActiveCommits for ChangeTransferPolicy %q: %w", ctp.Name, err)
 	}
-	matched := make([]promoterv1alpha1.RevertActiveCommit, 0, len(list.Items))
+	matched := make([]promoterv1alpha1.RestoreActiveCommit, 0, len(list.Items))
 	for i := range list.Items {
 		rc := &list.Items[i]
 		if changeTransferPolicyNameForRevert(rc) != ctp.Name || !rc.DeletionTimestamp.IsZero() {
@@ -1689,7 +1689,7 @@ func (r *ChangeTransferPolicyReconciler) revertActiveCommitsForPolicy(ctx contex
 }
 
 // revertGate is the restore hold for one ChangeTransferPolicy reconcile. pendingRevert is set when
-// a RevertActiveCommit for this policy has not finished its restore yet; otherwise isRestoreTip /
+// a RestoreActiveCommit for this policy has not finished its restore yet; otherwise isRestoreTip /
 // unblocked / blockedDrySha come from the active tip's promotion-history note.
 type revertGate struct {
 	pendingRevert string
@@ -1698,13 +1698,13 @@ type revertGate struct {
 	unblocked     bool
 }
 
-// revertActiveCommitSuperseded reports whether a recorded restore commit is strictly behind the active
-// tip, so the RevertActiveCommit that wrote it should be deleted. activeSha is status.activeSha.
+// restoreActiveCommitSuperseded reports whether a recorded restore commit is strictly behind the active
+// tip, so the RestoreActiveCommit that wrote it should be deleted. activeSha is status.activeSha.
 // isAncestor is CommitIsAncestor(activeSha, tip). An empty activeSha has not recorded a restore. An
 // empty tip means this reconcile has no active commit to compare against. The tip itself is kept even
 // when isAncestor is wrongly true: CommitIsAncestor is false for the same SHA, and a second
-// RevertActiveCommit that retried that restore records the same activeSha.
-func revertActiveCommitSuperseded(activeSha, tip string, isAncestor bool) bool {
+// RestoreActiveCommit that retried that restore records the same activeSha.
+func restoreActiveCommitSuperseded(activeSha, tip string, isAncestor bool) bool {
 	if activeSha == "" || tip == "" || activeSha == tip {
 		return false
 	}
@@ -1724,21 +1724,21 @@ func commitNotInClone(err error) bool {
 		strings.Contains(msg, "not our ref")
 }
 
-// deleteSupersededRevertActiveCommits deletes RevertActiveCommits for this policy whose recorded
+// deleteSupersededRestoreActiveCommits deletes RestoreActiveCommits for this policy whose recorded
 // restore commit is an ancestor of the active tip. The tip is the one calculateStatus just wrote.
-// Deletion does not stamp Promoter-revert-unblocked-at. The new tip's note holds promotion until
-// its RevertActiveCommit has spec.blockEnvironment set to false. A pending object (no activeSha), one whose restore is still the tip, and one
+// Deletion does not stamp Promoter-restore-unblocked-at. The new tip's note blocks promotion until
+// its RestoreActiveCommit has spec.blockEnvironment set to false. A pending object (no activeSha), one whose restore is still the tip, and one
 // whose restore commit is not in the clone are left alone. A missing commit is not behind the tip;
 // failing the reconcile on it would stop promotion until the object was deleted by hand. Other
 // ancestor-check errors still fail the reconcile. A cache that still lists a just-deleted object is
 // harmless here: its restore is already recorded, so evaluateRevertGate reads the new tip rather
 // than treating it as pending.
-func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) deleteSupersededRestoreActiveCommits(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	tip := ctp.Status.Active.Hydrated.Sha
 	if tip == "" {
 		return nil
 	}
-	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	reverts, err := r.restoreActiveCommitsForPolicy(ctx, ctp)
 	if err != nil {
 		return err
 	}
@@ -1750,44 +1750,44 @@ func (r *ChangeTransferPolicyReconciler) deleteSupersededRevertActiveCommits(ctx
 		}
 		isAncestor, err := gitOperations.CommitIsAncestor(ctx, rc.Status.ActiveSha, tip)
 		if commitNotInClone(err) {
-			logger.Info("RevertActiveCommit restore commit is not in the clone; leaving it",
-				"revertActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip, "error", err)
+			logger.Info("RestoreActiveCommit restore commit is not in the clone; leaving it",
+				"restoreActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip, "error", err)
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("failed to check whether RevertActiveCommit %q restore %q is behind active tip %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
+			return fmt.Errorf("failed to check whether RestoreActiveCommit %q restore %q is behind active tip %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
 		}
-		if !revertActiveCommitSuperseded(rc.Status.ActiveSha, tip, isAncestor) {
+		if !restoreActiveCommitSuperseded(rc.Status.ActiveSha, tip, isAncestor) {
 			continue
 		}
-		logger.Info("Deleting RevertActiveCommit whose restore is behind the active tip",
-			"revertActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip)
-		r.Recorder.Eventf(ctp, nil, "Normal", constants.RevertSupersededReason, "Deleting", constants.RevertSupersededMessage, rc.Name, rc.Status.ActiveSha, tip)
+		logger.Info("Deleting RestoreActiveCommit whose restore is behind the active tip",
+			"restoreActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip)
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.RestoreSupersededReason, "Deleting", constants.RestoreSupersededMessage, rc.Name, rc.Status.ActiveSha, tip)
 		if err := r.Delete(ctx, rc); err != nil {
 			if k8s_errors.IsNotFound(err) {
 				continue
 			}
-			return fmt.Errorf("failed to delete superseded RevertActiveCommit %q: %w", rc.Name, err)
+			return fmt.Errorf("failed to delete superseded RestoreActiveCommit %q: %w", rc.Name, err)
 		}
 	}
 	return nil
 }
 
-// ensureRevertActiveCommitForRestoreTip creates a RevertActiveCommit when the active tip is already a
-// gated restore (Promoter-restored-from without Promoter-revert-unblocked-at) and this policy has no
-// live RevertActiveCommit. That covers restores written by hand (or any other path that pushed a
+// ensureRestoreActiveCommitForRestoreTip creates a RestoreActiveCommit when the active tip is already a
+// blocked restore (Promoter-restored-from without Promoter-restore-unblocked-at) and this policy has no
+// live RestoreActiveCommit. That covers restores written by hand (or any other path that pushed a
 // restore commit without creating the CR): the object becomes the delete handle that stamps
-// Promoter-revert-unblocked-at. An unblocked tip is left alone so adopting it cannot re-hold
+// Promoter-restore-unblocked-at. An unblocked tip is left alone so adopting it cannot re-hold
 // promotion. A tip that is not a restore, or one that lacks Promoter-restored-from's value, is a
 // no-op. The ChangeTransferPolicy must still be owned by a PromotionStrategy so
 // spec.promotionStrategyRef can be set; without that owner the create is skipped.
-func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) ensureRestoreActiveCommitForRestoreTip(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	tip := ctp.Status.Active.Hydrated.Sha
 	if tip == "" {
 		return nil
 	}
 
-	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	reverts, err := r.restoreActiveCommitsForPolicy(ctx, ctp)
 	if err != nil {
 		return err
 	}
@@ -1798,7 +1798,7 @@ func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(c
 	if err := gitOperations.LoadHistoryNotes(ctx, tip); err != nil {
 		return fmt.Errorf("failed to prefetch history note for active tip %q: %w", tip, err)
 	}
-	state, err := gitOperations.RestoreGateState(ctx, tip, ctp.Spec.ActivePath)
+	state, err := gitOperations.RestoreBlockState(ctx, tip, ctp.Spec.ActivePath)
 	if err != nil {
 		return fmt.Errorf("failed to read restore gate for active tip %q: %w", tip, err)
 	}
@@ -1811,13 +1811,13 @@ func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(c
 		return err
 	}
 	if ps == nil {
-		log.FromContext(ctx).V(4).Info("active tip is a gated restore but ChangeTransferPolicy has no PromotionStrategy owner; skipping RevertActiveCommit adopt",
+		log.FromContext(ctx).V(4).Info("active tip is a blocked restore but ChangeTransferPolicy has no PromotionStrategy owner; skipping RestoreActiveCommit adopt",
 			"tip", tip, "restoredFrom", state.RestoredFrom)
 		return nil
 	}
 
 	name := utils.KubeSafeUniqueName(ctp.Name + "-restore-" + state.RestoredFrom)
-	rc := &promoterv1alpha1.RevertActiveCommit{
+	rc := &promoterv1alpha1.RestoreActiveCommit{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ctp.Namespace,
@@ -1827,7 +1827,7 @@ func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(c
 				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 			}),
 		},
-		Spec: promoterv1alpha1.RevertActiveCommitSpec{
+		Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 			Branch:               ctp.Spec.ActiveBranch,
 			Sha:                  state.RestoredFrom,
@@ -1837,21 +1837,21 @@ func (r *ChangeTransferPolicyReconciler) ensureRevertActiveCommitForRestoreTip(c
 		if k8s_errors.IsAlreadyExists(err) {
 			return nil
 		}
-		return fmt.Errorf("failed to create RevertActiveCommit %q for restore tip %q: %w", name, tip, err)
+		return fmt.Errorf("failed to create RestoreActiveCommit %q for restore tip %q: %w", name, tip, err)
 	}
-	log.FromContext(ctx).Info("Created RevertActiveCommit for gated restore tip",
-		"revertActiveCommit", name, "restoredFrom", state.RestoredFrom, "tip", tip)
-	r.Recorder.Eventf(ctp, nil, "Normal", constants.RevertAdoptedReason, "Adopting", constants.RevertAdoptedMessage, name, state.RestoredFrom, tip)
+	log.FromContext(ctx).Info("Created RestoreActiveCommit for blocked restore tip",
+		"restoreActiveCommit", name, "restoredFrom", state.RestoredFrom, "tip", tip)
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.RestoreAdoptedReason, "Adopting", constants.RestoreAdoptedMessage, name, state.RestoredFrom, tip)
 	return nil
 }
 
-// evaluateRevertGate decides the restore hold for this reconcile. A RevertActiveCommit whose restore
+// evaluateRevertGate decides the restore hold for this reconcile. A RestoreActiveCommit whose restore
 // has not been recorded (status.restoredFrom != spec.sha) blocks every proposed SHA without reading
-// git. Once every live RevertActiveCommit for this policy has a status, the gate is the active tip:
-// Promoter-restored-from without Promoter-revert-unblocked-at holds auto-merge and blocks the dry SHA
+// git. Once every live RestoreActiveCommit for this policy has a status, the gate is the active tip:
+// Promoter-restored-from without Promoter-restore-unblocked-at blocks auto-merge and blocks the dry SHA
 // the restore moved off of.
 func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (revertGate, error) {
-	reverts, err := r.revertActiveCommitsForPolicy(ctx, ctp)
+	reverts, err := r.restoreActiveCommitsForPolicy(ctx, ctp)
 	if err != nil {
 		return revertGate{}, err
 	}
@@ -1862,12 +1862,12 @@ func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context,
 		}
 	}
 
-	// One git log for the active tip's promotion-history note. RestoreGateState reads that note
+	// One git log for the active tip's promotion-history note. RestoreBlockState reads that note
 	// twice when the tip is a restore, and GetHistoryNote does not fill the cache on a miss.
 	if err := gitOperations.LoadHistoryNotes(ctx, ctp.Status.Active.Hydrated.Sha); err != nil {
 		return revertGate{}, fmt.Errorf("failed to prefetch history note for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
 	}
-	state, err := gitOperations.RestoreGateState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
+	state, err := gitOperations.RestoreBlockState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
 	if err != nil {
 		return revertGate{}, fmt.Errorf("failed to read restore gate for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
 	}
@@ -1879,9 +1879,9 @@ func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context,
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the
-// environment is set to auto merge. A pending RevertActiveCommit, or a restore tip whose note lacks
-// Promoter-revert-unblocked-at, holds auto-merge for every proposed dry SHA. Deleting the
-// RevertActiveCommit stamps that trailer and is what lets an open pull request merge, such as one
+// environment is set to auto merge. A pending RestoreActiveCommit, or a restore tip whose note lacks
+// Promoter-restore-unblocked-at, blocks auto-merge for every proposed dry SHA. Deleting the
+// RestoreActiveCommit stamps that trailer and is what lets an open pull request merge, such as one
 // opened for a dry SHA that arrived after the restore.
 func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gate revertGate) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
@@ -1898,14 +1898,14 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	if gate.pendingRevert != "" {
-		logger.Info("RevertActiveCommit restore is still pending; not auto-merging",
-			"revertActiveCommit", gate.pendingRevert,
+		logger.Info("RestoreActiveCommit restore is still pending; not auto-merging",
+			"restoreActiveCommit", gate.pendingRevert,
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil
 	}
 	if gate.isRestoreTip && !gate.unblocked {
-		logger.Info("Restore commit holds auto-merge until Promoter-revert-unblocked-at is stamped",
+		logger.Info("Restore commit blocks auto-merge until Promoter-restore-unblocked-at is stamped",
 			"branch", ctp.Spec.ActiveBranch,
 			"active", ctp.Status.Active.Hydrated.Sha,
 			"drySha", ctp.Status.Proposed.Dry.Sha)

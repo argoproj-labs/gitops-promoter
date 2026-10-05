@@ -76,7 +76,7 @@ func (r *ChangeTransferPolicyHistoryReconciler) GetEnqueueFunc() CTPHEnqueueFunc
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicyhistories/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertactivecommits,verbs=get;list;watch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
@@ -238,15 +238,15 @@ func (r *ChangeTransferPolicyHistoryReconciler) SetupWithManager(ctx context.Con
 			builder.WithPredicates(ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate())).
 		// A restore writes a new active commit and its promotion-history note, then sets
 		// status.restoredFrom. Setting spec.blockEnvironment to false deletes the object; the finalizer
-		// stamps Promoter-revert-unblocked-at on that note before it disappears. That stamp does not
+		// stamps Promoter-restore-unblocked-at on that note before it disappears. That stamp does not
 		// move the active tip or the ChangeTransferPolicy pull request, so the watch above does not fire.
 		// Map from spec.promotionStrategyRef and spec.branch, the same way the ChangeTransferPolicy
 		// controller does, so the history object is found before an owner reference exists. Creates
 		// are ignored because the note does not exist yet. Status updates are watched only when
 		// status.restoredFrom changes, which is after the restore commit is on the remote.
-		Watches(&promoterv1alpha1.RevertActiveCommit{},
-			handler.EnqueueRequestsFromMapFunc(r.mapRevertActiveCommitToChangeTransferPolicyHistories),
-			builder.WithPredicates(revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate())).
+		Watches(&promoterv1alpha1.RestoreActiveCommit{},
+			handler.EnqueueRequestsFromMapFunc(r.mapRestoreActiveCommitToChangeTransferPolicyHistories),
+			builder.WithPredicates(restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate())).
 		// Watch for external enqueue requests from other controllers.
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
@@ -266,10 +266,10 @@ func (r *ChangeTransferPolicyHistoryReconciler) mapCTPToChangeTransferPolicyHist
 	}}
 }
 
-// mapRevertActiveCommitToChangeTransferPolicyHistories maps a RevertActiveCommit to the history
+// mapRestoreActiveCommitToChangeTransferPolicyHistories maps a RestoreActiveCommit to the history
 // object for the ChangeTransferPolicy that spec.promotionStrategyRef and spec.branch select.
-func (r *ChangeTransferPolicyHistoryReconciler) mapRevertActiveCommitToChangeTransferPolicyHistories(_ context.Context, obj client.Object) []reconcile.Request {
-	rc, ok := obj.(*promoterv1alpha1.RevertActiveCommit)
+func (r *ChangeTransferPolicyHistoryReconciler) mapRestoreActiveCommitToChangeTransferPolicyHistories(_ context.Context, obj client.Object) []reconcile.Request {
+	rc, ok := obj.(*promoterv1alpha1.RestoreActiveCommit)
 	if !ok {
 		return nil
 	}
@@ -283,19 +283,19 @@ func (r *ChangeTransferPolicyHistoryReconciler) mapRevertActiveCommitToChangeTra
 	}}
 }
 
-// revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate wakes history when a restore has
-// been recorded or when the RevertActiveCommit is deleted. A delete with spec.blockEnvironment false
-// publishes Promoter-revert-unblocked-at: the finalizer writes that trailer, then the object goes
+// restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate wakes history when a restore has
+// been recorded or when the RestoreActiveCommit is deleted. A delete with spec.blockEnvironment false
+// publishes Promoter-restore-unblocked-at: the finalizer writes that trailer, then the object goes
 // away. A delete while the field is still true does not write it. Neither event changes
 // ChangeTransferPolicy status.
-func revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
+func restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc:  func(event.CreateEvent) bool { return false },
 		DeleteFunc:  func(event.DeleteEvent) bool { return true },
 		GenericFunc: func(event.GenericEvent) bool { return false },
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RevertActiveCommit)
-			newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RevertActiveCommit)
+			oldRC, okOld := e.ObjectOld.(*promoterv1alpha1.RestoreActiveCommit)
+			newRC, okNew := e.ObjectNew.(*promoterv1alpha1.RestoreActiveCommit)
 			if !okOld || !okNew {
 				return false
 			}
@@ -463,12 +463,12 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
 	historyEntry.RestoredFrom = getFirstTrailerValue(activeTrailers, constants.TrailerRestoredFrom)
-	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerRevertUnblockedAt); timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerRestoreUnblockedAt); timeStr != "" {
 		if unblockedAt, err := time.Parse(time.RFC3339, timeStr); err != nil {
-			log.FromContext(ctx).V(4).Info("failed to parse "+constants.TrailerRevertUnblockedAt, "time", timeStr, "err", err)
+			log.FromContext(ctx).V(4).Info("failed to parse "+constants.TrailerRestoreUnblockedAt, "time", timeStr, "err", err)
 		} else {
 			t := metav1.NewTime(unblockedAt)
-			historyEntry.RevertUnblockedAt = &t
+			historyEntry.RestoreUnblockedAt = &t
 		}
 	}
 	// The note is written on the merged target sha and history walks first-parent commits of the active
