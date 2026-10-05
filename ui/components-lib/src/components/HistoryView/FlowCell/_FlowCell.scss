@@ -18,7 +18,8 @@
   overflow: hidden;
   transition:
     border-color 0.12s ease,
-    background 0.12s ease;
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 
   // Left status rail — a thin colored bar that signals the cell's state
   // without relying on the fill alone.
@@ -35,8 +36,18 @@
   &:hover {
     border-color: $stroke-strong;
   }
+  &:focus-visible {
+    border-radius: $radius-md;
+  }
   &--selected {
-    border-color: $accent !important;
+    z-index: 1;
+    box-shadow:
+      0 0 0 1px $bg-surface,
+      0 0 0 4px $selection,
+      0 6px 16px rgba(15, 35, 60, 0.28);
+    &:focus-visible {
+      outline-offset: 5px;
+    }
   }
 }
 
