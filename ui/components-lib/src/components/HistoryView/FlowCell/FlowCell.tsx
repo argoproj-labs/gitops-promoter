@@ -62,7 +62,8 @@ const FlowCell: React.FC<{
       ? cell.pullRequest?.url
       : (cell.pullRequest?.url ?? rowForCell?.prUrl);
   const restoreSha = isRestore ? cell.hydrated?.sha : undefined;
-  const restoreRepoUrl = cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
+  const restoreRepoUrl =
+    cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
   const restoreUrl = restoreSha ? getCommitUrl(restoreRepoUrl, restoreSha) : '';
   const pillTooltip = blockedEnv
     ? restoreBlockTooltip(blockedEnv, blocked)
