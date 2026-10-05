@@ -17,7 +17,6 @@
 ### SCM providers and integrations
 
 - **Additional SCM providers** — Integrate providers beyond those supported today.
-- **[Bitbucket Server and Data Center](https://github.com/argoproj-labs/gitops-promoter/issues/1243)** — Support on-prem Bitbucket for repositories, pull requests, and commit statuses.
 - **[SSH protocol for git operations](https://github.com/argoproj-labs/gitops-promoter/issues/254)** — Clone and push via SSH for self-hosted GitLab and other SSH-only setups.
 - **[Sign commits during conflict resolution](https://github.com/argoproj-labs/gitops-promoter/issues/1800)** — GPG-sign commits created when Promoter resolves merge conflicts.
 - **[SCM webhooks for pull request changes](https://github.com/argoproj-labs/gitops-promoter/issues/360)** — Reconcile promotion state when the SCM signals PR updates; extend to multiple provider types ([#222](https://github.com/argoproj-labs/gitops-promoter/issues/222)).
