@@ -438,33 +438,36 @@ spec:
 
 /// tab | Bitbucket DataCenter/Server
 
-To configure the GitOps Promoter with Bitbucket DataCenter or Bitbucket Server, you will need to create either a Personal Access Token (PAT) or use HTTP Basic Auth credentials.
+To configure the GitOps Promoter with Bitbucket DataCenter or Bitbucket Server, you will need to create either an HTTP access token or use HTTP Basic Auth credentials.
 
-**Creating a Bitbucket DataCenter/Server Personal Access Token**
+**Creating a Bitbucket DataCenter/Server HTTP access token**
 
-1. Log in to your Bitbucket DataCenter/Server instance
-2. Navigate to your user profile → **Manage account** → **Personal Access Tokens**
-3. Click **Create a token**
+The GitOps Promoter opens and merges pull requests and sets commit statuses as the owner of the token, so consider
+creating the token for a dedicated service user. That user needs an email address, because Bitbucket DataCenter/Server
+cannot create merge commits for a user without one.
+
+1. Log in to your Bitbucket DataCenter/Server instance as that user
+2. Navigate to your user profile → **Manage account** → **HTTP access tokens**
+3. Click **Create token**
 4. Give it a name (e.g., "GitOps Promoter")
 5. Select the following permissions:
-   * **Projects**: Read
-   * **Repositories**: Write
-   * **Pull requests**: Write
+   * **Project permissions**: Read
+   * **Repository permissions**: Write
 6. Click **Create** and save the token value
 
 **ScmProvider**
 
-Create a Kubernetes Secret with either a Personal Access Token or username/password credentials:
+Create a Kubernetes Secret with either an HTTP access token or username/password credentials:
 
 ```yaml
-# Option 1: Personal Access Token (recommended)
+# Option 1: HTTP access token (recommended)
 apiVersion: v1
 kind: Secret
 metadata:
   name: <your-secret-name>
 type: Opaque
 stringData:
-  token: <your-personal-access-token>
+  token: <your-http-access-token>
 ---
 # Option 2: HTTP Basic Auth (username/password)
 apiVersion: v1
@@ -507,6 +510,20 @@ spec:
   scmProviderRef:
     name: <your-scmprovider-name>
 ```
+
+**Repository settings**
+
+Check the following settings of every repository the GitOps Promoter manages:
+
+* **Branch permissions**: Add a *Prevent deletion* restriction for the environment branches (e.g. the pattern
+  `environment/*`). The proposed `-next` branches are permanent; if a promotion pull request is merged by hand with
+  *Delete source branch after merging* ticked, the promotion of that environment fails until the branch is recreated.
+* **Merge checks**: The GitOps Promoter's commit statuses appear as builds on the pull requests. Merge checks such as
+  required approvals or builds also apply to merges by the GitOps Promoter; a vetoed merge is retried until the checks
+  pass, so required approvals effectively disable `autoMerge`.
+* **Ref name restrictions**: The GitOps Promoter stores promotion history in git notes (`refs/notes/promoter.history`),
+  and hydrators such as the Argo CD source hydrator do the same (`refs/notes/hydrator.metadata`). If your instance
+  restricts ref names, for example with a pre-receive hook or a branch naming plugin, allow `refs/notes/*`.
 
 **Webhooks (Optional - but highly recommended)**
 
