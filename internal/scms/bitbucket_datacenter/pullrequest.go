@@ -163,7 +163,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	payload := pullRequestPayload{
 		ID:          prID,
-		Version:     current.Version,
+		Version:     &current.Version,
 		Title:       title,
 		Description: description,
 		FromRef:     newPullRequestRef(current.FromRef.DisplayID, projectKey, repoSlug),
