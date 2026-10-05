@@ -489,7 +489,7 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(gate).To(Equal(git.RestoreBlock{IsRestore: true, RestoredFrom: v1, BlockedDrySha: activeDry}))
 
 		unblockPayload, err := json.Marshal(map[string][]string{
-			constants.TrailerRestoredFrom:      {v1},
+			constants.TrailerRestoredFrom:       {v1},
 			constants.TrailerRestoreUnblockedAt: {"2024-10-02T18:00:00Z"},
 		})
 		Expect(err).NotTo(HaveOccurred())
