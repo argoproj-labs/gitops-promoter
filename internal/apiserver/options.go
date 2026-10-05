@@ -36,6 +36,8 @@ import (
 // virtual (computed on the fly from a controller-runtime cache).
 type Options struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
+	// Namespace, when set, restricts the read cache to this namespace.
+	Namespace string
 }
 
 // NewOptions returns Options with sane defaults for the dashboard apiserver.

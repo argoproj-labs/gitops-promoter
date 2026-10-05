@@ -38,6 +38,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 var log = ctrl.Log.WithName("dashboard-apiserver")
@@ -68,17 +69,26 @@ type BundleProvider struct {
 	// give label-selector watchers correct ADDED/DELETED transitions when an
 	// object's labels start or stop matching their selector.
 	known map[types.NamespacedName]labels.Set
+	// namespace, when set, is the only namespace the cache holds. Requests for other namespaces return nothing.
+	namespace string
 
 	mu     sync.RWMutex
 	rv     atomic.Uint64
 	nextID int
 }
 
-// NewBundleProvider creates a provider backed by the given cache.
-func NewBundleProvider(c cache.Cache) *BundleProvider {
+// NewBundleProvider creates a provider backed by the given cache. namespace is the only namespace the cache
+// holds, or empty for all namespaces.
+func NewBundleProvider(c cache.Cache, namespace string) *BundleProvider {
 	p := newProviderWithReader(c)
 	p.cache = c
+	p.namespace = namespace
 	return p
+}
+
+// outOfScope reports whether namespace is outside the namespace the cache holds.
+func (p *BundleProvider) outOfScope(namespace string) bool {
+	return p.namespace != "" && namespace != "" && namespace != p.namespace
 }
 
 // newProviderWithReader creates a provider backed by an arbitrary read-only client.
@@ -110,7 +120,7 @@ func (p *BundleProvider) currentResourceVersion() string {
 
 // childKinds are all resource kinds whose changes can affect a bundle.
 func (p *BundleProvider) childKinds() []client.Object {
-	return append([]client.Object{
+	kinds := []client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
 		&promoterv1alpha1.ChangeTransferPolicyHistory{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
@@ -118,8 +128,11 @@ func (p *BundleProvider) childKinds() []client.Object {
 		&promoterv1alpha1.CommitStatus{},
 		&promoterv1alpha1.GitRepository{},
 		&promoterv1alpha1.ScmProvider{},
-		&promoterv1alpha1.ClusterScmProvider{},
-	}, controller.GateCommitStatusKinds()...)
+	}
+	if settings.ClusterScmProviderEnabled() {
+		kinds = append(kinds, &promoterv1alpha1.ClusterScmProvider{})
+	}
+	return append(kinds, controller.GateCommitStatusKinds()...)
 }
 
 // SetupInformers registers event handlers for all child kinds so that any change
@@ -322,6 +335,9 @@ func (p *BundleProvider) keysReferencingScmProvider(ctx context.Context, provide
 
 // Get builds the bundle for a single PromotionStrategy.
 func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*viewv1alpha1.PromotionStrategyDetails, error) {
+	if p.outOfScope(namespace) {
+		return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
+	}
 	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion())
 }
 
@@ -334,6 +350,9 @@ func (p *BundleProvider) List(ctx context.Context, namespace, name string, label
 	rv := p.currentResourceVersion()
 	out := &viewv1alpha1.PromotionStrategyDetailsList{
 		ResourceVersion: rv,
+	}
+	if p.outOfScope(namespace) {
+		return out, nil
 	}
 
 	if name != "" {

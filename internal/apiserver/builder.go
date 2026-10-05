@@ -29,6 +29,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 // detailsUIDNamespace is a fixed UUID namespace used to derive deterministic UIDs
@@ -181,6 +182,9 @@ func attachScmProvider(ctx context.Context, reader client.Reader, namespace stri
 	ref := gitRepo.Spec.ScmProviderRef
 	switch ref.Kind {
 	case "ClusterScmProvider":
+		if !settings.ClusterScmProviderEnabled() {
+			return nil
+		}
 		provider := &promoterv1alpha1.ClusterScmProvider{}
 		if err := reader.Get(ctx, client.ObjectKey{Name: ref.Name}, provider); err != nil {
 			if apierrors.IsNotFound(err) {

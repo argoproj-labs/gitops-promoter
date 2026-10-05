@@ -31,6 +31,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -267,5 +268,32 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.ScmProvider).To(BeNil())
 		Expect(bundle.ClusterScmProvider).NotTo(BeNil())
 		Expect(bundle.ClusterScmProvider.Name).To(Equal("cluster-scm"))
+	})
+
+	It("omits the ClusterScmProvider when ClusterScmProvider support is disabled", func() {
+		settings.SetClusterScmProviderEnabled(false)
+		DeferCleanup(settings.SetClusterScmProviderEnabled, true)
+		objs := []client.Object{
+			&promoterv1alpha1.PromotionStrategy{
+				Name: testPSName, Namespace: testNamespace,
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+				},
+			},
+			&promoterv1alpha1.GitRepository{
+				ObjectMeta: objectMeta("my-repo"),
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "cluster-scm"},
+				},
+			},
+			&promoterv1alpha1.ClusterScmProvider{Name: "cluster-scm"},
+		}
+
+		bundle, err := buildBundle(context.Background(), newFakeReader(objs...), testNamespace, testPSName, "1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(bundle.GitRepository).NotTo(BeNil())
+		Expect(bundle.ClusterScmProvider).To(BeNil())
 	})
 })

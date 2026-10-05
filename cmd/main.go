@@ -632,6 +632,20 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 			ctx := ctrl.SetupSignalHandler()
 
+			namespace, _, err := clientConfig.Namespace()
+			if err != nil {
+				return fmt.Errorf("failed to get namespace: %w", err)
+			}
+			scope, clusterScmProviderMode, err := getStartupSettings(ctx, restConfig, namespace)
+			if err != nil {
+				return fmt.Errorf("read startup config: %w", err)
+			}
+			settings.SetClusterScmProviderEnabled(clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled)
+			if scope == promoterv1alpha1.ControllerScopeNamespace {
+				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
+				opts.Namespace = namespace
+			}
+
 			setupLog.Info("starting dashboard aggregation apiserver")
 			if err := apiserver.Run(ctx, restConfig, opts); err != nil {
 				return fmt.Errorf("apiserver exited with error: %w", err)

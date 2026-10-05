@@ -9400,6 +9400,14 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -10101,6 +10109,24 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: leader-election-rolebinding
@@ -10140,20 +10166,21 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/component: dashboard-apiserver
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/part-of: promoter
-  name: promoter-apiserver
+  name: promoter-promotionstrategydetails-viewer
+  namespace: promoter-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: promoter-apiserver
+  name: promoter-promotionstrategydetails-viewer
 subjects:
 - kind: ServiceAccount
-  name: promoter-apiserver
+  name: promoter-controller-manager
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -10171,23 +10198,6 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: promoter-apiserver
-  namespace: promoter-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/component: dashboard-apiserver
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/part-of: promoter
-  name: promoter-promotionstrategydetails-viewer
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: promoter-promotionstrategydetails-viewer
-subjects:
-- kind: ServiceAccount
-  name: promoter-controller-manager
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
