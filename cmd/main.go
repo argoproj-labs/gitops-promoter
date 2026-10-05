@@ -205,7 +205,6 @@ func runController(
 		return fmt.Errorf("read startup config: %w", err)
 	}
 	clusterScmProviderEnabled := clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
-	settings.SetClusterScmProviderEnabled(clusterScmProviderEnabled)
 	if !clusterScmProviderEnabled {
 		setupLog.Info("ClusterScmProvider support disabled")
 	}
@@ -640,7 +639,7 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("read startup config: %w", err)
 			}
-			settings.SetClusterScmProviderEnabled(clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled)
+			opts.ClusterScmProviderMode = clusterScmProviderMode
 			if scope == promoterv1alpha1.ControllerScopeNamespace {
 				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
 				opts.Namespace = namespace

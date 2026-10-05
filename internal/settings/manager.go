@@ -280,6 +280,15 @@ func (m *Manager) GetClusterScmProviderModeDirect(ctx context.Context) (promoter
 	return cc.Spec.ClusterScmProvider.Mode, nil
 }
 
+// GetClusterScmProviderMode returns spec.clusterScmProvider.mode.
+func (m *Manager) GetClusterScmProviderMode(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
+	cc, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.ClusterScmProvider.Mode, nil
+}
+
 // GetWebRequestCommitStatusNamespaceMetadata returns spec.webRequestCommitStatus.namespaceMetadata.
 func (m *Manager) GetWebRequestCommitStatusNamespaceMetadata(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
 	cc, err := m.getControllerConfiguration(ctx)

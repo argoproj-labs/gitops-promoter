@@ -26,6 +26,7 @@ import (
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -56,7 +57,7 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 		return nil, fmt.Errorf("failed to register gate field indexes: %w", err)
 	}
 
-	provider := NewBundleProvider(readCache, opts.Namespace)
+	provider := NewBundleProvider(readCache, opts.Namespace, opts.ClusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled)
 	if err := provider.SetupInformers(ctx); err != nil {
 		return nil, fmt.Errorf("failed to set up informers: %w", err)
 	}

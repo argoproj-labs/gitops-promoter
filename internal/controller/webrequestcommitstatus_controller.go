@@ -399,7 +399,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
 		ctx,
 		r.Client,
-		r.SettingsMgr.GetControllerNamespace(),
+		r.SettingsMgr,
 		repositoryRef,
 		&metav1.ObjectMeta{Namespace: namespace},
 	)
@@ -575,7 +575,7 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	}
 
 	// Resolve the ScmProvider (namespaced or cluster-scoped).
-	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, gitRepo, wrcs)
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, r.SettingsMgr, gitRepo, wrcs)
 	if err != nil {
 		return fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
 	}
