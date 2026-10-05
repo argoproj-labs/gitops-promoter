@@ -49,8 +49,8 @@ type HistoryApplyConfiguration struct {
 	// version and describe the original promotion, not the restore. active.hydrated is the restore commit
 	// itself, so active.hydrated.commitTime is when the restore was written.
 	RestoredFrom *string `json:"restoredFrom,omitempty"`
-	// RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
-	// read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+	// RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+	// has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339).
 	// While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
 	// moved off of is blocked from opening a pull request.
 	RevertUnblockedAt *v1.Time `json:"revertUnblockedAt,omitempty"`

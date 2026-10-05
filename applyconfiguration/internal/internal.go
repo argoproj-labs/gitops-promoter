@@ -1507,6 +1507,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertActiveCommitSpec
   map:
     fields:
+    - name: blockEnvironment
+      type:
+        scalar: boolean
+      default: true
     - name: branch
       type:
         scalar: string

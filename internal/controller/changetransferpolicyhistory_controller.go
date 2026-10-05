@@ -237,9 +237,9 @@ func (r *ChangeTransferPolicyHistoryReconciler) SetupWithManager(ctx context.Con
 			handler.EnqueueRequestsFromMapFunc(r.mapCTPToChangeTransferPolicyHistories),
 			builder.WithPredicates(ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate())).
 		// A restore writes a new active commit and its promotion-history note, then sets
-		// status.restoredFrom. Deleting the RevertActiveCommit stamps Promoter-revert-unblocked-at
-		// on that note in the finalizer before the object is removed. That stamp does not move the
-		// active tip or the ChangeTransferPolicy pull request, so the watch above does not fire.
+		// status.restoredFrom. Setting spec.blockEnvironment to false deletes the object; the finalizer
+		// stamps Promoter-revert-unblocked-at on that note before it disappears. That stamp does not
+		// move the active tip or the ChangeTransferPolicy pull request, so the watch above does not fire.
 		// Map from spec.promotionStrategyRef and spec.branch, the same way the ChangeTransferPolicy
 		// controller does, so the history object is found before an owner reference exists. Creates
 		// are ignored because the note does not exist yet. Status updates are watched only when
@@ -284,9 +284,10 @@ func (r *ChangeTransferPolicyHistoryReconciler) mapRevertActiveCommitToChangeTra
 }
 
 // revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate wakes history when a restore has
-// been recorded or when the RevertActiveCommit is deleted. The delete is what publishes
-// Promoter-revert-unblocked-at: the finalizer writes that trailer, then the object goes away, and
-// neither event changes ChangeTransferPolicy status.
+// been recorded or when the RevertActiveCommit is deleted. A delete with spec.blockEnvironment false
+// publishes Promoter-revert-unblocked-at: the finalizer writes that trailer, then the object goes
+// away. A delete while the field is still true does not write it. Neither event changes
+// ChangeTransferPolicy status.
 func revertActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc:  func(event.CreateEvent) bool { return false },

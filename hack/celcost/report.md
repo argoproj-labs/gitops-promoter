@@ -20,7 +20,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
-| RevertActiveCommit | v1alpha1 | 89 | 0.00% |
+| RevertActiveCommit | v1alpha1 | 165 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 21 | 0.00% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
@@ -254,11 +254,11 @@ Source: `promoter.argoproj.io_revertactivecommits.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
+| `.spec` | 78 | 0.00% | `self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch == oldSelf.branch && self.sha == oldSelf.sha` |
 | `.spec.branch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.branch` | 42 | 0.00% | `!self.contains('..')` |
 | `.spec.branch` | 3 | 0.00% | `!self.startsWith('-')` |
-| `.spec` | 2 | 0.00% | `self == oldSelf` |
-| **Total** | **89** | **0.00%** | |
+| **Total** | **165** | **0.00%** | |
 
 #### ScheduledCommitStatus
 

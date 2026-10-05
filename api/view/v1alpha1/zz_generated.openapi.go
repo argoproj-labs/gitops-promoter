@@ -4077,7 +4077,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"revertUnblockedAt": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore moved off of is blocked from opening a pull request.",
+							Description: "RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore moved off of is blocked from opening a pull request.",
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
 						},
 					},
@@ -5310,7 +5310,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it reverted. To restore something else, create a new RevertActiveCommit.",
+				Description: "RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef, branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it reverted. To restore something else, create a new RevertActiveCommit. blockEnvironment may change.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"promotionStrategyRef": {
@@ -5333,6 +5333,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitSpec(re
 							Description: "Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. Once the active tip already restores this sha and its note carries Promoter-revert-unblocked-at, another RevertActiveCommit for the same sha is refused until the active branch moves, and that note is left unchanged. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RevertActiveCommit exists. Deleting it lifts that hold but does not by itself propose the reverted change again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.",
 							Default:     "",
 							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"blockEnvironment": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BlockEnvironment holds promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is still a gated restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again.",
+							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},
@@ -5368,7 +5375,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertActiveCommitStatus(
 					},
 					"blockedDrySha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit exists. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts this block, but a promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
+							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the reverted change is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment is set to false. That stamps Promoter-revert-unblocked-at and deletes this object. Deleting it while the field is still true does not stamp the trailer, so the hold stays. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. A promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

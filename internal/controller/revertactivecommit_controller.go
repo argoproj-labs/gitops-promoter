@@ -72,9 +72,11 @@ type RevertActiveCommitReconciler struct {
 // not rewritten. status.blockedDrySha is the dry SHA that was on the active branch; the
 // ChangeTransferPolicy does not open a pull request that would put it
 // back while the restore commit's note lacks Promoter-revert-unblocked-at. A pull request for a different
-// proposed dry SHA may open, but nothing is auto-merged until that trailer is written. Deleting this
-// resource stamps Promoter-revert-unblocked-at on the restore commit's promotion-history note (via a
-// finalizer) and lifts both holds. It does not by itself propose the reverted dry SHA again: see
+// proposed dry SHA may open, but nothing is auto-merged until that trailer is written. Setting
+// spec.blockEnvironment to false (it defaults to true) deletes this resource. The finalizer then
+// stamps Promoter-revert-unblocked-at before the object can disappear. Deleting it while the field
+// is still true does not stamp the trailer, so deleting the PromotionStrategy cannot release the
+// hold. It does not by itself propose the reverted dry SHA again: see
 // ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
 func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
@@ -117,6 +119,18 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if rc.Status.RestoredFrom == rc.Spec.Sha {
+		if !rc.Spec.BlocksEnvironment() {
+			// Stamp before Delete so a ChangeTransferPolicy reconcile in the window cannot adopt a
+			// second RevertActiveCommit against a note that is still gated. The finalizer stamps
+			// again, idempotently, and will not release until that write has succeeded.
+			if err := r.unblockRestoreOnDelete(ctx, &rc); err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := r.Delete(ctx, &rc); err != nil && !k8s_errors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to delete RevertActiveCommit after blockEnvironment was set false: %w", err)
+			}
+			return ctrl.Result{}, nil
+		}
 		logger.V(4).Info("restore already applied", "sha", rc.Spec.Sha, "activeSha", rc.Status.ActiveSha)
 		return r.requeueResult(ctx)
 	}
@@ -158,12 +172,19 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		r.Recorder.Eventf(&rc, nil, "Normal", "Restored", "Restoring", "Restored %s to %s as %s", ctp.Spec.ActiveBranch, rc.Spec.Sha, restored.ActiveSha)
 	}
+	// blockEnvironment false deletes on the next pass, after this status is stored, so the
+	// finalizer observes activeSha and stamps the note before the object disappears.
+	if !rc.Spec.BlocksEnvironment() {
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return r.requeueResult(ctx)
 }
 
-// handleFinalizer ensures RevertActiveCommitFinalizer is on the resource while it exists so deletion
-// stamps Promoter-revert-unblocked-at on the restore commit before the object is removed. The first bool
-// is true when Reconcile should not run the restore path (the resource is terminating).
+// handleFinalizer keeps RevertActiveCommitFinalizer on the resource until deletion. When
+// spec.blockEnvironment is false the finalizer stamps Promoter-revert-unblocked-at before it
+// releases, so a self-delete cannot drop the object ahead of the note. A delete while the field
+// is still true releases without writing. The first bool is true when Reconcile should not run
+// the restore path (the resource is terminating).
 func (r *RevertActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (bool, error) {
 	finalizer := promoterv1alpha1.RevertActiveCommitFinalizer
 
@@ -186,8 +207,10 @@ func (r *RevertActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *
 		return true, nil
 	}
 
-	if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
-		return false, err
+	if !rc.Spec.BlocksEnvironment() {
+		if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
+			return false, err
+		}
 	}
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
@@ -204,10 +227,9 @@ func (r *RevertActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *
 	return true, nil
 }
 
-// unblockRestoreOnDelete stamps Promoter-revert-unblocked-at on the restore commit's promotion-history
-// note when a successful restore was recorded. When the PromotionStrategy or ChangeTransferPolicy is
-// already gone (for example GC after the policy was deleted), the git write is skipped so the
-// finalizer can still release.
+// unblockRestoreOnDelete stamps Promoter-revert-unblocked-at on the restore commit when a
+// successful restore was recorded and spec.blockEnvironment is false. When the ChangeTransferPolicy
+// is already gone the git write is skipped so the finalizer can still release.
 func (r *RevertActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) error {
 	logger := log.FromContext(ctx)
 	if rc.Status.RestoredFrom != rc.Spec.Sha || rc.Status.ActiveSha == "" {
@@ -255,19 +277,8 @@ func (r *RevertActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Contex
 	return nil
 }
 
-// requeueResult schedules the next reconcile from ControllerConfiguration. The git restore itself
-// still runs once: a later pass returns before cloning when status.restoredFrom already matches spec.sha.
-func (r *RevertActiveCommitReconciler) requeueResult(ctx context.Context) (ctrl.Result, error) {
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.RevertActiveCommitConfiguration](ctx, r.SettingsMgr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for RevertActiveCommit: %w", err)
-	}
-	return ctrl.Result{RequeueAfter: requeueDuration}, nil
-}
-
 // changeTransferPolicyForUnblock loads the ChangeTransferPolicy named for this RevertActiveCommit's
 // strategy and branch without requiring the branch to still be listed on the PromotionStrategy.
-// Deletion must not be blocked when an environment was removed after the restore.
 func (r *RevertActiveCommitReconciler) changeTransferPolicyForUnblock(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	if rc.Spec.PromotionStrategyRef.Name == "" || rc.Spec.Branch == "" {
 		return nil, fmt.Errorf("RevertActiveCommit %q has empty promotionStrategyRef or branch", rc.Name)
@@ -278,6 +289,16 @@ func (r *RevertActiveCommitReconciler) changeTransferPolicyForUnblock(ctx contex
 		return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctpName, err)
 	}
 	return ctp, nil
+}
+
+// requeueResult schedules the next reconcile from ControllerConfiguration. The git restore itself
+// still runs once: a later pass returns before cloning when status.restoredFrom already matches spec.sha.
+func (r *RevertActiveCommitReconciler) requeueResult(ctx context.Context) (ctrl.Result, error) {
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.RevertActiveCommitConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for RevertActiveCommit: %w", err)
+	}
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // resolveChangeTransferPolicy loads the PromotionStrategy and the ChangeTransferPolicy the strategy
@@ -357,7 +378,8 @@ func (r *RevertActiveCommitReconciler) SetupWithManager(ctx context.Context, mgr
 		For(&promoterv1alpha1.RevertActiveCommit{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			// deletionTimestamp is metadata, so generation does not change when a delete is requested.
-			// Without this, a terminating RevertActiveCommit would never run the unblock finalizer.
+			// Without this, a terminating RevertActiveCommit would never run the finalizer that
+			// stamps Promoter-revert-unblocked-at when spec.blockEnvironment is false.
 			predicate.Funcs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
 					if e.ObjectOld == nil || e.ObjectNew == nil {

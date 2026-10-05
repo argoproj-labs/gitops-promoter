@@ -94,7 +94,8 @@ const (
 	PromotionCompletedMessage = "Environment branch %s promoted to dry sha %s (previously %s)"
 
 	// RevertSupersededReason indicates that a RevertActiveCommit was deleted because its restore commit
-	// is behind the active tip. The object's finalizer unblocks that older restore.
+	// is behind the active tip. The delete does not stamp Promoter-revert-unblocked-at; the new tip
+	// stays held until its own spec.blockEnvironment is set to false.
 	RevertSupersededReason = "RevertSuperseded"
 	// RevertSupersededMessage is the message for a superseded RevertActiveCommit.
 	// Args: RevertActiveCommit name, its status.activeSha, the active tip.

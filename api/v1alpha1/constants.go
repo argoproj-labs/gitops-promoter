@@ -71,8 +71,10 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
 
-// RevertActiveCommitFinalizer holds deletion until the controller stamps Promoter-revert-unblocked-at on
-// the restore commit's promotion-history note, so the ChangeTransferPolicy can resume auto-merge.
+// RevertActiveCommitFinalizer holds deletion until, when spec.blockEnvironment is false, the controller
+// has stamped Promoter-revert-unblocked-at on the restore commit. A delete while the field is still
+// true (for example garbage collection after the PromotionStrategy is deleted) removes the finalizer
+// without writing the note.
 const RevertActiveCommitFinalizer = "revertactivecommit.promoter.argoproj.io/finalizer"
 
 // InstanceIDLabel partitions resources between multiple controller installs sharing an API server.

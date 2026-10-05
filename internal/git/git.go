@@ -1509,7 +1509,7 @@ type RestoreResult struct {
 // A repeat call is a no-op when the active tip already has the restore marker for targetSha and
 // the matching tree and its note does not carry Promoter-revert-unblocked-at. That is the same
 // restore retrying after the commit was already pushed. When that note does carry the trailer, a
-// previous RevertActiveCommit was deleted: the call is refused and the note is left as it is, so
+// previous RevertActiveCommit set spec.blockEnvironment to false: the call is refused and the note is left as it is, so
 // the unblock stays in history. The branch has not moved, so there is no new commit to gate on.
 // When the active tip already has the matching tree without the restore marker, the branch is
 // running that version already: nothing is written, nothing moved off the branch, and the result
@@ -1551,7 +1551,7 @@ type RestoreResult struct {
 //	# Promoter-restored-from: T on the history note. Commit trailers are read only when that note
 //	# is absent, empty, or not valid JSON; a note that parses and merely lacks the key is kept.
 //	# Equal tree with the marker: repeat call. If the tip's note also carries
-//	# Promoter-revert-unblocked-at (a previous RevertActiveCommit was deleted), refuse and leave
+//	# Promoter-revert-unblocked-at (spec.blockEnvironment was set to false), refuse and leave
 //	# the note unchanged. Equal tree without the marker: Unchanged, return here.
 //	git rev-parse --verify <activeTip>^{tree}
 //	# activeTip's history note comes from the prefetch above (no notes show)

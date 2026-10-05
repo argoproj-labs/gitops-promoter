@@ -426,8 +426,10 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		// Promoter-revert-unblocked-at. Map by the ChangeTransferPolicy name derived from
 		// spec.promotionStrategyRef and spec.branch, rather than the owner reference, so a create
 		// is seen before the RevertActiveCommit controller has stamped ownership, and a delete
-		// (which stamps Promoter-revert-unblocked-at via its finalizer) wakes this controller to re-read
-		// the note. Status updates are watched only when the restore result changes, so the
+		// wakes this controller to re-read the note. Setting spec.blockEnvironment to false deletes the
+		// object; its finalizer stamps Promoter-revert-unblocked-at before the object disappears, and
+		// that delete is what lifts the note gate. A delete while the field is still true does not
+		// stamp the trailer. Status updates are watched only when the restore result changes, so the
 		// pending-window hold lifts once status.restoredFrom is set.
 		Watches(&promoterv1alpha1.RevertActiveCommit{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
 			rc, ok := obj.(*promoterv1alpha1.RevertActiveCommit)
@@ -1724,8 +1726,8 @@ func commitNotInClone(err error) bool {
 
 // deleteSupersededRevertActiveCommits deletes RevertActiveCommits for this policy whose recorded
 // restore commit is an ancestor of the active tip. The tip is the one calculateStatus just wrote.
-// Deletion runs the RevertActiveCommit finalizer, which stamps Promoter-revert-unblocked-at on that
-// older commit only. A pending object (no activeSha), one whose restore is still the tip, and one
+// Deletion does not stamp Promoter-revert-unblocked-at. The new tip's note holds promotion until
+// its RevertActiveCommit has spec.blockEnvironment set to false. A pending object (no activeSha), one whose restore is still the tip, and one
 // whose restore commit is not in the clone are left alone. A missing commit is not behind the tip;
 // failing the reconcile on it would stop promotion until the object was deleted by hand. Other
 // ancestor-check errors still fail the reconcile. A cache that still lists a just-deleted object is

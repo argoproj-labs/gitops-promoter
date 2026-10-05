@@ -22,10 +22,11 @@ package v1alpha1
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
-// once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
-// reverted. To restore something else, create a new RevertActiveCommit.
+// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef,
+// branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
+// active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha,
+// strategy, or branch would lose track of what it reverted. To restore something else, create a new
+// RevertActiveCommit. blockEnvironment may change.
 type RevertActiveCommitSpecApplyConfiguration struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
@@ -48,6 +49,13 @@ type RevertActiveCommitSpecApplyConfiguration struct {
 	// reverted change again; see status.blockedDrySha.
 	// The restore runs once. Later promotions are left alone.
 	Sha *string `json:"sha,omitempty"`
+	// BlockEnvironment holds promotion for this environment while true. It defaults to true.
+	// Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history
+	// note and delete this object. Deleting it while the field is still true does not stamp that
+	// trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is
+	// still a gated restore, the ChangeTransferPolicy recreates this object (with the default true)
+	// so the field can be set false again.
+	BlockEnvironment *bool `json:"blockEnvironment,omitempty"`
 }
 
 // RevertActiveCommitSpecApplyConfiguration constructs a declarative configuration of the RevertActiveCommitSpec type for use with
@@ -77,5 +85,13 @@ func (b *RevertActiveCommitSpecApplyConfiguration) WithBranch(value string) *Rev
 // If called multiple times, the Sha field is set to the value of the last call.
 func (b *RevertActiveCommitSpecApplyConfiguration) WithSha(value string) *RevertActiveCommitSpecApplyConfiguration {
 	b.Sha = &value
+	return b
+}
+
+// WithBlockEnvironment sets the BlockEnvironment field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BlockEnvironment field is set to the value of the last call.
+func (b *RevertActiveCommitSpecApplyConfiguration) WithBlockEnvironment(value bool) *RevertActiveCommitSpecApplyConfiguration {
+	b.BlockEnvironment = &value
 	return b
 }

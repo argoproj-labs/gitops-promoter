@@ -24,11 +24,12 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
-// once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-// existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
-// reverted. To restore something else, create a new RevertActiveCommit.
-// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new RevertActiveCommit to restore a different commit, strategy, or branch"
+// RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef,
+// branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
+// active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha,
+// strategy, or branch would lose track of what it reverted. To restore something else, create a new
+// RevertActiveCommit. blockEnvironment may change.
+// +kubebuilder:validation:XValidation:rule="self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch == oldSelf.branch && self.sha == oldSelf.sha",message="promotionStrategyRef, branch, and sha are immutable; create a new RevertActiveCommit to restore a different commit, strategy, or branch"
 type RevertActiveCommitSpec struct {
 	// PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
 	// +kubebuilder:validation:Required
@@ -64,6 +65,22 @@ type RevertActiveCommitSpec struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
+
+	// BlockEnvironment holds promotion for this environment while true. It defaults to true.
+	// Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history
+	// note and delete this object. Deleting it while the field is still true does not stamp that
+	// trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is
+	// still a gated restore, the ChangeTransferPolicy recreates this object (with the default true)
+	// so the field can be set false again.
+	// +kubebuilder:default=true
+	// +optional
+	BlockEnvironment *bool `json:"blockEnvironment,omitempty"`
+}
+
+// BlocksEnvironment reports whether this revert should keep holding promotion. A nil
+// BlockEnvironment is true, matching the CRD default, so an object that omits the field stays blocked.
+func (s *RevertActiveCommitSpec) BlocksEnvironment() bool {
+	return s.BlockEnvironment == nil || *s.BlockEnvironment
 }
 
 // RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
@@ -85,10 +102,12 @@ type RevertActiveCommitStatus struct {
 	// BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
 	// moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
 	// proposed dry SHA still equals this value, so the reverted change is not put back. A different
-	// proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
-	// exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
-	// had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
-	// this block, but a promotion pull request only opens when the proposed branch has a commit the
+	// proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment
+	// is set to false. That stamps Promoter-revert-unblocked-at and deletes this object. Deleting it
+	// while the field is still true does not stamp the trailer, so the hold stays. Empty when that
+	// active tip had no hydrator.metadata, or when the active branch already had spec.sha's content
+	// so nothing was moved off it. A
+	// promotion pull request only opens when the proposed branch has a commit the
 	// active branch does not already contain. The restore commit is parented on the tip it moved
 	// off of, so when that tip already contains the proposed commit (a merge-commit promotion),
 	// this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.

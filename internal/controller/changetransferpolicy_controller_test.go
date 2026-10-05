@@ -263,13 +263,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the RevertActiveCommit, which stamps Promoter-revert-unblocked-at and allows the new dry SHA to auto-merge")
-				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
-
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, rcKey, &promoterv1alpha1.RevertActiveCommit{})
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Setting spec.blockEnvironment to false, which stamps Promoter-revert-unblocked-at and allows the new dry SHA to auto-merge")
+				setRevertBlockEnvironment(ctx, rcKey, false)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -392,8 +387,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the adopted RevertActiveCommit to stamp Promoter-revert-unblocked-at and resume auto-merge")
-				Expect(k8sClient.Delete(ctx, &adopted)).To(Succeed())
+				By("Setting spec.blockEnvironment to false on the adopted RevertActiveCommit to stamp Promoter-revert-unblocked-at and resume auto-merge")
+				setRevertBlockEnvironment(ctx, types.NamespacedName{Name: adopted.Name, Namespace: adopted.Namespace}, false)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -609,13 +604,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(laterDrySha))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-				By("Deleting the RevertActiveCommit so the later dry SHA can auto-merge")
-				Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
-
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Setting spec.blockEnvironment to false so the later dry SHA can auto-merge")
+				setRevertBlockEnvironment(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, false)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
@@ -715,7 +705,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				olderNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", firstRestore)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(olderNote).To(ContainSubstring(constants.TrailerRevertUnblockedAt))
+				Expect(olderNote).NotTo(ContainSubstring(constants.TrailerRevertUnblockedAt))
 				newerNote, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", newer.Status.ActiveSha)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(newerNote).NotTo(ContainSubstring(constants.TrailerRevertUnblockedAt))

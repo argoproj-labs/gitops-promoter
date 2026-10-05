@@ -675,8 +675,8 @@ spec:
                       type: string
                     revertUnblockedAt:
                       description: |-
-                        RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
-                        read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+                        RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+                        has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339).
                         While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
                         moved off of is blocked from opening a pull request.
                       format: date-time

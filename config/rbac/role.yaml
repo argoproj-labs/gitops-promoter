@@ -97,6 +97,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - pullrequests
+  - revertactivecommits
   verbs:
   - create
   - delete
@@ -147,15 +148,3 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertactivecommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch

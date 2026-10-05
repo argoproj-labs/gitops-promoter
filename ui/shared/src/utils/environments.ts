@@ -105,8 +105,8 @@ function revertForEnvironment(
  */
 export function revertHoldTooltip(name: string, reverted: boolean): string {
   return reverted
-    ? `RevertActiveCommit ${name} reverted this commit off the active branch, so it will not be promoted. Push a newer commit and delete the RevertActiveCommit to resume promotion.`
-    : `RevertActiveCommit ${name} is holding this environment in its reverted state, so this pull request will not auto-merge. Delete the RevertActiveCommit to resume promotion.`;
+    ? `RevertActiveCommit ${name} reverted this commit off the active branch, so it will not be promoted. Push a newer commit and set spec.blockEnvironment to false to resume promotion.`
+    : `RevertActiveCommit ${name} is holding this environment in its reverted state, so this pull request will not auto-merge. Set spec.blockEnvironment to false to resume promotion.`;
 }
 
 /**

@@ -281,8 +281,8 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 			Expect(got[constants.TrailerPullRequestID]).To(Equal([]string{"9"}))
 			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal([]string{"2020-01-01T00:00:00Z"}))
 
-			By("Deleting the RevertActiveCommit stamps Promoter-revert-unblocked-at and releases the finalizer")
-			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+			By("Setting spec.blockEnvironment to false stamps Promoter-revert-unblocked-at and deletes the RevertActiveCommit")
+			setRevertBlockEnvironment(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, false)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -374,7 +374,7 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Deleting the RevertActiveCommit still releases the finalizer")
+			By("Deleting the RevertActiveCommit still releases the finalizer without stamping the note")
 			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
@@ -427,8 +427,8 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
-			By("Deleting the RevertActiveCommit so the later dry SHA can promote through every environment")
-			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
+			By("Setting spec.blockEnvironment to false so the later dry SHA can promote through every environment")
+			setRevertBlockEnvironment(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, false)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertActiveCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -681,6 +681,17 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 		proposedTip:       proposedTip,
 		rc:                rc,
 	}
+}
+
+// setRevertBlockEnvironment sets spec.blockEnvironment. false is what stamps Promoter-revert-unblocked-at.
+func setRevertBlockEnvironment(ctx context.Context, key types.NamespacedName, block bool) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		rc := &promoterv1alpha1.RevertActiveCommit{}
+		g.Expect(k8sClient.Get(ctx, key, rc)).To(Succeed())
+		rc.Spec.BlockEnvironment = &block
+		g.Expect(k8sClient.Update(ctx, rc)).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 // promotionStrategyForRevert is a PromotionStrategy the RevertActiveCommit controller can resolve, whose

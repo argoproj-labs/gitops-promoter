@@ -1895,8 +1895,8 @@ spec:
                       type: string
                     revertUnblockedAt:
                       description: |-
-                        RevertUnblockedAt is set on a restore entry once its RevertActiveCommit was deleted. Its value is
-                        read from the Promoter-revert-unblocked-at trailer on the restore commit's promotion-history note (RFC 3339).
+                        RevertUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+                        has stamped Promoter-revert-unblocked-at on the restore commit's promotion-history note (RFC 3339).
                         While restoredFrom is set and this field is empty, auto-merge is held and the dry SHA the restore
                         moved off of is blocked from opening a pull request.
                       format: date-time
@@ -7543,11 +7543,22 @@ spec:
             type: object
           spec:
             description: |-
-              RevertActiveCommitSpec defines the desired state of RevertActiveCommit. It is immutable: the restore runs
-              once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an
-              existing RevertActiveCommit at a different sha, strategy, or branch would lose track of what it
-              reverted. To restore something else, create a new RevertActiveCommit.
+              RevertActiveCommitSpec defines the desired state of RevertActiveCommit. promotionStrategyRef,
+              branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
+              active tip it moved off of, so pointing an existing RevertActiveCommit at a different sha,
+              strategy, or branch would lose track of what it reverted. To restore something else, create a new
+              RevertActiveCommit. blockEnvironment may change.
             properties:
+              blockEnvironment:
+                default: true
+                description: |-
+                  BlockEnvironment holds promotion for this environment while true. It defaults to true.
+                  Set it to false to stamp Promoter-revert-unblocked-at on the restore commit's promotion-history
+                  note and delete this object. Deleting it while the field is still true does not stamp that
+                  trailer, so deleting the PromotionStrategy cannot release the hold. While the active tip is
+                  still a gated restore, the ChangeTransferPolicy recreates this object (with the default true)
+                  so the field can be set false again.
+                type: boolean
               branch:
                 description: |-
                   Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
@@ -7602,9 +7613,11 @@ spec:
             - sha
             type: object
             x-kubernetes-validations:
-            - message: spec is immutable; create a new RevertActiveCommit to restore
-                a different commit, strategy, or branch
-              rule: self == oldSelf
+            - message: promotionStrategyRef, branch, and sha are immutable; create
+                a new RevertActiveCommit to restore a different commit, strategy,
+                or branch
+              rule: self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch
+                == oldSelf.branch && self.sha == oldSelf.sha
           status:
             description: RevertActiveCommitStatus defines the observed state of RevertActiveCommit.
             properties:
@@ -7620,10 +7633,12 @@ spec:
                   BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
                   moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
                   proposed dry SHA still equals this value, so the reverted change is not put back. A different
-                  proposed dry SHA may open a pull request, but nothing is auto-merged while this RevertActiveCommit
-                  exists. Empty when that active tip had no hydrator.metadata, or when the active branch already
-                  had spec.sha's content so nothing was moved off it. Deleting the RevertActiveCommit lifts
-                  this block, but a promotion pull request only opens when the proposed branch has a commit the
+                  proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment
+                  is set to false. That stamps Promoter-revert-unblocked-at and deletes this object. Deleting it
+                  while the field is still true does not stamp the trailer, so the hold stays. Empty when that
+                  active tip had no hydrator.metadata, or when the active branch already had spec.sha's content
+                  so nothing was moved off it. A
+                  promotion pull request only opens when the proposed branch has a commit the
                   active branch does not already contain. The restore commit is parented on the tip it moved
                   off of, so when that tip already contains the proposed commit (a merge-commit promotion),
                   this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.
@@ -10091,6 +10106,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - pullrequests
+  - revertactivecommits
   verbs:
   - create
   - delete
@@ -10141,17 +10157,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertactivecommits
-  verbs:
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
