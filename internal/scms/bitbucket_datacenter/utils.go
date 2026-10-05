@@ -137,13 +137,13 @@ type pullRequestRef struct {
 
 // pullRequestPayload is the request body for creating or updating a pull request.
 type pullRequestPayload struct {
+	Version     *int           `json:"version,omitempty"`
 	FromRef     pullRequestRef `json:"fromRef"`
 	ToRef       pullRequestRef `json:"toRef"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	Reviewers   []any          `json:"reviewers"`
 	ID          int            `json:"id,omitempty"`
-	Version     int            `json:"version,omitempty"`
 }
 
 // newPullRequestRef creates a pullRequestRef for the given branch and repository details.
