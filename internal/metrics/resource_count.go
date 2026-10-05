@@ -30,7 +30,8 @@ var kubernetesResources = prometheus.NewGaugeVec(
 		Name: "promoter_kubernetes_resources",
 		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
 			"Updated on an interval from the controller informer stores (no per-tick API server calls); does not include resources on remote clusters " +
-			"reconciled via multicluster setup. ControllerConfiguration is omitted (singleton).",
+			"reconciled via multicluster setup. In namespaced mode, namespaced kinds are counted only in the controller install namespace. " +
+			"ControllerConfiguration is omitted (singleton).",
 	},
 	[]string{"kind", "readiness"},
 )

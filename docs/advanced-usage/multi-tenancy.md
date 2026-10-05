@@ -40,7 +40,8 @@ If you bind only a namespace-scoped `Role`, enable a **namespace-scoped cache** 
 
 When namespaced cache is active:
 
-* **`ClusterScmProvider`** is cluster-scoped: with only a namespace-scoped `Role`, the informer may repeatedly log **forbidden** list/watch errors for `clusterscmproviders`. That is noisy but does not crash the pod. Either extend RBAC so the service account can list/watch `clusterscmproviders` at cluster scope, or ignore those logs if you only use namespaced **`ScmProvider`**.
+* **`ClusterScmProvider`** is cluster-scoped: with only a namespace-scoped `Role`, the informer cannot list/watch `clusterscmproviders`. The cache never syncs, so the manager exits after the cache sync timeout and the pod restarts. Extend RBAC so the service account can list/watch `clusterscmproviders` at cluster scope, even if you only use namespaced **`ScmProvider`**.
+* If you use **`WebRequestCommitStatus`**, also grant get/list/watch on `namespaces` at cluster scope; it reads its own `Namespace` for template metadata.
 * The controller only sees **CommitStatus** objects in the controller install namespace. PromotionStrategy behavior that depends on CommitStatuses in *other* namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)) will not see those remote CommitStatuses unless they are moved into that namespace.
 
 ## CommitStatus Tenancy
