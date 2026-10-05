@@ -58,8 +58,12 @@ spec:
   sha: <40- or 64-character hydrated SHA>
 ```
 
-When `status.activeSha` is set and the Ready condition is `True`, the environment is running the restored version. The
-restore also shows up in the environment's promotion history, marked by `restoredFrom`. A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit that carries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the restore commit only. The commit the restore moved off does not carry it, so that commit can be restored again. Once the active tip is already the restore of `sha` and its note carries `Promoter-revert-unblocked-at`, another RevertActiveCommit for that same `sha` is refused until the active branch moves. The note is left unchanged, so the unblock stays in history. While that refused RevertActiveCommit exists, `status.restoredFrom` stays empty and it holds promotion for the environment; delete it to release the hold.
+When `status.activeSha` is set and the Ready condition is `True`, the active Git branch has been restored. Confirm
+that Argo CD has synced the restore commit (`status.activeSha`) and that the workloads are healthy before you remove
+the promotion hold. With auto-sync disabled, a sync window blocking deployment, or a failed rollout, the Git restore
+can succeed while the previous workload is still serving.
+
+The restore also shows up in the environment's promotion history, marked by `restoredFrom`. A `sha` that is not in the active branch's history (for example a commit from another environment's branch or an unmerged pull request) is refused, and the Ready condition is `False` with the reason. A commit that carries `Promoter-restored-from` is itself a restore and is refused. That trailer is written on the restore commit only. The commit the restore moved off does not carry it, so that commit can be restored again. Once the active tip is already the restore of `sha` and its note carries `Promoter-revert-unblocked-at`, another RevertActiveCommit for that same `sha` is refused until the active branch moves. The note is left unchanged, so the unblock stays in history. While that refused RevertActiveCommit exists, `status.restoredFrom` stays empty and it holds promotion for the environment; delete it to release the hold.
 
 > [!NOTE]
 > Creating a RevertActiveCommit is the authorization boundary: anyone who can create one in the PromotionStrategy's
