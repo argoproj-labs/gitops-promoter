@@ -527,6 +527,9 @@ Check the following settings of every repository the GitOps Promoter manages:
 * **Ref name restrictions**: The GitOps Promoter stores promotion history in git notes (`refs/notes/promoter.history`),
   and hydrators such as the Argo CD source hydrator do the same (`refs/notes/hydrator.metadata`). If your instance
   restricts ref names, for example with a pre-receive hook or a branch naming plugin, allow `refs/notes/*`.
+* **Merge strategies**: The GitOps Promoter merges pull requests with the **Merge commit (`--no-ff`)** strategy, so
+  enable it under **Repository settings** → **Merge strategies**; it does not have to be the default. Pull requests
+  merged by hand with another strategy, such as squash, are handled as well.
 
 **Webhooks (Optional - but highly recommended)**
 

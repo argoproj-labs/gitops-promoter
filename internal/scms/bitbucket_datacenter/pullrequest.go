@@ -193,7 +193,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 // Close declines (closes) an existing pull request.
 //
-//nolint:dupl // Close and Merge are intentionally structurally similar operations; they differ only in the path suffix and error messages.
+//nolint:dupl // Close and Merge are intentionally structurally similar operations; they differ only in the path suffix, the merge request body and error messages.
 func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -240,7 +240,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 
 // Merge merges an existing pull request.
 //
-//nolint:dupl // Merge and Close are intentionally structurally similar operations; they differ only in the path suffix and error messages.
+//nolint:dupl // Merge and Close are intentionally structurally similar operations; they differ only in the path suffix, the merge request body and error messages.
 func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
@@ -268,7 +268,10 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 	path := fmt.Sprintf("%s/%d/merge?version=%d", prPath(projectKey, repoSlug), prID, current.Version)
 
 	start := time.Now()
-	statusCode, body, err := pr.client.do(ctx, http.MethodPost, path, nil)
+	statusCode, body, err := pr.client.do(ctx, http.MethodPost, path, mergeRequest{
+		StrategyID: mergeStrategyNoFastForward,
+		Message:    prObj.Spec.Commit.Message,
+	})
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
@@ -388,6 +391,13 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 		if current.Properties.MergeCommit != nil {
 			result.MergedTargetSHA = current.Properties.MergeCommit.ID
 		}
+		if result.MergedTargetSHA == "" {
+			sha, err := pr.mergeCommitFromActivities(ctx, repo, prID)
+			if err != nil {
+				return scms.GetPullRequestResult{}, err
+			}
+			result.MergedTargetSHA = sha
+		}
 	case "DECLINED", "SUPERSEDED":
 		result.State = v1alpha1.PullRequestClosed
 	default:
@@ -422,6 +432,59 @@ func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []
 // RemoveLabels is not supported on Bitbucket DataCenter/Server pull requests yet.
 func (pr *PullRequest) RemoveLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
 	return errors.New("bitbucket datacenter does not support pull request labels")
+}
+
+// prActivitiesResponse is a page of pull-request activities, newest first.
+type prActivitiesResponse struct {
+	Values        []prActivity `json:"values"`
+	IsLastPage    bool         `json:"isLastPage"`
+	NextPageStart int          `json:"nextPageStart"`
+}
+
+// prActivity is the subset of a pull-request activity needed to find the merge commit.
+type prActivity struct {
+	Commit *prResponseMergeCommit `json:"commit,omitempty"`
+	Action string                 `json:"action"`
+}
+
+// maxActivityPages bounds the activity pages read when looking for the merge commit.
+const maxActivityPages = 10
+
+// mergeCommitFromActivities returns the commit recorded on the pull request's MERGED activity. Bitbucket
+// DataCenter/Server leaves properties.mergeCommit out of the pull request, at least for squash merges, but the
+// activity always names the commit that landed on the target branch.
+func (pr *PullRequest) mergeCommitFromActivities(ctx context.Context, repo *v1alpha1.GitRepository, prID int) (string, error) {
+	basePath := fmt.Sprintf("%s/%d/activities", prPath(repo.Spec.BitbucketDataCenter.Project, repo.Spec.BitbucketDataCenter.Name), prID)
+	start := 0
+	for range maxActivityPages {
+		requestStart := time.Now()
+		statusCode, body, err := pr.client.do(ctx, http.MethodGet, fmt.Sprintf("%s?start=%d&limit=50", basePath, start), nil)
+		if err != nil {
+			statusCode = http.StatusInternalServerError
+		}
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(requestStart), nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to list pull request activities: %w", err)
+		}
+		if statusCode != http.StatusOK {
+			return "", fmt.Errorf("unexpected status code %d when listing pull request activities: %s", statusCode, string(body))
+		}
+
+		var page prActivitiesResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return "", fmt.Errorf("failed to parse pull request activities response: %w", err)
+		}
+		for _, activity := range page.Values {
+			if activity.Action == "MERGED" && activity.Commit != nil {
+				return activity.Commit.ID, nil
+			}
+		}
+		if page.IsLastPage {
+			return "", nil
+		}
+		start = page.NextPageStart
+	}
+	return "", nil
 }
 
 // getPR fetches the current state of a pull request including its version.

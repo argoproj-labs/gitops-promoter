@@ -146,6 +146,16 @@ type pullRequestPayload struct {
 	ID          int            `json:"id,omitempty"`
 }
 
+// mergeStrategyNoFastForward is the Bitbucket DataCenter/Server ID of the "Merge commit" strategy. The promoter
+// recovers the proposed hydrated SHA from a merge commit's second parent, which squash and rebase strategies lose.
+const mergeStrategyNoFastForward = "no-ff"
+
+// mergeRequest is the request body for merging a pull request.
+type mergeRequest struct {
+	StrategyID string `json:"strategyId"`
+	Message    string `json:"message,omitempty"`
+}
+
 // newPullRequestRef creates a pullRequestRef for the given branch and repository details.
 func newPullRequestRef(branch, projectKey, repoSlug string) pullRequestRef {
 	ref := pullRequestRef{
