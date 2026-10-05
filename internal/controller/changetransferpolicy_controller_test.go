@@ -1366,17 +1366,23 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
+				originalTitle := pr.Spec.Title
 
 				fake.ResetPullRequestCallCounts(pr.UID)
 				baselineFindOpen := fake.FindOpenCallCount(pr.UID)
-
 				baselineUpdate := fake.UpdateCallCount(pr.UID)
 
-				By("Changing PR spec so the PR controller must sync to SCM")
+				// Drive the title/description change through CTP. CTP owns those fields via SSA
+				// with ForceOwnership, so a direct k8sClient.Update of pr.Spec.Title races the next
+				// CTP reconcile, which rewrites the templated title and can make the PR controller
+				// see only a non-SCM generation bump (shouldSkipSCMSync) — FindOpen/Update stay 0.
+				By("Advancing proposed so CTP re-templates SCM-relevant PR fields")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				By("Waiting for CTP to apply a new PR title")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					pr.Spec.Title = pr.Spec.Title + "-updated"
-					g.Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+					g.Expect(pr.Spec.Title).NotTo(Equal(originalTitle))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
