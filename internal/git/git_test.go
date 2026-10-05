@@ -1169,6 +1169,16 @@ var _ = Describe("ActivePath support", func() {
 	})
 })
 
+var _ = Describe("gitHTTPHeaderEnv", func() {
+	It("sets a URL-scoped extraHeader through env-based git config", func() {
+		Expect(git.GitHTTPHeaderEnv("https://scm.example.com/", "Authorization: Bearer s3cret")).To(Equal([]string{
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.https://scm.example.com/.extraHeader",
+			"GIT_CONFIG_VALUE_0=Authorization: Bearer s3cret",
+		}))
+	})
+})
+
 var _ = Describe("gitChildEnv", func() {
 	proxyEnvKeys := []string{
 		"HTTPS_PROXY", "https_proxy",
