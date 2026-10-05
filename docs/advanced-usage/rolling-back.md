@@ -33,7 +33,8 @@ auto-merge hold still applies while the restore note is gated (or while the rest
 > The restore commit is pushed directly to the active branch with the controller's git credentials; it does not go
 > through a pull request. If the active branch is protected against direct pushes, the push is rejected and the
 > RevertActiveCommit stays `Ready=False`. Allow the controller's identity (for example the GitHub App or deploy key) to
-> bypass that protection, or roll back by other means.
+> bypass that protection. When `activePath` is empty, you can make the same git writes yourself; see
+> [Restoring by hand (no activePath)](#restoring-by-hand-no-activepath).
 
 ## Rolling back
 
@@ -82,4 +83,209 @@ The restore also shows up in the environment's promotion history, marked by `res
 2. Delete the RevertActiveCommit. A finalizer stamps `Promoter-revert-unblocked-at: <RFC3339>` on the restore commit's
    promotion-history note, then releases so the resource can disappear. Auto-merge is allowed again, and the new
    commit promotes as usual. The unblock time shows up on the restore history entry as `revertUnblockedAt`. If the
-   git repository is unreachable, the RevertActiveCommit stays terminating until the note can be written.
+   git repository is unreachable, the RevertActiveCommit stays terminating until the note can be written. A restore
+   done [by hand](#restoring-by-hand-no-activepath) has no RevertActiveCommit to delete; stamp that trailer with the
+   script under [Lift the hold](#lift-the-hold).
+
+## Restoring by hand (no activePath)
+
+When the environment's ChangeTransferPolicy leaves `activePath` empty, the restore commit's tree is the whole tree of
+the hydrated commit you are putting back. The scripts below perform that restore, and lift the hold afterwards, with
+git. Run them from a clone that can push the active branch and `refs/notes/promoter.history`. `jq` is required. The
+target commit has to be the active tip or one of its ancestors. The script fetches that branch; a shallow clone that
+does not contain the target fails at `git cat-file`.
+
+The commit is parented on the current tip (`git commit-tree`) and pushed with `--force-with-lease`. A branch that moved
+after the fetch is rejected; fetch and run the script again. The note is pushed first. If the branch push is then
+rejected, that note sits on a commit that never became the tip, and the retry writes a new commit and a new note. The
+proposed branch is left where it is. The author of the new commit is your `user.name` / `user.email`.
+
+Once the note is on the active tip, the ChangeTransferPolicy reads the same gate it reads after a RevertActiveCommit
+finishes: `Promoter-restored-from` without `Promoter-revert-unblocked-at` holds auto-merge, and the dry SHA in
+`hydrator.metadata` on the parent commit (the tip this restore moved off of) cannot open a pull request. There is no
+RevertActiveCommit in this flow, so that hold starts when the push lands.
+
+The new commit message copies the target commit's [message trailers](../debugging/git-trailers.md). The new note copies
+the target's promotion-history note, with `Promoter-restored-from` set to the target SHA. When that note is missing,
+empty, or not JSON, the note is built from the message trailers instead. `Promoter-restored-from` is the last line of
+the commit message. In the note it is one more key in the JSON object.
+
+> [!WARNING]
+> A ChangeTransferPolicy that sets `activePath` restores only that directory onto the current active tree. This script
+> replaces the whole tree, so on a branch shared by several PromotionStrategies it overwrites every other application.
+
+### Restore
+
+```bash
+#!/bin/bash
+# Whole-tree restore. The ChangeTransferPolicy's activePath must be empty.
+set -euo pipefail
+
+ACTIVE_BRANCH="environment/production"
+TARGET_SHA="<40- or 64-character hydrated SHA>"
+
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
+
+NOTES_REF="refs/notes/promoter.history"
+
+# Commit-message trailers as JSON. Keys are sorted; values keep their original order.
+# drop_key omits one key so the restore marker can be appended last on the message.
+trailer_json() {
+  local sha="$1" drop_key="${2:-}"
+  git log -1 --format=%B "$sha" | git interpret-trailers --only-trailers | jq -Rs --arg drop "$drop_key" '
+    split("\n")
+    | map(select(length > 0))
+    | map(capture("^(?<k>[^:]+):[ \\t]*(?<v>.*)$"))
+    | map(select(.k != $drop))
+    | group_by(.k)
+    | map({key: .[0].k, value: map(.v)})
+    | from_entries
+  '
+}
+
+# Promotion-history note when it is a non-empty JSON object; otherwise the commit trailers.
+promotion_json() {
+  local sha="$1" raw
+  raw=$(git notes --ref="$NOTES_REF" show "$sha" 2>/dev/null || true)
+  if printf '%s' "$raw" | jq -e 'type == "object" and length > 0' >/dev/null 2>&1; then
+    printf '%s' "$raw"
+    return
+  fi
+  trailer_json "$sha"
+}
+
+git fetch origin "$ACTIVE_BRANCH"
+if git ls-remote --exit-code origin "$NOTES_REF" >/dev/null 2>&1; then
+  git fetch origin "+${NOTES_REF}:${NOTES_REF}"
+fi
+
+ACTIVE_TIP=$(git rev-parse "origin/${ACTIVE_BRANCH}")
+git cat-file -e "${TARGET_SHA}^{commit}"
+if ! git merge-base --is-ancestor "$TARGET_SHA" "$ACTIVE_TIP"; then
+  echo "commit ${TARGET_SHA} is not in the history of ${ACTIVE_BRANCH}" >&2
+  exit 1
+fi
+
+WANT_TREE=$(git rev-parse --verify "${TARGET_SHA}^{tree}")
+TIP_TREE=$(git rev-parse --verify "${ACTIVE_TIP}^{tree}")
+if [[ "$WANT_TREE" == "$TIP_TREE" ]]; then
+  marker=$(promotion_json "$ACTIVE_TIP" | jq -r '."Promoter-restored-from"[0] // empty')
+  if [[ "$marker" == "$TARGET_SHA" ]]; then
+    if git notes --ref="$NOTES_REF" show "$ACTIVE_TIP" 2>/dev/null \
+      | jq -e '."Promoter-revert-unblocked-at" | length > 0' >/dev/null 2>&1; then
+      echo "active tip ${ACTIVE_TIP} already restores ${TARGET_SHA} and carries Promoter-revert-unblocked-at; it cannot be restored again until the active branch moves" >&2
+      exit 1
+    fi
+    echo "active tip ${ACTIVE_TIP} already restores ${TARGET_SHA}; nothing to write"
+    exit 0
+  fi
+  echo "active branch already matches ${TARGET_SHA} at ${ACTIVE_TIP}; nothing to write"
+  exit 0
+fi
+
+if promotion_json "$TARGET_SHA" | jq -e '."Promoter-restored-from" | length > 0' >/dev/null; then
+  echo "commit ${TARGET_SHA} carries Promoter-restored-from and cannot be restored to" >&2
+  exit 1
+fi
+
+short=${TARGET_SHA:0:7}
+lines=$(trailer_json "$TARGET_SHA" "Promoter-restored-from" \
+  | jq -r 'to_entries[] | .key as $k | .value[] | "\($k): \(.)"')
+msg_file=$(mktemp "${TMPDIR:-/tmp}/promoter-restore.XXXXXX")
+{
+  printf 'Revert %s to %s\n\n' "$ACTIVE_BRANCH" "$short"
+  if [[ -n "$lines" ]]; then
+    printf '%s\n' "$lines"
+  fi
+  printf 'Promoter-restored-from: %s\n' "$TARGET_SHA"
+} >"$msg_file"
+RESTORE_SHA=$(git commit-tree "$WANT_TREE" -p "$ACTIVE_TIP" -F "$msg_file")
+rm -f "$msg_file"
+
+note=$(promotion_json "$TARGET_SHA" | jq -c --arg sha "$TARGET_SHA" '
+  . + {"Promoter-restored-from": [$sha]} | to_entries | sort_by(.key) | from_entries
+')
+git notes --ref="$NOTES_REF" add -f -m "$note" "$RESTORE_SHA"
+git push origin "${NOTES_REF}:${NOTES_REF}"
+git push --force-with-lease="refs/heads/${ACTIVE_BRANCH}:${ACTIVE_TIP}" \
+  origin "${RESTORE_SHA}:refs/heads/${ACTIVE_BRANCH}"
+
+echo "restored ${ACTIVE_BRANCH} to ${TARGET_SHA} as ${RESTORE_SHA}"
+```
+
+The script prints the new commit SHA. Its subject is `Revert <branch> to <short sha>`, the trailer block ends with
+`Promoter-restored-from: <target>`, and the note on that SHA is the copied history JSON.
+
+```bash
+git log -1 --format=%B <restore-sha>
+git notes --ref=refs/notes/promoter.history show <restore-sha>
+```
+
+Running it again, while that commit is still the tip and the note has no `Promoter-revert-unblocked-at`, prints
+`nothing to write`. After the note has been unblocked, another run for the same target is refused until the active
+branch moves. A target that already carries `Promoter-restored-from` is refused. A commit that is not in the active
+branch's history is refused.
+
+### Lift the hold
+
+This stamps `Promoter-revert-unblocked-at` on the restore commit's note, which is the write the RevertActiveCommit
+finalizer makes when the resource is deleted. The commit message stays as it is. The trailer is note-only.
+
+[Resuming promotion](#resuming-promotion) still applies: the stamp allows auto-merge again, and the reverted dry SHA
+stays contained in the active branch until a new commit lands on the proposed branch.
+
+`RESTORE_SHA` defaults to the current active tip. Set it when the restore commit you are releasing is an older one.
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+ACTIVE_BRANCH="environment/production"
+RESTORE_SHA=""
+
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
+
+NOTES_REF="refs/notes/promoter.history"
+
+trailer_json() {
+  local sha="$1"
+  git log -1 --format=%B "$sha" | git interpret-trailers --only-trailers | jq -Rs '
+    split("\n")
+    | map(select(length > 0))
+    | map(capture("^(?<k>[^:]+):[ \\t]*(?<v>.*)$"))
+    | group_by(.k)
+    | map({key: .[0].k, value: map(.v)})
+    | from_entries
+  '
+}
+
+git fetch origin "$ACTIVE_BRANCH"
+git fetch origin "+${NOTES_REF}:${NOTES_REF}"
+
+if [[ -z "$RESTORE_SHA" ]]; then
+  RESTORE_SHA=$(git rev-parse "origin/${ACTIVE_BRANCH}")
+fi
+
+raw=$(git notes --ref="$NOTES_REF" show "$RESTORE_SHA" 2>/dev/null || true)
+if printf '%s' "$raw" | jq -e 'type == "object" and length > 0' >/dev/null 2>&1; then
+  note=$raw
+elif git log -1 --format=%B "$RESTORE_SHA" | git interpret-trailers --only-trailers | grep -q '^Promoter-restored-from:'; then
+  note=$(trailer_json "$RESTORE_SHA")
+else
+  echo "${RESTORE_SHA} is not a restore commit" >&2
+  exit 1
+fi
+
+if printf '%s' "$note" | jq -e '."Promoter-revert-unblocked-at" | length > 0' >/dev/null; then
+  echo "${RESTORE_SHA} already carries Promoter-revert-unblocked-at"
+  exit 0
+fi
+
+now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+updated=$(printf '%s' "$note" | jq -c --arg t "$now" '
+  . + {"Promoter-revert-unblocked-at": [$t]} | to_entries | sort_by(.key) | from_entries
+')
+git notes --ref="$NOTES_REF" add -f -m "$updated" "$RESTORE_SHA"
+git push origin "${NOTES_REF}:${NOTES_REF}"
+echo "stamped Promoter-revert-unblocked-at ${now} on ${RESTORE_SHA}"
+```
