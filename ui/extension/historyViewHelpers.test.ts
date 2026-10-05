@@ -3,6 +3,7 @@ import {
   healthFromStatuses,
   shortSha,
   commitKey,
+  pruneEnvFilter,
 } from '@components-lib/components/HistoryView/helpers';
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 
@@ -104,5 +105,29 @@ describe('commitKey', () => {
 
   it('returns null when the commit has only a body', () => {
     expect(commitKey({ body: 'details' } as Commit)).toBeNull();
+  });
+});
+
+describe('pruneEnvFilter', () => {
+  const valid = new Set(['staging', 'prod']);
+
+  it('returns null when every branch is known', () => {
+    expect(pruneEnvFilter(['staging', 'prod'], valid)).toBeNull();
+  });
+
+  it('returns null for an empty filter', () => {
+    expect(pruneEnvFilter([], valid)).toBeNull();
+  });
+
+  it('drops unknown branches', () => {
+    expect(pruneEnvFilter(['staging', 'typo'], valid)).toEqual(['staging']);
+  });
+
+  it('returns an empty array when no branch is known', () => {
+    expect(pruneEnvFilter(['typo', 'gone'], valid)).toEqual([]);
+  });
+
+  it('preserves the order of the surviving branches', () => {
+    expect(pruneEnvFilter(['prod', 'typo', 'staging'], valid)).toEqual(['prod', 'staging']);
   });
 });

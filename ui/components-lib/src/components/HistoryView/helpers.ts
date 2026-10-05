@@ -1,7 +1,6 @@
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 import type { CellKind, HealthKey } from './types';
 
-// Cell kinds with no commit activity for the env: non-selectable, excluded from env-scoped rows.
 export function isEmptyCellKind(kind: CellKind | undefined): boolean {
   return kind === 'no-changes' || kind === 'unknown-history';
 }
@@ -23,4 +22,9 @@ export function commitKey(c: Commit | undefined): string | null {
   if (s && s.length >= 7) return s.slice(0, 7);
   if (c?.subject || c?.author) return `nokey:${c?.subject ?? ''}|${c?.author ?? ''}`;
   return null;
+}
+
+export function pruneEnvFilter(envFilter: string[], validBranches: Set<string>): string[] | null {
+  const pruned = envFilter.filter((b) => validBranches.has(b));
+  return pruned.length === envFilter.length ? null : pruned;
 }
