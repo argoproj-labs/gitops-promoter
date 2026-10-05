@@ -39,9 +39,6 @@ kube-aggregator proxy.
 | `APIService v1alpha1.view.promoter.argoproj.io` | registers the group with the kube-aggregator |
 | `ServiceAccount promoter-apiserver` + RBAC | read all promoter CRDs and the `ControllerConfiguration`; `system:auth-delegator`; `extension-apiserver-authentication-reader` in `kube-system` |
 
-The apiserver reads `ControllerConfiguration` in its own namespace at startup. With `spec.scope: Namespace` it only reads
-that namespace, and with `spec.clusterScmProvider.mode: Disabled` it does not read `ClusterScmProvider`s.
-
 The base is intentionally **not** folded into `config/default`: the default overlay's
 `namespace: promoter-system` transformer would relocate the
 `extension-apiserver-authentication-reader` RoleBinding out of `kube-system`, which breaks

@@ -32,36 +32,22 @@ that one tenant's resources do not reference another tenant's resources within t
 If there are no trust boundaries to be enforced among PromotionStrategy users, a GitOps Promoter admin may choose to 
 host all resources in a single namespace, keeping in mind the need to avoid resource name collisions.
 
-## Namespace-scoped RBAC (Role instead of ClusterRole)
+## Install modes
 
-By default the controller-runtime cache lists **all namespaces** for namespaced custom resources (for example `ScmProvider`, `CommitStatus`, `PromotionStrategy`). That list operation is evaluated at **cluster** scope, so it requires a `ClusterRole` with `list`/`watch` on those resources.
+By default, GitOps Promoter watches all namespaces and requires a `ClusterRole`. To run it with a namespace-scoped
+`Role` instead, configure these `ControllerConfiguration` fields:
 
-If you bind only a namespace-scoped `Role`, enable a **namespace-scoped cache** so list/watch calls are limited to the **controller install namespace** (the same namespace as `ControllerConfiguration` and `ManagerConfig.controllerNamespace` from the kubeconfig default context—typically the pod namespace when in-cluster). Set **`ControllerConfiguration.spec.scope`** to `Namespace` (the default is `Cluster`). The controller reads that resource once at startup (before the cache starts), so the `ControllerConfiguration` object **must already exist** in that namespace. **Restart the controller** after changing this field.
+| Field | Values | Description |
+| --- | --- | --- |
+| `spec.scope` | `Cluster` (default), `Namespace` | Which namespaces are watched. `Namespace` watches only the install namespace. |
+| `spec.clusterScmProvider.mode` | `Enabled` (default), `Disabled` | Whether `ClusterScmProvider` resources can be used. |
+| `spec.webRequestCommitStatus.namespaceMetadata` | `Enabled` (default), `Disabled` | Whether `NamespaceMetadata` is available to WebRequestCommitStatus templates and expressions. When disabled, it is empty. |
 
-`spec.scope` only affects namespaced resources. The controller also accesses two cluster-scoped resources, which you can disable independently so that a namespace-scoped `Role` is sufficient:
+Restart the controller after changing `spec.scope` or `spec.clusterScmProvider.mode`.
 
-```yaml
-spec:
-  scope: Namespace
-  clusterScmProvider:
-    mode: Disabled
-  webRequestCommitStatus:
-    namespaceMetadata: Disabled
-    # workQueue: ...
-```
+### Cluster (default)
 
-* **`spec.clusterScmProvider.mode`** (`Enabled` by default): when `Disabled`, the controller does not run the `ClusterScmProvider` controller and does not list/watch `clusterscmproviders`. GitRepositories that reference a `ClusterScmProvider` fail to reconcile. **Restart the controller** after changing this field. When enabled, the service account needs list/watch on `clusterscmproviders` at cluster scope; otherwise the cache never syncs, the manager exits after the cache sync timeout, and the pod restarts.
-* **`spec.webRequestCommitStatus.namespaceMetadata`** (`Enabled` by default): when `Disabled`, `WebRequestCommitStatus` does not read its `Namespace`, and `NamespaceMetadata` labels and annotations are empty in templates and expressions. When enabled, the service account needs get/list/watch on `namespaces` at cluster scope.
-
-When `spec.scope` is `Namespace`:
-
-* The controller only sees **CommitStatus** objects in the controller install namespace. PromotionStrategy behavior that depends on CommitStatuses in *other* namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)) will not see those remote CommitStatuses unless they are moved into that namespace.
-
-### Deployment modes
-
-#### Cluster (default)
-
-Watches all namespaces. Requires a `ClusterRole`. These are the defaults:
+Watches all namespaces. Requires a `ClusterRole`.
 
 ```yaml
 spec:
@@ -72,9 +58,10 @@ spec:
     namespaceMetadata: Enabled
 ```
 
-#### Namespaced with cluster resources
+### Namespaced with cluster resources
 
-Watches namespaced resources only in the controller install namespace, but keeps `ClusterScmProvider` support and `NamespaceMetadata`. Requires a `Role` in the install namespace plus a `ClusterRole` with list/watch on `clusterscmproviders` and get/list/watch on `namespaces`:
+Watches only the install namespace, but keeps `ClusterScmProvider` and `NamespaceMetadata` support. Requires a `Role`
+in the install namespace, plus a `ClusterRole` to read `clusterscmproviders` and `namespaces`.
 
 ```yaml
 spec:
@@ -85,9 +72,9 @@ spec:
     namespaceMetadata: Enabled
 ```
 
-#### Fully isolated
+### Fully isolated
 
-No cluster-scoped access. Requires only a `Role` in the install namespace:
+Watches only the install namespace and uses no cluster-scoped resources. Requires only a `Role` in the install namespace.
 
 ```yaml
 spec:
@@ -98,12 +85,15 @@ spec:
     namespaceMetadata: Disabled
 ```
 
-The `-namespaced` release bundles (`install-without-ui-namespaced.yaml`, `install-with-dashboard-cert-manager-namespaced.yaml`
-and `install-with-dashboard-byo-cert-namespaced.yaml`) ship this configuration and bind the controller to a `Role` in
-`promoter-system`. The bundles still include the cluster-scoped CRDs, and the metrics auth proxy keeps its `ClusterRole`
-for token and access reviews. In the dashboard bundles, the dashboard apiserver also follows `spec.scope` and
-`spec.clusterScmProvider.mode` and reads only `promoter-system`, but it still needs cluster-scoped access for delegated
-authentication, and its `APIService` is cluster-scoped, so only one dashboard apiserver can be registered per cluster.
+The `-namespaced` release bundles use this mode. See [Installation](../getting-started.md#namespace-isolated).
+
+### Limitations of namespaced modes
+
+* Only resources in the install namespace are reconciled, including CommitStatuses. PromotionStrategies cannot be gated
+  by CommitStatuses in other namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)).
+* CRDs are cluster-scoped and must still be installed by a cluster administrator.
+* The dashboard API is registered cluster-wide and requires cluster-scoped permissions for authentication. Only one
+  dashboard API can be installed per cluster.
 
 ## CommitStatus Tenancy
 
