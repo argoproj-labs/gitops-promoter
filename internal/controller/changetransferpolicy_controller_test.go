@@ -1366,28 +1366,27 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
-				originalTitle := pr.Spec.Title
 
 				fake.ResetPullRequestCallCounts(pr.UID)
 				baselineFindOpen := fake.FindOpenCallCount(pr.UID)
-				baselineUpdate := fake.UpdateCallCount(pr.UID)
+				baselineLabel := fake.LabelCallCount(pr.UID)
 
-				// Drive the title/description change through CTP. CTP owns those fields via SSA
-				// with ForceOwnership, so a direct k8sClient.Update of pr.Spec.Title races the next
-				// CTP reconcile, which rewrites the templated title and can make the PR controller
-				// see only a non-SCM generation bump (shouldSkipSCMSync) — FindOpen/Update stay 0.
-				By("Advancing proposed so CTP re-templates SCM-relevant PR fields")
-				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
-
-				By("Waiting for CTP to apply a new PR title")
+				// Add a label rather than editing the title: CTP owns title/description via SSA
+				// with ForceOwnership and re-templates them on its next reconcile, so a direct
+				// title edit can be reverted before the PR controller observes it, leaving only a
+				// non-SCM generation bump that shouldSkipSCMSync correctly skips. This CTP has no
+				// spec.pullRequest.labels expression, so CTP copies the live PR's labels into its
+				// apply and a manually added label survives.
+				By("Adding a PR label so the PR controller must sync to SCM")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					g.Expect(pr.Spec.Title).NotTo(Equal(originalTitle))
+					pr.Spec.Labels = append(pr.Spec.Labels, "steady-state-scm-sync")
+					g.Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(fake.FindOpenCallCount(pr.UID)).To(BeNumerically(">", baselineFindOpen))
-					g.Expect(fake.UpdateCallCount(pr.UID)).To(BeNumerically(">", baselineUpdate))
+					g.Expect(fake.LabelCallCount(pr.UID)).To(BeNumerically(">", baselineLabel))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
