@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // ControllerConfigurationSpecApplyConfiguration represents a declarative configuration of the ControllerConfigurationSpec type for use
 // with apply.
 //
@@ -69,11 +73,11 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
-	// Namespaced, when true, configures the controller-runtime cache to list/watch only in the
-	// controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace).
-	// This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default
-	// cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.
-	Namespaced *bool `json:"namespaced,omitempty"`
+	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
+	ClusterScmProvider *ClusterScmProviderConfigurationApplyConfiguration `json:"clusterScmProvider,omitempty"`
+	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+	// Requires a controller restart.
+	Scope *apiv1alpha1.ControllerScope `json:"scope,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -178,10 +182,18 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatu
 	return b
 }
 
-// WithNamespaced sets the Namespaced field in the declarative configuration to the given value
+// WithClusterScmProvider sets the ClusterScmProvider field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Namespaced field is set to the value of the last call.
-func (b *ControllerConfigurationSpecApplyConfiguration) WithNamespaced(value bool) *ControllerConfigurationSpecApplyConfiguration {
-	b.Namespaced = &value
+// If called multiple times, the ClusterScmProvider field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithClusterScmProvider(value *ClusterScmProviderConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.ClusterScmProvider = value
+	return b
+}
+
+// WithScope sets the Scope field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Scope field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithScope(value apiv1alpha1.ControllerScope) *ControllerConfigurationSpecApplyConfiguration {
+	b.Scope = &value
 	return b
 }

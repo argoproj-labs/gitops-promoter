@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -30,8 +31,8 @@ var kubernetesResources = prometheus.NewGaugeVec(
 		Name: "promoter_kubernetes_resources",
 		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
 			"Updated on an interval from the controller informer stores (no per-tick API server calls); does not include resources on remote clusters " +
-			"reconciled via multicluster setup. In namespaced mode, namespaced kinds are counted only in the controller install namespace. " +
-			"ControllerConfiguration is omitted (singleton).",
+			"reconciled via multicluster setup. In Namespace scope, namespaced kinds are counted only in the controller install namespace. " +
+			"ControllerConfiguration is omitted (singleton). ClusterScmProvider is omitted when disabled.",
 	},
 	[]string{"kind", "readiness"},
 )
@@ -99,12 +100,16 @@ func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerS
 	return counts, nil
 }
 
-func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInformerSource, log logr.Logger) {
+func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInformerSource, log logr.Logger, clusterScmProviderEnabled bool) {
 	scheme := utils.GetScheme()
 	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
 		// ControllerConfiguration is a singleton. Skip it.
 		if kind == kinds.ControllerConfigurationKind {
+			continue
+		}
+		// Avoid starting a cluster-scoped informer when ClusterScmProvider support is disabled.
+		if kind == promoterv1alpha1.ClusterScmProviderKind && !clusterScmProviderEnabled {
 			continue
 		}
 		counts, err := countsByReadinessFromInformer(ctx, c, scheme, obj)
@@ -124,14 +129,16 @@ func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInforme
 // ResourceCountRunnable periodically reads promoter CR counts from informer stores and updates promoter_kubernetes_resources.
 type ResourceCountRunnable struct {
 	Cache resourceCountInformerSource
+	// ClusterScmProviderEnabled controls whether ClusterScmProviders are counted.
+	ClusterScmProviderEnabled bool
 	// tickInterval is the delay between refreshes after the initial run. Zero means resourceCountInterval.
 	// Tests set a short value so the ticker path runs without long sleeps.
 	tickInterval time.Duration
 }
 
 // NewResourceCountRunnable returns a manager.Runnable that refreshes promoter_kubernetes_resources.
-func NewResourceCountRunnable(c cache.Cache) *ResourceCountRunnable {
-	return &ResourceCountRunnable{Cache: c}
+func NewResourceCountRunnable(c cache.Cache, clusterScmProviderEnabled bool) *ResourceCountRunnable {
+	return &ResourceCountRunnable{Cache: c, ClusterScmProviderEnabled: clusterScmProviderEnabled}
 }
 
 // Start implements manager.Runnable.
@@ -141,7 +148,7 @@ func (r *ResourceCountRunnable) Start(ctx context.Context) error {
 		return errors.New("resource count runnable cache is nil")
 	}
 
-	refreshKubernetesResourceCounts(ctx, r.Cache, log)
+	refreshKubernetesResourceCounts(ctx, r.Cache, log, r.ClusterScmProviderEnabled)
 
 	interval := r.tickInterval
 	if interval <= 0 {
@@ -155,7 +162,7 @@ func (r *ResourceCountRunnable) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			refreshKubernetesResourceCounts(ctx, r.Cache, log)
+			refreshKubernetesResourceCounts(ctx, r.Cache, log, r.ClusterScmProviderEnabled)
 		}
 	}
 }

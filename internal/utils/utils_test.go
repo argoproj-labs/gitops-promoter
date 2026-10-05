@@ -921,3 +921,42 @@ var _ = Describe("GetChangeTransferPolicyHistoryName", func() {
 		Expect(name).To(ContainSubstring(ctpName[len(ctpName)-8:]))
 	})
 })
+
+var _ = Describe("GetScmProviderFromGitRepository", func() {
+	ctx := context.Background()
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: promoterv1alpha1.ClusterScmProviderKind, Name: "cluster-scm"},
+		},
+	}
+
+	AfterEach(func() {
+		settings.SetClusterScmProviderEnabled(true)
+	})
+
+	It("returns an error without reading the ClusterScmProvider when ClusterScmProvider support is disabled", func() {
+		settings.SetClusterScmProviderEnabled(false)
+		gets := 0
+		fakeClient := fake.NewClientBuilder().WithScheme(utils.GetScheme()).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					gets++
+					return c.Get(ctx, key, obj, opts...)
+				},
+			}).Build()
+
+		_, err := utils.GetScmProviderFromGitRepository(ctx, fakeClient, gitRepo, gitRepo)
+		Expect(err).To(MatchError(ContainSubstring("ClusterScmProvider support is disabled")))
+		Expect(gets).To(Equal(0))
+	})
+
+	It("reads the ClusterScmProvider when ClusterScmProvider support is enabled", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(utils.GetScheme()).
+			WithObjects(&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}}).Build()
+
+		provider, err := utils.GetScmProviderFromGitRepository(ctx, fakeClient, gitRepo, gitRepo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(provider.GetName()).To(Equal("cluster-scm"))
+	})
+})

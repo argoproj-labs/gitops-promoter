@@ -73,6 +73,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicyStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProvider"):
 		return &apiv1alpha1.ClusterScmProviderApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderConfiguration"):
+		return &apiv1alpha1.ClusterScmProviderConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchState"):
 		return &apiv1alpha1.CommitBranchStateApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchStateHistoryProposed"):

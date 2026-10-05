@@ -36,13 +36,67 @@ host all resources in a single namespace, keeping in mind the need to avoid reso
 
 By default the controller-runtime cache lists **all namespaces** for namespaced custom resources (for example `ScmProvider`, `CommitStatus`, `PromotionStrategy`). That list operation is evaluated at **cluster** scope, so it requires a `ClusterRole` with `list`/`watch` on those resources.
 
-If you bind only a namespace-scoped `Role`, enable a **namespace-scoped cache** so list/watch calls are limited to the **controller install namespace** (the same namespace as `ControllerConfiguration` and `ManagerConfig.controllerNamespace` from the kubeconfig default context—typically the pod namespace when in-cluster). Set **`ControllerConfiguration.spec.namespaced`** to `true`. The controller reads that resource once at startup (before the cache starts), so the `ControllerConfiguration` object **must already exist** in that namespace. **Restart the controller** after changing this field.
+If you bind only a namespace-scoped `Role`, enable a **namespace-scoped cache** so list/watch calls are limited to the **controller install namespace** (the same namespace as `ControllerConfiguration` and `ManagerConfig.controllerNamespace` from the kubeconfig default context—typically the pod namespace when in-cluster). Set **`ControllerConfiguration.spec.scope`** to `Namespace` (the default is `Cluster`). The controller reads that resource once at startup (before the cache starts), so the `ControllerConfiguration` object **must already exist** in that namespace. **Restart the controller** after changing this field.
 
-When namespaced cache is active:
+`spec.scope` only affects namespaced resources. The controller also accesses two cluster-scoped resources, which you can disable independently so that a namespace-scoped `Role` is sufficient:
 
-* **`ClusterScmProvider`** is cluster-scoped: with only a namespace-scoped `Role`, the informer cannot list/watch `clusterscmproviders`. The cache never syncs, so the manager exits after the cache sync timeout and the pod restarts. Extend RBAC so the service account can list/watch `clusterscmproviders` at cluster scope, even if you only use namespaced **`ScmProvider`**.
-* If you use **`WebRequestCommitStatus`**, also grant get/list/watch on `namespaces` at cluster scope; it reads its own `Namespace` for template metadata.
+```yaml
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Disabled
+  webRequestCommitStatus:
+    namespaceMetadata: Disabled
+    # workQueue: ...
+```
+
+* **`spec.clusterScmProvider.mode`** (`Enabled` by default): when `Disabled`, the controller does not run the `ClusterScmProvider` controller and does not list/watch `clusterscmproviders`. GitRepositories that reference a `ClusterScmProvider` fail to reconcile. **Restart the controller** after changing this field. When enabled, the service account needs list/watch on `clusterscmproviders` at cluster scope; otherwise the cache never syncs, the manager exits after the cache sync timeout, and the pod restarts.
+* **`spec.webRequestCommitStatus.namespaceMetadata`** (`Enabled` by default): when `Disabled`, `WebRequestCommitStatus` does not read its `Namespace`, and `NamespaceMetadata` labels and annotations are empty in templates and expressions. When enabled, the service account needs get/list/watch on `namespaces` at cluster scope.
+
+When `spec.scope` is `Namespace`:
+
 * The controller only sees **CommitStatus** objects in the controller install namespace. PromotionStrategy behavior that depends on CommitStatuses in *other* namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)) will not see those remote CommitStatuses unless they are moved into that namespace.
+
+### Deployment modes
+
+#### Cluster (default)
+
+Watches all namespaces. Requires a `ClusterRole`. These are the defaults:
+
+```yaml
+spec:
+  scope: Cluster
+  clusterScmProvider:
+    mode: Enabled
+  webRequestCommitStatus:
+    namespaceMetadata: Enabled
+```
+
+#### Namespaced with cluster resources
+
+Watches namespaced resources only in the controller install namespace, but keeps `ClusterScmProvider` support and `NamespaceMetadata`. Requires a `Role` in the install namespace plus a `ClusterRole` with list/watch on `clusterscmproviders` and get/list/watch on `namespaces`:
+
+```yaml
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Enabled
+  webRequestCommitStatus:
+    namespaceMetadata: Enabled
+```
+
+#### Fully isolated
+
+No cluster-scoped access. Requires only a `Role` in the install namespace:
+
+```yaml
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Disabled
+  webRequestCommitStatus:
+    namespaceMetadata: Disabled
+```
 
 ## CommitStatus Tenancy
 

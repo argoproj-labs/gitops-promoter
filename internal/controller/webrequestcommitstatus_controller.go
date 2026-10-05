@@ -476,7 +476,16 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,
 // body, and description templates can reference them. Called at the start of Reconcile for the
 // WebRequestCommitStatus's namespace.
+// Returns empty metadata when namespace metadata is disabled.
 func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (webrequest.NamespaceMetadata, error) {
+	mode, err := r.SettingsMgr.GetWebRequestCommitStatusNamespaceMetadata(ctx)
+	if err != nil {
+		return webrequest.NamespaceMetadata{}, fmt.Errorf("failed to get namespace metadata setting: %w", err)
+	}
+	if mode == promoterv1alpha1.FeatureModeDisabled {
+		return webrequest.NamespaceMetadata{}, nil
+	}
+
 	var ns corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, &ns); err != nil {
 		return webrequest.NamespaceMetadata{}, fmt.Errorf("failed to get namespace %q: %w", namespace, err)

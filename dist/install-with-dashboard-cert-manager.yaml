@@ -3081,6 +3081,21 @@ spec:
                 required:
                 - workQueue
                 type: object
+              clusterScmProvider:
+                default: {}
+                description: ClusterScmProvider contains the configuration for ClusterScmProvider
+                  support.
+                properties:
+                  mode:
+                    default: Enabled
+                    description: |-
+                      Mode enables or disables ClusterScmProvider support. When Disabled, ClusterScmProviders are not watched
+                      and references to them fail. Requires a controller restart.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                type: object
               commitStatus:
                 description: |-
                   CommitStatus contains the configuration for the CommitStatus controller,
@@ -3720,13 +3735,6 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
-              namespaced:
-                description: |-
-                  Namespaced, when true, configures the controller-runtime cache to list/watch only in the
-                  controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace).
-                  This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default
-                  cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.
-                type: boolean
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -4374,6 +4382,15 @@ spec:
                 required:
                 - workQueue
                 type: object
+              scope:
+                default: Cluster
+                description: |-
+                  Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+                  Requires a controller restart.
+                enum:
+                - Cluster
+                - Namespace
+                type: string
               timedCommitStatus:
                 description: |-
                   TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
@@ -4588,6 +4605,15 @@ spec:
                   WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  namespaceMetadata:
+                    default: Enabled
+                    description: |-
+                      NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
+                      When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
@@ -10524,6 +10550,8 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  clusterScmProvider:
+    mode: Enabled
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -10563,7 +10591,6 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  namespaced: false
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10
@@ -10654,6 +10681,7 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  scope: Cluster
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -10668,6 +10696,7 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   webRequestCommitStatus:
+    namespaceMetadata: Enabled
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

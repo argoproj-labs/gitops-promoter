@@ -98,12 +98,47 @@ type ControllerConfigurationSpec struct {
 	// +required
 	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 
-	// Namespaced, when true, configures the controller-runtime cache to list/watch only in the
-	// controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace).
-	// This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default
-	// cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.
+	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
 	// +optional
-	Namespaced bool `json:"namespaced,omitempty"`
+	// +kubebuilder:default={}
+	ClusterScmProvider ClusterScmProviderConfiguration `json:"clusterScmProvider,omitzero"`
+
+	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+	// Requires a controller restart.
+	// +optional
+	// +kubebuilder:default=Cluster
+	Scope ControllerScope `json:"scope,omitempty"`
+}
+
+// ControllerScope is the scope of namespaced resources the controller watches.
+// +kubebuilder:validation:Enum=Cluster;Namespace
+type ControllerScope string
+
+const (
+	// ControllerScopeCluster watches namespaced resources in all namespaces.
+	ControllerScopeCluster ControllerScope = "Cluster"
+	// ControllerScopeNamespace watches namespaced resources only in the controller install namespace.
+	ControllerScopeNamespace ControllerScope = "Namespace"
+)
+
+// FeatureMode enables or disables a controller feature.
+// +kubebuilder:validation:Enum=Enabled;Disabled
+type FeatureMode string
+
+const (
+	// FeatureModeEnabled enables the feature.
+	FeatureModeEnabled FeatureMode = "Enabled"
+	// FeatureModeDisabled disables the feature.
+	FeatureModeDisabled FeatureMode = "Disabled"
+)
+
+// ClusterScmProviderConfiguration defines the configuration for ClusterScmProvider support.
+type ClusterScmProviderConfiguration struct {
+	// Mode enables or disables ClusterScmProvider support. When Disabled, ClusterScmProviders are not watched
+	// and references to them fail. Requires a controller restart.
+	// +optional
+	// +kubebuilder:default=Enabled
+	Mode FeatureMode `json:"mode,omitempty"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -227,6 +262,12 @@ type WebRequestCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+
+	// NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
+	// When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+	// +optional
+	// +kubebuilder:default=Enabled
+	NamespaceMetadata FeatureMode `json:"namespaceMetadata,omitempty"`
 }
 
 // ScheduledCommitStatusConfiguration defines the configuration for the ScheduledCommitStatus controller.

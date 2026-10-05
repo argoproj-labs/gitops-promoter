@@ -30,6 +30,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
@@ -199,9 +200,14 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
-	namespaced, err := getNamespaced(processSignalsCtx, restConfig, controllerNamespace)
+	scope, clusterScmProviderMode, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
 	if err != nil {
-		return fmt.Errorf("read namespaced mode config: %w", err)
+		return fmt.Errorf("read startup config: %w", err)
+	}
+	clusterScmProviderEnabled := clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
+	settings.SetClusterScmProviderEnabled(clusterScmProviderEnabled)
+	if !clusterScmProviderEnabled {
+		setupLog.Info("ClusterScmProvider support disabled")
 	}
 
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
@@ -217,7 +223,7 @@ func runController(
 	// Namespace scoping composes with the instance-id partition above: DefaultNamespaces applies
 	// to every ByObject entry that does not set its own Namespaces. Cluster-scoped kinds (for
 	// example ClusterScmProvider) keep cluster-wide watches and still require ClusterRole RBAC.
-	if namespaced {
+	if scope == promoterv1alpha1.ControllerScopeNamespace {
 		setupLog.Info("restricting controller-runtime cache to controller install namespace; "+
 			"list/watch requests will be namespace-scoped (compatible with a namespaced Role)",
 			"namespace", controllerNamespace)
@@ -264,7 +270,9 @@ func runController(
 
 	localManager := mcMgr.GetLocalManager()
 
-	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
+	if err := localManager.Add(
+		metrics.NewResourceCountRunnable(localManager.GetCache(), clusterScmProviderEnabled),
+	); err != nil {
 		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
 	}
 
@@ -370,13 +378,15 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
-	if err = (&controller.ClusterScmProviderReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
+	if clusterScmProviderEnabled {
+		if err = (&controller.ClusterScmProviderReconciler{
+			Client:      localManager.GetClient(),
+			Scheme:      localManager.GetScheme(),
+			Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
+			SettingsMgr: settingsMgr,
+		}).SetupWithManager(runCtx, localManager); err != nil {
+			panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
+		}
 	}
 	if err := (&controller.TimedCommitStatusReconciler{
 		Client:      localManager.GetClient(),
@@ -480,12 +490,16 @@ func runController(
 	return nil
 }
 
-// getNamespaced reads ControllerConfiguration.spec.namespaced directly from the API server. It runs
-// before the manager cache starts, so it must not use a cached client.
-func getNamespaced(ctx context.Context, restCfg *rest.Config, controllerNamespace string) (bool, error) {
+// getStartupSettings reads spec.scope and spec.clusterScmProvider.mode directly from the API server,
+// before the manager cache starts.
+func getStartupSettings(
+	ctx context.Context,
+	restCfg *rest.Config,
+	controllerNamespace string,
+) (promoterv1alpha1.ControllerScope, promoterv1alpha1.FeatureMode, error) {
 	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
 	if err != nil {
-		return false, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+		return "", "", fmt.Errorf("create kubernetes client for bootstrap: %w", err)
 	}
 	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
@@ -493,11 +507,15 @@ func getNamespaced(ctx context.Context, restCfg *rest.Config, controllerNamespac
 
 	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	useRestrictedCache, err := bootstrapSettings.GetNamespacedDirect(readCtx)
+	scope, err := bootstrapSettings.GetScopeDirect(readCtx)
 	if err != nil {
-		return false, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	return useRestrictedCache, nil
+	clusterScmProviderMode, err := bootstrapSettings.GetClusterScmProviderModeDirect(readCtx)
+	if err != nil {
+		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return scope, clusterScmProviderMode, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {

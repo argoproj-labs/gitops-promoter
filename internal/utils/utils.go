@@ -34,6 +34,10 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	kind := repositoryRef.Spec.ScmProviderRef.Kind
 	switch kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
+		if !settings.ClusterScmProviderEnabled() {
+			return nil, fmt.Errorf("GitRepository %q references ClusterScmProvider %q, but ClusterScmProvider support is disabled (ControllerConfiguration spec.clusterScmProvider.mode)",
+				repositoryRef.Name, repositoryRef.Spec.ScmProviderRef.Name)
+		}
 		var scmProvider promoterv1alpha1.ClusterScmProvider
 		objectKey := client.ObjectKey{
 			Name: repositoryRef.Spec.ScmProviderRef.Name,

@@ -184,7 +184,7 @@ var _ = Describe("Resource count metrics", func() {
 			psGVK := gvkKey(stub.scheme, &promoterv1alpha1.PromotionStrategy{})
 			stub.gvkErr = map[schema.GroupVersionKind]error{psGVK: errInjectedList}
 
-			refreshKubernetesResourceCounts(context.Background(), stub, log)
+			refreshKubernetesResourceCounts(context.Background(), stub, log, true)
 
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "True"))).To(Equal(0.0))
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "False"))).To(Equal(0.0))
@@ -216,10 +216,29 @@ var _ = Describe("Resource count metrics", func() {
 			// Would surface as a logged error if this kind were listed.
 			stub.gvkErr = map[schema.GroupVersionKind]error{ccGVK: errInjectedList}
 
-			refreshKubernetesResourceCounts(context.Background(), stub, log)
+			refreshKubernetesResourceCounts(context.Background(), stub, log, true)
 
 			Expect(stub.listCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 1)))
 			Expect(strings.Join(logLines, "\n")).NotTo(ContainSubstring("ControllerConfiguration"))
+		})
+
+		It("skips ClusterScmProvider without listing it when ClusterScmProvider support is disabled", func() {
+			var logLines []string
+			log := funcr.New(func(prefix, args string) {
+				logLines = append(logLines, prefix+args)
+			}, funcr.Options{})
+
+			stub := buildStubInformerSourceWithCounts()
+			stub.listCount = &atomic.Int32{}
+			cspGVK := gvkKey(stub.scheme, &promoterv1alpha1.ClusterScmProvider{})
+			// Would surface as a logged error if this kind were listed.
+			stub.gvkErr = map[schema.GroupVersionKind]error{cspGVK: errInjectedList}
+
+			refreshKubernetesResourceCounts(context.Background(), stub, log, false)
+
+			// ControllerConfiguration and ClusterScmProvider are both skipped.
+			Expect(stub.listCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 2)))
+			Expect(strings.Join(logLines, "\n")).NotTo(ContainSubstring("ClusterScmProvider"))
 		})
 	})
 
@@ -229,7 +248,7 @@ var _ = Describe("Resource count metrics", func() {
 		})
 
 		It("returns an error when the cache is nil", func() {
-			r := NewResourceCountRunnable(nil)
+			r := NewResourceCountRunnable(nil, true)
 			err := r.Start(context.Background())
 			Expect(err).To(MatchError("resource count runnable cache is nil"))
 		})
@@ -237,7 +256,7 @@ var _ = Describe("Resource count metrics", func() {
 		It("runs an immediate refresh, updates gauges, and refreshes again on the ticker until the context is cancelled", func() {
 			stub := buildStubInformerSourceWithCounts()
 			stub.listCount = &atomic.Int32{}
-			r := &ResourceCountRunnable{Cache: stub, tickInterval: 25 * time.Millisecond}
+			r := &ResourceCountRunnable{Cache: stub, ClusterScmProviderEnabled: true, tickInterval: 25 * time.Millisecond}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
