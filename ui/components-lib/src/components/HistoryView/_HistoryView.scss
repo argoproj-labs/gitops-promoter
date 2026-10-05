@@ -467,6 +467,30 @@
   outline-offset: -1px;
 }
 
+.hp-day {
+  display: grid;
+  gap: 8px;
+  min-width: max-content;
+  margin: 0;
+  padding: 12px 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: $text-secondary;
+}
+
+.hp-matrix__sticky + .hp-day {
+  padding-top: 0;
+}
+
+.hp-day__label {
+  grid-column: 1 / -1;
+  justify-self: start;
+  position: sticky;
+  left: 0;
+  padding-left: 8px;
+}
+
 .hp-row {
   display: grid;
   gap: 8px;

@@ -5,6 +5,7 @@ import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
+import { groupRowsByDay } from './groupRowsByDay';
 import { isEmptyCellKind } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
@@ -117,6 +118,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     if (sort === 'oldest') return [...list].sort((a, b) => a.freshestAt - b.freshestAt);
     return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
+
+  const dayGroups = useMemo(() => groupRowsByDay(filteredRows), [filteredRows]);
 
   const counts = useMemo(() => {
     return {
@@ -355,98 +358,109 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 No commits match these filters. Try adjusting them.
               </div>
             ) : (
-              filteredRows.map((row) => (
-                <div
-                  key={row.id}
-                  id={`row-${row.id}`}
-                  className={`hp-row ${selected?.rowId === row.id ? 'hp-row--selected' : ''}`}
-                  style={{ gridTemplateColumns: gridTemplate }}
-                >
-                  <div className="hp-row__commit">
-                    <div className="hp-row__subject" title={row.subject}>
-                      {row.subject}
-                    </div>
-                    <div className="hp-row__meta">
-                      {row.repoUrl && row.dryShaFull ? (
-                        <a
-                          className="hp-row__sha"
-                          href={getCommitUrl(row.repoUrl, row.dryShaFull)}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
-                        >
-                          {row.dryShaShort}
-                        </a>
-                      ) : (
-                        <span className="hp-row__sha">{row.dryShaShort}</span>
-                      )}
-                      {row.refShaShort && row.refUrl && (
-                        <Tooltip
-                          label={
-                            <>
-                              Source commit <code>{row.refShaShort}</code>
-                              <br />
-                              Open on remote
-                            </>
-                          }
-                        >
-                          <a
-                            className="hp-row__pr"
-                            href={row.refUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Source commit ${row.refShaShort}, opens in new tab`}
-                          >
-                            <GoGitCommit aria-hidden="true" /> {row.refShaShort}
-                          </a>
-                        </Tooltip>
-                      )}
-                      <span className="hp-row__sep" aria-hidden="true">
-                        ·
-                      </span>
-                      <Tooltip label={`Authored by ${row.author}`}>
-                        <span className="hp-row__author-inline">{row.author}</span>
-                      </Tooltip>
-                      {row.freshestAt > 0 && (
-                        <>
-                          <span className="hp-row__sep">·</span>
-                          <Tooltip
-                            label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
-                          >
-                            <span className="hp-row__time-inline">
-                              {timeAgo(new Date(row.earliestAt || row.freshestAt).toISOString())}
-                            </span>
+              dayGroups.map((group) => (
+                <React.Fragment key={group.key}>
+                  <h2 className="hp-day" style={{ gridTemplateColumns: gridTemplate }}>
+                    <span className="hp-day__label">{group.label}</span>
+                  </h2>
+                  {group.rows.map((row) => (
+                    <div
+                      key={row.id}
+                      id={`row-${row.id}`}
+                      className={`hp-row ${selected?.rowId === row.id ? 'hp-row--selected' : ''}`}
+                      style={{ gridTemplateColumns: gridTemplate }}
+                    >
+                      <div className="hp-row__commit">
+                        <div className="hp-row__subject" title={row.subject}>
+                          {row.subject}
+                        </div>
+                        <div className="hp-row__meta">
+                          {row.repoUrl && row.dryShaFull ? (
+                            <a
+                              className="hp-row__sha"
+                              href={getCommitUrl(row.repoUrl, row.dryShaFull)}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
+                            >
+                              {row.dryShaShort}
+                            </a>
+                          ) : (
+                            <span className="hp-row__sha">{row.dryShaShort}</span>
+                          )}
+                          {row.refShaShort && row.refUrl && (
+                            <Tooltip
+                              label={
+                                <>
+                                  Source commit <code>{row.refShaShort}</code>
+                                  <br />
+                                  Open on remote
+                                </>
+                              }
+                            >
+                              <a
+                                className="hp-row__pr"
+                                href={row.refUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Source commit ${row.refShaShort}, opens in new tab`}
+                              >
+                                <GoGitCommit aria-hidden="true" /> {row.refShaShort}
+                              </a>
+                            </Tooltip>
+                          )}
+                          <span className="hp-row__sep" aria-hidden="true">
+                            ·
+                          </span>
+                          <Tooltip label={`Authored by ${row.author}`}>
+                            <span className="hp-row__author-inline">{row.author}</span>
                           </Tooltip>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {visibleEnvs.map((env) => {
-                    const isFocusedEnv = envFilter.includes(env.branch);
-                    return (
-                      <div
-                        key={env.branch}
-                        className={[
-                          'hp-row__env-slot',
-                          isFocusedEnv ? 'hp-row__env-slot--focus' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      >
-                        <FlowCell
-                          cell={row.cells[env.branch]}
-                          branch={env.branch}
-                          isSelected={selected?.rowId === row.id && selected?.branch === env.branch}
-                          onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
-                          rowsById={rowsById}
-                          onJumpToRow={handleJumpToRow}
-                        />
+                          {row.freshestAt > 0 && (
+                            <>
+                              <span className="hp-row__sep">·</span>
+                              <Tooltip
+                                label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
+                              >
+                                <span className="hp-row__time-inline">
+                                  {timeAgo(
+                                    new Date(row.earliestAt || row.freshestAt).toISOString(),
+                                  )}
+                                </span>
+                              </Tooltip>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
+                      {visibleEnvs.map((env) => {
+                        const isFocusedEnv = envFilter.includes(env.branch);
+                        return (
+                          <div
+                            key={env.branch}
+                            className={[
+                              'hp-row__env-slot',
+                              isFocusedEnv ? 'hp-row__env-slot--focus' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            <FlowCell
+                              cell={row.cells[env.branch]}
+                              branch={env.branch}
+                              isSelected={
+                                selected?.rowId === row.id && selected?.branch === env.branch
+                              }
+                              onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
+                              rowsById={rowsById}
+                              onJumpToRow={handleJumpToRow}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </React.Fragment>
               ))
             )}
           </div>
