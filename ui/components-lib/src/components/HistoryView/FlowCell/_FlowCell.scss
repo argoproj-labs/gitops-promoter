@@ -54,6 +54,13 @@
     background: $stroke-strong;
   }
 }
+.cell--was-failed {
+  background: $bg-soft;
+  border-color: $failure-border;
+  &::before {
+    background: $failure-ink;
+  }
+}
 .cell--in-flight {
   background: $pending-soft;
   border-color: $pending-border;
@@ -152,6 +159,11 @@
     background: $bg-surface;
     color: $text-secondary;
     border: 1px solid $stroke-strong;
+  }
+  &--was-failed {
+    background: $bg-surface;
+    color: $failure-ink;
+    border: 1px solid $failure-border;
   }
   &--in-flight {
     background: $pending-ink;

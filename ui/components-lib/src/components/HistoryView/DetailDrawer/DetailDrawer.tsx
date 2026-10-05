@@ -207,6 +207,7 @@ const DetailDrawer: React.FC<{
               {cell.kind === 'live' && 'LIVE'}
               {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
               {cell.kind === 'was-here' && 'REPLACED'}
+              {cell.kind === 'was-failed' && 'FAILED · REPLACED'}
               {cell.kind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && 'NO-OP'}
               {cell.kind === 'no-changes' && 'NO CHANGES'}
@@ -259,12 +260,13 @@ const DetailDrawer: React.FC<{
                 </Tooltip>
               </>
             )}
-            {cell.kind === 'was-here' && cell.liveDurationMs != null && (
-              <>
-                <span className="hp-drawer__sep">·</span>
-                <span>live for {formatDuration(cell.liveDurationMs)}</span>
-              </>
-            )}
+            {(cell.kind === 'was-here' || cell.kind === 'was-failed') &&
+              cell.liveDurationMs != null && (
+                <>
+                  <span className="hp-drawer__sep">·</span>
+                  <span>live for {formatDuration(cell.liveDurationMs)}</span>
+                </>
+              )}
           </div>
           {hydrated?.sha && (
             <div className="hp-drawer__deployed">
@@ -375,7 +377,7 @@ const DetailDrawer: React.FC<{
                     {c.kind === 'live' && 'LIVE'}
                     {c.kind === 'in-flight' && (c.isProposed ? 'PROPOSED' : 'PR OPEN')}
                     {c.kind === 'was-here' && 'REPLACED'}
-                    {c.kind === 'failed' && (
+                    {(c.kind === 'failed' || c.kind === 'was-failed') && (
                       <>
                         <FaTimesCircle aria-hidden="true" /> FAILED
                       </>
@@ -423,19 +425,21 @@ const DetailDrawer: React.FC<{
           </ul>
         </div>
 
-        {cell.kind === 'was-here' && cell.supersededById && rowsById.get(cell.supersededById) && (
-          <div className="hp-drawer__section">
-            <h3>Replaced by</h3>
-            <button
-              type="button"
-              className="hp-drawer__replaced"
-              onClick={() => onJumpToRow(cell.supersededById!)}
-            >
-              <FaArrowRight aria-hidden="true" />
-              <span>{rowsById.get(cell.supersededById)!.subject}</span>
-            </button>
-          </div>
-        )}
+        {(cell.kind === 'was-here' || cell.kind === 'was-failed') &&
+          cell.supersededById &&
+          rowsById.get(cell.supersededById) && (
+            <div className="hp-drawer__section">
+              <h3>Replaced by</h3>
+              <button
+                type="button"
+                className="hp-drawer__replaced"
+                onClick={() => onJumpToRow(cell.supersededById!)}
+              >
+                <FaArrowRight aria-hidden="true" />
+                <span>{rowsById.get(cell.supersededById)!.subject}</span>
+              </button>
+            </div>
+          )}
       </div>
     </aside>
   );
