@@ -119,20 +119,11 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if rc.Status.RestoredFrom == rc.Spec.Sha {
-		if !rc.Spec.BlocksEnvironment() {
-			// Stamp before Delete so a ChangeTransferPolicy reconcile in the window cannot adopt a
-			// second RevertActiveCommit against a note that is still gated. The finalizer stamps
-			// again, idempotently, and will not release until that write has succeeded.
-			if err := r.unblockRestoreOnDelete(ctx, &rc); err != nil {
-				return ctrl.Result{}, err
-			}
-			if err := r.Delete(ctx, &rc); err != nil && !k8s_errors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to delete RevertActiveCommit after blockEnvironment was set false: %w", err)
-			}
-			return ctrl.Result{}, nil
+		if rc.Spec.BlocksEnvironment() {
+			logger.V(4).Info("restore already applied", "sha", rc.Spec.Sha, "activeSha", rc.Status.ActiveSha)
+			return r.requeueResult(ctx)
 		}
-		logger.V(4).Info("restore already applied", "sha", rc.Spec.Sha, "activeSha", rc.Status.ActiveSha)
-		return r.requeueResult(ctx)
+		return r.unblockAndSelfDelete(ctx, &rc)
 	}
 
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, ctp)
@@ -174,10 +165,21 @@ func (r *RevertActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	// blockEnvironment false deletes on the next pass, after this status is stored, so the
 	// finalizer observes activeSha and stamps the note before the object disappears.
-	if !rc.Spec.BlocksEnvironment() {
-		return ctrl.Result{Requeue: true}, nil
-	}
 	return r.requeueResult(ctx)
+}
+
+// unblockAndSelfDelete stamps Promoter-revert-unblocked-at then deletes the RevertActiveCommit.
+// Stamping first keeps a ChangeTransferPolicy reconcile in this window from adopting a second
+// object against a still-gated note. The finalizer stamps again, idempotently, and will not
+// release until that write has succeeded.
+func (r *RevertActiveCommitReconciler) unblockAndSelfDelete(ctx context.Context, rc *promoterv1alpha1.RevertActiveCommit) (ctrl.Result, error) {
+	if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.Delete(ctx, rc); err != nil && !k8s_errors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("failed to delete RevertActiveCommit after blockEnvironment was set false: %w", err)
+	}
+	return ctrl.Result{}, nil
 }
 
 // handleFinalizer keeps RevertActiveCommitFinalizer on the resource until deletion. When

@@ -282,7 +282,7 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 			Expect(got[constants.TrailerPullRequestMergeTime]).To(Equal([]string{"2020-01-01T00:00:00Z"}))
 
 			By("Setting spec.blockEnvironment to false stamps Promoter-revert-unblocked-at and deletes the RevertActiveCommit")
-			setRevertBlockEnvironment(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, false)
+			clearRevertBlockEnvironment(ctx, types.NamespacedName{Name: rcName, Namespace: "default"})
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, &promoterv1alpha1.RevertActiveCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -428,7 +428,7 @@ var _ = Describe("RevertActiveCommit Controller", func() {
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("Setting spec.blockEnvironment to false so the later dry SHA can promote through every environment")
-			setRevertBlockEnvironment(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, false)
+			clearRevertBlockEnvironment(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace})
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RevertActiveCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -683,9 +683,11 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 	}
 }
 
-// setRevertBlockEnvironment sets spec.blockEnvironment. false is what stamps Promoter-revert-unblocked-at.
-func setRevertBlockEnvironment(ctx context.Context, key types.NamespacedName, block bool) {
+// clearRevertBlockEnvironment sets spec.blockEnvironment to false so the controller stamps
+// Promoter-revert-unblocked-at and deletes the RevertActiveCommit.
+func clearRevertBlockEnvironment(ctx context.Context, key types.NamespacedName) {
 	GinkgoHelper()
+	block := false
 	Eventually(func(g Gomega) {
 		rc := &promoterv1alpha1.RevertActiveCommit{}
 		g.Expect(k8sClient.Get(ctx, key, rc)).To(Succeed())
