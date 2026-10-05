@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Same as release-combined-cert-manager, but with the fully isolated controller (config/namespaced).
+# Builds the published install-with-dashboard-cert-manager-namespaced.yaml. The dashboard
+# apiserver is not namespace-isolated.
+
+resources:
+  - ../../namespaced
+  - ../certs-cert-manager
+
+images:
+  - name: quay.io/argoprojlabs/gitops-promoter

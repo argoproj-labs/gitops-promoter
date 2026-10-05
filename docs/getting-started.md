@@ -51,6 +51,10 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
+Each bundle also has a `-namespaced` variant (for example `install-without-ui-namespaced.yaml`) that runs the
+controller [fully isolated](advanced-usage/multi-tenancy.md#fully-isolated) in the `promoter-system` namespace,
+with a `Role` instead of a `ClusterRole`.
+
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
 
 ## SCM provider configuration

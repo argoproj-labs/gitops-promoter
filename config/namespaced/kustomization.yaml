@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Fully isolated controller install: watches only the install namespace, does not access
+# cluster-scoped resources, and is granted a namespace-scoped Role instead of a ClusterRole.
+# See docs/advanced-usage/multi-tenancy.md.
+
+resources:
+  - ../default
+
+patches:
+  - path: controllerconfiguration_patch.yaml
+  - target:
+      kind: ClusterRole
+      name: promoter-manager-role
+    patch: |-
+      - op: replace
+        path: /kind
+        value: Role
+      - op: add
+        path: /metadata/namespace
+        value: promoter-system
+  - target:
+      kind: ClusterRoleBinding
+      name: promoter-manager-rolebinding
+    patch: |-
+      - op: replace
+        path: /kind
+        value: RoleBinding
+      - op: add
+        path: /metadata/namespace
+        value: promoter-system
+      - op: replace
+        path: /roleRef/kind
+        value: Role
+      - op: replace
+        path: /roleRef/name
+        value: promoter-manager-role

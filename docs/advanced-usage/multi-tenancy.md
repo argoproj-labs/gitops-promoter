@@ -98,6 +98,11 @@ spec:
     namespaceMetadata: Disabled
 ```
 
+The `-namespaced` release bundles (`install-without-ui-namespaced.yaml`, `install-with-dashboard-cert-manager-namespaced.yaml`
+and `install-with-dashboard-byo-cert-namespaced.yaml`) ship this configuration and bind the controller to a `Role` in
+`promoter-system`. The bundles still include the cluster-scoped CRDs, and the metrics auth proxy keeps its `ClusterRole`
+for token and access reviews. In the dashboard bundles, the dashboard apiserver is not isolated: it reads all namespaces.
+
 ## CommitStatus Tenancy
 
 As with PromotionStrategies, all references from CommitStatuses (to GitRepositories, then ScmProviders, and finally to
