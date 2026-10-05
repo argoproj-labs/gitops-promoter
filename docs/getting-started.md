@@ -480,6 +480,9 @@ stringData:
   password: <your-password>
 ```
 
+The token is sent as an `Authorization: Bearer` header for both REST API calls and git operations over HTTPS, so no
+username is needed.
+
 Create a ScmProvider referencing the secret and your Bitbucket DataCenter/Server hostname:
 
 ```yaml
