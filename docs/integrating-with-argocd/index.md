@@ -26,7 +26,7 @@ spec:
     spec:
       initContainers:
         - name: extension-gitops-promoter
-          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          image: quay.io/argoprojlabs/argocd-extension-installer:v1.1.0@sha256:6cc786ba4dc96ba81d5010fbf92adabef15aff89753a55e22b8d829cd8b6e2a8
           env:
             - name: EXTENSION_NAME
               value: gitops-promoter
@@ -64,7 +64,7 @@ following to your `values.yaml`:
 server:
   initContainers:
     - name: extension-gitops-promoter
-      image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+      image: quay.io/argoprojlabs/argocd-extension-installer:v1.1.0@sha256:6cc786ba4dc96ba81d5010fbf92adabef15aff89753a55e22b8d829cd8b6e2a8
       env:
         - name: EXTENSION_NAME
           value: gitops-promoter
@@ -115,7 +115,7 @@ spec:
     spec:
       initContainers:
         - name: extension-gitops-promoter
-          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          image: quay.io/argoprojlabs/argocd-extension-installer:v1.1.0@sha256:6cc786ba4dc96ba81d5010fbf92adabef15aff89753a55e22b8d829cd8b6e2a8
           env:
             - name: EXTENSION_NAME
               value: gitops-promoter
@@ -130,7 +130,7 @@ spec:
             runAsUser: 1000
             allowPrivilegeEscalation: false
         - name: extension-plugin-my-plugin
-          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          image: quay.io/argoprojlabs/argocd-extension-installer:v1.1.0@sha256:6cc786ba4dc96ba81d5010fbf92adabef15aff89753a55e22b8d829cd8b6e2a8
           env:
             - name: EXTENSION_NAME
               value: plugin-my-plugin
