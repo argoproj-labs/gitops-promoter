@@ -165,6 +165,20 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 	return true, baseUrl, uploadUrl
 }
 
+// appInstallationKey identifies a GitHub App on one host. App IDs are only unique per GitHub instance.
+type appInstallationKey struct {
+	domain string
+	appID  int64
+}
+
+func installationCacheKey(scmProvider v1alpha1.GenericScmProvider) appInstallationKey {
+	return appInstallationKey{domain: scmProvider.GetSpec().GitHub.Domain, appID: scmProvider.GetSpec().GitHub.AppID}
+}
+
+func (k appInstallationKey) flightKey() string {
+	return fmt.Sprintf("%s/%d", k.domain, k.appID)
+}
+
 // appInstallations is the set of orgs returned by one finished ListInstallations call for a GitHub App.
 // The snapshot is stored only after every page succeeds. It serves installation IDs until
 // installationHitCacheTTL, and treats orgs absent from byOrg as misses until installationMissCacheTTL.
@@ -173,20 +187,20 @@ type appInstallations struct {
 	fetched time.Time
 }
 
-// appInstallationCache stores the latest installation snapshot for each GitHub App ID.
-var appInstallationCache = make(map[int64]appInstallations)
+// appInstallationCache stores the latest installation snapshot for each GitHub App on a host.
+var appInstallationCache = make(map[appInstallationKey]appInstallations)
 
 // appInstallationCacheMu protects appInstallationCache.
 var appInstallationCacheMu sync.RWMutex
 
-// listInstallationsGroup coalesces concurrent ListInstallations calls per app ID.
+// listInstallationsGroup coalesces concurrent ListInstallations calls per GitHub host and app ID.
 var listInstallationsGroup singleflight.Group
 
-func lookupCachedInstallationID(org string, appID int64, now time.Time) (int64, bool, error) {
+func lookupCachedInstallationID(org string, key appInstallationKey, now time.Time) (int64, bool, error) {
 	appInstallationCacheMu.RLock()
 	defer appInstallationCacheMu.RUnlock()
 
-	snap, ok := appInstallationCache[appID]
+	snap, ok := appInstallationCache[key]
 	if !ok {
 		return 0, false, nil
 	}
@@ -198,7 +212,7 @@ func lookupCachedInstallationID(org string, appID int64, now time.Time) (int64, 
 		return 0, false, nil
 	}
 	if age < installationMissCacheTTL {
-		return 0, false, fmt.Errorf("installation of app %d not found for org: %s", appID, org)
+		return 0, false, fmt.Errorf("installation of app %d not found for org: %s", key.appID, org)
 	}
 	return 0, false, nil
 }
@@ -215,7 +229,7 @@ func installationsByOrg(installations []*github.Installation) map[string]int64 {
 }
 
 // storeInstallationSnapshot replaces the app's cached installations with a finished list.
-func storeInstallationSnapshot(ctx context.Context, appID int64, byOrg map[string]int64, scmProvider v1alpha1.GenericScmProvider) {
+func storeInstallationSnapshot(ctx context.Context, byOrg map[string]int64, scmProvider v1alpha1.GenericScmProvider) {
 	logger := log.FromContext(ctx)
 	for org, id := range byOrg {
 		logger.V(4).Info("cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
@@ -223,14 +237,13 @@ func storeInstallationSnapshot(ctx context.Context, appID int64, byOrg map[strin
 
 	appInstallationCacheMu.Lock()
 	defer appInstallationCacheMu.Unlock()
-	appInstallationCache[appID] = appInstallations{byOrg: maps.Clone(byOrg), fetched: time.Now()}
+	appInstallationCache[installationCacheKey(scmProvider)] = appInstallations{byOrg: maps.Clone(byOrg), fetched: time.Now()}
 }
 
 func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Client, scmProvider v1alpha1.GenericScmProvider) error {
 	ctx, cancel := context.WithTimeout(ctx, listInstallationsTimeout)
 	defer cancel()
 
-	appID := scmProvider.GetSpec().GitHub.AppID
 	startTime := time.Now()
 	opts := &github.ListOptions{PerPage: 100}
 	building := make(map[string]int64)
@@ -255,7 +268,7 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 		}
 		opts.Page = resp.NextPage
 	}
-	storeInstallationSnapshot(ctx, appID, building, scmProvider)
+	storeInstallationSnapshot(ctx, building, scmProvider)
 
 	statusCode := 200
 	var rateLimit *metrics.RateLimit
@@ -268,22 +281,22 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 }
 
 func resolveInstallationID(ctx context.Context, client *github.Client, scmProvider v1alpha1.GenericScmProvider, org string) (int64, error) {
-	appID := scmProvider.GetSpec().GitHub.AppID
-	if id, found, err := lookupCachedInstallationID(org, appID, time.Now()); found || err != nil {
+	key := installationCacheKey(scmProvider)
+	if id, found, err := lookupCachedInstallationID(org, key, time.Now()); found || err != nil {
 		return id, err
 	}
 
-	_, err, _ := listInstallationsGroup.Do(fmt.Sprintf("app:%d", appID), func() (any, error) {
+	_, err, _ := listInstallationsGroup.Do(key.flightKey(), func() (any, error) {
 		return nil, listAndCacheGitHubAppInstallations(ctx, client, scmProvider)
 	})
 	if err != nil {
 		return 0, err //nolint:wrapcheck // singleflight.Do returns the fn error unchanged
 	}
 
-	if id, found, err := lookupCachedInstallationID(org, appID, time.Now()); found || err != nil {
+	if id, found, err := lookupCachedInstallationID(org, key, time.Now()); found || err != nil {
 		return id, err
 	}
-	return 0, fmt.Errorf("installation of app %d not found for org: %s", appID, org)
+	return 0, fmt.Errorf("installation of app %d not found for org: %s", key.appID, org)
 }
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
@@ -321,7 +334,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	if id, found, err := lookupCachedInstallationID(org, scmProvider.GetSpec().GitHub.AppID, time.Now()); found {
+	if id, found, err := lookupCachedInstallationID(org, installationCacheKey(scmProvider), time.Now()); found {
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	} else if err != nil {

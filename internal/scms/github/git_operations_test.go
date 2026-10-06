@@ -156,6 +156,18 @@ func (ts *testGitHubServer) tokenInstallIDsSnapshot() []int64 {
 	return out
 }
 
+// releasePageFunc closes ch once. Tests that block a handler on ch call it when the test is done,
+// and register it with DeferCleanup so a failed assertion cannot leave the handler blocked.
+func releasePageFunc(ch chan struct{}) func() {
+	return func() {
+		select {
+		case <-ch:
+		default:
+			close(ch)
+		}
+	}
+}
+
 func installationIDFromTokenPath(path string) (int64, error) {
 	rest := strings.TrimPrefix(path, "/api/v3/app/installations/")
 	idStr := strings.TrimSuffix(rest, "/access_tokens")
@@ -234,6 +246,8 @@ var _ = Describe("GetClient", func() {
 			pages:       [][]string{{"known-org"}, {"page2-org"}},
 			releasePage: map[int]<-chan struct{}{2: releasePage2},
 		})
+		release := releasePageFunc(releasePage2)
+		DeferCleanup(release)
 		provider := testClusterScmProvider(server.domain)
 		secret := testSecret(privKey)
 		ctx := context.Background()
@@ -247,7 +261,7 @@ var _ = Describe("GetClient", func() {
 		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
 		Consistently(done).WithTimeout(50 * time.Millisecond).ShouldNot(Receive())
 
-		close(releasePage2)
+		release()
 		Expect(<-done).NotTo(HaveOccurred())
 		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 	})
@@ -281,6 +295,8 @@ var _ = Describe("GetClient", func() {
 			pages:       [][]string{{"known-org"}},
 			releasePage: map[int]<-chan struct{}{1: releasePage1},
 		})
+		release := releasePageFunc(releasePage1)
+		DeferCleanup(release)
 		provider := testClusterScmProvider(server.domain)
 		secret := testSecret(privKey)
 		ctx := context.Background()
@@ -297,7 +313,7 @@ var _ = Describe("GetClient", func() {
 		}()
 
 		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
-		close(releasePage1)
+		release()
 
 		Expect(<-g1Done).To(HaveOccurred())
 		Expect(<-g2Done).NotTo(HaveOccurred())
@@ -311,6 +327,8 @@ var _ = Describe("GetClient", func() {
 			pages:       [][]string{{"known-org"}, {"page2-org"}},
 			releasePage: map[int]<-chan struct{}{2: releasePage2},
 		})
+		release := releasePageFunc(releasePage2)
+		DeferCleanup(release)
 		provider := testClusterScmProvider(server.domain)
 		secret := testSecret(privKey)
 		ctx := context.Background()
@@ -326,7 +344,7 @@ var _ = Describe("GetClient", func() {
 		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(BeNumerically(">=", 1))
 		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 
-		close(releasePage2)
+		release()
 		for range 3 {
 			<-done
 		}
@@ -491,13 +509,7 @@ var _ = Describe("GetClient", func() {
 			pages:       [][]string{{"known-org"}},
 			releasePage: map[int]<-chan struct{}{1: releasePage1},
 		})
-		DeferCleanup(func() {
-			select {
-			case <-releasePage1:
-			default:
-				close(releasePage1)
-			}
-		})
+		DeferCleanup(releasePageFunc(releasePage1))
 		provider := testClusterScmProvider(server.domain)
 		secret := testSecret(privKey)
 		ctx := context.Background()
@@ -505,5 +517,40 @@ var _ = Describe("GetClient", func() {
 		_, _, err := GetClient(ctx, provider, secret, "known-org")
 		Expect(err).To(HaveOccurred())
 		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+	})
+
+	It("does not share installation cache entries across GitHub domains", func() {
+		privKey := testGitHubAppPrivateKey()
+		serverA := newTestGitHubServer(testGitHubServerOpts{
+			pages: [][]string{{"known-org"}},
+		})
+		serverB := newTestGitHubServer(testGitHubServerOpts{
+			pages: [][]string{{"other-org"}},
+		})
+		providerA := testClusterScmProvider(serverA.domain)
+		providerB := testClusterScmProvider(serverB.domain)
+		secret := testSecret(privKey)
+		ctx := context.Background()
+
+		_, _, err := GetClient(ctx, providerA, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
+
+		_, _, err = GetClient(ctx, providerB, secret, "known-org")
+		Expect(err).To(HaveOccurred())
+		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
+		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
+
+		_, _, err = GetClient(ctx, providerB, secret, "known-org")
+		Expect(err).To(HaveOccurred())
+		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
+
+		_, _, err = GetClient(ctx, providerA, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
+
+		_, _, err = GetClient(ctx, providerB, secret, "other-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
 	})
 })
