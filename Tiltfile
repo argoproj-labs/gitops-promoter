@@ -204,11 +204,11 @@ k8s_resource(
         'promoter-dependentssuccessfulcommitstatus-editor-role:clusterrole',
         'promoter-dependentssuccessfulcommitstatus-viewer-role:clusterrole',
         'promoter-metrics-reader:clusterrole',
-        'promoter-proxy-role:clusterrole',
+        'promoter-metrics-role:clusterrole',
         'promoter-timedcommitstatus-admin-role:clusterrole',
         'promoter-timedcommitstatus-editor-role:clusterrole',
         'promoter-timedcommitstatus-viewer-role:clusterrole',
-        'promoter-proxy-rolebinding:clusterrolebinding',
+        'promoter-metrics-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
     ],
 )
