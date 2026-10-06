@@ -56,6 +56,7 @@ type prResponseSelfLink struct {
 
 // prResponse represents the subset of fields returned by the Bitbucket DataCenter pull-request API.
 type prResponse struct {
+	Properties  prResponseProps `json:"properties"`
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
 	State       string          `json:"state"`
@@ -66,7 +67,6 @@ type prResponse struct {
 	ClosedDate  int64           `json:"closedDate"`  // milliseconds since epoch
 	ID          int             `json:"id"`
 	Version     int             `json:"version"`
-	Properties  prResponseProps `json:"properties"`
 }
 
 // prResponseProps holds optional pull-request properties from the Bitbucket DataCenter API.
