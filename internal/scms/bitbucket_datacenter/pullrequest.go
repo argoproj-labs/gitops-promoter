@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -86,7 +87,7 @@ type prListResponse struct {
 
 // prPath returns the base REST API path for pull requests in a given project/repo.
 func prPath(projectKey, repoSlug string) string {
-	return fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests", projectKey, repoSlug)
+	return fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests", url.PathEscape(projectKey), url.PathEscape(repoSlug))
 }
 
 // Create creates a new pull request and returns its ID.
@@ -312,10 +313,12 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	repoSlug := repo.Spec.BitbucketDataCenter.Name
 
 	// List open PRs filtering by the source branch using the "at" query parameter.
-	path := fmt.Sprintf("%s?state=OPEN&direction=OUTGOING&at=refs/heads/%s",
-		prPath(projectKey, repoSlug),
-		pullRequest.Spec.SourceBranch,
-	)
+	query := url.Values{
+		"state":     {"OPEN"},
+		"direction": {"OUTGOING"},
+		"at":        {"refs/heads/" + pullRequest.Spec.SourceBranch},
+	}
+	path := prPath(projectKey, repoSlug) + "?" + query.Encode()
 
 	start := time.Now()
 	statusCode, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
@@ -418,9 +421,9 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 	return fmt.Sprintf("%s/projects/%s/repos/%s/pull-requests/%s",
 		pr.client.baseURL,
-		repo.Spec.BitbucketDataCenter.Project,
-		repo.Spec.BitbucketDataCenter.Name,
-		prObj.Status.ID,
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Project),
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Name),
+		url.PathEscape(prObj.Status.ID),
 	), nil
 }
 
