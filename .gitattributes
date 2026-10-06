@@ -2,3 +2,7 @@ config/crd/bases/*.yaml linguist-generated=true
 dist/*.yaml linguist-generated=true
 go.sum linguist-generated=true
 ui/shared/src/types/generated/view.gen.ts linguist-generated=true
+ui/extension/iconStyles.generated.ts linguist-generated=true
+applyconfiguration/** linguist-generated=true
+**/zz_generated.*.go linguist-generated=true
+internal/scms/mock/** linguist-generated=true

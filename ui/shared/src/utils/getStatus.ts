@@ -1,4 +1,5 @@
 import type { Environment, PromotionPhase, PromotionStrategy, Check } from '../types/promotion';
+import { proposedIsBlocked } from './environments';
 
 // Health status for proposed/active checks
 export function getHealthStatus(checks: Check[]): 'success' | 'failure' | 'pending' | 'unknown' {
@@ -26,28 +27,28 @@ export function getEnvironmentStatus(
   const proposedSha = proposed.dry?.sha;
   const activeSha = active.dry?.sha;
 
-  const proposedChecks = proposed.commitStatuses || [];
-  const activeChecks = active.commitStatuses || [];
-
-  //FAILURE -> any check is failure
-  if (
-    proposedChecks.some((cs) => cs.phase === 'failure') ||
-    activeChecks.some((cs) => cs.phase === 'failure')
-  ) {
-    return 'failure';
+  // Active check failures are health on the already-deployed commit, not promotion state.
+  // No proposed SHA yet (including both unset) means git/hydrator has not populated status.
+  if (!proposedSha) {
+    return 'unknown';
   }
 
-  //PENDING -> proposed sha is different from active sha
-  if (proposedSha && proposedSha !== activeSha) {
-    return 'pending';
-  }
-
-  //PROMOTED -> proposed sha is the same as active sha
   if (proposedSha === activeSha) {
     return 'promoted';
   }
 
-  return 'unknown';
+  // After a restore, the proposed branch can still point at the dry SHA that was moved off active.
+  // That is not a new change waiting to promote; the environment is settled until a newer commit
+  // arrives. blockedDrySha comes from a live RestoreActiveCommit, or from history once that CR is gone.
+  if (proposedIsBlocked(env)) {
+    return 'promoted';
+  }
+
+  const proposedChecks = proposed.commitStatuses || [];
+  if (proposedChecks.some((cs) => cs.phase === 'failure')) {
+    return 'failure';
+  }
+  return 'pending';
 }
 
 // Overall promotion status across all environments

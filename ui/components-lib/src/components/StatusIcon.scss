@@ -33,3 +33,10 @@
     transform: rotate(360deg);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .fa-spin {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

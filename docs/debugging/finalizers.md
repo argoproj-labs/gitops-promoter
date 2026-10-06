@@ -26,7 +26,7 @@ No separate finalizer constant is defined for `PromotionStrategy`; RBAC may stil
 
 The `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` exists so the ChangeTransferPolicy controller can write a **promotion-history git note** on the merge commit before the `PullRequest` CR is deleted. That note is the durable record of what was promoted (pull request metadata, gate phases, dry/hydrated SHAs) when the SCM rewrites or strips the merge commit message — for example after a squash merge or a merge performed in the SCM UI.
 
-Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the controller reads them and rebuilds `ChangeTransferPolicy.status.history`.
+Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the ChangeTransferPolicyHistory controller reads them and rebuilds `ChangeTransferPolicyHistory.status.history` for the environment.
 
 The promoter still writes the same trailers into every managed pull request's commit message, so when a commit has no readable note the controller falls back to the commit-message trailers. That covers merges predating the notes feature. See [Git Trailers](git-trailers.md) for what each trailer records and [which values can differ between the note and the commit message](git-trailers.md#note-versus-commit-message).
 
@@ -46,7 +46,7 @@ When a pull request is merged or closed outside the controller, the PullRequest 
 
 This is a **merge commit snapshot mismatch**: hydrator metadata on the SCM-reported merge commit disagrees with the promoter's last snapshot. The controller corrects the proposed **dry** SHA from the merge commit's hydrator metadata and, for a regular merge commit with a second parent, the proposed **hydrated** SHA as well. The gate phases in the note are **not** corrected — they still reflect the earlier revision and may not match the gates that applied to what actually merged.
 
-Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy. When `true`, these fields in that entry are potentially stale:
+Check `status.history[].mergeCommitSnapshotMismatch` on the environment's ChangeTransferPolicyHistory. When `true`, these fields in that entry are potentially stale:
 
 | Field | Why |
 | --- | --- |

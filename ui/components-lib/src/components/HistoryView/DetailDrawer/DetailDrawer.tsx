@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import {
   timeAgo,
   formatDate,
@@ -9,15 +10,135 @@ import {
   extractNameOnly,
   extractBodyPreTrailer,
 } from '@shared/utils/util';
+import { getChecks } from '@shared/utils/PSData';
+import { commitStatusPlugins } from '@shared/components/plugins';
+import type { Check } from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
+import {
+  DRAWER_MIN_WIDTH,
+  DRAWER_MAX_WIDTH,
+  HEALTH_LABELS,
+  cellKindLabel,
+  displayKind,
+} from '../presentation';
 import { isEmptyCellKind } from '../helpers';
+import { buildRestoreActiveCommitApplyCommand, canShowRestoreCommand } from '../restoreCommand';
+import { restoreBlockTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
+import { StatusIcon, StatusType } from '../../StatusIcon';
+
+const CopyCommandButton: React.FC<{ command: string }> = ({ command }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const onCopy = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable (insecure context / denied permission).
+    }
+  }, [command]);
+
+  return (
+    <button
+      type="button"
+      className="hp-drawer__copy"
+      onClick={() => {
+        void onCopy();
+      }}
+      aria-label={copied ? 'Copied' : 'Copy kubectl command'}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+};
+
+const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
+
+  return (
+    <ul className="hp-drawer__checks">
+      {checks.map((check) => {
+        const Plugin = check.kind ? commitStatusPlugins[check.kind] : undefined;
+        const manager = Plugin ? check.manager : undefined;
+        const RowContent = manager ? Plugin?.rowContent : undefined;
+        const isExpanded = !!expanded[check.name];
+        const panelId = `hp-drawer-check-panel-${check.name}`;
+        const phase: StatusType = HEALTH_LABELS[check.status as HealthKey]
+          ? (check.status as StatusType)
+          : 'unknown';
+
+        return (
+          <li key={check.name} className="hp-drawer__check-item">
+            <div className={`hp-drawer__check hp-drawer__check--${check.status}`}>
+              <span className="hp-drawer__check-icon" aria-hidden="true">
+                <StatusIcon phase={phase} type="status" />
+              </span>
+              {RowContent && (
+                <button
+                  type="button"
+                  className="hp-drawer__check-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={panelId}
+                  onClick={() =>
+                    setExpanded((prev) => ({ ...prev, [check.name]: !prev[check.name] }))
+                  }
+                >
+                  <span className="hp-sr-only">
+                    {isExpanded ? 'Hide details for ' : 'Show details for '}
+                    {check.name}
+                  </span>
+                  {isExpanded ? (
+                    <FiChevronUp aria-hidden="true" />
+                  ) : (
+                    <FiChevronDown aria-hidden="true" />
+                  )}
+                </button>
+              )}
+              {Plugin && manager ? (
+                <Plugin.rowHeader check={check} manager={manager} />
+              ) : (
+                <>
+                  <span className="hp-sr-only">
+                    {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
+                  </span>
+                  <span className="hp-drawer__check-key">{check.name}</span>
+                  {check.description && (
+                    <span className="hp-drawer__check-desc">{check.description}</span>
+                  )}
+                  {check.url && (
+                    <a
+                      href={check.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hp-drawer__check-link"
+                      aria-label={`View details for ${check.name}, opens in new tab`}
+                    >
+                      View details
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+            {RowContent && manager && (
+              <div id={panelId} className="hp-drawer__check-panel" hidden={!isExpanded}>
+                <RowContent check={check} manager={manager} />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 const DetailDrawer: React.FC<{
   row: CommitRow | null;
   cell: CellState | null;
   branch: string | null;
+  namespace?: string;
+  promotionStrategyName?: string;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
   width: number;
@@ -32,6 +153,8 @@ const DetailDrawer: React.FC<{
   row,
   cell,
   branch,
+  namespace,
+  promotionStrategyName,
   envs,
   rowsById,
   width,
@@ -58,6 +181,7 @@ const DetailDrawer: React.FC<{
   const failingChecks = cell.commitStatuses.filter((s) => s.phase === 'failure');
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
+  const checks = getChecks([...failingChecks, ...pendingChecks, ...passingChecks], branch);
 
   const checksLabel = cell.isProposed ? 'Proposed' : 'Active';
 
@@ -71,10 +195,41 @@ const DetailDrawer: React.FC<{
     : undefined;
   const refs = cell.references ?? [];
 
-  const [prId, prUrl] =
-    cell.pullRequest?.id && cell.pullRequest?.url
+  const [prId, prUrl] = cell.restoreActiveCommit
+    ? [cell.pullRequest?.id, cell.pullRequest?.url]
+    : cell.pullRequest?.id && cell.pullRequest?.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
+
+  const env = envs.find((e) => e.branch === branch);
+  const showRestore = canShowRestoreCommand(cell);
+  const restoreCommand =
+    showRestore && hydrated?.sha && namespace && promotionStrategyName
+      ? buildRestoreActiveCommitApplyCommand({
+          namespace,
+          promotionStrategyName,
+          instanceId: env?.instanceId,
+          branch,
+          sha: hydrated.sha,
+        })
+      : null;
+
+  const kindBadge = (
+    <span
+      className={`hp-drawer__kind hp-drawer__kind--${displayKind(cell.kind)}${
+        cell.blockedByRestoreActiveCommit
+          ? ' hp-drawer__kind--blocked'
+          : cell.restoreActiveCommit
+            ? ' hp-drawer__kind--blocked-env'
+            : ''
+      }${cell.restoredFrom ? ' hp-drawer__kind--restore' : ''}`}
+    >
+      {cell.restoreActiveCommit && !cell.blockedByRestoreActiveCommit && (
+        <GoBlocked className="hp-drawer__kind__stop" aria-hidden="true" />
+      )}
+      {cellKindLabel(cell)}
+    </span>
+  );
 
   return (
     <aside
@@ -118,15 +273,18 @@ const DetailDrawer: React.FC<{
       <div className="hp-drawer__scroll">
         <div className="hp-drawer__header">
           <div className="hp-drawer__badges">
-            <span className={`hp-drawer__kind hp-drawer__kind--${cell.kind}`}>
-              {cell.kind === 'live' && 'LIVE'}
-              {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'REPLACED'}
-              {cell.kind === 'failed' && 'FAILED'}
-              {cell.kind === 'no-op' && 'NO-OP'}
-              {cell.kind === 'no-changes' && 'NO CHANGES'}
-              {cell.kind === 'unknown-history' && 'HISTORY UNAVAILABLE'}
-            </span>
+            {cell.restoreActiveCommit ? (
+              <Tooltip
+                label={restoreBlockTooltip(
+                  cell.restoreActiveCommit,
+                  !!cell.blockedByRestoreActiveCommit,
+                )}
+              >
+                {kindBadge}
+              </Tooltip>
+            ) : (
+              kindBadge
+            )}
             <span className="hp-drawer__branch">{branch}</span>
           </div>
           <h2 className="hp-drawer__subject">{row.subject}</h2>
@@ -181,6 +339,13 @@ const DetailDrawer: React.FC<{
               </>
             )}
           </div>
+          {cell.restoredFrom && cell.restoreUnblockedAt && (
+            <div className="hp-drawer__meta">
+              <Tooltip label={formatDate(cell.restoreUnblockedAt)}>
+                <span>Promotion resumed {timeAgo(cell.restoreUnblockedAt)}</span>
+              </Tooltip>
+            </div>
+          )}
           {hydrated?.sha && (
             <div className="hp-drawer__deployed">
               Deployed as{' '}
@@ -265,31 +430,7 @@ const DetailDrawer: React.FC<{
           <div className="hp-drawer__section">
             <h3>Checks</h3>
             <p className="hp-drawer__checks-group-label">{checksLabel}</p>
-            <ul className="hp-drawer__checks">
-              {[...failingChecks, ...pendingChecks, ...passingChecks].map((c) => (
-                <li key={c.key} className={`hp-drawer__check hp-drawer__check--${c.phase}`}>
-                  <span className="hp-drawer__check-icon" aria-hidden="true">
-                    {healthIcon[c.phase as HealthKey] ?? healthIcon.unknown}
-                  </span>
-                  <span className="hp-sr-only">
-                    {HEALTH_LABELS[c.phase as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
-                  </span>
-                  <span className="hp-drawer__check-key">{c.key}</span>
-                  {c.description && <span className="hp-drawer__check-desc">{c.description}</span>}
-                  {c.url && (
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hp-drawer__check-link"
-                      aria-label={`View details for ${c.key}, opens in new tab`}
-                    >
-                      View details
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <DrawerChecks checks={checks} />
           </div>
         )}
 
@@ -307,26 +448,41 @@ const DetailDrawer: React.FC<{
               const c = row.cells[e.branch];
               const isHere = e.branch === branch;
               const selectable = !isHere && !isEmptyCellKind(c.kind);
+              const pillKind = displayKind(c.kind);
+              const pill = (
+                <span
+                  className={`cell__pill cell__pill--${pillKind}${
+                    c.blockedByRestoreActiveCommit
+                      ? ' cell__pill--blocked'
+                      : c.restoreActiveCommit
+                        ? ' cell__pill--blocked-env'
+                        : ''
+                  }`}
+                >
+                  {pillKind === 'failed' && <FaTimesCircle aria-hidden="true" />}
+                  {pillKind === 'no-op' && <FaBan aria-hidden="true" />}
+                  {(pillKind === 'failed' || pillKind === 'no-op') && ' '}
+                  {c.restoreActiveCommit && !c.blockedByRestoreActiveCommit && (
+                    <GoBlocked className="cell__pill__stop" aria-hidden="true" />
+                  )}
+                  {cellKindLabel(c, true)}
+                </span>
+              );
               const inner = (
                 <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
-                  <span className={`cell__pill cell__pill--${c.kind}`}>
-                    {c.kind === 'live' && 'LIVE'}
-                    {c.kind === 'in-flight' && (c.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                    {c.kind === 'was-here' && 'REPLACED'}
-                    {c.kind === 'failed' && (
-                      <>
-                        <FaTimesCircle aria-hidden="true" /> FAILED
-                      </>
-                    )}
-                    {c.kind === 'no-op' && (
-                      <>
-                        <FaBan aria-hidden="true" /> NO-OP
-                      </>
-                    )}
-                    {c.kind === 'no-changes' && '—'}
-                    {c.kind === 'unknown-history' && '?'}
-                  </span>
+                  {c.restoreActiveCommit ? (
+                    <Tooltip
+                      label={restoreBlockTooltip(
+                        c.restoreActiveCommit,
+                        !!c.blockedByRestoreActiveCommit,
+                      )}
+                    >
+                      {pill}
+                    </Tooltip>
+                  ) : (
+                    pill
+                  )}
                   {c.at && (
                     <Tooltip label={formatDate(c.at)}>
                       <span className="hp-drawer__presence-time">{timeAgo(c.at)}</span>
@@ -373,6 +529,16 @@ const DetailDrawer: React.FC<{
               <FaArrowRight aria-hidden="true" />
               <span>{rowsById.get(cell.supersededById)!.subject}</span>
             </button>
+          </div>
+        )}
+
+        {restoreCommand && (
+          <div className="hp-drawer__section">
+            <div className="hp-drawer__restore-header">
+              <h3>Restore this version on {branch}</h3>
+              <CopyCommandButton command={restoreCommand} />
+            </div>
+            <pre className="hp-drawer__command">{restoreCommand}</pre>
           </div>
         )}
       </div>

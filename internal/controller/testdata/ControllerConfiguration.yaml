@@ -21,6 +21,16 @@ spec:
           baseDelay: "1s"
           maxDelay: "1m"
 
+  # ChangeTransferPolicyHistory controller reconstructs promotion history from git
+  changeTransferPolicyHistory:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 3
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "1s"
+          maxDelay: "1m"
+
   # ChangeTransferPolicy controller handles the actual promotion logic and creates PRs
   changeTransferPolicy:
     workQueue:
@@ -118,6 +128,16 @@ spec:
           qps: 20
           bucket: 50
 
+  # DependentsSuccessfulCommitStatus controller infers linear ordering when spec.environments is omitted
+  dependentsSuccessfulCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:
@@ -150,6 +170,16 @@ spec:
 
   # ScheduledCommitStatus controller gates promotions on cron-based time windows
   scheduledCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # RestoreActiveCommit controller restores an environment's active branch to a previous hydrated commit
+  restoreActiveCommit:
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 5

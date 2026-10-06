@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -153,7 +152,7 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueGitCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.GitCommitStatusList](r.Client)).
 		Named("gitcommitstatus").
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
@@ -408,33 +407,4 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 		return promoterv1alpha1.CommitPhaseSuccess, new(true), nil
 	}
 	return promoterv1alpha1.CommitPhaseFailure, new(false), nil
-}
-
-// enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources
-// that reference a PromotionStrategy when that PromotionStrategy changes.
-func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var gcsList promoterv1alpha1.GitCommitStatusList
-		if err := r.List(ctx, &gcsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list GitCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(gcsList.Items))
-		for i := range gcsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&gcsList.Items[i]),
-			})
-		}
-
-		return requests
-	})
 }

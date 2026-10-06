@@ -4,7 +4,7 @@
 resources:
 - bases/promoter.argoproj.io_pullrequests.yaml
 - bases/promoter.argoproj.io_commitstatuses.yaml
-- bases/promoter.argoproj.io_revertcommits.yaml
+- bases/promoter.argoproj.io_restoreactivecommits.yaml
 - bases/promoter.argoproj.io_promotionstrategies.yaml
 - bases/promoter.argoproj.io_scmproviders.yaml
 - bases/promoter.argoproj.io_gitrepositories.yaml
@@ -15,7 +15,9 @@ resources:
 - bases/promoter.argoproj.io_timedcommitstatuses.yaml
 - bases/promoter.argoproj.io_gitcommitstatuses.yaml
 - bases/promoter.argoproj.io_webrequestcommitstatuses.yaml
+- bases/promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml
 - bases/promoter.argoproj.io_scheduledcommitstatuses.yaml
+- bases/promoter.argoproj.io_changetransferpolicyhistories.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -23,7 +25,7 @@ patches:
 # patches here are for enabling the conversion webhook for each CRD
 #- path: patches/webhook_in_pullrequests.yaml
 #- path: patches/webhook_in_commitstatuses.yaml
-#- path: patches/webhook_in_revertcommits.yaml
+#- path: patches/webhook_in_restoreactivecommits.yaml
 #- path: patches/webhook_in_promotionstrategies.yaml
 #- path: patches/webhook_in_scmproviders.yaml
 #- path: patches/webhook_in_gitrepositories.yaml
@@ -34,7 +36,7 @@ patches:
 # patches here are for enabling the CA injection for each CRD
 #- path: patches/cainjection_in_pullrequests.yaml
 #- path: patches/cainjection_in_commitstatuses.yaml
-#- path: patches/cainjection_in_revertcommits.yaml
+#- path: patches/cainjection_in_restoreactivecommits.yaml
 #- path: patches/cainjection_in_promotionstrategies.yaml
 #- path: patches/cainjection_in_scmproviders.yaml
 #- path: patches/cainjection_in_gitrepositories.yaml

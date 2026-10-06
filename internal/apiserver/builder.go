@@ -66,20 +66,18 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
 
 	bundle := &viewv1alpha1.PromotionStrategyDetails{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              name,
-			Namespace:         namespace,
-			UID:               detailsUID(ps.UID),
-			ResourceVersion:   resourceVersion,
-			CreationTimestamp: ps.CreationTimestamp,
-			Labels:            ps.Labels,
-			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
-				Kind:       "PromotionStrategy",
-				Name:       ps.Name,
-				UID:        ps.UID,
-			}},
-		},
+		Name:              name,
+		Namespace:         namespace,
+		UID:               detailsUID(ps.UID),
+		ResourceVersion:   resourceVersion,
+		CreationTimestamp: ps.CreationTimestamp,
+		Labels:            ps.Labels,
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "PromotionStrategy",
+			Name:       ps.Name,
+			UID:        ps.UID,
+		}},
 		PromotionStrategy: *ps,
 	}
 
@@ -91,6 +89,25 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		return nil, fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
 	}
 	bundle.ChangeTransferPolicies = nilIfEmpty(ctpList.Items)
+
+	ctphList := &promoterv1alpha1.ChangeTransferPolicyHistoryList{}
+	if err := reader.List(ctx, ctphList, client.InNamespace(namespace), psLabel); err != nil {
+		return nil, fmt.Errorf("failed to list ChangeTransferPolicyHistories: %w", err)
+	}
+	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
+
+	// RestoreActiveCommits name the PromotionStrategy directly.
+	rcList := &promoterv1alpha1.RestoreActiveCommitList{}
+	if err := reader.List(ctx, rcList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list RestoreActiveCommits: %w", err)
+	}
+	var restoreActiveCommits []promoterv1alpha1.RestoreActiveCommit
+	for i := range rcList.Items {
+		if rcList.Items[i].Spec.PromotionStrategyRef.Name == name {
+			restoreActiveCommits = append(restoreActiveCommits, rcList.Items[i])
+		}
+	}
+	bundle.RestoreActiveCommits = nilIfEmpty(restoreActiveCommits)
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
@@ -128,6 +145,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		return nil, fmt.Errorf("failed to list WebRequestCommitStatuses: %w", err)
 	}
 	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
+
+	dagCSList := &promoterv1alpha1.DependentsSuccessfulCommitStatusList{}
+	if err := reader.List(ctx, dagCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses: %w", err)
+	}
+	bundle.DependentsSuccessfulCommitStatuses = nilIfEmpty(dagCSList.Items)
 
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {

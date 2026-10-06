@@ -43,6 +43,14 @@ type PromotionStrategyDetails struct {
 	// (selected by the promoter.argoproj.io/promotion-strategy label).
 	ChangeTransferPolicies []promoterv1alpha1.ChangeTransferPolicy `json:"changeTransferPolicies,omitempty"`
 
+	// ChangeTransferPolicyHistories are the per-environment promotion histories owned by the
+	// PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).
+	ChangeTransferPolicyHistories []promoterv1alpha1.ChangeTransferPolicyHistory `json:"changeTransferPolicyHistories,omitempty"`
+
+	// RestoreActiveCommits are the RestoreActiveCommits whose spec.promotionStrategyRef names this
+	// PromotionStrategy. While one exists for an environment, its promotions are not auto-merged.
+	RestoreActiveCommits []promoterv1alpha1.RestoreActiveCommit `json:"restoreActiveCommits,omitempty"`
+
 	// PullRequests are the PullRequests associated with the PromotionStrategy
 	// (selected by the promoter.argoproj.io/promotion-strategy label).
 	PullRequests []promoterv1alpha1.PullRequest `json:"pullRequests,omitempty"`
@@ -62,6 +70,9 @@ type PromotionStrategyDetails struct {
 
 	// WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy.
 	WebRequestCommitStatuses []promoterv1alpha1.WebRequestCommitStatus `json:"webRequestCommitStatuses,omitempty"`
+
+	// DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy.
+	DependentsSuccessfulCommitStatuses []promoterv1alpha1.DependentsSuccessfulCommitStatus `json:"dependentsSuccessfulCommitStatuses,omitempty"`
 
 	// ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.
 	ScheduledCommitStatuses []promoterv1alpha1.ScheduledCommitStatus `json:"scheduledCommitStatuses,omitempty"`

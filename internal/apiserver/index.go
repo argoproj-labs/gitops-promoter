@@ -112,7 +112,9 @@ func (p *BundleProvider) currentResourceVersion() string {
 func (p *BundleProvider) childKinds() []client.Object {
 	return append([]client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
+		&promoterv1alpha1.ChangeTransferPolicyHistory{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
+		&promoterv1alpha1.RestoreActiveCommit{},
 		&promoterv1alpha1.PullRequest{},
 		&promoterv1alpha1.CommitStatus{},
 		&promoterv1alpha1.GitRepository{},
@@ -192,12 +194,10 @@ func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedN
 		p.mu.Unlock()
 		if wasKnown {
 			tombstone := &viewv1alpha1.PromotionStrategyDetails{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            key.Name,
-					Namespace:       key.Namespace,
-					Labels:          lastLabels,
-					ResourceVersion: p.currentResourceVersion(),
-				},
+				Name:            key.Name,
+				Namespace:       key.Namespace,
+				Labels:          lastLabels,
+				ResourceVersion: p.currentResourceVersion(),
 			}
 			p.broadcast(watch.Event{Type: watch.Deleted, Object: tombstone}, key, lastLabels, nil)
 		}
@@ -241,6 +241,10 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 		return []types.NamespacedName{{Namespace: o.Namespace, Name: o.Name}}
 	case *promoterv1alpha1.ChangeTransferPolicy:
 		return keyFromLabel(o.Namespace, o.Labels)
+	case *promoterv1alpha1.ChangeTransferPolicyHistory:
+		return keyFromLabel(o.Namespace, o.Labels)
+	case *promoterv1alpha1.RestoreActiveCommit:
+		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.PullRequest:
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.CommitStatus:
@@ -332,7 +336,7 @@ func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*view
 func (p *BundleProvider) List(ctx context.Context, namespace, name string, labelSelector labels.Selector) (*viewv1alpha1.PromotionStrategyDetailsList, error) {
 	rv := p.currentResourceVersion()
 	out := &viewv1alpha1.PromotionStrategyDetailsList{
-		ListMeta: metav1.ListMeta{ResourceVersion: rv},
+		ResourceVersion: rv,
 	}
 
 	if name != "" {

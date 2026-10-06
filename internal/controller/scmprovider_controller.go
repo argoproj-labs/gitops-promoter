@@ -24,7 +24,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -89,6 +88,10 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Add finalizer to referenced Secret if it exists
 	if err := r.ensureSecretFinalizer(ctx, &scmProvider); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure Secret finalizer: %w", err)
+	}
+
+	if err := r.removeStaleSecretFinalizers(ctx, &scmProvider); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to remove stale Secret finalizers: %w", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -201,6 +204,28 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 	)
 }
 
+func (r *ScmProviderReconciler) removeStaleSecretFinalizers(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) error {
+	var scmProviders promoterv1alpha1.ScmProviderList
+	if err := r.List(ctx, &scmProviders, client.InNamespace(scmProvider.Namespace)); err != nil {
+		return fmt.Errorf("failed to list ScmProviders: %w", err)
+	}
+
+	referenced := make(map[string]bool, len(scmProviders.Items))
+	for _, sp := range scmProviders.Items {
+		if sp.Spec.SecretRef != nil {
+			referenced[sp.Spec.SecretRef.Name] = true
+		}
+	}
+
+	return removeUnreferencedSecretFinalizers(
+		ctx,
+		r.Client,
+		scmProvider.Namespace,
+		promoterv1alpha1.ScmProviderSecretFinalizer,
+		referenced,
+	)
+}
+
 func (r *ScmProviderReconciler) enqueueScmProviderForGitRepository(_ context.Context, obj client.Object) []reconcile.Request {
 	gitRepo, ok := obj.(*promoterv1alpha1.GitRepository)
 	if !ok || gitRepo.Spec.ScmProviderRef.Name == "" {
@@ -210,9 +235,7 @@ func (r *ScmProviderReconciler) enqueueScmProviderForGitRepository(_ context.Con
 		return nil
 	}
 	return []reconcile.Request{{
-		NamespacedName: types.NamespacedName{
-			Namespace: gitRepo.Namespace,
-			Name:      gitRepo.Spec.ScmProviderRef.Name,
-		},
+		Namespace: gitRepo.Namespace,
+		Name:      gitRepo.Spec.ScmProviderRef.Name,
 	}}
 }

@@ -50,6 +50,10 @@ kind: PromotionStrategy
 metadata:
   name: argocon-demo
 spec:
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: argocon-demo
   activeCommitStatuses:
     - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
   environments:

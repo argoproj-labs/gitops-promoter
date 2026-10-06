@@ -3,7 +3,25 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitest/coverage-v8": "^4.1.2",
+    "jsdom": "^26.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "sass-embedded": "^1.104.0",
+    "typescript": "^5.2.2",
+    "vitest": "^4.0.18"
   }
 }

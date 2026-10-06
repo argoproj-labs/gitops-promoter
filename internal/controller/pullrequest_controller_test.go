@@ -167,18 +167,18 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not repeat SCM Update calls on every periodic requeue once synced", func() {
-				fake.ResetPullRequestSCMCallCounts()
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				By("Waiting for several periodic reconciles to occur (proven via FindOpen, which must always run)")
 				Eventually(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 3))
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically(">=", 3))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying Update was not repeated on any of those periodic reconciles")
 				// With the fix, a PR that is already open with no spec change since the last
 				// successful sync produces 0 Update calls no matter how many periodic
 				// reconciles occur. Without it, Update fires once per periodic reconcile.
-				Expect(fake.UpdateCallCount()).To(BeZero(),
+				Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero(),
 					"Update should not be called again for a generation that was already successfully synced")
 			})
 		})
@@ -217,7 +217,7 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not hit SCM when only spec.commit.message changes", func() {
-				fake.ResetPullRequestSCMCallCounts()
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -226,9 +226,9 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeZero())
-					g.Expect(fake.UpdateCallCount()).To(BeZero())
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount(pullRequest.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -241,7 +241,7 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not hit SCM when only spec.mergeSha changes while open", func() {
-				fake.ResetPullRequestSCMCallCounts()
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -250,9 +250,9 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeZero())
-					g.Expect(fake.UpdateCallCount()).To(BeZero())
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount(pullRequest.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -265,9 +265,9 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should still hit SCM when spec.title changes", func() {
-				fake.ResetPullRequestSCMCallCounts()
-				baselineFindOpen := fake.FindOpenCallCount()
-				baselineUpdate := fake.UpdateCallCount()
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
+				baselineFindOpen := fake.FindOpenCallCount(pullRequest.UID)
+				baselineUpdate := fake.UpdateCallCount(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -276,8 +276,8 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">", baselineFindOpen))
-					g.Expect(fake.UpdateCallCount()).To(BeNumerically(">", baselineUpdate))
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeNumerically(">", baselineUpdate))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -485,7 +485,7 @@ var _ = Describe("PullRequest Controller", func() {
 		BeforeEach(func() {
 			prName := utils.KubeSafeUniqueName("merged-target-sha-" + randomString(15))
 			mergedPR = &promoterv1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Name: prName, Namespace: "default",
 				Spec: promoterv1alpha1.PullRequestSpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
 					Title:               "Initial Title",
@@ -533,7 +533,7 @@ var _ = Describe("PullRequest Controller", func() {
 		BeforeEach(func() {
 			prName := utils.KubeSafeUniqueName("terminal-spec-freeze-" + randomString(15))
 			pr = &promoterv1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Name: prName, Namespace: "default",
 				Spec: promoterv1alpha1.PullRequestSpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
 					Title:               "Initial Title",
@@ -599,7 +599,7 @@ var _ = Describe("PullRequest Controller", func() {
 		BeforeEach(func() {
 			prName := utils.KubeSafeUniqueName("terminal-status-freeze-" + randomString(15))
 			pr = &promoterv1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Name: prName, Namespace: "default",
 				Spec: promoterv1alpha1.PullRequestSpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
 					Title:               "Initial Title",
@@ -1526,7 +1526,7 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 
 		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
-			fake.ResetFindOpenCallCount()
+			fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 			// Status must be persisted as closed before the promoter finalizer is released so the
 			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
@@ -1586,18 +1586,18 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Checking the number of FindOpen calls")
 
-			findOpenBeforeBump := fake.FindOpenCallCount()
+			findOpenBeforeBump := fake.FindOpenCallCount(pullRequest.UID)
 			time.Sleep(150 * time.Millisecond)
 
 			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
-			findOpenAfterWindow := fake.FindOpenCallCount()
+			findOpenAfterWindow := fake.FindOpenCallCount(pullRequest.UID)
 			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 100),
 				"FindOpen should not be polled repeatedly after the SCM PR is closed during deletion")
 
-			snapshot := fake.FindOpenCallCount()
+			snapshot := fake.FindOpenCallCount(pullRequest.UID)
 			Consistently(func(g Gomega) {
 				// Allow a small bump from a stray requeue; a regression still produces thousands of FindOpen calls.
-				g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", snapshot+5))
+				g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically("<=", snapshot+5))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 
 			By("Verifying status reflects closed after the SCM PR was closed during deletion")
@@ -1609,7 +1609,7 @@ var _ = Describe("PullRequest Controller", func() {
 			// Once the promoter finalizer is released this controller is done with the object, even
 			// though the blocking finalizer keeps it around and reconciles keep arriving.
 			By("Verifying a spec change on the terminating object is rejected by CEL immutability")
-			afterRelease := fake.FindOpenCallCount()
+			afterRelease := fake.FindOpenCallCount(pullRequest.UID)
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			base := pullRequest.DeepCopy()
 			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
@@ -1617,7 +1617,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
 			Consistently(func(g Gomega) {
-				g.Expect(fake.FindOpenCallCount()).To(Equal(afterRelease))
+				g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(Equal(afterRelease))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 		})
 	})
@@ -1725,13 +1725,11 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	It("enqueues when terminating and finalizer count changes", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation:        1,
-				DeletionTimestamp: &now,
-				Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
-				ResourceVersion:   "1",
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation:        1,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
+			ResourceVersion:   "1",
+			Spec:              promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = nil
@@ -1740,11 +1738,9 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 
 	It("ignores updates when not terminating", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			Spec:       promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{
@@ -1757,12 +1753,10 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	It("ignores terminating updates when finalizer count is unchanged", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation:        1,
-				DeletionTimestamp: &now,
-				Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation:        1,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
+			Spec:              promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.ResourceVersion = "2"
@@ -1847,9 +1841,9 @@ var _ = Describe("pullRequestStatusTransitionPredicate", func() {
 
 	It("enqueues on transition to terminal status without generation bump", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1, ResourceVersion: "1"},
-			Spec:       promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
-			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+			Generation: 1, ResourceVersion: "1",
+			Spec:   promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.ResourceVersion = "2"
@@ -1861,7 +1855,7 @@ var _ = Describe("pullRequestStatusTransitionPredicate", func() {
 var _ = Describe("shouldSkipSCMSync", func() {
 	openPRWithStatus := func() *promoterv1alpha1.PullRequest {
 		pr := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 2},
+			Generation: 2,
 			Spec: promoterv1alpha1.PullRequestSpec{
 				Title:       "title",
 				Description: "description",
@@ -1915,10 +1909,8 @@ var _ = Describe("shouldSkipSCMSync", func() {
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: name,
@@ -1933,20 +1925,16 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -1955,11 +1943,9 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	pullRequest := &promoterv1alpha1.PullRequest{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.PullRequestSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,

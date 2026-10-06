@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/retry"
 
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -168,6 +169,7 @@ var _ = BeforeSuite(func() {
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
@@ -199,12 +201,24 @@ var _ = BeforeSuite(func() {
 	err = prReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// ChangeTransferPolicyHistory controller is set up before ChangeTransferPolicy so CTP can enqueue
+	// history rebuilds after writing promotion-history git notes.
+	ctphReconciler := &ChangeTransferPolicyHistoryReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicyHistory"),
+		SettingsMgr: settingsMgr,
+	}
+	err = ctphReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	ctpReconciler := &ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 		EnqueuePR:   prReconciler.GetEnqueueFunc(),
+		EnqueueCTPH: ctphReconciler.GetEnqueueFunc(),
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -230,19 +244,29 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&DependentsSuccessfulCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("DependentsSuccessfulCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
+		RESTMapper:  k8sManager.GetRESTMapper(),
 		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&RevertCommitReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorder("RevertCommit"),
+	err = (&RestoreActiveCommitReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("RestoreActiveCommit"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -472,13 +496,10 @@ func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepo
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial commit for "+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
@@ -491,13 +512,10 @@ func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepo
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "commit", "-m", "initial commit next")
+		_, err = runGitCmd(ctx, gitPath, "commit", "-m", "initial commit next for "+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -562,17 +580,11 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, repo *promoterv1alpha1
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
-
 		activeB, _ := strings.CutSuffix(environment, "-next")
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", activeB)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", activeB)
 		Expect(err).NotTo(HaveOccurred())
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
@@ -641,7 +653,6 @@ func setupInitialTestGitRepoForActivePath(ctx context.Context, repo *promoterv1a
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
-		time.Sleep(1 * time.Second)
 	}
 	GinkgoLogr.Info("Git repository initialized for activePath", "path", gitPath)
 }
@@ -774,9 +785,6 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 
 		// Send webhook after push with the "before" SHA that the CTP knows about
 		sendWebhookForPush(ctx, beforeBranchSha, environment)
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
 	}
 
 	return sha, shortSha
@@ -1380,6 +1388,79 @@ func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
 	return nil
 }
 
+// restoreActiveBranchViaGit writes a restore commit the same way RestoreActiveBranch does, but
+// only with git CLI: a new commit parented on the current active tip whose tree matches restoreTo,
+// Promoter-restored-from in the message and promotion-history note, then note push + branch push.
+// Fires a webhook with the pre-restore tip so CTP reconciles. Returns the restore commit SHA.
+func restoreActiveBranchViaGit(ctx context.Context, gitPath, activeBranch, restoreTo string) string {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip = strings.TrimSpace(activeTip)
+
+	tree, err := runGitCmd(ctx, gitPath, "rev-parse", restoreTo+"^{tree}")
+	Expect(err).NotTo(HaveOccurred())
+	tree = strings.TrimSpace(tree)
+
+	short := restoreTo
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	message := fmt.Sprintf("Restore %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, restoreTo)
+	restoreSha, err := runGitCmd(ctx, gitPath, "commit-tree", tree, "-p", activeTip, "-m", message)
+	Expect(err).NotTo(HaveOccurred())
+	restoreSha = strings.TrimSpace(restoreSha)
+
+	notePayload, err := json.Marshal(map[string][]string{
+		constants.TrailerRestoredFrom: {restoreTo},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	if err != nil && !strings.Contains(err.Error(), "couldn't find remote ref") {
+		Expect(err).NotTo(HaveOccurred())
+	}
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(notePayload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	lease := "refs/heads/" + activeBranch + ":" + activeTip
+	refspec := restoreSha + ":refs/heads/" + activeBranch
+	_, err = runGitCmd(ctx, gitPath, "push", "--force-with-lease="+lease, "origin", refspec)
+	Expect(err).NotTo(HaveOccurred())
+
+	sendWebhookForPush(ctx, activeTip, activeBranch)
+	return restoreSha
+}
+
+// unblockRestoreViaGit stamps Promoter-restore-unblocked-at on restoreSha's promotion-history note
+// via git notes only (no RestoreActiveCommit, no UnblockRestore Go helper). Callers should enqueue
+// CTP afterward: SCMs do not webhook on notes pushes.
+func unblockRestoreViaGit(ctx context.Context, gitPath, restoreSha string, at time.Time) {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	trailers := map[string][]string{}
+	raw, showErr := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
+	if showErr == nil && strings.TrimSpace(raw) != "" {
+		Expect(json.Unmarshal([]byte(raw), &trailers)).To(Succeed())
+	}
+	trailers[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	payload, err := json.Marshal(trailers)
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(payload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+}
+
 // fetchNotesRef force-fetches the hydrator notes ref from origin into the
 // local clone. It tolerates the case where the remote does not yet have the
 // notes ref (first hydrator run on a brand-new repo).
@@ -1457,12 +1538,10 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				constants.KubeconfigSecretLabel: "true",
-			},
+		Name:      name,
+		Namespace: namespace,
+		Labels: map[string]string{
+			constants.KubeconfigSecretLabel: "true",
 		},
 	}
 	secret.Data = map[string][]byte{

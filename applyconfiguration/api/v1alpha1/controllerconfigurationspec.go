@@ -39,6 +39,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	PromotionStrategy *PromotionStrategyConfigurationApplyConfiguration `json:"promotionStrategy,omitempty"`
+	// ChangeTransferPolicyHistory contains the configuration for the ChangeTransferPolicyHistory controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	ChangeTransferPolicyHistory *ChangeTransferPolicyHistoryConfigurationApplyConfiguration `json:"changeTransferPolicyHistory,omitempty"`
 	// ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ChangeTransferPolicy *ChangeTransferPolicyConfigurationApplyConfiguration `json:"changeTransferPolicy,omitempty"`
@@ -60,9 +63,15 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
+	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
+	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	RestoreActiveCommit *RestoreActiveCommitConfigurationApplyConfiguration `json:"restoreActiveCommit,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -84,6 +93,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithInstanceID(value str
 // If called multiple times, the PromotionStrategy field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithPromotionStrategy(value *PromotionStrategyConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.PromotionStrategy = value
+	return b
+}
+
+// WithChangeTransferPolicyHistory sets the ChangeTransferPolicyHistory field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ChangeTransferPolicyHistory field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithChangeTransferPolicyHistory(value *ChangeTransferPolicyHistoryConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.ChangeTransferPolicyHistory = value
 	return b
 }
 
@@ -143,10 +160,26 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStat
 	return b
 }
 
+// WithDependentsSuccessfulCommitStatus sets the DependentsSuccessfulCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DependentsSuccessfulCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessfulCommitStatus(value *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.DependentsSuccessfulCommitStatus = value
+	return b
+}
+
 // WithScheduledCommitStatus sets the ScheduledCommitStatus field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ScheduledCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatus(value *ScheduledCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.ScheduledCommitStatus = value
+	return b
+}
+
+// WithRestoreActiveCommit sets the RestoreActiveCommit field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RestoreActiveCommit field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithRestoreActiveCommit(value *RestoreActiveCommitConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.RestoreActiveCommit = value
 	return b
 }

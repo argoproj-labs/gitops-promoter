@@ -59,6 +59,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyConfiguration"):
 		return &apiv1alpha1.ChangeTransferPolicyConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistory"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryConfiguration"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistorySpec"):
+		return &apiv1alpha1.ChangeTransferPolicyHistorySpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyHistoryStatus"):
+		return &apiv1alpha1.ChangeTransferPolicyHistoryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicySpec"):
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):
@@ -93,6 +101,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
 		return &apiv1alpha1.CronWindowApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusConfiguration"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusSpec"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusUpstreamStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):
@@ -109,6 +129,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ForgejoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ForgejoRepo"):
 		return &apiv1alpha1.ForgejoRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GateEnvironmentCommitStatus"):
+		return &apiv1alpha1.GateEnvironmentCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitStatus"):
 		return &apiv1alpha1.GitCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitStatusConfiguration"):
@@ -153,6 +175,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OrderCommitStatusRef"):
+		return &apiv1alpha1.OrderCommitStatusRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OutputSpec"):
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
@@ -185,10 +209,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ResponseOutputSpec"):
 		return &apiv1alpha1.ResponseOutputSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
-		return &apiv1alpha1.RevertCommitApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
-		return &apiv1alpha1.RevertCommitSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommit"):
+		return &apiv1alpha1.RestoreActiveCommitApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitConfiguration"):
+		return &apiv1alpha1.RestoreActiveCommitConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitSpec"):
+		return &apiv1alpha1.RestoreActiveCommitSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitStatus"):
+		return &apiv1alpha1.RestoreActiveCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevisionReference"):
 		return &apiv1alpha1.RevisionReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatus"):

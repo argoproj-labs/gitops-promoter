@@ -1,11 +1,12 @@
 import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitPullRequest } from 'react-icons/go';
-import { timeAgo, formatDate, formatDuration } from '@shared/utils/util';
+import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
+import { timeAgo, formatDate, formatDuration, getCommitUrl } from '@shared/utils/util';
 import type { CellState, CommitRow } from '../types';
-import { commitKey } from '../helpers';
-import { CELL_KIND_LABELS, cellPillTooltip } from '../presentation';
+import { commitKey, shortSha } from '../helpers';
+import { CELL_KIND_LABELS, cellKindLabel, cellPillTooltip, displayKind } from '../presentation';
 import Tooltip from '../Tooltip/Tooltip';
+import { restoreBlockTooltip } from '@shared/utils/environments';
 
 const FlowCell: React.FC<{
   cell: CellState;
@@ -44,14 +45,39 @@ const FlowCell: React.FC<{
 
   const time = cell.at ? timeAgo(cell.at) : '';
   const exact = cell.at ? formatDate(cell.at) : '';
+  const visualKind = displayKind(cell.kind);
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
-  const prId = cell.pullRequest?.id ?? rowForCell?.prId;
-  const prUrl = cell.pullRequest?.url ?? rowForCell?.prUrl;
+  const blockedEnv = cell.restoreActiveCommit;
+  const blocked = !!cell.blockedByRestoreActiveCommit;
+  // A restore cell's dry sha is the version it restored, so a lookup by that sha finds the
+  // earlier promotion and its pull request. The restore commit has no pull request of its own.
+  const isRestore = !!cell.restoredFrom;
+  const prId =
+    blockedEnv || blocked || isRestore
+      ? cell.pullRequest?.id
+      : (cell.pullRequest?.id ?? rowForCell?.prId);
+  const prUrl =
+    blockedEnv || blocked || isRestore
+      ? cell.pullRequest?.url
+      : (cell.pullRequest?.url ?? rowForCell?.prUrl);
+  const restoreSha = isRestore ? cell.hydrated?.sha : undefined;
+  const restoreRepoUrl =
+    cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
+  const restoreUrl = restoreSha ? getCommitUrl(restoreRepoUrl, restoreSha) : '';
+  const pillTooltip = blockedEnv
+    ? restoreBlockTooltip(blockedEnv, blocked)
+    : cellPillTooltip(cell, branch);
 
   return (
     <div
-      className={['cell', `cell--${cell.kind}`, isSelected ? 'cell--selected' : '']
+      className={[
+        'cell',
+        `cell--${visualKind}`,
+        blocked ? 'cell--blocked' : blockedEnv ? 'cell--blocked-env' : '',
+        isRestore ? 'cell--restore' : '',
+        isSelected ? 'cell--selected' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
       role="button"
@@ -64,30 +90,36 @@ const FlowCell: React.FC<{
         }
       }}
       aria-label={`${
-        cell.kind === 'in-flight'
+        visualKind === 'in-flight'
           ? cell.isProposed
-            ? 'Proposed'
+            ? blocked
+              ? 'Blocked'
+              : 'Proposed'
             : 'PR open'
-          : CELL_KIND_LABELS[cell.kind]
+          : CELL_KIND_LABELS[visualKind]
       } in ${branch}`}
     >
       <div className="cell__top">
-        {cell.kind === 'was-here' && cell.liveDurationMs != null ? (
+        {visualKind === 'was-here' && cell.liveDurationMs != null ? (
           <Tooltip label={cellPillTooltip(cell, branch)}>
             <span className="cell__live-for">live for {formatDuration(cell.liveDurationMs)}</span>
           </Tooltip>
         ) : (
-          <Tooltip label={cellPillTooltip(cell, branch)}>
-            <span className={`cell__pill cell__pill--${cell.kind}`}>
-              {cell.kind === 'live' && 'LIVE'}
-              {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'REPLACED'}
-              {cell.kind === 'failed' && 'FAILED'}
-              {cell.kind === 'no-op' && (
+          <Tooltip label={pillTooltip}>
+            <span
+              className={`cell__pill cell__pill--${visualKind}${
+                blocked ? ' cell__pill--blocked' : blockedEnv ? ' cell__pill--blocked-env' : ''
+              }${isRestore ? ' cell__pill--restore' : ''}`}
+            >
+              {visualKind === 'no-op' && (
                 <>
-                  <FaBan aria-hidden="true" /> NO-OP
+                  <FaBan aria-hidden="true" />{' '}
                 </>
               )}
+              {blockedEnv && !blocked && (
+                <GoBlocked className="cell__pill__stop" aria-hidden="true" />
+              )}
+              {cellKindLabel(cell)}
             </span>
           </Tooltip>
         )}
@@ -98,7 +130,7 @@ const FlowCell: React.FC<{
         )}
       </div>
 
-      {prId && prUrl && (
+      {prId && prUrl ? (
         <div className="cell__commit">
           <div className="cell__commit-meta">
             <Tooltip
@@ -123,6 +155,34 @@ const FlowCell: React.FC<{
             </Tooltip>
           </div>
         </div>
+      ) : (
+        restoreSha &&
+        restoreUrl && (
+          <div className="cell__commit">
+            <div className="cell__commit-meta">
+              <Tooltip
+                label={
+                  <>
+                    Restore commit <code>{shortSha(restoreSha)}</code>
+                    <br />
+                    Open on remote
+                  </>
+                }
+              >
+                <a
+                  className="cell__pr"
+                  href={restoreUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Restore commit ${shortSha(restoreSha)} in ${branch}, opens in new tab`}
+                >
+                  <GoGitCommit aria-hidden="true" /> {shortSha(restoreSha)}
+                </a>
+              </Tooltip>
+            </div>
+          </div>
+        )
       )}
 
       <div className="cell__bottom">
@@ -132,7 +192,7 @@ const FlowCell: React.FC<{
         {cell.kind === 'no-op' && (
           <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>
         )}
-        {cell.kind === 'was-here' &&
+        {visualKind === 'was-here' &&
           cell.supersededById &&
           onJumpToRow &&
           rowsById.get(cell.supersededById) && (

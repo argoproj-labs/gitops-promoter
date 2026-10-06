@@ -38,7 +38,13 @@ type PromotionStrategySpecApplyConfiguration struct {
 	//
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
+	//
+	// The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
+	// does not need to be declared here.
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
+	// OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
+	// environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+	OrderCommitStatusRef *OrderCommitStatusRefApplyConfiguration `json:"orderCommitStatusRef,omitempty"`
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	Environments []EnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// ActivePath is the default repository subpath for this strategy's active state.
@@ -86,6 +92,14 @@ func (b *PromotionStrategySpecApplyConfiguration) WithProposedCommitStatuses(val
 		}
 		b.ProposedCommitStatuses = append(b.ProposedCommitStatuses, *values[i])
 	}
+	return b
+}
+
+// WithOrderCommitStatusRef sets the OrderCommitStatusRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the OrderCommitStatusRef field is set to the value of the last call.
+func (b *PromotionStrategySpecApplyConfiguration) WithOrderCommitStatusRef(value *OrderCommitStatusRefApplyConfiguration) *PromotionStrategySpecApplyConfiguration {
+	b.OrderCommitStatusRef = value
 	return b
 }
 

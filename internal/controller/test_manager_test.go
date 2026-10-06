@@ -64,13 +64,20 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		},
 	})
 
+	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
+		promotercache.OptionsForInstanceID(instanceID, namespace),
+		cfg,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
 	mcMgr, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 		HealthProbeBindAddress: "0",
-		Cache:                  promotercache.OptionsForInstanceID(instanceID, namespace),
+		Cache:                  cacheOpts,
 		Controller: config.Controller{
 			SkipNameValidation: &skipNameValidation,
 		},
@@ -140,9 +147,18 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
+	// Ordering gate: DependentsSuccessfulCommitStatus; PS hard-fails without one.
+	Expect((&DependentsSuccessfulCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("DependentsSuccessfulCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
+		RESTMapper:  localMgr.GetRESTMapper(),
 		Recorder:    localMgr.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

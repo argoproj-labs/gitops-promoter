@@ -69,21 +69,20 @@ func newFakeReader(objs ...client.Object) client.Reader {
 // resources, including a Secret that must NEVER end up in the bundle.
 func seedObjects() []client.Object {
 	ps := &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPSName,
-			Namespace: testNamespace,
-			UID:       testPSUID,
-			ManagedFields: []metav1.ManagedFieldsEntry{
-				{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
-			},
-			Annotations: map[string]string{
-				lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
-				"keep-me":             "yes",
-			},
+		Name:      testPSName,
+		Namespace: testNamespace,
+		UID:       testPSUID,
+		ManagedFields: []metav1.ManagedFieldsEntry{
+			{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
+		},
+		Annotations: map[string]string{
+			lastAppliedAnnotation: "{\"should\":\"be stripped\"}",
+			"keep-me":             "yes",
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
-			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-			Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+			RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+			OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+			Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 		},
 		Status: promoterv1alpha1.PromotionStrategyStatus{
 			Environments: []promoterv1alpha1.EnvironmentStatus{
@@ -101,6 +100,27 @@ func seedObjects() []client.Object {
 		&promoterv1alpha1.ChangeTransferPolicy{
 			ObjectMeta: psLabeledMeta("dev-ctp"),
 			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+		},
+		&promoterv1alpha1.ChangeTransferPolicyHistory{
+			ObjectMeta: psLabeledMeta("dev-ctph"),
+			Spec:       promoterv1alpha1.ChangeTransferPolicyHistorySpec{ActiveBranch: "environment/dev"},
+		},
+		&promoterv1alpha1.RestoreActiveCommit{
+			ObjectMeta: objectMeta("dev-revert"),
+			Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName},
+				Branch:               "environment/dev",
+				Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
+			},
+		},
+		// A RestoreActiveCommit for a different PromotionStrategy; must be excluded.
+		&promoterv1alpha1.RestoreActiveCommit{
+			ObjectMeta: objectMeta("other-revert"),
+			Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other-ps"},
+				Branch:               "environment/dev",
+				Sha:                  "abcdef1234567890abcdef1234567890abcdef12",
+			},
 		},
 		&promoterv1alpha1.PullRequest{ObjectMeta: psLabeledMeta("dev-pr")},
 		&promoterv1alpha1.CommitStatus{ObjectMeta: psLabeledMeta("dev-cs")},
@@ -176,8 +196,14 @@ var _ = Describe("BuildBundle", func() {
 
 		By("selecting label-owned children")
 		Expect(bundle.ChangeTransferPolicies).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories).To(HaveLen(1))
+		Expect(bundle.ChangeTransferPolicyHistories[0].Name).To(Equal("dev-ctph"))
 		Expect(bundle.PullRequests).To(HaveLen(1))
 		Expect(bundle.CommitStatuses).To(HaveLen(1))
+
+		By("selecting RestoreActiveCommits by the PromotionStrategy they name")
+		Expect(bundle.RestoreActiveCommits).To(HaveLen(1))
+		Expect(bundle.RestoreActiveCommits[0].Name).To(Equal("dev-revert"))
 
 		By("filtering managers by promotionStrategyRef.name")
 		Expect(bundle.ArgoCDCommitStatuses).To(HaveLen(1))
@@ -240,10 +266,11 @@ var _ = Describe("BuildBundle", func() {
 	It("resolves a ClusterScmProvider when the GitRepository references one", func() {
 		objs := []client.Object{
 			&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace},
+				Name: testPSName, Namespace: testNamespace,
 				Spec: promoterv1alpha1.PromotionStrategySpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-					Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 				},
 			},
 			&promoterv1alpha1.GitRepository{
@@ -252,7 +279,7 @@ var _ = Describe("BuildBundle", func() {
 					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "cluster-scm"},
 				},
 			},
-			&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}},
+			&promoterv1alpha1.ClusterScmProvider{Name: "cluster-scm"},
 		}
 		reader := newFakeReader(objs...)
 

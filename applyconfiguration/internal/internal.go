@@ -228,6 +228,65 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistory
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistorySpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistorySpec
+  map:
+    fields:
+    - name: activeBranch
+      type:
+        scalar: string
+    - name: activePath
+      type:
+        scalar: string
+    - name: gitRepositoryRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: history
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
+          elementRelationship: atomic
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicySpec
   map:
     fields:
@@ -280,12 +339,6 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: instanceID
       type:
         scalar: string
@@ -512,9 +565,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: changeTransferPolicy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyConfiguration
+    - name: changeTransferPolicyHistory
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
+    - name: dependentsSuccessfulCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
     - name: gitCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitCommitStatusConfiguration
@@ -527,6 +586,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestConfiguration
+    - name: restoreActiveCommit
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitConfiguration
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
@@ -568,6 +630,111 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: activeCommitStatuses
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeRequestPolicyCommitStatusPhase
+          elementRelationship: associative
+          keys:
+          - key
+    - name: branch
+      type:
+        scalar: string
+    - name: description
+      type:
+        scalar: string
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: reportedSha
+      type:
+        scalar: string
+    - name: upstreams
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: reason
+      type:
+        scalar: string
+    - name: satisfied
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Environment
   map:
     fields:
@@ -589,6 +756,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
+    - name: dependsOn
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
     - name: proposedCommitStatuses
       type:
         list:
@@ -606,12 +779,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
-    - name: history
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.History
-          elementRelationship: atomic
     - name: lastHealthyDryShas
       type:
         list:
@@ -949,6 +1116,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestCommonStatus
+    - name: restoreUnblockedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: restoredFrom
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HydratorMetadata
   map:
     fields:
@@ -1007,6 +1180,20 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
   map:
     fields:
+    - name: name
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
+  map:
+    fields:
+    - name: group
+      type:
+        scalar: string
+      default: promoter.argoproj.io
+    - name: kind
+      type:
+        scalar: string
+      default: DependentsSuccessfulCommitStatus
     - name: name
       type:
         scalar: string
@@ -1072,6 +1259,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gitRepositoryRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: orderCommitStatusRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
     - name: proposedCommitStatuses
       type:
         list:
@@ -1290,7 +1480,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: output
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommit
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommit
   map:
     fields:
     - name: apiVersion
@@ -1304,28 +1494,58 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitSpec
     - name: status
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitConfiguration
   map:
     fields:
-    - name: foo
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitSpec
+  map:
+    fields:
+    - name: blockEnvironment
+      type:
+        scalar: boolean
+      default: true
+    - name: branch
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommitStatus
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommitStatus
   map:
-    elementType:
-      scalar: untyped
-      list:
-        elementType:
-          namedType: __untyped_atomic_
-        elementRelationship: atomic
-      map:
-        elementType:
-          namedType: __untyped_deduced_
-        elementRelationship: separable
+    fields:
+    - name: activeSha
+      type:
+        scalar: string
+    - name: blockedDrySha
+      type:
+        scalar: string
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: restoredFrom
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevisionReference
   map:
     fields:

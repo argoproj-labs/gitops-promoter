@@ -48,7 +48,8 @@ type Input struct {
 
 // NamespaceMetadata holds the labels and annotations of the
 // WebRequestCommitStatus's namespace, passed to URL/header/body/description
-// templates as {{ .NamespaceMetadata.Labels }} and {{ .NamespaceMetadata.Annotations }}.
+// templates as {{ .NamespaceMetadata.Labels }} and {{ .NamespaceMetadata.Annotations }},
+// and to trigger/success expr programs as NamespaceMetadata.
 type NamespaceMetadata struct {
 	Labels      map[string]string
 	Annotations map[string]string

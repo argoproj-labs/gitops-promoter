@@ -32,7 +32,7 @@ resources:
   controller: true
   domain: argoproj.io
   group: promoter
-  kind: RevertCommit
+  kind: RestoreActiveCommit
   path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
   version: v1alpha1
 - api:
@@ -121,7 +121,25 @@ resources:
   controller: true
   domain: argoproj.io
   group: promoter
+  kind: DependentsSuccessfulCommitStatus
+  path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
   kind: ScheduledCommitStatus
+  path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: ChangeTransferPolicyHistory
   path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
   version: v1alpha1
 version: "3"

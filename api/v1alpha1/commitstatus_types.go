@@ -159,6 +159,33 @@ func init() {
 	})
 }
 
+// GateEnvironmentCommitStatus mirrors per-environment child CommitStatus report fields
+// (phase, description, url, reportedSha). Used on gate CR status.environments[] only — not embedded in CommitStatusSpec.
+type GateEnvironmentCommitStatus struct {
+	// Phase mirrors child CommitStatus.spec.phase.
+	// +kubebuilder:validation:Enum:=pending;success;failure;""
+	// +optional
+	Phase CommitStatusPhase `json:"phase,omitempty"`
+
+	// Description mirrors child CommitStatus.spec.description.
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	// Url mirrors child CommitStatus.spec.url.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
+	Url string `json:"url,omitempty"`
+
+	// ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+	// Semantics depend on the parent gate (proposed vs active hydrated SHA).
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	ReportedSha string `json:"reportedSha,omitempty"`
+}
+
 // CommitStatusPhase represents the phase of a commit status.
 type CommitStatusPhase string
 

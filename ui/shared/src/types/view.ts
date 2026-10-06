@@ -29,6 +29,12 @@ export type PromotionStrategy = KubernetesResource<Schemas['PromotionStrategy']>
 /** Embedded in PromotionStrategyDetails.changeTransferPolicies. */
 export type ChangeTransferPolicy = Schemas['ChangeTransferPolicy'];
 
+/** Embedded in PromotionStrategyDetails.changeTransferPolicyHistories. */
+export type ChangeTransferPolicyHistory = Schemas['ChangeTransferPolicyHistory'];
+
+/** Embedded in PromotionStrategyDetails.restoreActiveCommits. */
+export type RestoreActiveCommit = Schemas['RestoreActiveCommit'];
+
 /** Embedded in PromotionStrategyDetails (and list responses). */
 export type PullRequestResource = Schemas['PullRequest'];
 

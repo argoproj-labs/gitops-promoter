@@ -36,11 +36,11 @@
 //   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
 //     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
 //     clone and never write to the index/worktree/HEAD.
-//   - The merges (MergeWithOursStrategy, MergeWithOursStrategyForPath) build their result entirely
-//     in the object DB — commit-tree for the "ours" merge, and a temporary index (GIT_INDEX_FILE)
-//     plus read-tree/write-tree/commit-tree for the path-scoped merge — then push the computed
-//     commit straight to the remote ref. They never check out a branch, so they cannot be wedged by,
-//     nor leave behind, a dirty worktree or a half-finished merge.
+//   - The merges (MergeWithOursStrategy, MergeWithOursStrategyForPath) and RestoreActiveBranch
+//     build their result entirely in the object DB — commit-tree, and a temporary index
+//     (GIT_INDEX_FILE) plus read-tree/write-tree/commit-tree when the result is path-scoped —
+//     then push the computed commit straight to the remote ref. They never check out a branch,
+//     so they cannot be wedged by, nor leave behind, a dirty worktree or a half-finished merge.
 //
 // The clone's working tree therefore stays exactly as CloneRepo left it for the life of the clone.
 //
@@ -71,13 +71,17 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -86,6 +90,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
@@ -96,10 +101,25 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap      scms.GitOperationsProvider
-	gitRepo  *v1alpha1.GitRepository
-	blobs    map[string]blobObject
-	commits  map[string]commitObject
+	gap     scms.GitOperationsProvider
+	gitRepo *v1alpha1.GitRepository
+	blobs   map[string]blobObject
+	commits map[string]commitObject
+
+	// remoteRefs is a snapshot of remote ref tips, keyed by full ref name, taken by SnapshotRemoteRefs.
+	// A probed ref that does not exist on the remote maps to "". Refs that were never probed, or whose
+	// entry was consumed (FetchNotes) or invalidated by a push from this instance, are absent.
+	remoteRefs map[string]string
+
+	// localRefs caches local ref tips read by localRefShas, keyed by full ref name, with "" for refs
+	// that do not exist locally. Entries are dropped whenever this instance changes the ref.
+	localRefs map[string]string
+
+	// historyNotes caches raw promotion-history notes by lowercase commit SHA, filled by
+	// LoadHistoryNotes. "" records a commit without a note. The map lives only for this
+	// EnvironmentOperations instance, which callers construct per reconcile.
+	historyNotes map[string]string
+
 	identity string
 }
 
@@ -143,11 +163,14 @@ func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 // the active branch is not part of the key. Callers must serialize operations for a given identity.
 func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:      gap,
-		gitRepo:  gitRepo,
-		identity: identity,
-		blobs:    make(map[string]blobObject),
-		commits:  make(map[string]commitObject),
+		gap:          gap,
+		gitRepo:      gitRepo,
+		identity:     identity,
+		blobs:        make(map[string]blobObject),
+		commits:      make(map[string]commitObject),
+		remoteRefs:   make(map[string]string),
+		localRefs:    make(map[string]string),
+		historyNotes: make(map[string]string),
 	}
 }
 
@@ -216,6 +239,21 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
+// RemoveClone deletes this environment's on-disk clone and forgets it, so a later CloneRepo for the
+// same identity clones afresh. It is a no-op when there is no clone. Use it for short-lived
+// identities whose clone would otherwise stay on disk for the life of the process.
+func (g *EnvironmentOperations) RemoveClone() error {
+	path := g.ClonePath()
+	if path == "" {
+		return nil
+	}
+	gitpaths.Delete(g.cloneKey())
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("failed to remove clone %q: %w", path, err)
+	}
+	return nil
+}
+
 func buildHydratorMetadataPath(activePath string) string {
 	if activePath == "" {
 		return "hydrator.metadata"
@@ -243,20 +281,164 @@ func (e *MalformedHydratorMetadataError) Error() string {
 // Unwrap exposes the underlying decode failure.
 func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 
+// SnapshotRemoteRefs records the current remote tips of the given branches and of both notes refs
+// (HydratorNotesRef, PromoterHistoryNotesRef) with a single ls-remote. Later GetBranchSha and
+// FetchNotes calls on this instance use the snapshot to skip fetching refs whose local copy already
+// matches the remote, so a reconcile where nothing changed costs one network round trip instead of
+// one per branch and notes ref.
+//
+// Taking a snapshot is optional: without one, GetBranchSha and FetchNotes probe the remote
+// themselves. On error the snapshot is left unchanged and callers may carry on; the later calls then
+// fall back to their own probes or fetches.
+//
+// Read-only: queries the remote only; never touches the clone.
+func (g *EnvironmentOperations) SnapshotRemoteRefs(ctx context.Context, branches ...string) error {
+	refs := make([]string, 0, len(branches)+2)
+	for _, branch := range branches {
+		refs = append(refs, branchRef(branch))
+	}
+	refs = append(refs, HydratorNotesRef, PromoterHistoryNotesRef)
+
+	snapshot, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, refs...)
+	if err != nil {
+		return err
+	}
+	maps.Copy(g.remoteRefs, snapshot)
+
+	// Read the matching local tips in one go as well, so the comparisons in GetBranchSha and FetchNotes
+	// don't each spawn git. Best effort: they read whatever is missing on their own.
+	if g.ClonePath() != "" {
+		localRefs := make([]string, 0, len(refs))
+		for _, branch := range branches {
+			localRefs = append(localRefs, trackingRef(branch))
+		}
+		localRefs = append(localRefs, HydratorNotesRef, PromoterHistoryNotesRef)
+		if _, err := g.localRefShas(ctx, localRefs...); err != nil {
+			log.FromContext(ctx).V(4).Info("failed to read local refs for snapshot", "error", err)
+		}
+	}
+	return nil
+}
+
+// forgetRemoteRef drops a ref from the remote snapshot after this instance changed it on the remote,
+// so later calls re-probe instead of trusting the pre-push value.
+func (g *EnvironmentOperations) forgetRemoteRef(ref string) {
+	delete(g.remoteRefs, ref)
+}
+
+// forgetLocalRef drops a ref from the local ref cache after this instance changed (or may have
+// changed) it in the clone, so the next localRefShas reads it again.
+func (g *EnvironmentOperations) forgetLocalRef(ref string) {
+	delete(g.localRefs, ref)
+}
+
+func branchRef(branch string) string {
+	return "refs/heads/" + branch
+}
+
+func trackingRef(branch string) string {
+	return "refs/remotes/origin/" + branch
+}
+
+// lsRemoteRefs runs a single ls-remote for the given full ref names and returns the remote SHA of each.
+// Every requested ref is present in the result; refs that do not exist on the remote map to "".
+//
+// lsRemoteRefs is concurrency-safe: it queries the remote directly and uses no on-disk clone.
+func lsRemoteRefs(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, refs ...string) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+
+	start := time.Now()
+	args := make([]string, 0, 2+len(refs))
+	args = append(args, "ls-remote", gap.GetGitHttpsRepoUrl(*gitRepo))
+	args = append(args, refs...)
+	stdout, stderr, err := runCmd(ctx, gap, "", args...)
+	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not git ls-remote", "gitError", stderr)
+		return nil, err
+	}
+
+	shas := make(map[string]string, len(refs))
+	for _, ref := range refs {
+		shas[ref] = ""
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		sha, ref, found := strings.Cut(line, "\t")
+		if !found {
+			continue
+		}
+		// ls-remote patterns match on the ref name's tail, so keep exact matches only.
+		if _, requested := shas[ref]; requested {
+			shas[ref] = sha
+		}
+	}
+
+	logger.V(4).Info("ls-remote snapshot", "refs", shas)
+	return shas, nil
+}
+
+// localRefShas returns the local SHA of each of the given full ref names, with "" for refs that do
+// not exist locally. Refs not already in the local ref cache are read with a single for-each-ref.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) localRefShas(ctx context.Context, refs ...string) (map[string]string, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	var uncached []string
+	for _, ref := range refs {
+		if _, ok := g.localRefs[ref]; !ok {
+			uncached = append(uncached, ref)
+		}
+	}
+
+	if len(uncached) > 0 {
+		args := make([]string, 0, 2+len(uncached))
+		args = append(args, "for-each-ref", "--format=%(objectname) %(refname)")
+		args = append(args, uncached...)
+		stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read local refs: %w (stderr: %s)", err, stderr)
+		}
+
+		read := make(map[string]string, len(uncached))
+		for _, ref := range uncached {
+			read[ref] = ""
+		}
+		for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+			sha, ref, found := strings.Cut(line, " ")
+			if !found {
+				continue
+			}
+			// for-each-ref patterns also match refs nested below them, so keep exact matches only.
+			if _, requested := read[ref]; requested {
+				read[ref] = sha
+			}
+		}
+		maps.Copy(g.localRefs, read)
+	}
+
+	shas := make(map[string]string, len(refs))
+	for _, ref := range refs {
+		shas[ref] = g.localRefs[ref]
+	}
+	return shas, nil
+}
+
 // GetBranchSha fetches the given branch when needed and returns the commit SHA at origin/<branch>.
 //
-// Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
-// repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
-// Hydrated SHA this same branch/identity returned on a previous, successful call). If it matches,
-// the commit is guaranteed to already be present in this clone (it was fetched the last time this
-// identity observed that SHA), so the network fetch is skipped and rev-parse resolves the tip from
-// the existing local objects instead. This keeps the skip decision self-contained: callers cannot
-// accidentally skip the fetch based on a stale probe or a SHA observed by a different clone/identity,
-// since the check against the live remote happens inside this call, right before the fetch would.
+// The fetch is skipped when the branch's current remote SHA equals the clone's own origin/<branch>
+// ref: the commit is then already present locally, so rev-parse resolves the tip without a network
+// fetch. The remote SHA comes from the SnapshotRemoteRefs snapshot when the branch was part of it,
+// otherwise from a live ls-remote taken here, right before the fetch would run. Comparing against the
+// clone's own ref keeps the skip decision self-contained: it never relies on a SHA observed by a
+// different clone/identity or recorded by an earlier reconcile.
 //
-// Pass an empty lastKnownHydratedSha (e.g. before any SHA has been observed for this branch, or when
-// the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
-// nothing to compare against.
+// lastKnownHydratedSha is the tip the caller observed on a previous reconcile. When the branch is not
+// in the snapshot and lastKnownHydratedSha is empty (no SHA has been observed yet, so a fetch is
+// likely needed anyway), the ls-remote probe is skipped and the branch is always fetched.
 //
 // Hydrator dry metadata for the tip is not read here; callers that need it should prefetch the tip
 // (for example via LoadCommitAndMetadataBlobs) and use GetShaMetadataFromFile.
@@ -266,16 +448,6 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKnownHydratedSha string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	skipFetch := false
-	if lastKnownHydratedSha != "" {
-		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
-		if err != nil {
-			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
-		} else {
-			skipFetch = remoteHeads[branch] == lastKnownHydratedSha
-		}
-	}
-
 	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
@@ -283,9 +455,29 @@ func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKn
 
 	logger.V(4).Info("git path", "path", gitPath)
 
-	if skipFetch {
-		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
-	} else if err := g.FetchBranch(ctx, branch); err != nil {
+	remoteSha, probed := g.remoteRefs[branchRef(branch)]
+	if !probed && lastKnownHydratedSha != "" {
+		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
+		if err != nil {
+			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
+		} else {
+			remoteSha = remoteHeads[branch]
+		}
+	}
+
+	if remoteSha != "" {
+		tracking := trackingRef(branch)
+		local, err := g.localRefShas(ctx, tracking)
+		if err != nil {
+			return "", err
+		}
+		if local[tracking] == remoteSha {
+			logger.V(4).Info("local branch already matches remote, skipping fetch", "branch", branch, "sha", remoteSha)
+			return remoteSha, nil
+		}
+	}
+
+	if err := g.FetchBranch(ctx, branch); err != nil {
 		return "", err
 	}
 
@@ -313,6 +505,7 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 
 	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	g.forgetLocalRef(trackingRef(branch))
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not fetch branch", "gitError", stderr)
@@ -347,7 +540,9 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 	if obj.Missing {
 		// cat-file --batch reports both "path absent from tree" and "unknown SHA" as missing.
 		// Only degrade when the commit itself exists; unknown revisions must stay errors.
-		if g.CommitExists(ctx, sha) {
+		// A commit already in the per-reconcile cache is known to exist without spawning git.
+		_, cached := g.commits[strings.ToLower(sha)]
+		if cached || g.CommitExists(ctx, sha) {
 			logger.V(4).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
 			return v1alpha1.CommitShaState{}, nil
 		}
@@ -553,13 +748,47 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	logger := log.FromContext(ctx)
 	repoPath := g.ClonePath()
 
+	// The result only depends on the two tip commits, so it is memoized per repository and commit
+	// pair. CTP calls this from gitMergeStrategyOurs on every reconcile where proposed ≠ active —
+	// an open promotion waiting on gates, webhooks, or the periodic requeue, often with unchanged
+	// tips. The first check still runs merge-tree; later reconciles in this process do not. Fully
+	// synced envs never get here (the controller skips when the SHAs are equal). Tips come from
+	// the local ref cache and are passed to merge-tree as SHAs so the cached answer is for exactly
+	// the commits that were checked.
+	activeRev, proposedRev := "origin/"+activeBranch, "origin/"+proposedBranch
+	var key conflictKey
+	if tips, err := g.localRefShas(ctx, trackingRef(activeBranch), trackingRef(proposedBranch)); err == nil &&
+		tips[trackingRef(activeBranch)] != "" && tips[trackingRef(proposedBranch)] != "" {
+		activeRev, proposedRev = tips[trackingRef(activeBranch)], tips[trackingRef(proposedBranch)]
+		key = conflictKey{repoURL: g.gap.GetGitHttpsRepoUrl(*g.gitRepo), activeSha: activeRev, proposedSha: proposedRev}
+		if conflict, ok := conflicts.get(key); ok {
+			logger.V(4).Info("Using cached merge-tree result", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "conflict", conflict)
+			return conflict, nil
+		}
+	}
+
 	// Use git merge-tree --write-tree to perform a stateless merge check
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", activeRev, proposedRev)
 	if err != nil {
-		// Exit code 1 with conflict info in stderr means conflicts were detected
+		// Unrelated histories cannot be inspected by merge-tree, but they need the same
+		// resolution as a content conflict: create an ours-style merge commit on proposed
+		// that keeps its tree and records both branch tips as parents. That commit establishes
+		// the merge-base required by the subsequent pull request.
+		//
+		// NOTE: we're intentionally taking on the risk of blowing away someone's unrelated
+		// proposed branch contents when adopted by Promoter. While that's always a possibility,
+		// the likelihood that we're making a mistake is higher with two branches that don't
+		// even share a history.
+		if strings.Contains(stderr, "refusing to merge unrelated histories") {
+			logger.Info("Unrelated branch histories detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			conflicts.put(key, true)
+			return true, nil
+		}
+		// Exit code 1 with conflict info means conflicts were detected.
 		if strings.Contains(stdout, "CONFLICT") {
 			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			conflicts.put(key, true)
 			return true, nil
 		}
 		// Some other error occurred
@@ -569,7 +798,50 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 
 	// Exit code 0 means clean merge - stdout contains the resulting tree SHA
 	logger.V(4).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
+	conflicts.put(key, false)
 	return false, nil
+}
+
+// conflictKey identifies one merge-tree conflict check: the repository and the two commits merged.
+type conflictKey struct {
+	repoURL     string
+	activeSha   string
+	proposedSha string
+}
+
+// maxCachedConflicts bounds the process-wide merge-tree result cache. Each entry is a few hundred
+// bytes; the cache is simply reset when full since stale commit pairs are never asked about again.
+const maxCachedConflicts = 4096
+
+// conflictCache memoizes merge-tree conflict results by commit pair. It is shared by every
+// EnvironmentOperations in the process and is concurrency-safe.
+type conflictCache struct {
+	results map[conflictKey]bool
+	mu      sync.Mutex
+}
+
+var conflicts = &conflictCache{results: make(map[conflictKey]bool)}
+
+func (c *conflictCache) get(key conflictKey) (bool, bool) {
+	if key == (conflictKey{}) {
+		return false, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conflict, ok := c.results[key]
+	return conflict, ok
+}
+
+func (c *conflictCache) put(key conflictKey, conflict bool) {
+	if key == (conflictKey{}) {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.results) >= maxCachedConflicts {
+		clear(c.results)
+	}
+	c.results[key] = conflict
 }
 
 // MergeWithOursStrategy merges the active branch into the proposed branch using the "ours" strategy
@@ -597,15 +869,17 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	treeSha = strings.TrimSpace(treeSha)
 
 	commitMessage := fmt.Sprintf("Merge %s into %s (ours)", activeBranch, proposedBranch)
-	commitSha, stderr, err := g.runCmd(ctx, gitPath, "commit-tree", treeSha, "-p", proposedRef, "-p", activeRef, "-m", commitMessage)
+	commitSha, err := g.commitTree(ctx, treeSha, []string{proposedRef, activeRef}, commitMessage)
 	if err != nil {
-		logger.Error(err, "Failed to create merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to create 'ours' merge commit for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+		logger.Error(err, "Failed to create merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+		return fmt.Errorf("failed to create 'ours' merge commit for branch %q: %w", proposedBranch, err)
 	}
-	commitSha = strings.TrimSpace(commitSha)
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
+	// The push also moves the clone's origin/<proposed> tracking ref.
+	g.forgetRemoteRef(branchRef(proposedBranch))
+	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
@@ -630,68 +904,26 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	proposedRef := "origin/" + proposedBranch
 	activeRef := "origin/" + activeBranch
 
-	// Build the resolved tree in a temporary index so the clone's real index/worktree/HEAD are never
-	// touched. The temp index lives outside the clone so it cannot appear as an untracked file.
-	tmpIndex, err := os.CreateTemp("", "promoter-merge-index-*")
+	// Active wins outside activePath, proposed wins inside it (including deletions).
+	treeSha, err := g.overlayPathTree(ctx, activeRef, proposedRef, activePath)
 	if err != nil {
-		return fmt.Errorf("failed to create temp index for path-scoped merge: %w", err)
-	}
-	tmpIndexPath := tmpIndex.Name()
-	_ = tmpIndex.Close()
-	defer func() {
-		if rmErr := os.Remove(tmpIndexPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			logger.Error(rmErr, "failed to remove temp index", "path", tmpIndexPath)
-		}
-	}()
-	indexEnv := []string{"GIT_INDEX_FILE=" + tmpIndexPath}
-
-	// Start from active's tree (active wins outside activePath).
-	_, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", activeRef)
-	if err != nil {
-		logger.Error(err, "Failed to read active tree into temp index", "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to read tree for branch %q: %w (stderr: %s)", activeBranch, err, stderr)
+		logger.Error(err, "Failed to build path-scoped tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
+		return fmt.Errorf("failed to build path-scoped tree for branch %q: %w", proposedBranch, err)
 	}
 
-	// Drop the activePath subtree so proposed's version (including any deletions) fully replaces it.
-	_, stderr, err = g.runCmdWithEnv(ctx, gitPath, indexEnv, "rm", "-r", "-f", "--cached", "--ignore-unmatch", "--", ":(literal)"+activePath)
+	// Parents are [proposed, active], preserving the "ours"-style topology so the subsequent SCM
+	// merge stays clean.
+	commitSha, err := g.commitTree(ctx, treeSha, []string{proposedRef, activeRef}, "Resolve conflicts for "+activePath)
 	if err != nil {
-		logger.Error(err, "Failed to remove activePath from temp index", "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to remove activePath %q from index: %w (stderr: %s)", activePath, err, stderr)
+		logger.Error(err, "Failed to create path-scoped merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
+		return fmt.Errorf("failed to create path-scoped merge commit for branch %q: %w", proposedBranch, err)
 	}
-
-	// Overlay proposed's activePath subtree (proposed wins inside activePath). Skip the overlay if
-	// proposed has no content at activePath — the subtree then stays removed, matching proposed.
-	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", proposedRef, "--", ":(literal)"+activePath)
-	if err != nil {
-		logger.Error(err, "Failed to inspect proposed activePath", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to inspect activePath %q on branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
-	}
-	if strings.TrimSpace(lsTreeStdout) != "" {
-		_, stderr, err = g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "--prefix="+activePath+"/", proposedRef+":"+activePath)
-		if err != nil {
-			logger.Error(err, "Failed to overlay proposed activePath into temp index", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
-			return fmt.Errorf("failed to overlay activePath %q from branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
-		}
-	}
-
-	// Write the resolved tree and create the merge commit. Parents are [proposed, active], preserving
-	// the "ours"-style topology so the subsequent SCM merge stays clean.
-	treeSha, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "write-tree")
-	if err != nil {
-		logger.Error(err, "Failed to write resolved tree", "stderr", stderr)
-		return fmt.Errorf("failed to write resolved tree for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
-	}
-	treeSha = strings.TrimSpace(treeSha)
-
-	commitSha, stderr, err := g.runCmd(ctx, gitPath, "commit-tree", treeSha, "-p", proposedRef, "-p", activeRef, "-m", "Resolve conflicts for "+activePath)
-	if err != nil {
-		logger.Error(err, "Failed to create path-scoped merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to create path-scoped merge commit for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
-	}
-	commitSha = strings.TrimSpace(commitSha)
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
+	_, stderr, err := g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
+	// The push also moves the clone's origin/<proposed> tracking ref.
+	g.forgetRemoteRef(branchRef(proposedBranch))
+	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
@@ -762,13 +994,81 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
-// FetchNotes fetches the git notes from the remote repository.
+// PromotionHistoryNotesMatchSnapshot reports whether this clone's promotion-history notes ref equals
+// the tip SnapshotRemoteRefs recorded for PromoterHistoryNotesRef. An empty SHA on both sides matches:
+// the ref is absent locally and on the remote. It returns false when that ref is not in the snapshot,
+// including when SnapshotRemoteRefs failed, so callers do not treat an unknown remote as unchanged.
+//
+// The snapshot entry is left in place. FetchNotes still consumes it when the caller goes on to rebuild.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) PromotionHistoryNotesMatchSnapshot(ctx context.Context) (bool, error) {
+	remoteSha, ok := g.remoteRefs[PromoterHistoryNotesRef]
+	if !ok {
+		return false, nil
+	}
+	local, err := g.localRefShas(ctx, PromoterHistoryNotesRef)
+	if err != nil {
+		return false, err
+	}
+	return local[PromoterHistoryNotesRef] == remoteSha, nil
+}
+
+// FetchNotes brings the local notes refs (HydratorNotesRef, PromoterHistoryNotesRef) up to date with
+// the remote. A ref is only fetched when its remote tip differs from the local one; the remote tips
+// come from the SnapshotRemoteRefs snapshot (used by at most one FetchNotes call), or from a single
+// ls-remote taken here when there is none.
+// A notes ref missing on the remote is not an error.
 //
 // Read-only: updates the notes refs only; never mutates the clone's index/worktree/HEAD.
 func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	notesRefs := []string{HydratorNotesRef, PromoterHistoryNotesRef}
+
+	// A snapshot answers one FetchNotes call: its entries are consumed here so a later call on this
+	// instance probes the remote again instead of trusting an older view.
+	remote := make(map[string]string, len(notesRefs))
+	var unprobed []string
+	for _, ref := range notesRefs {
+		if sha, ok := g.remoteRefs[ref]; ok {
+			remote[ref] = sha
+			g.forgetRemoteRef(ref)
+		} else {
+			unprobed = append(unprobed, ref)
+		}
+	}
+	if len(unprobed) > 0 {
+		probed, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, unprobed...)
+		if err != nil {
+			// Fall back to fetching every ref; fetchNotesRef reports the underlying failure.
+			logger.V(4).Info("ls-remote probe for notes refs failed, fetching unconditionally", "error", err)
+			for _, ref := range notesRefs {
+				if err := g.fetchNotesRef(ctx, ref); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		maps.Copy(remote, probed)
+	}
+
+	local, err := g.localRefShas(ctx, notesRefs...)
+	if err != nil {
+		return err
+	}
+
 	// Each ref is fetched in its own invocation because a multi-refspec fetch fails wholesale when any
 	// single ref is missing, and either ref can legitimately be absent.
-	for _, ref := range []string{HydratorNotesRef, PromoterHistoryNotesRef} {
+	for _, ref := range notesRefs {
+		remoteSha := remote[ref]
+		if remoteSha == "" {
+			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
+			continue
+		}
+		if local[ref] == remoteSha {
+			logger.V(4).Info("Git notes ref unchanged on remote, skipping fetch", "ref", ref)
+			continue
+		}
 		if err := g.fetchNotesRef(ctx, ref); err != nil {
 			return err
 		}
@@ -789,6 +1089,7 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 	// Fetch the notes ref from origin. We use + to force update in case of divergence.
 	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+ref+":"+ref)
+	g.forgetLocalRef(ref)
 	if err != nil {
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
@@ -850,15 +1151,24 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
-	if err != nil {
-		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
-		if strings.Contains(strings.ToLower(stderr), "no note found") {
-			logger.V(4).Info("No history note found for commit", "sha", sha)
-			return nil, nil
+	stdout, ok := g.historyNotes[strings.ToLower(sha)]
+	if !ok {
+		var stderr string
+		var err error
+		stdout, stderr, err = g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
+		if err != nil {
+			// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+			if strings.Contains(strings.ToLower(stderr), "no note found") {
+				logger.V(4).Info("No history note found for commit", "sha", sha)
+				return nil, nil
+			}
+			logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
+			return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
 		}
-		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
-		return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		logger.V(4).Info("No history note found for commit", "sha", sha)
+		return nil, nil
 	}
 
 	var trailers map[string][]string
@@ -908,6 +1218,10 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 
 		// -f overwrites an existing note, which keeps retried reconciles idempotent.
 		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
+		g.forgetLocalRef(PromoterHistoryNotesRef)
+		// LoadHistoryNotes may have cached the previous note for this commit. Drop it so a later
+		// GetHistoryNote reads the note just written instead of the pre-write text.
+		delete(g.historyNotes, strings.ToLower(sha))
 		if err != nil {
 			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
 			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
@@ -917,6 +1231,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", PromoterHistoryNotesRef+":"+PromoterHistoryNotesRef)
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPushNotes, metrics.GitOperationResultFromError(err), time.Since(start))
 		if err == nil {
+			g.forgetRemoteRef(PromoterHistoryNotesRef)
 			logger.V(4).Info("Pushed history note", "sha", sha, "attempt", attempt)
 			return nil
 		}
@@ -946,6 +1261,30 @@ func isRetryableHistoryNotePushStderr(stderr string) bool {
 		strings.Contains(stderr, "[rejected]") ||
 		strings.Contains(stderr, "cannot lock ref") ||
 		strings.Contains(stderr, "remote rejected")
+}
+
+// CommitIsAncestor reports whether ancestor is an ancestor of descendant.
+// The same SHA is not an ancestor here: a pull request needs a commit that exists only on the
+// proposed side. git merge-base --is-ancestor exits 1 when the relationship does not hold.
+//
+// Read-only. Both commits must already be present in the clone.
+func (g *EnvironmentOperations) CommitIsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+	if ancestor == "" || descendant == "" || ancestor == descendant {
+		return false, nil
+	}
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	_, _, err := g.runCmd(ctx, gitPath, "merge-base", "--is-ancestor", ancestor, descendant)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check whether %q is an ancestor of %q: %w", ancestor, descendant, err)
 }
 
 // GetCommitParents returns the parent SHAs of the given commit in order (first parent first).
@@ -979,6 +1318,32 @@ func (g *EnvironmentOperations) CommitExists(ctx context.Context, sha string) bo
 	return err == nil
 }
 
+// notedObjects returns the set of object SHAs that have a note in the given notes ref, without reading
+// any note contents. A missing notes ref yields an empty set.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) notedObjects(ctx context.Context, ref string) (map[string]struct{}, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+ref, "list")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list notes in %q: %w (stderr: %s)", ref, err, stderr)
+	}
+
+	noted := make(map[string]struct{})
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		// Each line is "<note-object> <annotated-object>", both object IDs. The first is the
+		// note blob's ID; the note body is not in the output.
+		if _, object, found := strings.Cut(line, " "); found {
+			noted[object] = struct{}{}
+		}
+	}
+	return noted, nil
+}
+
 // FindMatchingHydratorNote returns the hydrator note for startSha, or — when the tip has
 // no note — the first note on a first-parent ancestor whose DrySha equals expectedDrySha.
 // A note on the branch tip is always preferred, including note-only hydrator updates where
@@ -999,6 +1364,28 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		return nil, nil
 	}
 
+	// The walk is for ours-merge tips that have no note of their own. One merge on top of a
+	// noted hydrated parent still costs a notes list and does not save a notes show.
+	//
+	// It saves work in two noteless situations:
+	//   - Noteless hydrators (hydrator.metadata on the tip, empty notes ref): the old code
+	//     rev-list'd and notes-show'd up to 31 ancestors that cannot have notes.
+	//   - Several first-parent commits in a row with no note before the matching one, e.g.
+	//     repeated ours-merges after reverts (or other noteless commits) on active. Each of
+	//     those used to be a notes show miss; notes list skips them.
+	//
+	// notes list walks the notes tree and prints those IDs. It does not read note bodies,
+	// which a blob-less clone would fetch lazily on notes show. When the list is empty we
+	// skip the walk. A delayed note on the proposed tip is not this path:
+	// GetHydratorNote(startSha) already ran; the next FetchNotes reconcile hits it there.
+	noted, err := g.notedObjects(ctx, HydratorNotesRef)
+	if err != nil {
+		return nil, err
+	}
+	if len(noted) == 0 {
+		return nil, nil
+	}
+
 	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
 	if err != nil {
 		return nil, err
@@ -1007,6 +1394,9 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 	logger := log.FromContext(ctx)
 	for _, sha := range shas {
 		if sha == startSha {
+			continue
+		}
+		if _, ok := noted[sha]; !ok {
 			continue
 		}
 		note, err := g.GetHydratorNote(ctx, sha)
@@ -1048,30 +1438,29 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
 		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
 	}
-	stdout := stdoutBuf.String()
-
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string][]string)
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		if strings.Contains(line, ":") {
-			key, value, found := strings.Cut(line, ":")
-			if found {
-				trimmedKey := strings.TrimSpace(key)
-				trimmedValue := strings.TrimSpace(value)
-				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
-			} else {
-				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
-			}
-		}
-	}
+	trailers := parseTrailerLines(stdoutBuf.String())
 	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
 	return trailers, nil
 }
 
-// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
+// parseTrailerLines turns trailer lines ("Key: value", as printed by git interpret-trailers
+// --only-trailers or the %(trailers:only) log format) into a map where each key can have multiple
+// values. Lines without a colon are skipped. The result is never nil.
+func parseTrailerLines(output string) map[string][]string {
+	trailers := make(map[string][]string)
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		trimmedKey := strings.TrimSpace(key)
+		trailers[trimmedKey] = append(trailers[trimmedKey], strings.TrimSpace(value))
+	}
+	return trailers
+}
+
+// GetTrailers retrieves the trailers of the given commit, as git interpret-trailers --only-trailers would
+// parse them from its message. They are extracted in the same batched git log that loads the commit.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
@@ -1087,4 +1476,580 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	}
 
 	return trailers, nil
+}
+
+// RestoreResult is what RestoreActiveBranch observed and wrote.
+type RestoreResult struct {
+	// ActiveSha is the commit now on the active branch. It is a new commit whose tree matches the
+	// restored version, unless the active tip was already that restore or already had that
+	// content (Unchanged).
+	ActiveSha string
+	// BlockedDrySha is the dry SHA from hydrator.metadata on the active tip this restore moved off
+	// of. Empty when that file is absent, or when Unchanged. A repeat call reads it from the restore
+	// commit's parent, which is that same tip.
+	BlockedDrySha string
+	// Unchanged is true when the active branch already had the content being restored (and no
+	// restore marker for it), so nothing was written. ActiveSha is then the untouched active tip.
+	Unchanged bool
+}
+
+// RestoreActiveBranch makes the active branch match targetSha (its whole tree, or only activePath
+// when activePath is set). The proposed branch is not read or moved. The dry SHA returned is the
+// one on the active tip being moved off of, so the caller can refuse to promote that change back.
+//
+// The active update is a new commit parented on the current tip, not a reset, so history stays
+// fast-forwardable. The commit message and the promotion-history note both carry
+// Promoter-restored-from set to targetSha. Each is copied from targetSha with only that key added:
+// the message's trailer block from targetSha's commit-message trailers, the note from targetSha's
+// note, so the copied Pull-request-merge-time stays the original promotion's. When targetSha has no
+// note, or its note is empty or not valid JSON, the note is built from those same commit-message
+// trailers. The restore's own time is the restore commit's commit time. The note is pushed before
+// the branch.
+//
+// A repeat call is a no-op when the active tip already has the restore marker for targetSha and
+// the matching tree and its note does not carry Promoter-restore-unblocked-at. That is the same
+// restore retrying after the commit was already pushed. When that note does carry the trailer, a
+// previous RestoreActiveCommit set spec.blockEnvironment to false: the call is refused and the note is left as it is, so
+// the unblock stays in history. The branch has not moved, so there is no new commit to gate on.
+// When the active tip already has the matching tree without the restore marker, the branch is
+// running that version already: nothing is written, nothing moved off the branch, and the result
+// is Unchanged with an empty BlockedDrySha. Blocking the live dry SHA there would hold back the
+// version the caller asked for. The branch push uses --force-with-lease against the tip this call
+// observed. The notes push is a normal push.
+//
+// targetSha must be the active tip or one of its ancestors; anything else is refused, so only a
+// version that was on the active branch before can be restored. A commit that carries
+// Promoter-restored-from is itself a restore and is refused. The commit a restore moved off does
+// not carry that trailer, so it can be restored again.
+//
+// Operates on the object DB only. Requires CloneRepo to have run. Snapshots the active branch and
+// both notes refs, then fetches only the refs whose local copy differs. A clone that just ran
+// already has the branch, so that fetch is skipped when the snapshot matches.
+//
+// The git commands run, in order (A = activeBranch, T = targetSha):
+//
+//	git ls-remote <url> refs/heads/A refs/notes/hydrator.metadata refs/notes/promoter.history
+//	git for-each-ref ...                                                       # local tips for the snapshot
+//	git fetch origin A                      && git rev-parse origin/A          # activeTip; skipped when origin/A matches the snapshot
+//	git cat-file -e T^{commit}                                                 # T must be a commit
+//	git merge-base --is-ancestor T <activeTip>                                 # skipped when T is activeTip
+//	git fetch origin +refs/notes/hydrator.metadata:refs/notes/hydrator.metadata  # skipped when the snapshot matches
+//	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history    # skipped when the snapshot matches
+//	git log --no-walk=unsorted --stdin -z --no-notes --notes=refs/notes/promoter.history --pretty=format:%H%x00%N
+//	                                                                         # activeTip and T; later notes show calls are served from this
+//
+//	# tree to restore
+//	git rev-parse --verify T^{tree}                                            # no activePath
+//	# with activePath, in a throwaway index (GIT_INDEX_FILE=tmp):
+//	git read-tree origin/A
+//	git rm -r -f --cached --ignore-unmatch -- ':(literal)<activePath>'
+//	git ls-tree T -- ':(literal)<activePath>'                                  # skip overlay if absent
+//	git read-tree --prefix=<activePath>/ T:<activePath>
+//	git write-tree
+//
+//	# nothing to change? compare activeTip^{tree} with that tree. When equal, look for
+//	# Promoter-restored-from: T on the history note. Commit trailers are read only when that note
+//	# is absent, empty, or not valid JSON; a note that parses and merely lacks the key is kept.
+//	# Equal tree with the marker: repeat call. If the tip's note also carries
+//	# Promoter-restore-unblocked-at (spec.blockEnvironment was set to false), refuse and leave
+//	# the note unchanged. Equal tree without the marker: Unchanged, return here.
+//	git rev-parse --verify <activeTip>^{tree}
+//	# activeTip's history note comes from the prefetch above (no notes show)
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <activeTip>  # fallback: message, only when that note is absent
+//	git interpret-trailers --only-trailers < message                           # fallback: trailers
+//	# refuse when the marker matched and the prefetched note has Promoter-restore-unblocked-at
+//
+//	# otherwise, refuse a target that carries Promoter-restored-from. That trailer is written on the
+//	# restore commit only. The commit the restore moved off keeps its own note and stays eligible.
+//	# target's history note comes from the prefetch above (no notes show)
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< <target>        # fallback: message, only when that note is absent
+//	git interpret-trailers --only-trailers < message                              # fallback: trailers
+//
+//	# otherwise create the restore commit, note, and push (note first).
+//	# SetHistoryNote re-fetches before add, and retries that fetch/add/push up to 3 times.
+//	# Copy T's commit-message trailers. Both commands are skipped when the refuse check already
+//	# parsed them (note absent, empty, or not valid JSON). A parsed note does not read the message,
+//	# so this is the first read in that case.
+//	git log --no-walk=unsorted --stdin -z --pretty=format:... <<< T
+//	git interpret-trailers --only-trailers < message
+//	git commit-tree <tree> -p <activeTip> -m 'Revert A to <T[:7]>
+//
+//	<T's trailers, sorted by key>
+//	Promoter-restored-from: T'
+//	# copy T's note from the prefetch above
+//	# when that note is absent, empty, or not valid JSON, build it from T's commit trailers (cached above)
+//	git fetch origin +refs/notes/promoter.history:refs/notes/promoter.history
+//	git notes --ref=refs/notes/promoter.history add -f -m '<json>' <restoreSha>
+//	git push origin refs/notes/promoter.history:refs/notes/promoter.history
+//	git push --force-with-lease=refs/heads/A:<activeTip> origin <restoreSha>:refs/heads/A
+//
+//	# dry SHA that was on active; on a repeat call activeTip is the restore commit, so use its parent.
+//	# The blob is hydrator.metadata, or <activePath>/hydrator.metadata when activePath is set.
+//	git log -1 --format=%P <activeTip>                                         # repeat call only
+//	git cat-file --batch <<< '<rolledBack>:<path>/hydrator.metadata'           # .drySha -> BlockedDrySha
+//	git cat-file -e <rolledBack>^{commit}                                      # only if that blob is missing
+func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeBranch, activePath, targetSha string) (RestoreResult, error) {
+	logger := log.FromContext(ctx)
+	if g.ClonePath() == "" {
+		return RestoreResult{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// One ls-remote for the branch and both notes refs. GetBranchSha and FetchNotes below skip
+	// anything the clone already has. On failure they probe on their own.
+	if err := g.SnapshotRemoteRefs(ctx, activeBranch); err != nil {
+		logger.V(4).Info("failed to snapshot remote refs, falling back to per-ref probes", "error", err)
+	}
+
+	activeTip, err := g.GetBranchSha(ctx, activeBranch, "")
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	if err := g.ensureInHistory(ctx, targetSha, activeBranch, activeTip); err != nil {
+		return RestoreResult{}, err
+	}
+	if err := g.FetchNotes(ctx); err != nil {
+		return RestoreResult{}, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+	// The target note is read twice (refuse, then copy) and the active tip can be read twice on a
+	// repeat call. One git log fills the per-reconcile cache for both.
+	if err := g.LoadHistoryNotes(ctx, activeTip, targetSha); err != nil {
+		return RestoreResult{}, fmt.Errorf("failed to prefetch history notes: %w", err)
+	}
+
+	wantTree, err := g.restoreTree(ctx, "origin/"+activeBranch, targetSha, activePath)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+
+	tipTree, err := g.revParse(ctx, activeTip+"^{tree}")
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	already := false
+	if tipTree == wantTree {
+		already, err = g.hasRestoreMarker(ctx, activeTip, targetSha)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		if !already {
+			// The branch already runs this version and no restore put it there, so nothing moves
+			// off the branch and there is no dry SHA to block.
+			logger.Info("Active branch already matches the restore target; nothing to write", "branch", activeBranch, "target", targetSha, "activeTip", activeTip)
+			return RestoreResult{ActiveSha: activeTip, Unchanged: true}, nil
+		}
+	}
+
+	restoreSha := activeTip
+	if !already {
+		restoreSha, err = g.createRestoreCommit(ctx, activeBranch, activeTip, targetSha, wantTree)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		logger.Info("Restored active branch", "branch", activeBranch, "from", targetSha, "commit", restoreSha)
+	} else if err := g.refuseReleasedRestore(ctx, activeTip, targetSha); err != nil {
+		return RestoreResult{}, err
+	}
+
+	// The dry SHA to refuse is the one this restore moved off of the active branch, not whatever is
+	// on proposed. A repeat call's active tip is the restore commit, whose parent is that old tip.
+	rolledBack := activeTip
+	if already {
+		parents, err := g.GetCommitParents(ctx, activeTip)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		if len(parents) > 0 {
+			rolledBack = parents[0]
+		}
+	}
+	activeMeta, err := g.GetShaMetadataFromFile(ctx, rolledBack, activePath)
+	if err != nil {
+		return RestoreResult{}, fmt.Errorf("failed to read hydrator metadata for active branch %q at %q: %w", activeBranch, rolledBack, err)
+	}
+
+	return RestoreResult{ActiveSha: restoreSha, BlockedDrySha: activeMeta.Sha}, nil
+}
+
+// createRestoreCommit commits the restore tree, writes its history note, and pushes it onto
+// activeBranch, leased against activeTip.
+func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeBranch, activeTip, targetSha, wantTree string) (string, error) {
+	if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
+		return "", err
+	}
+	message, err := g.restoreCommitMessage(ctx, activeBranch, targetSha)
+	if err != nil {
+		return "", err
+	}
+	restoreSha, err := g.commitTree(ctx, wantTree, []string{activeTip}, message)
+	if err != nil {
+		return "", fmt.Errorf("failed to create restore commit for %q: %w", activeBranch, err)
+	}
+	// Note first, then branch. If the branch push then loses to a concurrent update, the note
+	// is left on a commit that never lands, which nothing reads; the retry writes a new
+	// restore commit and note. The other order could leave a restore on the active branch
+	// with no note, and history would lose the pull request and checks copied from targetSha.
+	if err := g.writeRestoreNote(ctx, restoreSha, targetSha); err != nil {
+		return "", err
+	}
+	if err := g.pushCommitWithLease(ctx, restoreSha, activeBranch, activeTip); err != nil {
+		return "", err
+	}
+	return restoreSha, nil
+}
+
+// restoreCommitMessage builds the restore commit's message: a "Restore <branch> to <short sha>" subject
+// followed by a trailer block. The trailers are copied from targetSha's commit message, the same way
+// writeRestoreNote copies targetSha's note, so the restore keeps the promotion bookkeeping of the version
+// it puts back (pull request, SHAs, commit statuses) and history rebuilt from the message alone still
+// describes that promotion. Copied keys are written in sorted order, each value on its own line, and
+// Promoter-restored-from is appended last. Any Promoter-restored-from already on targetSha is dropped so
+// the restore carries exactly one, pointing at targetSha.
+func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, activeBranch, targetSha string) (string, error) {
+	copied, err := g.GetTrailers(ctx, targetSha)
+	if err != nil {
+		return "", fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
+	}
+	short := targetSha
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	keys := make([]string, 0, len(copied))
+	for key := range copied {
+		if key == constants.TrailerRestoredFrom {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	var message strings.Builder
+	fmt.Fprintf(&message, "Restore %s to %s\n\n", activeBranch, short)
+	for _, key := range keys {
+		for _, value := range copied[key] {
+			fmt.Fprintf(&message, "%s: %s\n", key, value)
+		}
+	}
+	fmt.Fprintf(&message, "%s: %s\n", constants.TrailerRestoredFrom, targetSha)
+	return message.String(), nil
+}
+
+// promotionTrailers returns the promotion-history note for sha. Commit-message trailers are used
+// only when that note is absent, empty, or not valid JSON, and are parsed at most once per cached
+// commit. A note that parses is returned as-is, even when it lacks a particular key.
+func (g *EnvironmentOperations) promotionTrailers(ctx context.Context, sha string) (map[string][]string, error) {
+	trailers, err := g.GetHistoryNote(ctx, sha)
+	if err != nil {
+		return nil, fmt.Errorf("read promotion-history note for %q: %w", sha, err)
+	}
+	if len(trailers) == 0 {
+		trailers, err = g.GetTrailers(ctx, sha)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return trailers, nil
+}
+
+// CommitIsRestore reports whether sha is a commit written by a RestoreActiveCommit restore. The marker is
+// Promoter-restored-from on the promotion-history note, or on the commit trailers when that note is
+// absent, empty, or not valid JSON.
+func (g *EnvironmentOperations) CommitIsRestore(ctx context.Context, sha string) (bool, error) {
+	trailers, err := g.promotionTrailers(ctx, sha)
+	if err != nil {
+		return false, err
+	}
+	return len(trailers[constants.TrailerRestoredFrom]) > 0, nil
+}
+
+// RestoreBlock is what RestoreBlockState observed about a commit on the active branch.
+type RestoreBlock struct {
+	// BlockedDrySha is the dry SHA from hydrator.metadata on sha's first parent (the tip the restore
+	// moved off of). Empty when sha is not a restore, has no parent, or that file is absent.
+	BlockedDrySha string
+	// RestoredFrom is the first Promoter-restored-from value (note preferred, then commit trailers).
+	// Empty when sha is not a restore.
+	RestoredFrom string
+	// IsRestore is true when sha carries Promoter-restored-from (note preferred, then commit trailers).
+	IsRestore bool
+	// Unblocked is true when the history note carries Promoter-restore-unblocked-at. The commit message is
+	// never consulted: that trailer is note-only.
+	Unblocked bool
+}
+
+// RestoreBlockState reports whether sha is a restore commit, whether promotion has been unblocked for
+// it, and the dry SHA that restore moved off of. Callers that gate on a pending RestoreActiveCommit
+// (status.restoredFrom still empty) should not call this: that hold is decided from the CR alone.
+//
+// Promoter-restored-from is read via promotionTrailers (note, then commit trailers). Promoter-restore-unblocked-at
+// is read from the history note only. BlockedDrySha comes from the first parent's hydrator.metadata,
+// the same derivation RestoreActiveBranch uses on a repeat call.
+func (g *EnvironmentOperations) RestoreBlockState(ctx context.Context, sha, activePath string) (RestoreBlock, error) {
+	if sha == "" {
+		return RestoreBlock{}, nil
+	}
+	trailers, err := g.promotionTrailers(ctx, sha)
+	if err != nil {
+		return RestoreBlock{}, err
+	}
+	if len(trailers[constants.TrailerRestoredFrom]) == 0 {
+		return RestoreBlock{}, nil
+	}
+	gate := RestoreBlock{IsRestore: true, RestoredFrom: trailers[constants.TrailerRestoredFrom][0]}
+
+	note, err := g.GetHistoryNote(ctx, sha)
+	if err != nil {
+		return RestoreBlock{}, err
+	}
+	if len(note[constants.TrailerRestoreUnblockedAt]) > 0 {
+		gate.Unblocked = true
+	}
+
+	parents, err := g.GetCommitParents(ctx, sha)
+	if err != nil {
+		return RestoreBlock{}, err
+	}
+	if len(parents) == 0 {
+		return gate, nil
+	}
+	activeMeta, err := g.GetShaMetadataFromFile(ctx, parents[0], activePath)
+	if err != nil {
+		return RestoreBlock{}, fmt.Errorf("failed to read hydrator metadata for restore parent %q: %w", parents[0], err)
+	}
+	gate.BlockedDrySha = activeMeta.Sha
+	return gate, nil
+}
+
+// UnblockRestore stamps Promoter-restore-unblocked-at on restoreSha's promotion-history note so the
+// ChangeTransferPolicy can resume auto-merge. at is written as RFC 3339 UTC. Returns true when the
+// note was written (or already had the trailer). Returns false with no error when restoreSha is not
+// a restore commit. Idempotent: a note that already carries the trailer is left alone.
+//
+// The note is preferred; when it is absent, empty, or not valid JSON the note is built from the
+// commit-message trailers (the same fallback writeRestoreNote uses), then the unblock key is added.
+func (g *EnvironmentOperations) UnblockRestore(ctx context.Context, restoreSha string, at time.Time) (bool, error) {
+	restore, err := g.CommitIsRestore(ctx, restoreSha)
+	if err != nil {
+		return false, err
+	}
+	if !restore {
+		return false, nil
+	}
+
+	note, err := g.GetHistoryNote(ctx, restoreSha)
+	if err != nil {
+		return false, fmt.Errorf("read promotion-history note for %q: %w", restoreSha, err)
+	}
+	if len(note[constants.TrailerRestoreUnblockedAt]) > 0 {
+		return true, nil
+	}
+
+	trailers := note
+	if len(trailers) == 0 {
+		trailers, err = g.GetTrailers(ctx, restoreSha)
+		if err != nil {
+			return false, fmt.Errorf("read commit trailers for %q: %w", restoreSha, err)
+		}
+	}
+	copied := make(map[string][]string, len(trailers)+1)
+	for key, values := range trailers {
+		copied[key] = values
+	}
+	copied[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
+		return false, fmt.Errorf("write Promoter-restore-unblocked-at for %q: %w", restoreSha, err)
+	}
+	return true, nil
+}
+
+// refuseReleasedRestore rejects a restore whose active tip already has the restore marker for
+// targetSha and whose promotion-history note carries Promoter-restore-unblocked-at. That trailer is
+// stamped when the RestoreActiveCommit that wrote the tip is deleted. The branch has not moved, so
+// there is no new commit to gate on, and the note is left in place so the unblock stays in history.
+// A repeat call before that trailer exists is not an error: it is the same restore retrying after
+// the commit was already pushed.
+func (g *EnvironmentOperations) refuseReleasedRestore(ctx context.Context, activeTip, targetSha string) error {
+	note, err := g.GetHistoryNote(ctx, activeTip)
+	if err != nil {
+		return fmt.Errorf("read promotion-history note for %q: %w", activeTip, err)
+	}
+	if len(note[constants.TrailerRestoreUnblockedAt]) == 0 {
+		return nil
+	}
+	return fmt.Errorf("active tip %q already restores %q and carries %s; it cannot be restored again until the active branch moves", activeTip, targetSha, constants.TrailerRestoreUnblockedAt)
+}
+
+// hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
+// promotion-history note or, when that note is absent, empty, or not valid JSON, from its commit
+// trailers.
+func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targetSha string) (bool, error) {
+	trailers, err := g.promotionTrailers(ctx, sha)
+	if err != nil {
+		return false, err
+	}
+	values := trailers[constants.TrailerRestoredFrom]
+	return len(values) > 0 && values[0] == targetSha, nil
+}
+
+// writeRestoreNote writes the restore commit's promotion-history note: targetSha's note with
+// Promoter-restored-from added. When targetSha has no note, or its note is empty or not valid JSON,
+// the note is built from targetSha's commit-message trailers instead, the same fallback
+// promotionTrailers uses, so history rebuilt from the note still describes the original promotion.
+// The map is copied before the marker is added: GetTrailers returns the cached map, and mutating it
+// would change what later reads of targetSha's trailers return.
+func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha, targetSha string) error {
+	trailers, err := g.GetHistoryNote(ctx, targetSha)
+	if err != nil {
+		return fmt.Errorf("read promotion-history note for %q: %w", targetSha, err)
+	}
+	if len(trailers) == 0 {
+		trailers, err = g.GetTrailers(ctx, targetSha)
+		if err != nil {
+			return fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
+		}
+	}
+	copied := make(map[string][]string, len(trailers)+1)
+	for key, values := range trailers {
+		copied[key] = values
+	}
+	copied[constants.TrailerRestoredFrom] = []string{targetSha}
+	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
+		return fmt.Errorf("write restore note for %q: %w", restoreSha, err)
+	}
+	return nil
+}
+
+// restoreTree is targetSha's tree, or the active tip's tree with activePath replaced by targetSha's.
+func (g *EnvironmentOperations) restoreTree(ctx context.Context, activeRef, targetSha, activePath string) (string, error) {
+	if activePath == "" {
+		return g.revParse(ctx, targetSha+"^{tree}")
+	}
+	return g.overlayPathTree(ctx, activeRef, targetSha, activePath)
+}
+
+// overlayPathTree returns baseRef's tree with path replaced by sourceRef's content at path, or with
+// path removed when sourceRef has nothing there. The tree is built in a temporary index
+// (GIT_INDEX_FILE) outside the clone, so the clone's real index/worktree/HEAD are never touched and
+// the index cannot appear as an untracked file.
+func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, sourceRef, path string) (string, error) {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+
+	tmpIndex, err := os.CreateTemp("", "promoter-index-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp index: %w", err)
+	}
+	tmpIndexPath := tmpIndex.Name()
+	_ = tmpIndex.Close()
+	defer func() {
+		if rmErr := os.Remove(tmpIndexPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			logger.Error(rmErr, "failed to remove temp index", "path", tmpIndexPath)
+		}
+	}()
+	indexEnv := []string{"GIT_INDEX_FILE=" + tmpIndexPath}
+
+	if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", baseRef); err != nil {
+		return "", fmt.Errorf("failed to read tree %q: %w (stderr: %s)", baseRef, err, stderr)
+	}
+
+	// Drop the whole subtree first so sourceRef's version, including its deletions, replaces it.
+	if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "rm", "-r", "-f", "--cached", "--ignore-unmatch", "--", ":(literal)"+path); err != nil {
+		return "", fmt.Errorf("failed to remove %q from index: %w (stderr: %s)", path, err, stderr)
+	}
+
+	// Skip the overlay when sourceRef has no content at path; the subtree then stays removed.
+	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", sourceRef, "--", ":(literal)"+path)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect %q on %q: %w (stderr: %s)", path, sourceRef, err, stderr)
+	}
+	if strings.TrimSpace(lsTreeStdout) != "" {
+		if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "--prefix="+path+"/", sourceRef+":"+path); err != nil {
+			return "", fmt.Errorf("failed to overlay %q from %q: %w (stderr: %s)", path, sourceRef, err, stderr)
+		}
+	}
+
+	treeSha, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "write-tree")
+	if err != nil {
+		return "", fmt.Errorf("failed to write tree: %w (stderr: %s)", err, stderr)
+	}
+	return strings.TrimSpace(treeSha), nil
+}
+
+// refuseRestoreTarget rejects a target whose promotion-history note or commit message carries
+// Promoter-restored-from. That trailer is written only on the restore commit this function creates.
+// The commit the restore moved off of keeps the note it already had, so it does not match here.
+func (g *EnvironmentOperations) refuseRestoreTarget(ctx context.Context, targetSha string) error {
+	restore, err := g.CommitIsRestore(ctx, targetSha)
+	if err != nil {
+		return fmt.Errorf("failed to check whether %q is a restore commit: %w", targetSha, err)
+	}
+	if restore {
+		return fmt.Errorf("commit %q carries %s and cannot be restored to", targetSha, constants.TrailerRestoredFrom)
+	}
+	return nil
+}
+
+// ensureInHistory makes sure sha is a commit that the active branch already contains: its tip
+// or one of the tip's ancestors. A restore only puts back something that was on the branch before,
+// so a RestoreActiveCommit cannot push a commit that never went through promotion (another environment's
+// branch, an unmerged pull request head) straight to the active branch.
+//
+// The active branch was just fetched, so every commit in its history is already in the clone and
+// nothing is fetched here.
+func (g *EnvironmentOperations) ensureInHistory(ctx context.Context, sha, activeBranch, activeTip string) error {
+	if _, stderr, err := g.runCmd(ctx, g.ClonePath(), "cat-file", "-e", sha+"^{commit}"); err != nil {
+		return fmt.Errorf("%q is not a commit in the history of active branch %q: %w (stderr: %s)", sha, activeBranch, err, stderr)
+	}
+	if sha == activeTip {
+		return nil
+	}
+	contained, err := g.CommitIsAncestor(ctx, sha, activeTip)
+	if err != nil {
+		return err
+	}
+	if !contained {
+		return fmt.Errorf("commit %q is not in the history of active branch %q; only a version that was on the active branch can be restored", sha, activeBranch)
+	}
+	return nil
+}
+
+func (g *EnvironmentOperations) revParse(ctx context.Context, rev string) (string, error) {
+	stdout, stderr, err := g.runCmd(ctx, g.ClonePath(), "rev-parse", "--verify", rev)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve %q: %w (stderr: %s)", rev, err, stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+func (g *EnvironmentOperations) commitTree(ctx context.Context, tree string, parents []string, message string) (string, error) {
+	args := make([]string, 0, 2+2*len(parents)+2)
+	args = append(args, "commit-tree", tree)
+	for _, parent := range parents {
+		args = append(args, "-p", parent)
+	}
+	args = append(args, "-m", message)
+	stdout, stderr, err := g.runCmd(ctx, g.ClonePath(), args...)
+	if err != nil {
+		return "", fmt.Errorf("commit-tree: %w (stderr: %s)", err, stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// pushCommitWithLease pushes commitSha to branch only if the remote branch is still expectedTip.
+// commitSha is parented on expectedTip, so a plain push would already reject a branch that moved
+// forward; the lease also rejects one that was rewound to an ancestor, where a plain push would
+// fast-forward and put back the commits that were removed.
+//
+// The push moves the clone's origin/<branch> tracking ref. The branch is dropped from the remote
+// snapshot and the local ref cache either way, so a later GetBranchSha re-probes instead of
+// returning the pre-push tip.
+func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitSha, branch, expectedTip string) error {
+	lease := "refs/heads/" + branch + ":" + expectedTip
+	refspec := commitSha + ":refs/heads/" + branch
+	_, stderr, err := g.runCmd(ctx, g.ClonePath(), "push", "--force-with-lease="+lease, "origin", refspec)
+	g.forgetRemoteRef(branchRef(branch))
+	g.forgetLocalRef(trackingRef(branch))
+	if err != nil {
+		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
+	}
+	return nil
 }

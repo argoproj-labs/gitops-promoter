@@ -115,6 +115,7 @@ type CommitBranchState struct {
 	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=100
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
@@ -139,6 +140,7 @@ type HydratorMetadata struct {
 	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch.
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -162,6 +164,7 @@ type CommitShaState struct {
 	// Body is the body of the commit message without the subject line
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch
+	// +kubebuilder:validation:MaxItems=100
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -194,13 +197,6 @@ type ChangeTransferPolicyStatus struct {
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
-	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
-	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-	// The history length is hard-coded to be at most 5 entries. This may change in the future.
-	// History is constructed on a best-effort basis and should be used for informational purposes only.
-	// History is in reverse chronological order (newest is first).
-	History []History `json:"history,omitempty"`
-
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -218,40 +214,14 @@ type ChangeTransferPolicyStatus struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// History describes a particular change that was promoted by the ChangeTransferPolicy.
-type History struct {
-	// Proposed is the state of the proposed branch at the time the PR was merged.
-	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
-	// <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
-	// describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
-	// snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
-	Active CommitBranchState `json:"active,omitempty"`
-	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
-	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
-	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
-	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
-	// the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
-	// active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
-	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
-	// revision rather than what actually merged.
-	MergeCommitSnapshotMismatch bool `json:"mergeCommitSnapshotMismatch,omitempty"`
-}
-
-// CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as
-// the proposed dry side at merge becomes the Active.
-type CommitBranchStateHistoryProposed struct {
-	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
-	// Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
-	// but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
-	// merge was a squash the stale snapshot value is kept.
-	Hydrated CommitShaState `json:"hydrated,omitempty"`
-	// CommitStatuses is a list of commit statuses that were being monitored for this branch.
-	// This contains the state frozen at the moment the PR was merged. When the entry's
-	// mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
-	// revision the promoter last saw, which is not necessarily the revision that merged.
-	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
-}
+const (
+	// MaxEnvironments is the maximum number of environments on a PromotionStrategy spec and status.
+	MaxEnvironments = 500
+	// MaxCommitStatuses is the maximum number of commit statuses stored on a branch state.
+	MaxCommitStatuses = 100
+	// MaxRevisionReferences is the maximum number of related-commit references on a hydrated or dry commit.
+	MaxRevisionReferences = 100
+)
 
 // PullRequestCommonStatus defines the common status fields for a pull request.
 type PullRequestCommonStatus struct {

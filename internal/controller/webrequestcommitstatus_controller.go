@@ -38,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -63,15 +62,6 @@ type WebRequestCommitStatusReconciler struct {
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
 	httpClient  *http.Client
-	// rvTracker remembers the ResourceVersion of the last successful status patch this
-	// reconciler made for each object key, so Reconcile can short-circuit (with a brief
-	// requeue) when the informer cache hasn't yet observed our previous write. Without
-	// this guard, a reconcile enqueued by a side effect of the previous reconcile —
-	// e.g. touching a ChangeTransferPolicy that fans back via the PromotionStrategy
-	// watch — can start within milliseconds of the prior patch and read pre-patch
-	// state, causing trigger expressions to re-fire HTTP side effects against stale
-	// inputs.
-	rvTracker *utils.ResourceVersionTracker
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch
@@ -92,57 +82,21 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
-	// skipStatusWrite is set on the stale-cache requeue path below to suppress the
-	// deferred status apply, because writing status from the stale snapshot would
-	// clobber whatever the previous reconcile wrote that the cache hasn't yet
-	// observed (SSA with our FieldOwner and ForceOwnership would revert our owned
-	// fields to the stale values).
-	skipStatusWrite := false
 	var previousReady *metav1.Condition
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	defer func() {
-		if skipStatusWrite {
-			return
-		}
 		utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err, &previousReady)
-		// Record the post-patch ResourceVersion so the next reconcile for this key can
-		// detect a stale-cache read above. HandleReconciliationResult mutates wrcs in
-		// place with the patched object on success, so wrcs.ResourceVersion here is
-		// the apiserver's post-patch value (or unchanged if the SSA patch was a
-		// no-op). Record() is a no-op for empty RV, which covers the
-		// NotFound-during-patch path.
-		r.rvTracker.Record(req.NamespacedName, wrcs.ResourceVersion)
 	}()
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			// Object is gone. Drop any rvTracker entry so we don't accumulate
-			// records for deleted objects over the controller's lifetime. Safe
-			// against name reuse: a future object reusing this key will get a
-			// fresh, larger RV from the apiserver, so a leftover record would
-			// not have caused incorrect staleness anyway — Forget just keeps
-			// memory tidy.
-			r.rvTracker.Forget(req.NamespacedName)
 			logger.Info("WebRequestCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get WebRequestCommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get WebRequestCommitStatus %q: %w", req.Name, err)
-	}
-
-	// If the cached object we just read is older than our last successful status write
-	// for this key, the informer hasn't observed our previous patch yet. Acting on the
-	// stale snapshot would re-evaluate trigger expressions against pre-patch state and
-	// can fire duplicate HTTP side effects (see field doc on rvTracker). Requeue with
-	// a short backoff so the next reconcile gets a fresh snapshot, and skip the
-	// deferred status apply so we don't clobber the previous reconcile's write.
-	if r.rvTracker.IsCacheStale(req.NamespacedName, wrcs.ResourceVersion) {
-		logger.V(4).Info("informer cache is behind our last status write; requeuing to avoid acting on stale state",
-			"cachedResourceVersion", wrcs.ResourceVersion)
-		skipStatusWrite = true
-		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
@@ -220,12 +174,6 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		Timeout: 60 * time.Second, // Default timeout, can be overridden per-request
 	}
 
-	// Initialize the per-key ResourceVersion tracker used to detect stale-cache reads
-	// at the top of Reconcile. See the rvTracker field doc for context.
-	if r.rvTracker == nil {
-		r.rvTracker = utils.NewResourceVersionTracker()
-	}
-
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.WebRequestCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
@@ -240,7 +188,7 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueWebRequestCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)
@@ -523,36 +471,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	return commitStatus, nil
-}
-
-// enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a
-// PromotionStrategy is created/updated (e.g. environment SHAs or status change), it enqueues every
-// WebRequestCommitStatus in the same namespace that references that strategy, so they reconcile with fresh data.
-func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(wrcsList.Items))
-		for i := range wrcsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&wrcsList.Items[i]),
-			})
-		}
-
-		return requests
-	})
 }
 
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,

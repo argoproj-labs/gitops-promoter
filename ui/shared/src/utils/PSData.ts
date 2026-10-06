@@ -1,10 +1,16 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, timeAgo } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
+import { proposedIsBlocked } from './environments';
+import type { components } from '../types/generated/view.gen';
 import type {
   BranchCommitStatus,
   Commit,
+  CommitStatusManager,
+  CommitStatusManagerKind,
+  EnrichedBranchCommitStatus,
   Environment,
   EnvironmentPullRequest,
+  History,
   PromotionStrategy,
   Check,
   EnrichedEnvDetails,
@@ -15,13 +21,110 @@ import type {
   RelativeTimeAgo,
 } from '../types/promotion';
 
-function getChecks(commitStatuses: BranchCommitStatus[]): Check[] {
-  return commitStatuses.map((cs: BranchCommitStatus) => ({
+export interface CommitStatusManagerBundle {
+  timedCommitStatuses?: components['schemas']['TimedCommitStatus'][];
+  gitCommitStatuses?: components['schemas']['GitCommitStatus'][];
+  scheduledCommitStatuses?: components['schemas']['ScheduledCommitStatus'][];
+  argoCDCommitStatuses?: components['schemas']['ArgoCDCommitStatus'][];
+  webRequestCommitStatuses?: components['schemas']['WebRequestCommitStatus'][];
+}
+
+function findManager(
+  key: string,
+  branch: string,
+  managers: CommitStatusManagerBundle,
+): { kind: CommitStatusManagerKind; manager: CommitStatusManager } | undefined {
+  for (const tcs of managers.timedCommitStatuses ?? []) {
+    if (tcs.spec.key === key && tcs.status?.environments?.some((e) => e.branch === branch)) {
+      return { kind: 'TimedCommitStatus', manager: tcs };
+    }
+  }
+  for (const gcs of managers.gitCommitStatuses ?? []) {
+    if (gcs.spec.key === key && gcs.status?.environments?.some((e) => e.branch === branch)) {
+      return { kind: 'GitCommitStatus', manager: gcs };
+    }
+  }
+  for (const scs of managers.scheduledCommitStatuses ?? []) {
+    if (scs.spec.key === key && scs.status?.environments?.some((e) => e.branch === branch)) {
+      return { kind: 'ScheduledCommitStatus', manager: scs };
+    }
+  }
+  for (const acs of managers.argoCDCommitStatuses ?? []) {
+    if (acs.spec?.key === key) {
+      return { kind: 'ArgoCDCommitStatus', manager: acs };
+    }
+  }
+  for (const wrcs of managers.webRequestCommitStatuses ?? []) {
+    if (wrcs.spec.key === key && wrcs.status?.environments?.some((e) => e.branch === branch)) {
+      return { kind: 'WebRequestCommitStatus', manager: wrcs };
+    }
+  }
+  return undefined;
+}
+
+export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
+  return commitStatuses.map((cs: EnrichedBranchCommitStatus) => ({
     name: cs.key,
     status: cs.phase,
     description: cs.description,
     url: cs.url,
+    branch,
+    kind: cs.kind,
+    manager: cs.manager,
   }));
+}
+
+/**
+ * Stamps `kind`/`manager` onto every commit-status entry nested in `ps.status.environments`
+ * (active, proposed, and each history entry's active/proposed) using the same join semantics
+ * as `findManager`. Returns a new `PromotionStrategy`-shaped value; does not mutate `ps`.
+ */
+export function mergeCommitStatusManagers(
+  ps: PromotionStrategy,
+  managers: CommitStatusManagerBundle,
+): PromotionStrategy {
+  if (!ps.status?.environments) {
+    return ps;
+  }
+
+  const enrichStatuses = (
+    commitStatuses: BranchCommitStatus[] | undefined,
+    branch: string,
+  ): EnrichedBranchCommitStatus[] | undefined =>
+    commitStatuses?.map((cs) => {
+      const match = findManager(cs.key, branch, managers);
+      return { ...cs, kind: match?.kind, manager: match?.manager };
+    });
+
+  const environments: Environment[] = ps.status.environments.map((environment: Environment) => {
+    const branch = environment.branch || '';
+
+    const active = {
+      ...environment.active,
+      commitStatuses: enrichStatuses(environment.active.commitStatuses, branch),
+    };
+    const proposed = {
+      ...environment.proposed,
+      commitStatuses: enrichStatuses(environment.proposed.commitStatuses, branch),
+    };
+
+    const history: History[] | undefined = environment.history?.map((entry: History) => ({
+      ...entry,
+      active: entry.active
+        ? { ...entry.active, commitStatuses: enrichStatuses(entry.active.commitStatuses, branch) }
+        : entry.active,
+      proposed: entry.proposed
+        ? {
+            ...entry.proposed,
+            commitStatuses: enrichStatuses(entry.proposed.commitStatuses, branch),
+          }
+        : entry.proposed,
+    }));
+
+    return { ...environment, active, proposed, history };
+  });
+
+  return { ...ps, status: { ...ps.status, environments } };
 }
 
 // Health check summary calculation functions
@@ -91,6 +194,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   // Use active field for current view, history field for history view
   const activeChecks = getChecks(
     index > 0 ? history[index]?.active?.commitStatuses || [] : active.commitStatuses || [],
+    branch,
   );
 
   const activeChecksSummary = calculateHealthSummary(activeChecks);
@@ -99,7 +203,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   // PROPOSED DATA - use historical proposed when viewing history
   const proposedSource = index > 0 ? history[index]?.proposed : proposed;
   const proposedDry = index > 0 ? proposedSource?.hydrated || {} : proposed.dry || {};
-  const proposedChecks = getChecks(proposedSource?.commitStatuses || []);
+  const proposedChecks = getChecks(proposedSource?.commitStatuses || [], branch);
   const proposedChecksSummary = calculateHealthSummary(proposedChecks);
   const proposedReferenceData = extractReferenceCommitData(proposedDry);
 
@@ -117,10 +221,12 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
       : null;
   const activePr = index > 0 ? historyWithPr : (historyWithPr ?? mergedEnvPr);
 
-  // Resolve merge time: prefer prMergeTime, fall back to hydrated commitTime
+  // Resolve when the entry landed: prefer prMergeTime, fall back to hydrated commitTime. A restore
+  // keeps the restored version's prMergeTime, so its own time is the restore commit's commitTime.
   let historyMergeTimeAgo: RelativeTimeAgo | null = null;
   if (index > 0) {
     const mergeTimeStr =
+      (history[index]?.restoredFrom ? history[index]?.active?.hydrated?.commitTime : undefined) ||
       history[index]?.pullRequest?.prMergeTime ||
       history[index]?.active?.hydrated?.commitTime ||
       null;
@@ -173,8 +279,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
     proposedChecks,
     proposedChecksSummary,
-
-    // History
+    restoreActiveCommit: isHistoric ? undefined : environment.restoreActiveCommit?.name,
+    proposedIsBlocked: !isHistoric && proposedIsBlocked(environment),
     historyMergeTimeAgo,
   };
 }

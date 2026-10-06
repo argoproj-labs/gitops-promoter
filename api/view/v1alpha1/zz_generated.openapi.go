@@ -51,6 +51,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeRequestPolicyCommitStatusPhase(ref),
 		apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref),
 		apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfiguration(ref),
+		apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistory(ref),
+		apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName():             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryConfiguration(ref),
+		apiv1alpha1.ChangeTransferPolicyHistoryList{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryList(ref),
+		apiv1alpha1.ChangeTransferPolicyHistorySpec{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistorySpec(ref),
+		apiv1alpha1.ChangeTransferPolicyHistoryStatus{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryStatus(ref),
 		apiv1alpha1.ChangeTransferPolicyList{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref),
 		apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
 		apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
@@ -72,6 +77,14 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
 		apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
 		apiv1alpha1.CronWindow{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref),
+		apiv1alpha1.DependentEnvironment{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentEnvironment(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName():        schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusConfiguration(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName():    schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusList{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusSpec(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusStatus(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName():       schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusUpstreamStatus(ref),
 		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
 		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
 		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
@@ -80,6 +93,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.FastSlow{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FastSlow(ref),
 		apiv1alpha1.Forgejo{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_Forgejo(ref),
 		apiv1alpha1.ForgejoRepo{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref),
+		apiv1alpha1.GateEnvironmentCommitStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_GateEnvironmentCommitStatus(ref),
 		apiv1alpha1.GitCommitStatus{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref),
 		apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfiguration(ref),
 		apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusEnvironmentStatus(ref),
@@ -104,6 +118,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
 		apiv1alpha1.OAuth2Auth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
+		apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref),
 		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
 		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
 		apiv1alpha1.PromotionStrategy{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
@@ -122,10 +137,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.RateLimiter{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref),
 		apiv1alpha1.RateLimiterTypes{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiterTypes(ref),
 		apiv1alpha1.ResponseOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref),
-		apiv1alpha1.RevertCommit{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref),
-		apiv1alpha1.RevertCommitList{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref),
-		apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref),
-		apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref),
+		apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommit(ref),
+		apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitConfiguration(ref),
+		apiv1alpha1.RestoreActiveCommitList{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitList(ref),
+		apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitSpec(ref),
+		apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitStatus(ref),
 		apiv1alpha1.RevisionReference{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
 		apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatus(ref),
 		apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusConfiguration(ref),
@@ -1089,6 +1105,231 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfi
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistory(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ChangeTransferPolicyHistory is the Schema for the changetransferpolicyhistories API.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of ChangeTransferPolicyHistory",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ChangeTransferPolicyHistorySpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of ChangeTransferPolicyHistory",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ChangeTransferPolicyHistoryStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ChangeTransferPolicyHistorySpec{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ChangeTransferPolicyHistoryConfiguration defines the configuration for the ChangeTransferPolicyHistory controller.\n\nThis configuration controls how the ChangeTransferPolicyHistory controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the ChangeTransferPolicyHistory controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ChangeTransferPolicyHistoryList contains a list of ChangeTransferPolicyHistory.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistorySpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ChangeTransferPolicyHistorySpec defines the desired state of ChangeTransferPolicyHistory.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"gitRepositoryRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RepositoryReference is the repository whose active branch is inspected to reconstruct the promotion history.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"activeBranch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveBranch is the hydrated active branch whose merged changes are reconstructed into history. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activePath": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"gitRepositoryRef", "activeBranch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHistoryStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ChangeTransferPolicyHistoryStatus defines the observed state of ChangeTransferPolicyHistory.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"history": {
+						SchemaProps: spec.SchemaProps{
+							Description: "History defines the history of promoted changes for this environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 20 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.History{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type":       "map",
+								"x-kubernetes-patch-merge-key": "type",
+								"x-kubernetes-patch-strategy":  "merge",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions Represents the observations of the current state.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.History{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -1269,19 +1510,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
-					"history": {
-						SchemaProps: spec.SchemaProps{
-							Description: "History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.History{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
 					"conditions": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -1316,7 +1544,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.History{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -2041,6 +2269,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"changeTransferPolicyHistory": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ChangeTransferPolicyHistory contains the configuration for the ChangeTransferPolicyHistory controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName()),
+						},
+					},
 					"changeTransferPolicy": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller, including WorkQueue settings that control reconciliation behavior.",
@@ -2090,6 +2325,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"dependentsSuccessfulCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
 					"scheduledCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
@@ -2097,12 +2339,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"restoreActiveCommit": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -2202,6 +2451,401 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref common.Ref
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentEnvironment(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentEnvironment declares one environment branch and the other branches it depends on.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"dependsOn": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependsOn is the list of dependent environment branches this environment waits on. The environment is only eligible for promotion once every branch listed here is promoted and successful. An empty or omitted list makes this environment a root. Each item must not start with '-', contain ':', or contain '..'.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of DependentsSuccessfulCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of DependentsSuccessfulCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusConfiguration defines the configuration for the DependentsSuccessfulCommitStatus controller.\n\nThis configuration controls how the DependentsSuccessfulCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusEnvironmentStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase mirrors child CommitStatus.spec.phase.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description mirrors child CommitStatus.spec.description.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Url mirrors child CommitStatus.spec.url.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reportedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeCommitStatuses": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"key",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"upstreams": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusList contains a list of DependentsSuccessfulCommitStatus",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"metadata", "items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"promotionStrategyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "key"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest available observations of an object's state",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments reports observed gate and upstream state per dependency-graph branch.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusUpstreamStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch is satisfied for this environment's promotion target.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the upstream environment branch name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"satisfied": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason explains why the upstream is not satisfied. Omitted when satisfied is true.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"branch", "satisfied"},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -2271,6 +2915,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 							Format:      "",
 						},
 					},
+					"dependsOn": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers a linear chain from spec.environments order. Each item must not start with '-', contain ':', or contain '..'.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"branch"},
 			},
@@ -2328,25 +2986,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 							},
 						},
 					},
-					"history": {
-						SchemaProps: spec.SchemaProps{
-							Description: "History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.History{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
 				},
 				Required: []string{"branch", "proposed", "active", "lastHealthyDryShas"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.HealthyDryShas{}.OpenAPIModelName(), apiv1alpha1.History{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.HealthyDryShas{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
 	}
 }
 
@@ -2511,6 +3156,47 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref common.Re
 					},
 				},
 				Required: []string{"owner", "name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GateEnvironmentCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GateEnvironmentCommitStatus mirrors per-environment child CommitStatus report fields (phase, description, url, reportedSha). Used on gate CR status.environments[] only — not embedded in CommitStatusSpec.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase mirrors child CommitStatus.spec.phase.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description mirrors child CommitStatus.spec.description.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Url mirrors child CommitStatus.spec.url.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reportedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}
@@ -3352,7 +4038,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "History describes a particular change that was promoted by the ChangeTransferPolicy.",
+				Description: "History describes a particular change that was promoted into an environment's active branch.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"proposed": {
@@ -3371,7 +4057,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"pullRequest": {
 						SchemaProps: spec.SchemaProps{
-							Description: "PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.",
+							Description: "PullRequest is the state of the pull request that promoted this change.",
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
@@ -3382,11 +4068,24 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 							Format:      "",
 						},
 					},
+					"restoredFrom": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"restoreUnblockedAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore moved off of is blocked from opening a pull request.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -3554,6 +4253,44 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref commo
 					},
 				},
 				Required: []string{"name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"group": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io; out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the name of the resource being referenced.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"group", "kind", "name"},
 			},
 		},
 	}
@@ -3764,7 +4501,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.\n\nThe commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.",
+							Description: "ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.\n\nThe commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.\n\nThe ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and does not need to be declared here.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -3773,6 +4510,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 									},
 								},
 							},
+						},
+					},
+					"orderCommitStatusRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName()),
 						},
 					},
 					"environments": {
@@ -3809,11 +4553,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 						},
 					},
 				},
-				Required: []string{"gitRepositoryRef", "environments"},
+				Required: []string{"gitRepositoryRef", "orderCommitStatusRef", "environments"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -3882,7 +4626,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(r
 						},
 					},
 				},
-				Required: []string{"environments"},
 			},
 		},
 		Dependencies: []string{
@@ -4445,11 +5188,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref co
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommit(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommit is the Schema for the revertcommits API",
+				Description: "RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -4475,28 +5218,51 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref common.R
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName(), apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RestoreActiveCommitSpec{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommitList contains a list of RevertCommit",
+				Description: "RestoreActiveCommitConfiguration defines the configuration for the RestoreActiveCommit controller.\n\nThis configuration controls how the RestoreActiveCommit controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the RestoreActiveCommit controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RestoreActiveCommitList contains a list of RestoreActiveCommit",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -4525,7 +5291,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref comm
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.RevertCommit{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -4536,20 +5302,115 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref comm
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.RevertCommit{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommitSpec defines the desired state of RevertCommit",
+				Description: "RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef, branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha, strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new RestoreActiveCommit. blockEnvironment may change.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
-					"foo": {
+					"promotionStrategyRef": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Foo is an example field of RevertCommit. Edit revertcommit_types.go to remove/update",
+							Description: "PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch on that PromotionStrategy to restore. The controller resolves it to the ChangeTransferPolicy the strategy created for this branch, which supplies the repository, the active and proposed branches, and activePath.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. Once the active tip already restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit for the same sha is refused until the active branch moves, and that note is left unchanged. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the blocked dry SHA again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"blockEnvironment": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BlockEnvironment blocks promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "branch", "sha"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RestoreActiveCommitStatus defines the observed state of RestoreActiveCommit.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"activeSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveSha is the commit on the active branch after a successful restore.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"blockedDrySha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the blocked dry SHA is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment is set to false. That stamps Promoter-restore-unblocked-at and deletes this object. Deleting it while the field is still true does not stamp the trailer, so the block stays. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. A promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"restoredFrom": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RestoredFrom is the spec.sha this status applied. It is written in the same status update as activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest available observations of an object's state.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -4557,17 +5418,8 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref comm
 				},
 			},
 		},
-	}
-}
-
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommitStatus defines the observed state of RevertCommit",
-				Type:        []string{"object"},
-			},
-		},
+		Dependencies: []string{
+			metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -5657,7 +6509,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref common.Refe
 				Properties: map[string]spec.Schema{
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape is available to escape url query parameters. The template can be configured with options to control the behavior during execution if a variable is not present.\n\nExample:\n\n  {{- $baseURL := \"https://dev.argocd.local\" -}}\n  {{- if eq .Environment \"environment/development\" -}}\n  {{- $baseURL = \"https://dev.argocd.local\" -}}\n  {{- else if eq .Environment \"environment/staging\" -}}\n  {{- $baseURL = \"https://staging.argocd.local\" -}}\n  {{- else if eq .Environment \"environment/production\" -}}\n  {{- $baseURL = \"https://prod.argocd.local\" -}}\n  {{- end -}}\n  {{- $labels := \"\" -}}\n  {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}\n  {{- $labels = printf \"%s%s=%s,\" $labels $key $value -}}\n  {{- end -}}\n  {{ printf \"%s/applications?labels=%s\" $baseURL (urlQueryEscape $labels) }}",
+							Description: "Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.\n\nAvailable template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -6193,7 +7045,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref co
 					},
 					"expression": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Expression is a boolean expr expression that decides whether the HTTP request should be made. It is evaluated BEFORE each potential HTTP request. When it returns true the request is made; when false the controller keeps the previous phase and skips the request.\n\nAvailable variables:\n  - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)\n  - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)\n  - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status\n  - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)\n  - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation\n  - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)\n  - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation\n  - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise\n\nNote: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence. Use Branch + filter/find to look up environment-specific data:\n  find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha\n\nExamples:\n  # Always trigger (equivalent to polling mode)\n  - \"true\"\n\n  # Only trigger when SHA changes from what we last tracked\n  - \"find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')\"\n\n  # Only trigger when a particular commit status is success (e.g. argocd-health)\n  - \"let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})\"\n\n  # Only retry if the previous response indicated we should\n  - \"ResponseOutput == nil || ResponseOutput.status == 'retry'\"",
+							Description: "Expression is a boolean expr expression that decides whether the HTTP request should be made. It is evaluated BEFORE each potential HTTP request. When it returns true the request is made; when false the controller keeps the previous phase and skips the request.\n\nAvailable variables:\n  - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)\n  - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)\n  - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status\n  - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)\n  - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation\n  - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)\n  - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation\n  - NamespaceMetadata (object): labels and annotations of the WebRequestCommitStatus's namespace (NamespaceMetadata.Labels, NamespaceMetadata.Annotations)\n  - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise\n\nNote: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence. Use Branch + filter/find to look up environment-specific data:\n  find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha\n\nExamples:\n  # Always trigger (equivalent to polling mode)\n  - \"true\"\n\n  # Only trigger when SHA changes from what we last tracked\n  - \"find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')\"\n\n  # Only trigger when a particular commit status is success (e.g. argocd-health)\n  - \"let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})\"\n\n  # Only retry if the previous response indicated we should\n  - \"ResponseOutput == nil || ResponseOutput.status == 'retry'\"",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -6333,6 +7185,32 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
+					"changeTransferPolicyHistories": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ChangeTransferPolicyHistories are the per-environment promotion histories owned by the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"restoreActiveCommits": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RestoreActiveCommits are the RestoreActiveCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 					"pullRequests": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
@@ -6411,6 +7289,19 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
+					"dependentsSuccessfulCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 					"scheduledCommitStatuses": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.",
@@ -6447,7 +7338,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 

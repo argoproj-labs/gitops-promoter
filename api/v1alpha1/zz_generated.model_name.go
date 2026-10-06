@@ -101,6 +101,31 @@ func (in ChangeTransferPolicyConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistory) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistory"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistorySpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistorySpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ChangeTransferPolicyHistoryStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyHistoryStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ChangeTransferPolicyList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ChangeTransferPolicyList"
 }
@@ -206,6 +231,46 @@ func (in CronWindow) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusUpstreamStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Environment) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Environment"
 }
@@ -243,6 +308,11 @@ func (in Forgejo) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ForgejoRepo) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ForgejoRepo"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GateEnvironmentCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GateEnvironmentCommitStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -366,6 +436,11 @@ func (in ObjectReference) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in OrderCommitStatusRef) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.OrderCommitStatusRef"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in OutputSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.OutputSpec"
 }
@@ -456,23 +531,28 @@ func (in ResponseOutputSpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommit) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommit"
+func (in RestoreActiveCommit) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommit"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitList"
+func (in RestoreActiveCommitConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitConfiguration"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitSpec) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitSpec"
+func (in RestoreActiveCommitList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitList"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitStatus"
+func (in RestoreActiveCommitSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in RestoreActiveCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

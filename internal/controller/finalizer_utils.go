@@ -139,6 +139,36 @@ func removeSecretFinalizerForProvider(
 	})
 }
 
+// removeUnreferencedSecretFinalizers removes finalizer from Secrets in secretNamespace that are not in referenced,
+// releasing the Secret a provider dropped when its secretRef changed.
+func removeUnreferencedSecretFinalizers(
+	ctx context.Context,
+	c client.Client,
+	secretNamespace string,
+	finalizer string,
+	referenced map[string]bool,
+) error {
+	var secrets v1.SecretList
+	if err := c.List(ctx, &secrets, client.InNamespace(secretNamespace)); err != nil {
+		return fmt.Errorf("failed to list Secrets: %w", err)
+	}
+
+	var errs []error
+	for i := range secrets.Items {
+		secret := &secrets.Items[i]
+		if referenced[secret.Name] || !controllerutil.ContainsFinalizer(secret, finalizer) {
+			continue
+		}
+		if err := removeSecretFinalizerForProvider(ctx, c, secretNamespace, secret.Name, finalizer,
+			func() (bool, error) { return false, nil }); err != nil {
+			log.FromContext(ctx).Error(err, "failed to remove finalizer from unreferenced Secret",
+				"secret", types.NamespacedName{Namespace: secretNamespace, Name: secret.Name})
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // handleResourceFinalizerWithDependencies handles the common finalizer add/remove logic for resources with dependencies.
 // This function:
 // - Adds finalizer on resource creation

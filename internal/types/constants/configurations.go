@@ -18,6 +18,10 @@ const (
 	// performed by the PromotionStrategy controller.
 	PromotionStrategyControllerFieldOwner = "promoter.argoproj.io/promotionstrategy-controller"
 
+	// ChangeTransferPolicyHistoryControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ChangeTransferPolicyHistory controller.
+	ChangeTransferPolicyHistoryControllerFieldOwner = "promoter.argoproj.io/changetransferpolicyhistory-controller"
+
 	// ChangeTransferPolicyControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ChangeTransferPolicy controller.
 	ChangeTransferPolicyControllerFieldOwner = "promoter.argoproj.io/changetransferpolicy-controller"
@@ -34,6 +38,10 @@ const (
 	// performed by the WebRequestCommitStatus controller.
 	WebRequestCommitStatusControllerFieldOwner = "promoter.argoproj.io/webrequestcommitstatus-controller"
 
+	// DependentsSuccessfulCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the DependentsSuccessfulCommitStatus controller.
+	DependentsSuccessfulCommitStatusControllerFieldOwner = "promoter.argoproj.io/dependentssuccessfulcommitstatus-controller"
+
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
 	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"
@@ -49,6 +57,9 @@ const (
 	// PullRequestControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the PullRequest controller.
 	PullRequestControllerFieldOwner = "promoter.argoproj.io/pullrequest-controller"
+	// RestoreActiveCommitControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the RestoreActiveCommit controller.
+	RestoreActiveCommitControllerFieldOwner = "promoter.argoproj.io/restoreactivecommit-controller"
 
 	// GitCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the GitCommitStatus controller.

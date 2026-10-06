@@ -38,6 +38,20 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ChangeTransferPolicyHistories != nil {
+		in, out := &in.ChangeTransferPolicyHistories, &out.ChangeTransferPolicyHistories
+		*out = make([]apiv1alpha1.ChangeTransferPolicyHistory, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.RestoreActiveCommits != nil {
+		in, out := &in.RestoreActiveCommits, &out.RestoreActiveCommits
+		*out = make([]apiv1alpha1.RestoreActiveCommit, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.PullRequests != nil {
 		in, out := &in.PullRequests, &out.PullRequests
 		*out = make([]apiv1alpha1.PullRequest, len(*in))
@@ -76,6 +90,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 	if in.WebRequestCommitStatuses != nil {
 		in, out := &in.WebRequestCommitStatuses, &out.WebRequestCommitStatuses
 		*out = make([]apiv1alpha1.WebRequestCommitStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.DependentsSuccessfulCommitStatuses != nil {
+		in, out := &in.DependentsSuccessfulCommitStatuses, &out.DependentsSuccessfulCommitStatuses
+		*out = make([]apiv1alpha1.DependentsSuccessfulCommitStatus, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

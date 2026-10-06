@@ -59,12 +59,16 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return changeTransferPolicyStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.PromotionStrategy:
 		return promotionStrategyStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.ChangeTransferPolicyHistory:
+		return changeTransferPolicyHistoryStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.CommitStatus:
 		return commitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.WebRequestCommitStatus:
 		return webRequestCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.TimedCommitStatus:
 		return timedCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.DependentsSuccessfulCommitStatus:
+		return dependentsSuccessfulCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.GitCommitStatus:
 		return gitCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ArgoCDCommitStatus:
@@ -81,6 +85,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return scheduledCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ControllerConfiguration:
 		return controllerConfigurationStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.RestoreActiveCommit:
+		return restoreActiveCommitStatusApply(o, conditionsOnly)
 	default:
 		return nil, fmt.Errorf("unsupported object type for status SSA: %T", obj)
 	}
@@ -104,6 +110,16 @@ func promotionStrategyStatusApply(o *promoterv1alpha1.PromotionStrategy, conditi
 		return nil, err
 	}
 	return acv1alpha1.PromotionStrategy(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func changeTransferPolicyHistoryStatusApply(o *promoterv1alpha1.ChangeTransferPolicyHistory, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.ChangeTransferPolicyHistoryStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.ChangeTransferPolicyHistory(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func commitStatusStatusApply(o *promoterv1alpha1.CommitStatus, conditionsOnly bool) (any, error) {
@@ -134,6 +150,16 @@ func timedCommitStatusStatusApply(o *promoterv1alpha1.TimedCommitStatus, conditi
 		return nil, err
 	}
 	return acv1alpha1.TimedCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func dependentsSuccessfulCommitStatusStatusApply(o *promoterv1alpha1.DependentsSuccessfulCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.DependentsSuccessfulCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.DependentsSuccessfulCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func gitCommitStatusStatusApply(o *promoterv1alpha1.GitCommitStatus, conditionsOnly bool) (any, error) {
@@ -204,6 +230,16 @@ func scheduledCommitStatusStatusApply(o *promoterv1alpha1.ScheduledCommitStatus,
 		return nil, err
 	}
 	return acv1alpha1.ScheduledCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func restoreActiveCommitStatusApply(o *promoterv1alpha1.RestoreActiveCommit, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.RestoreActiveCommitStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.RestoreActiveCommit(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func controllerConfigurationStatusApply(o *promoterv1alpha1.ControllerConfiguration, conditionsOnly bool) (any, error) {

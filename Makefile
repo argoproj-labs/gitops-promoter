@@ -164,9 +164,18 @@ apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserv
 fmt: ## Run go fmt against code.
 	go fmt ./...
 
+.PHONY: mod-tidy
+mod-tidy: ## Tidy the root module and the celcost helper module.
+	go mod tidy
+	cd hack/celcost && go mod tidy
+
 .PHONY: go-fix
-go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
+go-fix: ## Apply stdlib go fix modernizations for the go.mod language version.
 	go fix ./...
+
+.PHONY: go-fix-maybe-bump
+go-fix-maybe-bump: ## go fix; raise go.mod language version only if the fixes require it.
+	hack/go-fix-maybe-bump.sh
 
 .PHONY: vet
 vet: ## Run go vet against code.
@@ -344,8 +353,16 @@ lint-components-lib: install-ui-deps ## Run components-lib type-check and format
 	cd ui/components-lib && npm run type-check && npm run format:check
 	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
+.PHONY: lint-shared
+lint-shared: install-ui-deps ## Run shared type-check
+	cd ui/shared && npm run type-check
+
+.PHONY: lint-storybook
+lint-storybook: install-ui-deps ## Run storybook type-check (covers the plugin stories)
+	cd ui/storybook && npm install && npm run type-check
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-storybook ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
@@ -437,15 +454,15 @@ NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.8.1
+KUSTOMIZE_VERSION ?= v5.8.2
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
-ENVTEST_VERSION ?= release-0.24
-GOLANGCI_LINT_VERSION ?= v2.12.2
-DEADCODE_VERSION ?= v0.49.0
+ENVTEST_VERSION ?= release-0.25
+GOLANGCI_LINT_VERSION ?= v2.14.0
+DEADCODE_VERSION ?= v0.51.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v3.7.3
+MOCKERY_VERSION ?= v3.8.0
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.0
+GORELEASER_VERSION ?= v2.18.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -504,16 +521,27 @@ lint-docs:  ## Build docs and fail if there are warnings
 	  exit 1; \
 	fi
 
-# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# go-install-tool will 'go install' any package with custom target and name of binary,
+# if it doesn't exist or was built with a different Go toolchain. controller-gen in
+# particular type-checks the stdlib of the toolchain that built it; a binary compiled
+# with Go 1.26 cannot parse Go 1.27 stdlib sources (e.g. generic methods in math/rand/v2).
 # $1 - target path with name of binary (ideally with version)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f $(1) ] || { \
+@stamp="$(1).goversion"; \
+need_install() { \
+  [ ! -f "$(1)" ] && return 0; \
+  [ ! -f "$$stamp" ] && return 0; \
+  [ "$$(cat $$stamp)" != "$$(go env GOVERSION)" ] && return 0; \
+  return 1; \
+}; \
+if need_install; then \
 set -e; \
 package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
+echo "Installing $${package} (built with $$(go env GOVERSION))" ;\
 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
-}
+go env GOVERSION > $$stamp ;\
+fi
 endef

@@ -1,6 +1,6 @@
 # Git Trailers
 
-GitOps Promoter records what it promoted as **git trailers** — `Key: value` lines in a trailing block of a commit message, the same convention as `Signed-off-by`. They are how `ChangeTransferPolicy.status.history` (and the promotion history in the dashboard) is rebuilt from Git rather than from controller memory, so a restarted or upgraded controller still shows the same history.
+GitOps Promoter records what it promoted as **git trailers** — `Key: value` lines in a trailing block of a commit message, the same convention as `Signed-off-by`. They are how `ChangeTransferPolicyHistory.status.history` (and the promotion history in the dashboard) is rebuilt from Git rather than from controller memory, so a restarted or upgraded controller still shows the same history.
 
 The same trailer data is stored in up to three places, and they do not always agree. This page is the reference for what each trailer means, where it is written, and — most importantly — [which values can differ between the git note and the commit message](#note-versus-commit-message).
 
@@ -24,6 +24,8 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 | `Commit-status-active-<key>-url` | Gate detail link. Ignored unless `http://` or `https://`. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-active-<key>-description` | Gate description, **JSON-encoded** so it survives multi-line and quoted text. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-proposed-<key>-*` | Same three suffixes for gates on the proposed branch. | `status.history[].proposed.commitStatuses[]` |
+| `Promoter-restored-from` | The hydrated SHA a [RestoreActiveCommit](../advanced-usage/rolling-back.md) restored the active branch to. Written to both the restore commit's message and its note, and marks the entry as a restore rather than a merged pull request. The other trailers on the restore commit are copied from the restored version — its commit-message trailers into the restore's message, its note into the restore's note — and describe its original promotion. When the restored version has no note, or its note is empty or not valid JSON, the restore's note is built from those same commit-message trailers. When it is set, the restore's own time is the restore commit's commit time, `status.history[].active.hydrated.commitTime`, not `pullRequest.prMergeTime`. | `status.history[].restoredFrom` |
+| `Promoter-restore-unblocked-at` | RFC 3339 timestamp stamped on a restore commit's note when its [RestoreActiveCommit](../advanced-usage/rolling-back.md) has `spec.blockEnvironment` set to false. Written **only** to the note. While `Promoter-restored-from` is present and this trailer is absent, auto-merge is blocked and the dry SHA the restore moved off of is blocked from opening a pull request. Deleting the RestoreActiveCommit does not write it. | `status.history[].restoreUnblockedAt` |
 | `Promoter-merge-commit-snapshot-mismatch` | `true` when snapshot proposed dry SHA disagreed with hydrator metadata on the merge commit and the note was corrected. Written **only** to the note. | `status.history[].mergeCommitSnapshotMismatch` |
 
 > [!NOTE]
@@ -47,7 +49,7 @@ That fragility is exactly why the note exists.
 
 At finalization — before the `PullRequest` CR is allowed to disappear — the ChangeTransferPolicy controller writes the trailers as a JSON object in a git note at `refs/notes/promoter.history`, attached to the commit named by `PullRequest.status.mergedTargetSha`. See [Promotion history git notes](finalizers.md#promotion-history-git-notes) for the finalizer mechanics, failure handling, and what happens when no merge SHA is ever obtained.
 
-When rebuilding history, the controller walks the last five first-parent commits of the active branch and, for each, **prefers the note** and falls back to the commit message's trailers when no readable note exists. That fallback is what keeps merges from before the notes feature visible.
+When rebuilding history, the ChangeTransferPolicyHistory controller walks the last twenty first-parent commits of the active branch and, for each, **prefers the note** and falls back to the commit message's trailers when no readable note exists. That fallback is what keeps merges from before the notes feature visible.
 
 ## Note versus commit message
 
@@ -62,6 +64,7 @@ An **external** merge has no such guard. The proposed branch can advance after t
 | `Pull-request-merge-time` | **Yes, routinely.** | It is added in-flight at merge time and never persisted back to `spec.commit.message`, so the snapshot the note is built from usually lacks it. The note then derives it from the **merge commit's own timestamp**, while a controller-written merge commit message carries the promoter's clock reading from the moment it called merge. |
 | `Commit-status-active-*`, `Commit-status-proposed-*` | **No — but they may describe the wrong revision.** | Gate phases cannot be reconstructed from Git, so the note keeps the snapshot values verbatim. After an external merge they may describe the gates that applied to an *earlier* proposed revision than the one that merged. |
 | `Promoter-merge-commit-snapshot-mismatch` | **Note only.** | Never written to a commit message. Its presence is the signal that the corrections above happened. |
+| `Promoter-restore-unblocked-at` | **Note only.** | Stamped when `spec.blockEnvironment` is set to false; commit messages are immutable so it cannot live there. |
 | `Pull-request-id`, `-url`, `-creation-time`, `-source-branch`, `-target-branch`, `Sha-dry-active`, `Sha-hydrated-active` | **No.** | Copied into the note verbatim from the snapshot. |
 
 So when `status.history[].mergeCommitSnapshotMismatch` is `true`, the proposed **dry** SHA in that entry was re-read from the merge commit's hydrator metadata and is trustworthy. The proposed **hydrated** SHA was re-read too on a regular merge commit (second parent), but on a squash or fast-forward merge it is still the stale snapshot value. Treat **commit statuses** as possibly describing a superseded revision. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it applies the correction.
@@ -88,7 +91,7 @@ git notes --ref=promoter.history show <merge-commit-sha> | jq '.["Sha-dry-propos
 ```
 
 > [!TIP]
-> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block. `Pull-request-merge-time` is not on the strip list and can still appear there.
+> Promoter trailers are stripped from the commit bodies shown in `ChangeTransferPolicy` status, so `status.active.hydrated.body` displays your commit message rather than the bookkeeping block.
 
 ## Related
 

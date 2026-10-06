@@ -63,6 +63,9 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
+          // status.pullRequest keeps the last merged one; under a RestoreActiveCommit only an open one is this commit's.
+          const heldWithoutOpenPr = !!env.restoreActiveCommit && env.prTooltip?.status !== 'opened';
+
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
@@ -87,7 +90,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     healthSummary={env.activeChecksSummary}
                   />
 
-                  {isProcessing ? (
+                  {isProcessing || proposedStatus === 'unknown' ? (
                     <div className="commit-group env-card__proposed-loading">
                       <div className="commit-group-header">
                         <StatusIcon phase="pending" type="health" />
@@ -96,10 +99,16 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       <div
                         className="env-card__proposed-loading-bar"
                         role="progressbar"
-                        aria-label="Preparing newer commit"
+                        aria-label={
+                          proposedStatus === 'unknown'
+                            ? 'Waiting for commit'
+                            : 'Preparing newer commit'
+                        }
                       />
                       <div className="env-card__proposed-loading-text">
-                        preparing newer commit&hellip;
+                        {proposedStatus === 'unknown'
+                          ? 'waiting for commit…'
+                          : 'preparing newer commit…'}
                       </div>
                     </div>
                   ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
@@ -111,9 +120,11 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
-                      prUrl={env.prUrl}
-                      prNumber={env.prNumber?.toString()}
+                      prUrl={heldWithoutOpenPr ? null : env.prUrl}
+                      prNumber={heldWithoutOpenPr ? undefined : env.prNumber?.toString()}
                       prTooltip={env.prTooltip}
+                      restoreActiveCommit={env.restoreActiveCommit}
+                      proposedIsBlocked={env.proposedIsBlocked}
                     />
                   ) : null}
                 </div>

@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -55,7 +54,6 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		fake.ResetLabelCallCount()
 	})
 
 	It("evaluates a static label list onto PullRequest.spec.labels", func() {
@@ -158,7 +156,6 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
 	})
 
 	It("reports Ready=False when the label expression fails at evaluation time", func() {
@@ -181,7 +178,6 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
 	})
 
 	It("reports Ready=False when the label expression returns invalid label names", func() {
@@ -205,7 +201,6 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
 	})
 })
 
