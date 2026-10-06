@@ -904,18 +904,26 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				// Do not patch PullRequest.spec.gitRepositoryRef: CTP owns that field via SSA with
 				// ForceOwnership and restores the real name before Delete can land, letting the PR
 				// finalize and be recreated without a DeletionTimestamp (flake). Delete the
-				// GitRepository instead (same pattern as pullrequest_controller_test.go).
+				// GitRepository instead. Delete first so DeletionTimestamp is set — reconcile only
+				// re-adds the finalizer when that timestamp is zero — then strip it so the object
+				// can finish deleting despite dependent PullRequests.
 				missingGitRepositoryName := gitRepo.Name
-				By("Removing GitRepository finalizer so it can be deleted while the PullRequest remains")
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
-					g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
-				}, constants.EventuallyTimeout).Should(Succeed())
-				Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
-				gitRepoBase := gitRepo.DeepCopy()
-				controllerutil.RemoveFinalizer(gitRepo, promoterv1alpha1.GitRepositoryFinalizer)
-				Expect(k8sClient.Patch(ctx, gitRepo, ctrlclient.MergeFrom(gitRepoBase))).To(Succeed())
+				By("Deleting GitRepository so PullRequest provider lookup fails")
 				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(gitRepo.DeletionTimestamp.IsZero()).To(BeFalse())
+					if !controllerutil.ContainsFinalizer(gitRepo, promoterv1alpha1.GitRepositoryFinalizer) {
+						return
+					}
+					base := gitRepo.DeepCopy()
+					controllerutil.RemoveFinalizer(gitRepo, promoterv1alpha1.GitRepositoryFinalizer)
+					g.Expect(k8sClient.Patch(ctx, gitRepo, ctrlclient.MergeFrom(base))).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
