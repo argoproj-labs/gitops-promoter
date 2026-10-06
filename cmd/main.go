@@ -438,8 +438,9 @@ func runController(
 		return nil
 	})
 
-	if err := g.Wait(); err != nil {
-		setupLog.Error(err, "unable to start")
+	waitErr := g.Wait()
+	if waitErr != nil {
+		setupLog.Error(waitErr, "unable to start")
 		// Cancel the controller context so sibling goroutines (manager, webhook
 		// receiver) stop. Prefer context cancel over self-signaling SIGTERM so
 		// this path stays portable to Windows.
@@ -454,7 +455,7 @@ func runController(
 		}
 		setupLog.Info("cleaning directory", "directory", path)
 	}
-	return nil
+	return waitErr
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -491,6 +492,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// Create single signal handler, then a cancelable child so a manager
 			// failure can stop the dashboard without Unix-only self-signaling.
 			ctx, shutdown := context.WithCancel(ctrl.SetupSignalHandler())
+			defer shutdown()
 
 			ws := webserver.NewWebServer(mgr)
 
@@ -509,10 +511,13 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("dashboard aggregation API did not become available: %w", err)
 			}
 
-			// Start manager in background
+			// Start manager in background; surface its error if the dashboard
+			// exits only because the manager canceled the shared context.
+			mgrErrCh := make(chan error, 1)
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
 					setupLog.Error(err, "dashboard manager exited")
+					mgrErrCh <- err
 					shutdown()
 				}
 			}()
@@ -520,7 +525,15 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// Make port configurable
 			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
 
-			return ws.StartDashboard(ctx, fmt.Sprintf(":%d", port))
+			if err := ws.StartDashboard(ctx, fmt.Sprintf(":%d", port)); err != nil {
+				return err
+			}
+			select {
+			case err := <-mgrErrCh:
+				return fmt.Errorf("dashboard manager exited: %w", err)
+			default:
+				return nil
+			}
 		},
 	}
 
