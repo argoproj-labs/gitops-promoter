@@ -172,8 +172,9 @@ func runController(
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
 				// Do not copy host Cache ByObject here. Application CRD presence is a local-cluster
-				// concern (WithArgoCDApplicationIfInstalled). Remote Application informers start from
-				// watches with no DefaultLabelSelector, so they stay unfiltered.
+				// concern (WithArgoCDApplicationIfInstalled). Provider clusters get their own
+				// Application ByObject with UnsafeDisableDeepCopy (read-only Lists).
+				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
 			},
 		},
 	}
