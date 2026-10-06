@@ -44,6 +44,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
@@ -705,7 +706,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			AfterEach(func() {
 				By("Cleaning up resources")
 				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
-				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			})
@@ -900,11 +901,36 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, constants.EventuallyTimeout).Should(Succeed())
 				})
 
-				By("Breaking PullRequest provider lookup before deletion")
+				// Do not patch PullRequest.spec.gitRepositoryRef: CTP owns that field via SSA with
+				// ForceOwnership and restores the real name before Delete can land, letting the PR
+				// finalize and be recreated without a DeletionTimestamp (flake). Delete the
+				// GitRepository instead (same pattern as pullrequest_controller_test.go).
+				missingGitRepositoryName := gitRepo.Name
+				By("Removing GitRepository finalizer so it can be deleted while the PullRequest remains")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+					g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				gitRepoBase := gitRepo.DeepCopy()
+				controllerutil.RemoveFinalizer(gitRepo, promoterv1alpha1.GitRepositoryFinalizer)
+				Expect(k8sClient.Patch(ctx, gitRepo, ctrlclient.MergeFrom(gitRepoBase))).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the PullRequest controller to observe the missing GitRepository")
+				triggerPRReconcile(ctx, prKey, &createdPR)
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
-					createdPR.Spec.RepositoryReference = promoterv1alpha1.ObjectReference{Name: "missing-git-repository"}
-					g.Expect(k8sClient.Update(ctx, &createdPR)).To(Succeed())
+					g.Expect(createdPR.DeletionTimestamp.IsZero()).To(BeTrue())
+					ready := meta.FindStatusCondition(createdPR.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+					g.Expect(ready.Message).To(ContainSubstring(missingGitRepositoryName))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Deleting the PullRequest while provider lookup will fail on the deletion reconcile")
@@ -920,7 +946,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(ready).NotTo(BeNil())
 					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
-					g.Expect(ready.Message).To(ContainSubstring("missing-git-repository"))
+					g.Expect(ready.Message).To(ContainSubstring(missingGitRepositoryName))
+					g.Expect(ready.Message).To(ContainSubstring("cannot close its SCM pull request"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying PullRequest status stays open and the CTP finalizer is held")
