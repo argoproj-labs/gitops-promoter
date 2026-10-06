@@ -37,8 +37,8 @@ A counter of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
@@ -52,8 +52,8 @@ A histogram of the duration of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
@@ -90,8 +90,8 @@ This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
 
 ## scm_calls_rate_limit_remaining
 
@@ -101,8 +101,8 @@ This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
@@ -112,8 +112,8 @@ This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
 
 ## webhook_processing_duration_seconds
 
