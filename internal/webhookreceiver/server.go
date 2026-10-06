@@ -488,7 +488,7 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	// Bitbucket DataCenter/Server
-	if id := r.Header.Get("X-Request-Id"); id != "" {
+	if id := r.Header.Get("X-Request-ID"); id != "" {
 		return id
 	}
 	return ""
