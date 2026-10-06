@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -99,8 +100,8 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 func createCommitURL(baseURL string, repo *v1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/projects/%s/repos/%s/commits/%s",
 		baseURL,
-		repo.Spec.BitbucketDataCenter.Project,
-		repo.Spec.BitbucketDataCenter.Name,
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Project),
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Name),
 		sha,
 	)
 }

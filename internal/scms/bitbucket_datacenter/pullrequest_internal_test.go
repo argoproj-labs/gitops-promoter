@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -22,6 +23,7 @@ var _ = Describe("PullRequest version handling", func() {
 		server   *httptest.Server
 		requests map[string]map[string]any
 		prJSON   string
+		listURL  string
 		provider *PullRequest
 		prObj    v1alpha1.PullRequest
 	)
@@ -36,6 +38,11 @@ var _ = Describe("PullRequest version handling", func() {
 					return
 				}
 				_, _ = io.WriteString(w, `{"values":[{"action":"MERGED","commit":{"id":"faff7dec56951c180943ac6861860e51a98eb313"}},{"action":"OPENED"}],"isLastPage":true}`)
+				return
+			}
+			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pull-requests") {
+				listURL = r.URL.RequestURI()
+				_, _ = io.WriteString(w, `{"values":[],"isLastPage":true}`)
 				return
 			}
 			if r.Method == http.MethodGet {
@@ -105,5 +112,24 @@ var _ = Describe("PullRequest version handling", func() {
 		result, err := provider.Get(context.Background(), prObj)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.MergedTargetSHA).To(Equal("0123456789abcdef0123456789abcdef01234567"))
+	})
+
+	It("escapes the source branch in the FindOpen query", func() {
+		prObj.Spec.SourceBranch = "env-next&state=MERGED"
+		_, err := provider.FindOpen(context.Background(), prObj)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listURL).To(ContainSubstring("at=refs%2Fheads%2Fenv-next%26state%3DMERGED"))
+		Expect(listURL).To(ContainSubstring("state=OPEN"))
+	})
+
+	It("escapes the project and repository in pull request links", func() {
+		repo := &v1alpha1.GitRepository{}
+		Expect(provider.k8sClient.Get(context.Background(), k8sClient.ObjectKey{Namespace: "default", Name: "repo"}, repo)).To(Succeed())
+		repo.Spec.BitbucketDataCenter.Name = "../other"
+		Expect(provider.k8sClient.Update(context.Background(), repo)).To(Succeed())
+
+		link, err := provider.GetUrl(context.Background(), prObj)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link).To(Equal(server.URL + "/projects/PROJ/repos/..%2Fother/pull-requests/1"))
 	})
 })
