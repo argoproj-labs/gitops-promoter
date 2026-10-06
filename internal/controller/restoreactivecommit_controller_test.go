@@ -648,6 +648,14 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 	}
 	Expect(k8sClient.Create(ctx, rc)).To(Succeed())
 	DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+	// Deleting the test's RestoreActiveCommit while the tip is still a blocked restore makes the
+	// ChangeTransferPolicy controller adopt a replacement. That object is a different name, so the
+	// cleanup above does not remove it, and it blocks deletion of the policy that owns it.
+	DeferCleanup(func() {
+		for _, key := range []types.NamespacedName{devKey, stagingKey, prodKey} {
+			deleteRestoreActiveCommitsForPolicy(ctx, key.Name, key.Namespace)
+		}
+	})
 
 	Eventually(func(g Gomega) {
 		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: "default"}, rc)).To(Succeed())

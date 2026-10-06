@@ -103,6 +103,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			AfterEach(func() {
 				By("Cleaning up resources")
+				// An adopted RestoreActiveCommit owns a finalizer and blocks owner deletion. Remove it
+				// before the policy so the next spec on this envtest process does not inherit it.
+				if changeTransferPolicy != nil {
+					deleteRestoreActiveCommitsForPolicy(ctx, changeTransferPolicy.Name, changeTransferPolicy.Namespace)
+				}
 				_ = k8sClient.Delete(ctx, changeTransferPolicy)
 			})
 
@@ -354,10 +359,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("CTP adopting the restore tip as a RestoreActiveCommit")
 				var adopted promoterv1alpha1.RestoreActiveCommit
 				Eventually(func(g Gomega) {
-					var racList promoterv1alpha1.RestoreActiveCommitList
-					g.Expect(k8sClient.List(ctx, &racList)).To(Succeed())
-					g.Expect(racList.Items).To(HaveLen(1))
-					adopted = racList.Items[0]
+					matched := liveRestoreActiveCommitsForPolicy(ctx, g, changeTransferPolicy)
+					g.Expect(matched).To(HaveLen(1))
+					adopted = matched[0]
 					g.Expect(adopted.Spec.Sha).To(Equal(restoreTo))
 					g.Expect(adopted.Spec.Branch).To(Equal(testBranchDevelopment))
 					g.Expect(adopted.Spec.PromotionStrategyRef.Name).To(Equal(restoreStrategyName))
@@ -460,11 +464,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("CTP adopting the restore tip as a RestoreActiveCommit")
 				Eventually(func(g Gomega) {
-					var racList promoterv1alpha1.RestoreActiveCommitList
-					g.Expect(k8sClient.List(ctx, &racList)).To(Succeed())
-					g.Expect(racList.Items).To(HaveLen(1))
-					g.Expect(racList.Items[0].Spec.Sha).To(Equal(restoreTo))
-					g.Expect(racList.Items[0].Status.RestoredFrom).To(Equal(restoreTo))
+					matched := liveRestoreActiveCommitsForPolicy(ctx, g, changeTransferPolicy)
+					g.Expect(matched).To(HaveLen(1))
+					g.Expect(matched[0].Spec.Sha).To(Equal(restoreTo))
+					g.Expect(matched[0].Status.RestoredFrom).To(Equal(restoreTo))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Leaving no pull request open for the dry SHA the restore moved off")
@@ -3220,6 +3223,41 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		})
 	})
 })
+
+// liveRestoreActiveCommitsForPolicy lists RestoreActiveCommits the ChangeTransferPolicy controller
+// treats as live for ctp. Specs on one ginkgo process share an envtest, so a cluster-wide list
+// also returns restores adopted by earlier specs.
+func liveRestoreActiveCommitsForPolicy(ctx context.Context, g Gomega, ctp *promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.RestoreActiveCommit {
+	GinkgoHelper()
+	var racList promoterv1alpha1.RestoreActiveCommitList
+	g.Expect(k8sClient.List(ctx, &racList, ctrlclient.InNamespace(ctp.Namespace))).To(Succeed())
+	matched := make([]promoterv1alpha1.RestoreActiveCommit, 0, len(racList.Items))
+	for i := range racList.Items {
+		rc := &racList.Items[i]
+		if changeTransferPolicyNameForRevert(rc) != ctp.Name || !rc.DeletionTimestamp.IsZero() {
+			continue
+		}
+		matched = append(matched, *rc)
+	}
+	return matched
+}
+
+// deleteRestoreActiveCommitsForPolicy deletes every RestoreActiveCommit that selects ctpName, including
+// one the controller adopted after a test deleted the object it created. Best-effort: the finalizer
+// releases on the following reconcile.
+func deleteRestoreActiveCommitsForPolicy(ctx context.Context, ctpName, namespace string) {
+	var racList promoterv1alpha1.RestoreActiveCommitList
+	if err := k8sClient.List(ctx, &racList, ctrlclient.InNamespace(namespace)); err != nil {
+		return
+	}
+	for i := range racList.Items {
+		rc := &racList.Items[i]
+		if changeTransferPolicyNameForRevert(rc) != ctpName {
+			continue
+		}
+		_ = k8sClient.Delete(ctx, rc)
+	}
+}
 
 // hasEventWithReason reports whether eventList contains an event for the named involved object
 // with the given reason.
