@@ -253,12 +253,11 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
 		if err != nil {
 			statusCode := 500
-			var rateLimit *metrics.RateLimit
 			if resp != nil {
 				statusCode = resp.StatusCode
-				rateLimit = getRateLimitMetrics(resp.Rate)
 			}
-			metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIPullRequest, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), rateLimit)
+			// App JWT budget; the rate-limit gauges track the installation token.
+			metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIListInstallations, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), nil)
 			return fmt.Errorf("failed to list installations: %w", err)
 		}
 		lastResp = resp
@@ -271,12 +270,11 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 	storeInstallationSnapshot(ctx, building, scmProvider)
 
 	statusCode := 200
-	var rateLimit *metrics.RateLimit
 	if lastResp != nil {
 		statusCode = lastResp.StatusCode
-		rateLimit = getRateLimitMetrics(lastResp.Rate)
 	}
-	metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIPullRequest, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), rateLimit)
+	// App JWT budget; the rate-limit gauges track the installation token.
+	metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIListInstallations, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), nil)
 	return nil
 }
 

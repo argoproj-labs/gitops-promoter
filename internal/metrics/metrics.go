@@ -59,6 +59,8 @@ const (
 	SCMAPICommitStatus SCMAPI = "CommitStatus"
 	// SCMAPIPullRequest is used for operations related to pull requests.
 	SCMAPIPullRequest SCMAPI = "PullRequest"
+	// SCMAPIListInstallations is used when listing GitHub App installations.
+	SCMAPIListInstallations SCMAPI = "ListInstallations"
 )
 
 // SCMOperation represents the type of operation being performed on the SCM API.

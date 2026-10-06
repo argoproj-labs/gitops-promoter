@@ -39,10 +39,11 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (CommitStatus, PullRequest)
+* `api`: The SCM API being called (CommitStatus, PullRequest, ListInstallations)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, remove-labels, or list-installations.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For ListInstallations, this is list-installations.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -54,10 +55,11 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (CommitStatus, PullRequest)
+* `api`: The SCM API being called (CommitStatus, PullRequest, ListInstallations)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, remove-labels, or list-installations.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For ListInstallations, this is list-installations.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
