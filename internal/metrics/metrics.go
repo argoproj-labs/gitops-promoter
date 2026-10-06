@@ -87,8 +87,17 @@ const (
 	SCMOperationCreateLabel SCMOperation = "create-label"
 	// SCMOperationRemoveLabels is used when removing labels from pull requests.
 	SCMOperationRemoveLabels SCMOperation = "remove-labels"
-	// SCMOperationListInstallations is used when listing GitHub App installations to resolve an org installation ID.
-	SCMOperationListInstallations SCMOperation = "list-installations"
+)
+
+// GitHubSCMProviderOperation is a GitHub-specific operation outside the shared
+// SCMOperation values. The Prometheus operation label is still this string;
+// scm_provider identifies which provider resource made the call.
+type GitHubSCMProviderOperation string
+
+const (
+	// GitHubSCMProviderOperationListInstallations lists GitHub App installations
+	// to resolve an org installation ID.
+	GitHubSCMProviderOperationListInstallations GitHubSCMProviderOperation = "list-installations"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.
@@ -271,7 +280,8 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
 // It emits a structured debug log (verbosity V(1); enable with e.g. --zap-log-level=1) for each call, matching metric labels.
 // scope is typically a *GitRepository or GenericScmProvider (provider-only calls use empty git_repository labels).
-func RecordSCMCall(ctx context.Context, scope v1alpha1.SCMCallScope, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
+// operation is an SCMOperation, or a provider-specific type such as GitHubSCMProviderOperation. Both are recorded on the operation label.
+func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, api SCMAPI, operation O, responseCode int, duration time.Duration, rateLimit *RateLimit) {
 	scmProvider := scope.SCMCallSCMProvider()
 	scmProviderKind := scope.SCMCallSCMProviderKind()
 	gitRepository := scope.SCMCallGitRepository()

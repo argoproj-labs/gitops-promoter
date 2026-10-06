@@ -43,7 +43,7 @@ Labels:
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
-  * `list-installations` is recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -59,7 +59,7 @@ Labels:
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
-  * `list-installations` is recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total

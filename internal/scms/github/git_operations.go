@@ -257,7 +257,7 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 				statusCode = resp.StatusCode
 			}
 			// Provider api: Nil rate limit: the app JWT budget must not overwrite the installation-token gauges.
-			metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), nil)
+			metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.GitHubSCMProviderOperationListInstallations, statusCode, time.Since(startTime), nil)
 			return fmt.Errorf("failed to list installations: %w", err)
 		}
 		lastResp = resp
@@ -274,7 +274,7 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 		statusCode = lastResp.StatusCode
 	}
 	// Provider api: Nil rate limit: the app JWT budget must not overwrite the installation-token gauges.
-	metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.SCMOperationListInstallations, statusCode, time.Since(startTime), nil)
+	metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.GitHubSCMProviderOperationListInstallations, statusCode, time.Since(startTime), nil)
 	return nil
 }
 
