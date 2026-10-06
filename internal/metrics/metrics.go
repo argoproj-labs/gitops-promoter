@@ -59,6 +59,10 @@ const (
 	SCMAPICommitStatus SCMAPI = "CommitStatus"
 	// SCMAPIPullRequest is used for operations related to pull requests.
 	SCMAPIPullRequest SCMAPI = "PullRequest"
+	// SCMAPIProvider is for provider-specific calls other than the Promoter APIs
+	// (pull requests, commit statuses, and similar). Listing GitHub App
+	// installations is one example.
+	SCMAPIProvider SCMAPI = "Provider"
 )
 
 // SCMOperation represents the type of operation being performed on the SCM API.

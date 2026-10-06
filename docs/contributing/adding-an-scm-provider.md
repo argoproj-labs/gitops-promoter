@@ -15,7 +15,7 @@ Do **not** skip this for “small” calls: if it hits the provider’s REST API
 
 - Use the `context.Context` passed into your provider method so logging inherits reconcile fields where applicable.
 - Pass the resolved [`GitRepository`](../crd-specs.md) object (same as other providers: load via `utils.GetGitRepositoryFromObjectKey` in `internal/utils/utils.go` or equivalent).
-- Set `api` to `metrics.SCMAPICommitStatus` or `metrics.SCMAPIPullRequest`, and `operation` to the closest `metrics.SCMOperation` value in `internal/metrics/metrics.go` (`create`, `update`, `merge`, `close`, `list`, `get`).
+- Set `api` to `metrics.SCMAPICommitStatus`, `metrics.SCMAPIPullRequest`, or `metrics.SCMAPIProvider` (provider-specific calls outside those Promoter APIs), and `operation` to the closest `metrics.SCMOperation` value in `internal/metrics/metrics.go` (`create`, `update`, `merge`, `close`, `list`, `get`, `list-installations`).
 - If the client returns no response on error, map to a sensible status code (existing providers often use `500`) so the metric still has a code label.
 - **GitHub only:** you can pass non-nil `rateLimit` built from the GitHub client’s rate object (see `internal/scms/github/utils.go`); other providers usually pass `nil`.
 
@@ -60,7 +60,7 @@ if err != nil {
 
 This matches `internal/scms/azuredevops/pullrequest.go` (`Create`) and `internal/scms/bitbucket_cloud/commit_status.go` (`Set`).
 
-Pick `metrics.SCMAPICommitStatus` / `SCMAPIPullRequest` and the right `metrics.SCMOperation` for each method. For GitHub, pass `getRateLimitMetrics(response.Rate)` as the last argument instead of `nil` where the client exposes rate metadata.
+Pick `metrics.SCMAPICommitStatus`, `SCMAPIPullRequest`, or `SCMAPIProvider` and the right `metrics.SCMOperation` for each method. For GitHub, pass `getRateLimitMetrics(response.Rate)` as the last argument instead of `nil` where the client exposes rate metadata. Provider-scoped calls that use a different token budget, such as GitHub App installation listing, pass `nil` so they do not overwrite the installation-token gauges.
 
 ## User-facing metrics and docs
 
