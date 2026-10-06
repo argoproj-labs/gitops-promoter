@@ -17,10 +17,10 @@ var _ = Describe("RecordSCMCall", func() {
 		provider := &promoterv1alpha1.ClusterScmProvider{
 			ObjectMeta: metav1.ObjectMeta{Name: "scm-provider-metrics-test"},
 		}
-		RecordSCMCall(context.Background(), provider, SCMAPIListInstallations, SCMOperationListInstallations, 200, 50*time.Millisecond, nil)
-		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "scm-provider-metrics-test", "ClusterScmProvider", "ListInstallations", "list-installations", "200"))).To(Equal(1.0))
+		RecordSCMCall(context.Background(), provider, "", SCMOperationListInstallations, 200, 50*time.Millisecond, nil)
+		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "scm-provider-metrics-test", "ClusterScmProvider", "", "list-installations", "200"))).To(Equal(1.0))
 
-		RecordSCMCall(context.Background(), provider, SCMAPIListInstallations, SCMOperationListInstallations, 200, 25*time.Millisecond, nil)
-		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "scm-provider-metrics-test", "ClusterScmProvider", "ListInstallations", "list-installations", "200"))).To(Equal(2.0))
+		RecordSCMCall(context.Background(), provider, "", SCMOperationListInstallations, 200, 25*time.Millisecond, nil)
+		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "scm-provider-metrics-test", "ClusterScmProvider", "", "list-installations", "200"))).To(Equal(2.0))
 	})
 })

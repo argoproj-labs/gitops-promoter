@@ -39,11 +39,11 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (CommitStatus, PullRequest, ListInstallations)
+* `api`: The SCM API being called (CommitStatus, PullRequest). Empty for GitHub App installation listing.
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
-  * For ListInstallations, this is list-installations.
+  * `list-installations` is recorded with an empty `api`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -55,11 +55,11 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (CommitStatus, PullRequest, ListInstallations)
+* `api`: The SCM API being called (CommitStatus, PullRequest). Empty for GitHub App installation listing.
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
-  * For ListInstallations, this is list-installations.
+  * `list-installations` is recorded with an empty `api`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
@@ -88,34 +88,34 @@ Labels:
 
 A gauge for the rate limit of SCM API calls.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
-* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
-* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_remaining
 
 A gauge for the remaining rate limit of SCM API calls.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
-* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
-* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
 A gauge for the remaining seconds until the SCM API rate limit resets.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
-* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
-* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## webhook_processing_duration_seconds
 
