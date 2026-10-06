@@ -43,17 +43,20 @@ type testGitHubServer struct {
 	idBase          int64
 	mu              sync.Mutex
 	listCalls       atomic.Int32
+	failPage        atomic.Int32
 }
 
 type testGitHubServerOpts struct {
 	releasePage map[int]<-chan struct{}
 	pages       [][]string
 	pageDelay   time.Duration
+	failPage    int
 }
 
 func newTestGitHubServer(opts testGitHubServerOpts) *testGitHubServer {
 	GinkgoHelper()
 	ts := &testGitHubServer{pages: opts.pages, idBase: 1000}
+	ts.failPage.Store(int32(opts.failPage))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v3/app/installations", func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -62,6 +65,10 @@ func newTestGitHubServer(opts testGitHubServerOpts) *testGitHubServer {
 		}
 		if page == 1 {
 			ts.listCalls.Add(1)
+		}
+		if int(ts.failPage.Load()) == page {
+			http.Error(w, "list failed", http.StatusInternalServerError)
+			return
 		}
 		if opts.pageDelay > 0 {
 			time.Sleep(opts.pageDelay)
@@ -109,6 +116,10 @@ func newTestGitHubServer(opts testGitHubServerOpts) *testGitHubServer {
 	DeferCleanup(ts.srv.Close)
 	ts.domain = strings.TrimPrefix(ts.srv.URL, "https://")
 	return ts
+}
+
+func (ts *testGitHubServer) setFailPage(page int) {
+	ts.failPage.Store(int32(page))
 }
 
 func (ts *testGitHubServer) setPages(pages [][]string, idBase int64) {
@@ -216,7 +227,7 @@ var _ = Describe("GetClient", func() {
 		Expect(server.listCalls.Load()).To(Equal(int32(2)))
 	})
 
-	It("does not block other orgs while pagination is stalled on a later page", func() {
+	It("waits for every installation page before caching an org", func() {
 		privKey := testGitHubAppPrivateKey()
 		releasePage2 := make(chan struct{})
 		server := newTestGitHubServer(testGitHubServerOpts{
@@ -227,24 +238,18 @@ var _ = Describe("GetClient", func() {
 		secret := testSecret(privKey)
 		ctx := context.Background()
 
-		g1Done := make(chan error, 1)
+		done := make(chan error, 1)
 		go func() {
-			_, _, err := GetClient(ctx, provider, secret, "productlab")
-			g1Done <- err
+			_, _, err := GetClient(ctx, provider, secret, "known-org")
+			done <- err
 		}()
 
-		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(BeNumerically(">=", 1))
-		time.Sleep(20 * time.Millisecond)
-
-		g2Start := time.Now()
-		client, _, err := GetClient(ctx, provider, secret, "known-org")
-		g2Duration := time.Since(g2Start)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(client).NotTo(BeNil())
-		Expect(g2Duration).To(BeNumerically("<", 100*time.Millisecond))
+		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
+		Consistently(done).WithTimeout(50 * time.Millisecond).ShouldNot(Receive())
 
 		close(releasePage2)
-		Expect(<-g1Done).To(HaveOccurred())
+		Expect(<-done).NotTo(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 	})
 
 	It("reflects list pagination duration on cache miss", func() {
@@ -425,5 +430,80 @@ var _ = Describe("GetClient", func() {
 		_, _, err = GetClient(ctx, provider, secret, "other-org")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+	})
+
+	It("does not cache installations when a later page fails", func() {
+		privKey := testGitHubAppPrivateKey()
+		server := newTestGitHubServer(testGitHubServerOpts{
+			pages:    [][]string{{"known-org"}, {"page2-org"}},
+			failPage: 2,
+		})
+		provider := testClusterScmProvider(server.domain)
+		secret := testSecret(privKey)
+		ctx := context.Background()
+
+		_, _, err := GetClient(ctx, provider, secret, "known-org")
+		Expect(err).To(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+
+		server.setFailPage(0)
+		_, _, err = GetClient(ctx, provider, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+	})
+
+	It("keeps a finished installation snapshot when a refresh list fails", func() {
+		installationHitCacheTTL = 20 * time.Millisecond
+		DeferCleanup(func() { installationHitCacheTTL = defaultInstallationHitCacheTTL })
+
+		privKey := testGitHubAppPrivateKey()
+		server := newTestGitHubServer(testGitHubServerOpts{
+			pages: [][]string{{"known-org"}, {"page2-org"}},
+		})
+		provider := testClusterScmProvider(server.domain)
+		secret := testSecret(privKey)
+		ctx := context.Background()
+
+		_, _, err := GetClient(ctx, provider, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+
+		time.Sleep(30 * time.Millisecond)
+		server.setFailPage(2)
+		_, _, err = GetClient(ctx, provider, secret, "known-org")
+		Expect(err).To(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+
+		installationHitCacheTTL = defaultInstallationHitCacheTTL
+		server.setFailPage(0)
+		_, _, err = GetClient(ctx, provider, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+	})
+
+	It("fails callers when the installation list times out", func() {
+		listInstallationsTimeout = 30 * time.Millisecond
+		DeferCleanup(func() { listInstallationsTimeout = defaultListInstallationsTimeout })
+
+		privKey := testGitHubAppPrivateKey()
+		releasePage1 := make(chan struct{})
+		server := newTestGitHubServer(testGitHubServerOpts{
+			pages:       [][]string{{"known-org"}},
+			releasePage: map[int]<-chan struct{}{1: releasePage1},
+		})
+		DeferCleanup(func() {
+			select {
+			case <-releasePage1:
+			default:
+				close(releasePage1)
+			}
+		})
+		provider := testClusterScmProvider(server.domain)
+		secret := testSecret(privKey)
+		ctx := context.Background()
+
+		_, _, err := GetClient(ctx, provider, secret, "known-org")
+		Expect(err).To(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 	})
 })

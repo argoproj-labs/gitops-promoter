@@ -28,12 +28,16 @@ const (
 	defaultInstallationHitCacheTTL = 30 * time.Minute
 	// defaultInstallationMissCacheTTL is how long an org missing from that list is remembered before ListInstallations runs again.
 	defaultInstallationMissCacheTTL = 1 * time.Minute
+	// defaultListInstallationsTimeout bounds one paginated ListInstallations call.
+	// A hung page fails that attempt for every caller. Nothing is cached, so the failed reconcile retries later.
+	defaultListInstallationsTimeout = time.Minute
 )
 
-// installationHitCacheTTL and installationMissCacheTTL are vars so tests can shorten them.
+// installationHitCacheTTL, installationMissCacheTTL, and listInstallationsTimeout are vars so tests can shorten them.
 var (
 	installationHitCacheTTL  = defaultInstallationHitCacheTTL
 	installationMissCacheTTL = defaultInstallationMissCacheTTL
+	listInstallationsTimeout = defaultListInstallationsTimeout
 )
 
 // GitAuthenticationProvider provides methods to authenticate with GitHub using a GitHub App.
@@ -161,9 +165,9 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 	return true, baseUrl, uploadUrl
 }
 
-// appInstallations is the set of orgs returned by one ListInstallations call for a GitHub App.
-// fetched is zero while that call is still reading pages. A finished snapshot serves installation IDs
-// until installationHitCacheTTL, and treats orgs absent from byOrg as misses until installationMissCacheTTL.
+// appInstallations is the set of orgs returned by one finished ListInstallations call for a GitHub App.
+// The snapshot is stored only after every page succeeds. It serves installation IDs until
+// installationHitCacheTTL, and treats orgs absent from byOrg as misses until installationMissCacheTTL.
 type appInstallations struct {
 	byOrg   map[string]int64
 	fetched time.Time
@@ -186,13 +190,15 @@ func lookupCachedInstallationID(org string, appID int64, now time.Time) (int64, 
 	if !ok {
 		return 0, false, nil
 	}
-	if id, found := snap.byOrg[org]; found && (snap.fetched.IsZero() || now.Sub(snap.fetched) < installationHitCacheTTL) {
-		return id, true, nil
-	}
-	if !snap.fetched.IsZero() && now.Sub(snap.fetched) < installationMissCacheTTL {
-		if _, found := snap.byOrg[org]; !found {
-			return 0, false, fmt.Errorf("installation of app %d not found for org: %s", appID, org)
+	age := now.Sub(snap.fetched)
+	if id, found := snap.byOrg[org]; found {
+		if age < installationHitCacheTTL {
+			return id, true, nil
 		}
+		return 0, false, nil
+	}
+	if age < installationMissCacheTTL {
+		return 0, false, fmt.Errorf("installation of app %d not found for org: %s", appID, org)
 	}
 	return 0, false, nil
 }
@@ -208,10 +214,8 @@ func installationsByOrg(installations []*github.Installation) map[string]int64 {
 	return byOrg
 }
 
-// publishInstallationSnapshot records orgs from pages already read.
-// An in-progress list publishes early pages immediately so those orgs are not blocked on later pages,
-// and leaves a previous finished snapshot in place until the new list completes.
-func publishInstallationSnapshot(ctx context.Context, appID int64, byOrg map[string]int64, complete bool, scmProvider v1alpha1.GenericScmProvider) {
+// storeInstallationSnapshot replaces the app's cached installations with a finished list.
+func storeInstallationSnapshot(ctx context.Context, appID int64, byOrg map[string]int64, scmProvider v1alpha1.GenericScmProvider) {
 	logger := log.FromContext(ctx)
 	for org, id := range byOrg {
 		logger.V(4).Info("cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
@@ -219,18 +223,13 @@ func publishInstallationSnapshot(ctx context.Context, appID int64, byOrg map[str
 
 	appInstallationCacheMu.Lock()
 	defer appInstallationCacheMu.Unlock()
-
-	if !complete {
-		if snap, ok := appInstallationCache[appID]; ok && !snap.fetched.IsZero() {
-			return
-		}
-		appInstallationCache[appID] = appInstallations{byOrg: maps.Clone(byOrg)}
-		return
-	}
 	appInstallationCache[appID] = appInstallations{byOrg: maps.Clone(byOrg), fetched: time.Now()}
 }
 
 func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Client, scmProvider v1alpha1.GenericScmProvider) error {
+	ctx, cancel := context.WithTimeout(ctx, listInstallationsTimeout)
+	defer cancel()
+
 	appID := scmProvider.GetSpec().GitHub.AppID
 	startTime := time.Now()
 	opts := &github.ListOptions{PerPage: 100}
@@ -251,13 +250,12 @@ func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Clie
 		}
 		lastResp = resp
 		maps.Copy(building, installationsByOrg(installations))
-		done := resp.NextPage == 0
-		publishInstallationSnapshot(ctx, appID, building, done, scmProvider)
-		if done {
+		if resp.NextPage == 0 {
 			break
 		}
 		opts.Page = resp.NextPage
 	}
+	storeInstallationSnapshot(ctx, appID, building, scmProvider)
 
 	statusCode := 200
 	var rateLimit *metrics.RateLimit
@@ -351,4 +349,5 @@ func resetInstallationCachesForTest() {
 	listInstallationsGroup = singleflight.Group{}
 	installationHitCacheTTL = defaultInstallationHitCacheTTL
 	installationMissCacheTTL = defaultInstallationMissCacheTTL
+	listInstallationsTimeout = defaultListInstallationsTimeout
 }
