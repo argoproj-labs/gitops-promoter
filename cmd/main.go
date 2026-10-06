@@ -455,7 +455,10 @@ func runController(
 		}
 		setupLog.Info("cleaning directory", "directory", path)
 	}
-	return waitErr
+	if waitErr != nil {
+		return fmt.Errorf("controller startup failed: %w", waitErr)
+	}
+	return nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -526,7 +529,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
 
 			if err := ws.StartDashboard(ctx, fmt.Sprintf(":%d", port)); err != nil {
-				return err
+				return fmt.Errorf("dashboard server failed: %w", err)
 			}
 			select {
 			case err := <-mgrErrCh:
