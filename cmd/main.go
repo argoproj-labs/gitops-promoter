@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -441,10 +440,10 @@ func runController(
 
 	if err := g.Wait(); err != nil {
 		setupLog.Error(err, "unable to start")
-		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-		if err != nil {
-			setupLog.Error(err, "unable to kill process")
-		}
+		// Cancel the controller context so sibling goroutines (manager, webhook
+		// receiver) stop. Prefer context cancel over self-signaling SIGTERM so
+		// this path stays portable to Windows.
+		shutdown()
 	}
 
 	setupLog.Info("Cleaning up cloned directories")
@@ -489,8 +488,9 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("failed to register dashboard scheme: %w", err)
 			}
 
-			// Create single signal handler
-			ctx := ctrl.SetupSignalHandler()
+			// Create single signal handler, then a cancelable child so a manager
+			// failure can stop the dashboard without Unix-only self-signaling.
+			ctx, shutdown := context.WithCancel(ctrl.SetupSignalHandler())
 
 			ws := webserver.NewWebServer(mgr)
 
@@ -513,9 +513,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
 					setupLog.Error(err, "dashboard manager exited")
-					if killErr := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); killErr != nil {
-						setupLog.Error(killErr, "unable to kill process")
-					}
+					shutdown()
 				}
 			}()
 
