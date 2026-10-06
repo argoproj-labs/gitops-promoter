@@ -21,6 +21,7 @@ import (
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
+	"github.com/dop251/goja"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -328,6 +329,16 @@ func isPluginFilename(name string) bool {
 	return strings.HasPrefix(name, "plugin") && strings.HasSuffix(name, ".js")
 }
 
+// isValidPluginJS reports whether content parses as valid JavaScript. A syntax error
+// in one plugin file would otherwise break parsing of the entire concatenated bundle,
+// since the per-file try/catch in writePluginFile only guards runtime errors, not
+// parse errors. goja.Compile only parses and never executes the source, so this is
+// safe to run against untrusted plugin content.
+func isValidPluginJS(name string, content []byte) error {
+	_, err := goja.Compile(name, string(content), false)
+	return err
+}
+
 // writePluginFile appends one plugin bundle's contents to body, wrapped in its own
 // try/catch so a broken plugin doesn't take down the others in the response.
 func writePluginFile(body *bytes.Buffer, source string, content []byte) {
@@ -340,9 +351,12 @@ func writePluginFile(body *bytes.Buffer, source string, content []byte) {
 // buildPluginsBundle concatenates every external plugin bundle - both build-time-bundled
 // plugins embedded into the dashboard's own static assets and runtime plugins found in
 // ws.PluginsDir - into a single script body, along with a content-based ETag. Each file
-// is wrapped in its own try/catch so one broken plugin doesn't take down the others,
-// mirroring ArgoCD's /extensions.js handler. It is called once at startup; a plugin
-// dropped into PluginsDir afterward is not picked up until the process restarts.
+// is wrapped in its own try/catch so one broken plugin doesn't take down the others at
+// runtime, and each file's JavaScript is parse-checked before being included so a syntax
+// error in one plugin can't break parsing of the whole concatenated response - unlike
+// ArgoCD's /extensions.js handler, which has no such check. It is called once at
+// startup; a plugin dropped into PluginsDir afterward is not picked up until the process
+// restarts.
 func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 	var body bytes.Buffer
 
@@ -367,6 +381,10 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 			content, err := fs.ReadFile(ws.distFS, entry.Name())
 			if err != nil {
 				logger.Info("skipping embedded plugin file: failed to read", "file", entry.Name(), "error", err)
+				continue
+			}
+			if err := isValidPluginJS(entry.Name(), content); err != nil {
+				logger.Info("skipping embedded plugin file: invalid JavaScript", "file", entry.Name(), "error", err)
 				continue
 			}
 			writePluginFile(&body, entry.Name(), content)
@@ -400,6 +418,11 @@ func (ws *WebServer) buildPluginsBundle() ([]byte, string, error) {
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			logger.Info("skipping plugin file: failed to read", "file", entry.Name(), "error", err)
+			continue
+		}
+
+		if err := isValidPluginJS(entry.Name(), content); err != nil {
+			logger.Info("skipping plugin file: invalid JavaScript", "file", entry.Name(), "error", err)
 			continue
 		}
 
