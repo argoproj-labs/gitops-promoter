@@ -1369,19 +1369,24 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				fake.ResetPullRequestCallCounts(pr.UID)
 				baselineFindOpen := fake.FindOpenCallCount(pr.UID)
+				baselineLabel := fake.LabelCallCount(pr.UID)
 
-				baselineUpdate := fake.UpdateCallCount(pr.UID)
-
-				By("Changing PR spec so the PR controller must sync to SCM")
+				// Add a label rather than editing the title: CTP owns title/description via SSA
+				// with ForceOwnership and re-templates them on its next reconcile, so a direct
+				// title edit can be reverted before the PR controller observes it, leaving only a
+				// non-SCM generation bump that shouldSkipSCMSync correctly skips. This CTP has no
+				// spec.pullRequest.labels expression, so CTP copies the live PR's labels into its
+				// apply and a manually added label survives.
+				By("Adding a PR label so the PR controller must sync to SCM")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					pr.Spec.Title = pr.Spec.Title + "-updated"
+					pr.Spec.Labels = append(pr.Spec.Labels, "steady-state-scm-sync")
 					g.Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(fake.FindOpenCallCount(pr.UID)).To(BeNumerically(">", baselineFindOpen))
-					g.Expect(fake.UpdateCallCount(pr.UID)).To(BeNumerically(">", baselineUpdate))
+					g.Expect(fake.LabelCallCount(pr.UID)).To(BeNumerically(">", baselineLabel))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
