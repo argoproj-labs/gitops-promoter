@@ -36,14 +36,13 @@ func testGitHubAppPrivateKey() []byte {
 }
 
 type testGitHubServer struct {
-	srv       *httptest.Server
-	domain    string
-	listCalls atomic.Int32
-
-	mu              sync.Mutex
+	srv             *httptest.Server
+	domain          string
 	pages           [][]string
-	idBase          int64
 	tokenInstallIDs []int64
+	idBase          int64
+	mu              sync.Mutex
+	listCalls       atomic.Int32
 }
 
 type testGitHubServerOpts struct {
