@@ -209,10 +209,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ResponseOutputSpec"):
 		return &apiv1alpha1.ResponseOutputSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
-		return &apiv1alpha1.RevertCommitApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
-		return &apiv1alpha1.RevertCommitSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommit"):
+		return &apiv1alpha1.RestoreActiveCommitApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitConfiguration"):
+		return &apiv1alpha1.RestoreActiveCommitConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitSpec"):
+		return &apiv1alpha1.RestoreActiveCommitSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommitStatus"):
+		return &apiv1alpha1.RestoreActiveCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevisionReference"):
 		return &apiv1alpha1.RevisionReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatus"):

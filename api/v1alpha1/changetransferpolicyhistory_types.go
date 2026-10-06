@@ -101,6 +101,23 @@ type History struct {
 	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
 	// revision rather than what actually merged.
 	MergeCommitSnapshotMismatch bool `json:"mergeCommitSnapshotMismatch,omitempty"`
+	// RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+	// pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+	// tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+	// pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+	// version and describe the original promotion, not the restore. active.hydrated is the restore commit
+	// itself, so active.hydrated.commitTime is when the restore was written.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	RestoredFrom string `json:"restoredFrom,omitempty"`
+	// RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+	// has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).
+	// While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore
+	// moved off of is blocked from opening a pull request.
+	// +optional
+	RestoreUnblockedAt *metav1.Time `json:"restoreUnblockedAt,omitempty"`
 }
 
 // CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as

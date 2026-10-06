@@ -12,6 +12,7 @@ export type CellKind =
   | 'live'
   | 'in-flight'
   | 'was-here'
+  | 'restored'
   | 'failed'
   | 'no-op'
   | 'no-changes'
@@ -29,6 +30,16 @@ export interface CellState {
   health: HealthKey;
   pullRequest?: PullRequest;
   isProposed?: boolean;
+  /** True for the cell describing the environment's current active commit. */
+  isLive?: boolean;
+  /** RestoreActiveCommit holding this environment. The proposed pill gets a stop sign and the cell shows only an open pull request. */
+  restoreActiveCommit?: string;
+  /** True when this proposed commit is the dry SHA a restore moved off the active branch. */
+  blockedByRestoreActiveCommit?: boolean;
+  /** Hydrated sha this cell's commit was restored to, when it came from a manual restore. */
+  restoredFrom?: string;
+  /** When promotion resumed after this restore (Promoter-restore-unblocked-at), as an RFC 3339 string. */
+  restoreUnblockedAt?: string;
   noopNote?: string;
   supersededById?: string;
   at?: string;
@@ -38,6 +49,10 @@ export interface CellState {
 
 export interface EnvColumn {
   branch: string;
+  /** ChangeTransferPolicy that owns this environment, when the bundle includes one. */
+  changeTransferPolicyName?: string;
+  /** Instance-id label of that ChangeTransferPolicy; unset for the default install. */
+  instanceId?: string;
   autoMerge: boolean;
   color: string;
   liveCommit?: Commit;
@@ -69,6 +84,12 @@ export interface CommitRow {
   prUrl?: string;
   refShaShort?: string;
   refUrl?: string;
+  /**
+   * Set on rows built from a restore entry. Those rows share a dry sha with the
+   * original promotion and are keyed `{dry sha}-restore` to keep the two distinct.
+   * The value is one environment's restored-from sha; each cell carries its own.
+   */
+  restoredFrom?: string;
   repoUrl: string;
   freshestAt: number;
   earliestAt: number;

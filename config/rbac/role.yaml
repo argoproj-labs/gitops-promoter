@@ -44,7 +44,6 @@ rules:
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
-  - revertcommits
   - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
@@ -83,6 +82,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - restoreactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -97,6 +97,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - pullrequests
+  - restoreactivecommits
   verbs:
   - create
   - delete

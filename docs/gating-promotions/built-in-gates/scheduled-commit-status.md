@@ -216,7 +216,7 @@ This configuration requires:
 - Development deployments only during business hours (Mon-Fri 09:00-17:00 ET)
 - Staging deployments only on Tuesdays 10:00-16:00 ET
 - A 48-hour deployment freeze over Christmas for all gated environments
-- Production is ungated by the promotion window (not listed), but still gated by health and soak time
+- Production is ungated by the promotion window (not listed), but still blocked by health and soak time
 
 ## Global vs Per-Environment Windows
 

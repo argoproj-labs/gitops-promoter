@@ -69,6 +69,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
+	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	RestoreActiveCommit *RestoreActiveCommitConfigurationApplyConfiguration `json:"restoreActiveCommit,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -170,5 +173,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessful
 // If called multiple times, the ScheduledCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatus(value *ScheduledCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.ScheduledCommitStatus = value
+	return b
+}
+
+// WithRestoreActiveCommit sets the RestoreActiveCommit field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RestoreActiveCommit field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithRestoreActiveCommit(value *RestoreActiveCommitConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.RestoreActiveCommit = value
 	return b
 }

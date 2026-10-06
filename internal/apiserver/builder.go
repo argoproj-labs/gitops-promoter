@@ -96,6 +96,19 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
 
+	// RestoreActiveCommits name the PromotionStrategy directly.
+	rcList := &promoterv1alpha1.RestoreActiveCommitList{}
+	if err := reader.List(ctx, rcList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list RestoreActiveCommits: %w", err)
+	}
+	var restoreActiveCommits []promoterv1alpha1.RestoreActiveCommit
+	for i := range rcList.Items {
+		if rcList.Items[i].Spec.PromotionStrategyRef.Name == name {
+			restoreActiveCommits = append(restoreActiveCommits, rcList.Items[i])
+		}
+	}
+	bundle.RestoreActiveCommits = nilIfEmpty(restoreActiveCommits)
+
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list PullRequests: %w", err)

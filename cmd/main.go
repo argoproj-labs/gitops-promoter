@@ -259,14 +259,6 @@ func runController(
 	if err = prReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
-	if err = (&controller.RevertCommitReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("RevertCommit"),
-	}).SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
-	}
-
 	// ChangeTransferPolicyHistory controller is set up before the ChangeTransferPolicy controller so
 	// the CTP controller can enqueue history rebuilds after writing promotion-history git notes.
 	ctphReconciler := &controller.ChangeTransferPolicyHistoryReconciler{
@@ -291,6 +283,15 @@ func runController(
 	}
 	if err = ctpReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
+	}
+
+	if err = (&controller.RestoreActiveCommitReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("RestoreActiveCommit"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create RestoreActiveCommit controller: %w", err))
 	}
 
 	if err = (&controller.CommitStatusReconciler{

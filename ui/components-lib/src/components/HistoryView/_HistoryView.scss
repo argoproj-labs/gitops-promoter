@@ -348,6 +348,14 @@
 }
 
 .hp-matrix__head-env {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hp-matrix__head-pill-row {
   // Positioning context for the connector, which overlaps the pill's left edge.
   position: relative;
   display: flex;
