@@ -124,10 +124,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			ctx = context.Background()
 			By("Creating a DependentsSuccessfulCommitStatus that references a non-existent PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "dag-missing-ps",
-					Namespace: "default",
-				},
+				Name:      "dag-missing-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "non-existent"},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -208,10 +206,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus with a URL template")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -275,10 +271,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus with a URL template that includes the environment")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -318,10 +312,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 		It("should infer a linear dependency chain when spec.environments is empty", func() {
 			By("Creating a DependentsSuccessfulCommitStatus with no PromotionStrategy dependsOn")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -400,10 +392,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -435,10 +425,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -467,10 +455,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus tracking all three environments")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -543,12 +529,10 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 					utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchStaging)),
 			)
 			legacyCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      legacyCommitStatusName,
-					Namespace: "default",
-					Labels: map[string]string{
-						promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.LegacyPreviousEnvironmentCommitStatusKey,
-					},
+				Name:      legacyCommitStatusName,
+				Namespace: "default",
+				Labels: map[string]string{
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.LegacyPreviousEnvironmentCommitStatusKey,
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: gitRepo.Name},
@@ -562,10 +546,8 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
@@ -613,7 +595,7 @@ var _ = Describe("DAG URL template helpers", func() {
 var _ = Describe("resolveDependentEnvironments", func() {
 	It("uses explicit dependsOn from the PromotionStrategy when any environment declares it", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"},
+			Name: "demo-ps",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				Environments: []promoterv1alpha1.Environment{
 					{Branch: "dev"},
@@ -633,7 +615,7 @@ var _ = Describe("resolveDependentEnvironments", func() {
 
 	It("infers a linear chain when no environment declares dependsOn", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"},
+			Name: "demo-ps",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				Environments: []promoterv1alpha1.Environment{
 					{Branch: "dev"},
@@ -652,7 +634,7 @@ var _ = Describe("resolveDependentEnvironments", func() {
 	})
 
 	It("errors when PromotionStrategy environments are empty", func() {
-		ps := &promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"}}
+		ps := &promoterv1alpha1.PromotionStrategy{Name: "demo-ps"}
 		_, err := resolveDependentEnvironments(ps)
 		Expect(err).To(MatchError(ContainSubstring("no environments to build a dependency graph")))
 	})
