@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -20,17 +21,19 @@ import (
 
 var _ = Describe("PullRequest version handling", func() {
 	var (
-		server   *httptest.Server
-		requests map[string]map[string]any
-		prJSON   string
-		listURL  string
-		provider *PullRequest
-		prObj    v1alpha1.PullRequest
+		server    *httptest.Server
+		requests  map[string]map[string]any
+		prJSON    string
+		listURL   string
+		listPages map[string]string
+		provider  *PullRequest
+		prObj     v1alpha1.PullRequest
 	)
 
 	BeforeEach(func() {
 		requests = map[string]map[string]any{}
 		prJSON = `{"id":1,"version":0,"fromRef":{"displayId":"env-next"},"toRef":{"displayId":"env"}}`
+		listPages = map[string]string{"": `{"values":[],"isLastPage":true}`}
 		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/activities") {
 				if r.URL.Query().Get("start") == "0" {
@@ -42,7 +45,7 @@ var _ = Describe("PullRequest version handling", func() {
 			}
 			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pull-requests") {
 				listURL = r.URL.RequestURI()
-				_, _ = io.WriteString(w, `{"values":[],"isLastPage":true}`)
+				_, _ = io.WriteString(w, listPages[r.URL.Query().Get("start")])
 				return
 			}
 			if r.Method == http.MethodGet {
@@ -131,5 +134,59 @@ var _ = Describe("PullRequest version handling", func() {
 		link, err := provider.GetUrl(context.Background(), prObj)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(link).To(Equal(server.URL + "/projects/PROJ/repos/..%2Fother/pull-requests/1"))
+	})
+
+	Describe("FindOpen", func() {
+		const otherTarget = `{"id":2,"fromRef":{"displayId":"env-next","repository":{"slug":"repo","project":{"key":"PROJ"}}},"toRef":{"displayId":"other","repository":{"slug":"repo","project":{"key":"PROJ"}}}}`
+		const forkTarget = `{"id":3,"fromRef":{"displayId":"env-next","repository":{"slug":"repo","project":{"key":"PROJ"}}},"toRef":{"displayId":"env","repository":{"slug":"repo","project":{"key":"~FORK"}}}}`
+		const managed = `{"id":4,"fromRef":{"displayId":"env-next","repository":{"slug":"repo","project":{"key":"PROJ"}}},"toRef":{"displayId":"env","repository":{"slug":"repo","project":{"key":"PROJ"}}}}`
+
+		BeforeEach(func() {
+			prObj.Spec.SourceBranch = "env-next"
+			prObj.Spec.TargetBranch = "env"
+		})
+
+		It("follows the pages until it finds the pull request", func() {
+			listPages = map[string]string{
+				"":  `{"values":[` + otherTarget + `],"isLastPage":false,"nextPageStart":1}`,
+				"1": `{"values":[` + managed + `],"isLastPage":true}`,
+			}
+			result, err := provider.FindOpen(context.Background(), prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeTrue())
+			Expect(result.ID).To(Equal("4"))
+		})
+
+		It("ignores pull requests into another repository", func() {
+			listPages = map[string]string{"": `{"values":[` + forkTarget + `],"isLastPage":true}`}
+			result, err := provider.FindOpen(context.Background(), prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeFalse())
+		})
+
+		It("matches the project key case-insensitively", func() {
+			repo := &v1alpha1.GitRepository{}
+			Expect(provider.k8sClient.Get(context.Background(), k8sClient.ObjectKey{Namespace: "default", Name: "repo"}, repo)).To(Succeed())
+			repo.Spec.BitbucketDataCenter.Project = "proj"
+			Expect(provider.k8sClient.Update(context.Background(), repo)).To(Succeed())
+
+			listPages = map[string]string{"": `{"values":[` + managed + `],"isLastPage":true}`}
+			result, err := provider.FindOpen(context.Background(), prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.ID).To(Equal("4"))
+		})
+
+		It("fails instead of reporting no pull request when the page limit is reached", func() {
+			listPages = map[string]string{}
+			for i := range maxPages {
+				start := ""
+				if i > 0 {
+					start = strconv.Itoa(i)
+				}
+				listPages[start] = `{"values":[` + otherTarget + `],"isLastPage":false,"nextPageStart":` + strconv.Itoa(i+1) + `}`
+			}
+			_, err := provider.FindOpen(context.Background(), prObj)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 })

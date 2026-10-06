@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -40,9 +41,10 @@ func NewBitbucketDataCenterPullRequestProvider(k8sClient k8sClient.Client, scmPr
 	}, nil
 }
 
-// prResponseRef holds the display ID of a branch reference in a pull-request response.
+// prResponseRef holds the display ID and repository of a branch reference in a pull-request response.
 type prResponseRef struct {
-	DisplayID string `json:"displayId"`
+	Repository pullRequestRefRepository `json:"repository"`
+	DisplayID  string                   `json:"displayId"`
 }
 
 // prResponseLinks holds the self links from a pull-request response.
@@ -82,7 +84,9 @@ type prResponseMergeCommit struct {
 
 // prListResponse is the paginated response for listing pull requests.
 type prListResponse struct {
-	Values []prResponse `json:"values"`
+	Values        []prResponse `json:"values"`
+	IsLastPage    bool         `json:"isLastPage"`
+	NextPageStart int          `json:"nextPageStart"`
 }
 
 // prPath returns the base REST API path for pull requests in a given project/repo.
@@ -318,42 +322,53 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		"direction": {"OUTGOING"},
 		"at":        {"refs/heads/" + pullRequest.Spec.SourceBranch},
 	}
-	path := prPath(projectKey, repoSlug) + "?" + query.Encode()
+	query.Set("limit", "50")
 
-	start := time.Now()
-	statusCode, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-	}
-	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+	for range maxPages {
+		path := prPath(projectKey, repoSlug) + "?" + query.Encode()
 
-	if err != nil {
-		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
-	}
-	if statusCode != http.StatusOK {
-		return scms.FindOpenResult{}, fmt.Errorf("unexpected status code %d when listing pull requests: %s", statusCode, string(body))
-	}
-
-	var list prListResponse
-	if err := json.Unmarshal(body, &list); err != nil {
-		return scms.FindOpenResult{}, fmt.Errorf("failed to parse pull request list response: %w", err)
-	}
-
-	logger.V(4).Info("Bitbucket DataCenter pull request list", "count", len(list.Values))
-
-	for _, p := range list.Values {
-		if p.FromRef.DisplayID != pullRequest.Spec.SourceBranch ||
-			p.ToRef.DisplayID != pullRequest.Spec.TargetBranch {
-			continue
+		start := time.Now()
+		statusCode, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			statusCode = http.StatusInternalServerError
 		}
-		return scms.FindOpenResult{
-			Found:        true,
-			ID:           strconv.Itoa(p.ID),
-			CreationTime: time.UnixMilli(p.CreatedDate),
-		}, nil
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+
+		if err != nil {
+			return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
+		}
+		if statusCode != http.StatusOK {
+			return scms.FindOpenResult{}, fmt.Errorf("unexpected status code %d when listing pull requests: %s", statusCode, string(body))
+		}
+
+		var list prListResponse
+		if err := json.Unmarshal(body, &list); err != nil {
+			return scms.FindOpenResult{}, fmt.Errorf("failed to parse pull request list response: %w", err)
+		}
+
+		logger.V(4).Info("Bitbucket DataCenter pull request list", "count", len(list.Values))
+
+		for _, p := range list.Values {
+			if p.FromRef.DisplayID != pullRequest.Spec.SourceBranch ||
+				p.ToRef.DisplayID != pullRequest.Spec.TargetBranch ||
+				!strings.EqualFold(p.ToRef.Repository.Project.Key, projectKey) ||
+				!strings.EqualFold(p.ToRef.Repository.Slug, repoSlug) {
+				continue
+			}
+			return scms.FindOpenResult{
+				Found:        true,
+				ID:           strconv.Itoa(p.ID),
+				CreationTime: time.UnixMilli(p.CreatedDate),
+			}, nil
+		}
+
+		if list.IsLastPage {
+			return scms.FindOpenResult{}, nil
+		}
+		query.Set("start", strconv.Itoa(list.NextPageStart))
 	}
 
-	return scms.FindOpenResult{}, nil
+	return scms.FindOpenResult{}, fmt.Errorf("no matching open pull request in the first %d pages of %s", maxPages, prPath(projectKey, repoSlug))
 }
 
 // Get fetches a pull request by status.id.
@@ -450,8 +465,8 @@ type prActivity struct {
 	Action string                 `json:"action"`
 }
 
-// maxActivityPages bounds the activity pages read when looking for the merge commit.
-const maxActivityPages = 10
+// maxPages bounds the pages read from paginated Bitbucket DataCenter/Server list endpoints.
+const maxPages = 10
 
 // mergeCommitFromActivities returns the commit recorded on the pull request's MERGED activity. Bitbucket
 // DataCenter/Server leaves properties.mergeCommit out of the pull request, at least for squash merges, but the
@@ -459,7 +474,7 @@ const maxActivityPages = 10
 func (pr *PullRequest) mergeCommitFromActivities(ctx context.Context, repo *v1alpha1.GitRepository, prID int) (string, error) {
 	basePath := fmt.Sprintf("%s/%d/activities", prPath(repo.Spec.BitbucketDataCenter.Project, repo.Spec.BitbucketDataCenter.Name), prID)
 	start := 0
-	for range maxActivityPages {
+	for range maxPages {
 		requestStart := time.Now()
 		statusCode, body, err := pr.client.do(ctx, http.MethodGet, fmt.Sprintf("%s?start=%d&limit=50", basePath, start), nil)
 		if err != nil {
