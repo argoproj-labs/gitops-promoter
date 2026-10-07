@@ -113,16 +113,19 @@ type RateLimit struct {
 }
 
 var (
-	// Labels for git_operations metrics
-	gitOperationLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "operation", "result"}
+	// Labels for git_operations metrics.
+	// Namespace labels sit next to the resource name so same-named resources in different namespaces stay separate.
+	// scm_provider_namespace is empty for ClusterScmProvider.
+	gitOperationLabels = []string{"git_repository", "git_repository_namespace", "scm_provider", "scm_provider_namespace", "scm_provider_kind", "operation", "result"}
 
-	// Labels for scm_calls metrics
-	scmCallLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "api", "operation", "response_code"}
+	// Labels for scm_calls metrics.
+	scmCallLabels = []string{"git_repository", "git_repository_namespace", "scm_provider", "scm_provider_namespace", "scm_provider_kind", "api", "operation", "response_code"}
 
 	// Labels for scm_calls_rate_limit metrics.
+	// scm_provider_namespace is empty for ClusterScmProvider.
 	// scm_account separates buckets when one provider credential is shared across accounts
 	// (GitHub App installations). Empty means the credential is the whole bucket.
-	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind", "scm_account"}
+	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_namespace", "scm_provider_kind", "scm_account"}
 
 	// Labels for WebRequestCommitStatus outbound HTTP metrics
 	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
@@ -271,11 +274,13 @@ func init() {
 // RecordGitOperation records both the increment and observation for git operations.
 func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation, result GitOperationResult, duration time.Duration) {
 	labels := prometheus.Labels{
-		"git_repository":    gitRepo.Name,
-		"scm_provider":      gitRepo.SCMCallSCMProvider(),
-		"scm_provider_kind": gitRepo.SCMCallSCMProviderKind(),
-		"operation":         string(operation),
-		"result":            string(result),
+		"git_repository":           gitRepo.Name,
+		"git_repository_namespace": gitRepo.Namespace,
+		"scm_provider":             gitRepo.SCMCallSCMProvider(),
+		"scm_provider_namespace":   gitRepo.SCMCallSCMProviderNamespace(),
+		"scm_provider_kind":        gitRepo.SCMCallSCMProviderKind(),
+		"operation":                string(operation),
+		"result":                   string(result),
 	}
 	gitOperationsTotal.With(labels).Inc()
 	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
@@ -290,15 +295,18 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 	scmProviderKind := scope.SCMCallSCMProviderKind()
 	gitRepository := scope.SCMCallGitRepository()
 	gitRepositoryNamespace := scope.SCMCallGitRepositoryNamespace()
+	scmProviderNamespace := scope.SCMCallSCMProviderNamespace()
 	scmAccount := scope.SCMCallAccount()
 
 	labels := prometheus.Labels{
-		"git_repository":    gitRepository,
-		"scm_provider":      scmProvider,
-		"scm_provider_kind": scmProviderKind,
-		"api":               string(api),
-		"operation":         string(operation),
-		"response_code":     strconv.Itoa(responseCode),
+		"git_repository":           gitRepository,
+		"git_repository_namespace": gitRepositoryNamespace,
+		"scm_provider":             scmProvider,
+		"scm_provider_namespace":   scmProviderNamespace,
+		"scm_provider_kind":        scmProviderKind,
+		"api":                      string(api),
+		"operation":                string(operation),
+		"response_code":            strconv.Itoa(responseCode),
 	}
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
@@ -307,6 +315,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		"git_repository", gitRepository,
 		"git_repository_namespace", gitRepositoryNamespace,
 		"scm_provider", scmProvider,
+		"scm_provider_namespace", scmProviderNamespace,
 		"scm_provider_kind", scmProviderKind,
 		"scm_account", scmAccount,
 		"api", string(api),
@@ -317,9 +326,10 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 
 	if rateLimit != nil {
 		rateLimitLabels := prometheus.Labels{
-			"scm_provider":      scmProvider,
-			"scm_provider_kind": scmProviderKind,
-			"scm_account":       scmAccount,
+			"scm_provider":           scmProvider,
+			"scm_provider_namespace": scmProviderNamespace,
+			"scm_provider_kind":      scmProviderKind,
+			"scm_account":            scmAccount,
 		}
 
 		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))
