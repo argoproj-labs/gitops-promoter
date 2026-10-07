@@ -94,6 +94,7 @@ Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_remaining
 
@@ -105,6 +106,7 @@ Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
@@ -116,6 +118,7 @@ Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## webhook_processing_duration_seconds
 
