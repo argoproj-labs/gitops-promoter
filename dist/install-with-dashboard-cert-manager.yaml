@@ -10718,11 +10718,11 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 2
+            memory: 2048Mi
           requests:
-            cpu: 10m
-            memory: 64Mi
+            cpu: 1
+            memory: 1024Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -10814,11 +10814,11 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 500m
-            memory: 128Mi
+            cpu: 2
+            memory: 2048Mi
           requests:
-            cpu: 10m
-            memory: 64Mi
+            cpu: 1
+            memory: 1024Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
