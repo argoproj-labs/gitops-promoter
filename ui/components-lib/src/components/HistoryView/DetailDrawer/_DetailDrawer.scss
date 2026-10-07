@@ -555,6 +555,7 @@
   grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
+  box-sizing: border-box;
   width: 100%;
   padding: 6px 10px;
   border: 1px solid $stroke;
@@ -565,8 +566,9 @@
   color: inherit;
 
   &--current {
-    border-color: $accent;
-    background: rgba(31, 79, 94, 0.06);
+    border-color: $selection;
+    background: rgba(75, 75, 75, 0.08);
+    box-shadow: inset 0 0 0 1px $selection;
   }
   &--no-changes {
     opacity: 0.6;
