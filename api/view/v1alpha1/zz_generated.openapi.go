@@ -3947,6 +3947,21 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"queryTemplates": {
+						SchemaProps: spec.SchemaProps{
+							Description: "QueryTemplates",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 					"method": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.\n\nDeprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves identically to `method: GET` and avoids needing two separate fields. Existing resources that set Method continue to work, but new resources should set MethodTemplate. Method may be removed in a future release.",

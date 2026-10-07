@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -304,11 +305,26 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 		Method: method,
 	}
 
-	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
+	base, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
 	if err != nil {
 		return RenderedHTTPRequest{}, fmt.Errorf("failed to render URL template: %w", err)
 	}
-	req.URL = url
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return RenderedHTTPRequest{}, fmt.Errorf("failed to parse rendered URL %q: %w", base, err)
+	}
+
+	q := parsed.Query()
+	for name, tmpl := range wrcs.Spec.HTTPRequest.QueryTemplates {
+		v, err := utils.RenderStringTemplate(tmpl, td)
+		if err != nil {
+			return RenderedHTTPRequest{}, fmt.Errorf("failed to render query template %q: %w", name, err)
+		}
+		q.Set(name, v)
+	}
+	parsed.RawQuery = q.Encode()
+	req.URL = parsed.String()
 
 	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
 		body, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, td)

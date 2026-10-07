@@ -1085,6 +1085,11 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: methodTemplate
       type:
         scalar: string
+    - name: queryTemplates
+      type:
+        map:
+          elementType:
+            scalar: string
     - name: timeout
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration

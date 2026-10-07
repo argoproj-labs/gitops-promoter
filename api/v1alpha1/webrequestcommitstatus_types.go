@@ -328,6 +328,22 @@ type HTTPRequestSpec struct {
 	// +required
 	URLTemplate string `json:"urlTemplate"`
 
+	// QueryTemplates is an optional map of URL query parameter names to Go template strings.
+	// Each value is rendered with the same variables and Sprig functions available to URLTemplate
+	// (see HTTPRequestSpec for the full variable list). After rendering, the controller URL-encodes
+	// every key and value and appends them to the final URL as a query string.
+	//
+	// Merging with URLTemplate inline params: the controller starts with any query parameters
+	// already present in URLTemplate and then sets each QueryTemplates key on top. If the same
+	// parameter name appears in both URLTemplate and QueryTemplates, the QueryTemplates value
+	// takes precedence (it overwrites the inline one). For example:
+	//   urlTemplate: "https://example.com/api?pagination.limit=30"
+	//   queryTemplates:
+	//     pagination.limit: "50"   # overrides the inline "30"
+	// produces: https://example.com/api?pagination.limit=50
+	// +optional
+	QueryTemplates map[string]string `json:"queryTemplates,omitempty"`
+
 	// Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
 	//
 	// Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves

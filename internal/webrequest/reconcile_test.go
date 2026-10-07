@@ -17,6 +17,8 @@ limitations under the License.
 package webrequest
 
 import (
+	"net/url"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -137,6 +139,200 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to render header template"))
 			Expect(err.Error()).To(ContainSubstring(`"X-Bad"`))
+		})
+	})
+
+	Describe("QueryTemplates rendering", func() {
+		It("leaves the URL unchanged when QueryTemplates is nil", func() {
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api"))
+		})
+
+		It("appends a single static query parameter", func() {
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"key": "value",
+			}
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api?key=value"))
+		})
+
+		It("appends multiple parameters sorted alphabetically by key", func() {
+			// url.Values.Encode sorts keys; the result must be deterministic regardless
+			// of Go map-iteration order.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"z-param": "last",
+				"a-param": "first",
+				"m-param": "middle",
+			}
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api?a-param=first&m-param=middle&z-param=last"))
+		})
+
+		It("renders TemplateData variables inside query parameter values", func() {
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"env": "{{ .Branch }}",
+			}
+			td.Branch = "staging"
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api?env=staging"))
+		})
+
+		It("merges queryTemplates with existing inline params already in urlTemplate", func() {
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api?existing=yes"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"added": "new",
+			}
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			// Both params must be present; Encode() sorts keys alphabetically.
+			Expect(req.URL).To(Equal("https://example.com/api?added=new&existing=yes"))
+		})
+
+		It("queryTemplates value overrides an inline param with the same key", func() {
+			// urlTemplate carries ?pagination.limit=30; queryTemplates overrides to 50.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api?pagination.limit=30"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"pagination.limit": "50",
+			}
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api?pagination.limit=50"))
+		})
+
+		It("percent-encodes special characters: literal + becomes %2B, space becomes +", func() {
+			// url.Values.Encode uses application/x-www-form-urlencoded:
+			//   literal + (used as RHACS field separator) → %2B
+			//   space → +
+			// Most HTTP servers (including RHACS) decode + as space in query values,
+			// so this encoding is functionally correct.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"query": "Namespace:dev+Platform Component:false",
+			}
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal(
+				"https://example.com/api?query=Namespace%3Adev%2BPlatform+Component%3Afalse",
+			))
+		})
+
+		It("wraps render errors and includes the failing parameter name", func() {
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"bad-param": invalidGoTemplate,
+			}
+
+			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to render query template"))
+			Expect(err.Error()).To(ContainSubstring(`"bad-param"`))
+		})
+
+		// The template below models a two-phase change-management workflow that produces
+		// two structurally different base URLs depending on ResponseOutput:
+		//   search branch (no prior changeId) → base URL already carries an inline ?commit=<sha>
+		//   close  branch (prior changeId set) → base URL has no inline params
+		// queryTemplates are merged on top in both cases, so this table exercises:
+		//   • merging queryTemplates with existing inline params (search branch)
+		//   • appending queryTemplates to a clean URL (close branch)
+		//   • queryTemplates overriding an inline param from the rendered URL (commit override)
+		DescribeTable("conditional urlTemplate combined with queryTemplates",
+			func(responseOutput map[string]any, triggerVariables map[string]any, queryTemplates map[string]string, expectedURL string) {
+				wrcs.Spec.HTTPRequest.URLTemplate = `
+{{- if .ResponseOutput -}}
+  {{- $cid := index .ResponseOutput "changeId" -}}
+  {{- if and $cid (ne $cid "") -}}https://change-management.example.com/close/{{ $cid }}
+  {{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}
+  {{- end -}}
+{{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}
+{{- end -}}`
+				wrcs.Spec.HTTPRequest.QueryTemplates = queryTemplates
+				td.ResponseOutput = responseOutput
+				td.TriggerVariables = triggerVariables
+
+				req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(req.URL).To(Equal(expectedURL))
+			},
+			Entry("search branch: static queryTemplates are merged with the inline commit param",
+				/*responseOutput*/ nil,
+				/*triggerVariables*/ map[string]any{"sha": "abc123"},
+				/*queryTemplates*/ map[string]string{
+					"format":           "json",
+					"pagination.limit": "50",
+				},
+				// Encode() sorts keys: commit < format < pagination.limit
+				"https://change-management.example.com/search?commit=abc123&format=json&pagination.limit=50",
+			),
+			Entry("close branch: templated queryTemplates are appended to a param-free URL",
+				/*responseOutput*/ map[string]any{"changeId": "CHG-9876"},
+				/*triggerVariables*/ nil,
+				/*queryTemplates*/ map[string]string{
+					"format": "json",
+					"env":    "{{ .Branch }}", // Branch is "main" from BeforeEach
+				},
+				// Encode() sorts keys: env < format
+				"https://change-management.example.com/close/CHG-9876?env=main&format=json",
+			),
+			Entry("search branch: queryTemplates override the inline commit param from the rendered URL",
+				/*responseOutput*/ nil,
+				/*triggerVariables*/ map[string]any{"sha": "abc123"},
+				/*queryTemplates*/ map[string]string{
+					"commit": "override-sha", // q.Set replaces the inline ?commit=abc123
+				},
+				"https://change-management.example.com/search?commit=override-sha",
+			),
+		)
+
+		It("round-trips an RHACS-style multi-field filter with pagination", func() {
+			// Mirrors the real-world RHACS use-case from issue #1898: the query value
+			// uses + as a field separator and contains spaces in field names.
+			// We verify round-trip correctness by parsing the URL back and decoding
+			// the values, which lets us stay independent of the exact + vs %20 encoding.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://central.example.com/v1/alerts"
+			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
+				"query":             `Namespace:petclinic-{{ .Branch | splitList "/" | last }}+Platform Component:false+Entity Type:DEPLOYMENT+Violation State:ACTIVE`,
+				"pagination.limit":  "50",
+				"pagination.offset": "0",
+			}
+			td.Branch = "env/staging"
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			parsed, err := url.Parse(req.URL)
+			Expect(err).ToNot(HaveOccurred())
+			q := parsed.Query()
+			Expect(q.Get("pagination.limit")).To(Equal("50"))
+			Expect(q.Get("pagination.offset")).To(Equal("0"))
+			// url.Values.Get decodes %2B back to + and + back to space, so the round-tripped
+			// value must exactly match the original unencoded template value.
+			Expect(q.Get("query")).To(Equal(
+				"Namespace:petclinic-staging+Platform Component:false+Entity Type:DEPLOYMENT+Violation State:ACTIVE",
+			))
 		})
 	})
 

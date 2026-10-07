@@ -49,6 +49,8 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
 	URLTemplate *string `json:"urlTemplate,omitempty"`
+	// QueryTemplates
+	QueryTemplates map[string]string `json:"queryTemplates,omitempty"`
 	// Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
 	//
 	// Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves
@@ -129,6 +131,20 @@ func HTTPRequestSpec() *HTTPRequestSpecApplyConfiguration {
 // If called multiple times, the URLTemplate field is set to the value of the last call.
 func (b *HTTPRequestSpecApplyConfiguration) WithURLTemplate(value string) *HTTPRequestSpecApplyConfiguration {
 	b.URLTemplate = &value
+	return b
+}
+
+// WithQueryTemplates puts the entries into the QueryTemplates field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the QueryTemplates field,
+// overwriting an existing map entries in QueryTemplates field with the same key.
+func (b *HTTPRequestSpecApplyConfiguration) WithQueryTemplates(entries map[string]string) *HTTPRequestSpecApplyConfiguration {
+	if b.QueryTemplates == nil && len(entries) > 0 {
+		b.QueryTemplates = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.QueryTemplates[k] = v
+	}
 	return b
 }
 
