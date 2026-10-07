@@ -152,6 +152,17 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Expect(req.URL).To(Equal("https://example.com/api"))
 		})
 
+		It("preserves inline query param order when QueryTemplates is nil", func() {
+			// Without the guard, q.Encode() would rewrite ?b=2&a=1 → ?a=1&b=2 (sorted).
+			// Order-sensitive or pre-signed URLs must not be rewritten when no queryTemplates are set.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api?b=2&a=1"
+
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/api?b=2&a=1"))
+		})
+
 		It("appends a single static query parameter", func() {
 			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/api"
 			wrcs.Spec.HTTPRequest.QueryTemplates = map[string]string{
