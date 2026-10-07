@@ -56,8 +56,8 @@ func unpartitionedObjects() []client.Object {
 // (see secret_transform.go).
 //
 // These options do not list Argo CD Application. Apply WithArgoCDApplicationIfInstalled only to the
-// host manager's Cache (ctrl.Options passed to mcmanager.New). Provider clusters are built from
-// the kubeconfig provider's ClusterOptions and must not reuse this Application ByObject key:
+// host manager's Cache (ctrl.Options passed to mcmanager.New). Provider clusters use
+// ProviderClusterCacheOptions and must not reuse the host Application ByObject key:
 // cache.New RESTMaps every ByObject entry, so a local-cluster CRD check must not gate remote
 // Application informers.
 func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.Options {
@@ -94,6 +94,7 @@ func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.
 // when the Application CRD is installed on the cluster described by cfg. Call this only for the
 // host manager cache. cache.New resolves every ByObject key through the RESTMapper, so listing
 // Application here would make the local manager fail to start when that CRD is absent.
+// Provider clusters use ProviderClusterCacheOptions instead — do not reuse this helper there.
 func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cache.Options, error) {
 	include, err := applicationCRDInstalled(cfg)
 	if err != nil {
@@ -108,6 +109,24 @@ func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cac
 	}
 	opts.ByObject[unpartitionedApplicationObject] = cache.ByObject{Label: labels.Everything()}
 	return opts, nil
+}
+
+// ProviderClusterCacheOptions returns cache options for kubeconfig provider clusters.
+// Argo CD Application is the only type watched on those clusters (ArgoCDCommitStatus).
+// Lists are read-only, so UnsafeDisableDeepCopy skips the per-List DeepCopy of Application
+// objects. Callers must not mutate Applications returned from Get/List.
+//
+// Unlike WithArgoCDApplicationIfInstalled, this always lists Application in ByObject: provider
+// clusters are expected to have the Application CRD (they are Argo CD clusters). Host CRD
+// discovery must not gate these options — keep them separate from OptionsForInstanceID.
+func ProviderClusterCacheOptions() cache.Options {
+	return cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			unpartitionedApplicationObject: {
+				UnsafeDisableDeepCopy: new(true),
+			},
+		},
+	}
 }
 
 func applicationCRDInstalled(cfg *rest.Config) (bool, error) {
