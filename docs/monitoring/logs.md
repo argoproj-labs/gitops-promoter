@@ -17,6 +17,7 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `scm_provider` | Name from `GitRepository.spec.scmProviderRef.name` (same as metric labels). |
 | `scm_provider_namespace` | Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace. |
 | `scm_provider_kind` | Kind from `GitRepository.spec.scmProviderRef.kind`: `ScmProvider` or `ClusterScmProvider` (defaults to `ScmProvider` when unset). |
+| `scm_account` | Account whose rate-limit bucket the call belongs to. For GitHub this is `spec.github.owner`, lowercased. Empty when the provider credential is the whole bucket. |
 | `api` | `CommitStatus`, `PullRequest`, or `Provider` (provider-specific calls outside those Promoter APIs, such as GitHub App installation listing). |
 | `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, `get`, or `list-installations`, depending on the call. |
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |

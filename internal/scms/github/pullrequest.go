@@ -354,11 +354,12 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 	repo := gitRepo.Spec.GitHub.Name
 
 	existing := make(map[string]struct{}, len(labelNames))
-	for label, err := range pr.client.Issues.ListLabelsIter(ctx, owner, repo, &github.ListOptions{PerPage: 100}) {
-		if err != nil {
-			return fmt.Errorf("failed to list repository labels: %w", err)
-		}
+	err := pr.eachRepositoryLabel(ctx, gitRepo, owner, repo, func(label *github.Label) bool {
 		existing[label.GetName()] = struct{}{}
+		return false
+	})
+	if err != nil {
+		return err
 	}
 
 	for _, name := range labelNames {
@@ -390,7 +391,7 @@ func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alp
 	// GitHub returns 422 for "label already exists" (create race) and for real validation
 	// failures. Re-list and only treat 422 as success when the label is actually present.
 	if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
-		exists, err := pr.repositoryHasLabel(ctx, owner, repo, name)
+		exists, err := pr.repositoryHasLabel(ctx, gitRepo, owner, repo, name)
 		if err != nil {
 			return err
 		}
@@ -401,16 +402,41 @@ func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alp
 	return fmt.Errorf("failed to create repository label %q: %w", name, err)
 }
 
-func (pr *PullRequest) repositoryHasLabel(ctx context.Context, owner, repo, name string) (bool, error) {
-	for label, err := range pr.client.Issues.ListLabelsIter(ctx, owner, repo, &github.ListOptions{PerPage: 100}) {
-		if err != nil {
-			return false, fmt.Errorf("failed to list repository labels: %w", err)
-		}
+func (pr *PullRequest) repositoryHasLabel(ctx context.Context, gitRepo *v1alpha1.GitRepository, owner, repo, name string) (bool, error) {
+	found := false
+	err := pr.eachRepositoryLabel(ctx, gitRepo, owner, repo, func(label *github.Label) bool {
 		if label.GetName() == name {
-			return true, nil
+			found = true
+			return true
 		}
+		return false
+	})
+	return found, err
+}
+
+// eachRepositoryLabel pages through repository labels. visit returning true stops before the next page.
+// Every HTTP response, including failures, is recorded so list traffic updates scm_calls_total and the rate-limit gauges.
+func (pr *PullRequest) eachRepositoryLabel(ctx context.Context, gitRepo *v1alpha1.GitRepository, owner, repo string, visit func(*github.Label) bool) error {
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		start := time.Now()
+		labels, response, err := pr.client.Issues.ListLabels(ctx, owner, repo, opts)
+		if response != nil {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationListLabels, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to list repository labels: %w", err)
+		}
+		for _, label := range labels {
+			if visit(label) {
+				return nil
+			}
+		}
+		if response == nil || response.NextPage == 0 {
+			return nil
+		}
+		opts.Page = response.NextPage
 	}
-	return false, nil
 }
 
 // RemoveLabels removes labels from a pull request on GitHub.

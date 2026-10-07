@@ -85,6 +85,8 @@ const (
 	SCMOperationAddLabels SCMOperation = "add-labels"
 	// SCMOperationCreateLabel is used when creating repository or project labels before applying them to pull requests.
 	SCMOperationCreateLabel SCMOperation = "create-label"
+	// SCMOperationListLabels is used when listing repository labels. Each page is one call.
+	SCMOperationListLabels SCMOperation = "list-labels"
 	// SCMOperationRemoveLabels is used when removing labels from pull requests.
 	SCMOperationRemoveLabels SCMOperation = "remove-labels"
 )
@@ -120,7 +122,10 @@ var (
 	scmCallLabels = []string{"git_repository", "git_repository_namespace", "scm_provider", "scm_provider_namespace", "scm_provider_kind", "api", "operation", "response_code"}
 
 	// Labels for scm_calls_rate_limit metrics.
-	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_namespace", "scm_provider_kind"}
+	// scm_provider_namespace is empty for ClusterScmProvider.
+	// scm_account separates buckets when one provider credential is shared across accounts
+	// (GitHub App installations). Empty means the credential is the whole bucket.
+	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_namespace", "scm_provider_kind", "scm_account"}
 
 	// Labels for WebRequestCommitStatus outbound HTTP metrics
 	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
@@ -291,6 +296,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 	gitRepository := scope.SCMCallGitRepository()
 	gitRepositoryNamespace := scope.SCMCallGitRepositoryNamespace()
 	scmProviderNamespace := scope.SCMCallSCMProviderNamespace()
+	scmAccount := scope.SCMCallAccount()
 
 	labels := prometheus.Labels{
 		"git_repository":           gitRepository,
@@ -311,6 +317,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		"scm_provider", scmProvider,
 		"scm_provider_namespace", scmProviderNamespace,
 		"scm_provider_kind", scmProviderKind,
+		"scm_account", scmAccount,
 		"api", string(api),
 		"operation", string(operation),
 		"response_code", responseCode,
@@ -322,6 +329,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 			"scm_provider":           scmProvider,
 			"scm_provider_namespace": scmProviderNamespace,
 			"scm_provider_kind":      scmProviderKind,
+			"scm_account":            scmAccount,
 		}
 
 		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))

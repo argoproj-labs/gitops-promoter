@@ -42,8 +42,8 @@ var _ = Describe("RecordSCMCall", func() {
 
 		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("repo", "ns-a", "provider", "ns-a", "ScmProvider", "PullRequest", "list", "200"))).To(Equal(1.0))
 		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("repo", "ns-b", "provider", "ns-b", "ScmProvider", "PullRequest", "list", "200"))).To(Equal(1.0))
-		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("provider", "ns-a", "ScmProvider"))).To(Equal(10.0))
-		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("provider", "ns-b", "ScmProvider"))).To(Equal(4000.0))
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("provider", "ns-a", "ScmProvider", ""))).To(Equal(10.0))
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("provider", "ns-b", "ScmProvider", ""))).To(Equal(4000.0))
 
 		RecordGitOperation(repo("ns-a"), GitOperationClone, GitOperationResultSuccess, time.Millisecond)
 		Expect(testutil.ToFloat64(gitOperationsTotal.WithLabelValues("repo", "ns-a", "provider", "ns-a", "ScmProvider", "clone", "success"))).To(Equal(1.0))
@@ -66,5 +66,48 @@ var _ = Describe("RecordSCMCall", func() {
 		}
 		RecordGitOperation(repo, GitOperationFetch, GitOperationResultSuccess, time.Millisecond)
 		Expect(testutil.ToFloat64(gitOperationsTotal.WithLabelValues("repo", "team-a", "cluster-provider", "", "ClusterScmProvider", "fetch", "success"))).To(Equal(1.0))
+	})
+
+	It("keeps GitHub rate-limit gauges separate per repository owner", func() {
+		providerRef := promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "scm-account-metrics-test"}
+		repo := func(owner string) *promoterv1alpha1.GitRepository {
+			return &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{Name: owner + "-repo", Namespace: "default"},
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					ScmProviderRef: providerRef,
+					GitHub:         &promoterv1alpha1.GitHubRepo{Owner: owner, Name: "app"},
+				},
+			}
+		}
+
+		RecordSCMCall(context.Background(), repo("org-a"), SCMAPIPullRequest, SCMOperationList, 200, time.Millisecond, &RateLimit{
+			Limit: 5000, Remaining: 100, ResetRemaining: time.Minute,
+		})
+		RecordSCMCall(context.Background(), repo("org-b"), SCMAPIPullRequest, SCMOperationList, 200, time.Millisecond, &RateLimit{
+			Limit: 5000, Remaining: 4900, ResetRemaining: time.Minute,
+		})
+
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "", "ClusterScmProvider", "org-a"))).To(Equal(100.0))
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "", "ClusterScmProvider", "org-b"))).To(Equal(4900.0))
+		Expect(testutil.ToFloat64(scmCallsRateLimitLimit.WithLabelValues("scm-account-metrics-test", "", "ClusterScmProvider", "org-a"))).To(Equal(5000.0))
+
+		RecordSCMCall(context.Background(), repo("Org-A"), SCMAPIPullRequest, SCMOperationList, 200, time.Millisecond, &RateLimit{
+			Limit: 5000, Remaining: 80, ResetRemaining: time.Minute,
+		})
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "", "ClusterScmProvider", "org-a"))).To(Equal(80.0))
+	})
+
+	It("leaves scm_account empty when the provider credential is the rate-limit bucket", func() {
+		repo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "gl-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Name: "scm-account-gitlab-test"},
+				GitLab:         &promoterv1alpha1.GitLabRepo{Namespace: "group/sub", Name: "app", ProjectID: 1},
+			},
+		}
+		RecordSCMCall(context.Background(), repo, SCMAPIPullRequest, SCMOperationList, 200, time.Millisecond, &RateLimit{
+			Limit: 2000, Remaining: 1500, ResetRemaining: time.Minute,
+		})
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-gitlab-test", "default", "ScmProvider", ""))).To(Equal(1500.0))
 	})
 })

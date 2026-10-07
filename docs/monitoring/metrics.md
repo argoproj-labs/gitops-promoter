@@ -48,7 +48,7 @@ Labels:
 * `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
   * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
@@ -66,7 +66,7 @@ Labels:
 * `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
   * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
@@ -103,6 +103,7 @@ Labels:
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_remaining
 
@@ -115,6 +116,7 @@ Labels:
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
@@ -127,6 +129,7 @@ Labels:
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## webhook_processing_duration_seconds
 
