@@ -60,7 +60,7 @@ if err != nil {
 
 This matches `internal/scms/azuredevops/pullrequest.go` (`Create`) and `internal/scms/bitbucket_cloud/commit_status.go` (`Set`).
 
-Pick `metrics.SCMAPICommitStatus`, `SCMAPIPullRequest`, or `SCMAPIProvider` and the right `metrics.SCMOperation` for each method. GitHub-specific provider calls pass a `metrics.GitHubSCMProviderOperation` instead. For GitHub, pass `getRateLimitMetrics(response.Rate)` as the last argument instead of `nil` where the client exposes rate metadata. Those gauges include `scm_account` from `GitRepository.spec.github.owner`, so each App installation keeps its own series. Provider-scoped calls that use a different token budget, such as GitHub App installation listing, pass `nil` so they do not overwrite the installation-token gauges. Other providers pass `nil` until they record a rate limit; their `scm_account` stays empty because the provider credential is the bucket.
+Pick `metrics.SCMAPICommitStatus`, `SCMAPIPullRequest`, or `SCMAPIProvider` and the right `metrics.SCMOperation` for each method. GitHub-specific provider calls pass a `metrics.GitHubSCMProviderOperation` instead. For GitHub, pass `getRateLimitMetrics(response.Rate)` as the last argument instead of `nil` where the client exposes rate metadata. Those gauges include `scm_account` from `GitRepository.spec.github.owner`, lowercased, so each App installation keeps its own series. Provider-scoped calls that use a different token budget, such as GitHub App installation listing, pass `nil` so they do not overwrite the installation-token gauges. Other providers pass `nil` until they record a rate limit; their `scm_account` stays empty because the provider credential is the bucket.
 
 ## User-facing metrics and docs
 

@@ -1,5 +1,7 @@
 package v1alpha1
 
+import "strings"
+
 // +kubebuilder:object:root=false
 // +kubebuilder:object:generate:false
 // +k8s:deepcopy-gen:interfaces=nil
@@ -38,11 +40,13 @@ func (r *GitRepository) SCMCallSCMProviderKind() string {
 }
 
 // SCMCallAccount implements SCMCallScope. GitHub App installation tokens are limited per
-// account, so the repository owner (org or user) is that account. Other providers limit
-// the credential on the SCM provider, which scm_provider already identifies.
+// account, so the repository owner (org or user) is that account. GitHub treats that
+// login as case-insensitive, so the label is lowercased and mixed-case specs share one
+// series. Other providers limit the credential on the SCM provider, which scm_provider
+// already identifies.
 func (r *GitRepository) SCMCallAccount() string {
 	if r.Spec.GitHub != nil {
-		return r.Spec.GitHub.Owner
+		return strings.ToLower(r.Spec.GitHub.Owner)
 	}
 	return ""
 }

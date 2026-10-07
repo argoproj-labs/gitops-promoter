@@ -46,6 +46,11 @@ var _ = Describe("RecordSCMCall", func() {
 		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "ClusterScmProvider", "org-a"))).To(Equal(100.0))
 		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "ClusterScmProvider", "org-b"))).To(Equal(4900.0))
 		Expect(testutil.ToFloat64(scmCallsRateLimitLimit.WithLabelValues("scm-account-metrics-test", "ClusterScmProvider", "org-a"))).To(Equal(5000.0))
+
+		RecordSCMCall(context.Background(), repo("Org-A"), SCMAPIPullRequest, SCMOperationList, 200, time.Millisecond, &RateLimit{
+			Limit: 5000, Remaining: 80, ResetRemaining: time.Minute,
+		})
+		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-metrics-test", "ClusterScmProvider", "org-a"))).To(Equal(80.0))
 	})
 
 	It("leaves scm_account empty when the provider credential is the rate-limit bucket", func() {
