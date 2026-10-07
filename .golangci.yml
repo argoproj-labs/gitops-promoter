@@ -157,6 +157,11 @@ linters:
       - linters:
           - dupl
         path: .*_test.go
+      # Test structs are laid out for readability. fieldalignment reorders fields for GC scan size.
+      - linters:
+          - govet
+        path: .*_test.go
+        text: fieldalignment
       # Disable govet for API types, because fieldalignment will fail. Maybe we can clean that up in the future.
       - linters:
           - govet
