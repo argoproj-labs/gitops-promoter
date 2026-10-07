@@ -85,6 +85,8 @@ const (
 	SCMOperationAddLabels SCMOperation = "add-labels"
 	// SCMOperationCreateLabel is used when creating repository or project labels before applying them to pull requests.
 	SCMOperationCreateLabel SCMOperation = "create-label"
+	// SCMOperationListLabels is used when listing repository labels. Each page is one call.
+	SCMOperationListLabels SCMOperation = "list-labels"
 	// SCMOperationRemoveLabels is used when removing labels from pull requests.
 	SCMOperationRemoveLabels SCMOperation = "remove-labels"
 )
