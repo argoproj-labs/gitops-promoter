@@ -4,6 +4,7 @@ package git
 // not to other packages that import git.
 var (
 	GitChildEnv          = gitChildEnv
+	GitHTTPHeaderEnv     = gitHTTPHeaderEnv
 	GitBin               = gitBin
 	ParseCommitLogOutput = parseCommitLogOutput
 	ParseCatFileBatch    = parseCatFileBatch

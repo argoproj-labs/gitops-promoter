@@ -25,6 +25,9 @@ spec:
 
   bitbucketCloud: {}
 
+  bitbucketDataCenter:
+    domain: bitbucket.example.com
+
   azureDevOps:
     organization: example-organization
     domain: dev.azure.com # Optional

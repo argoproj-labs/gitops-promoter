@@ -158,6 +158,27 @@ export type components = {
              */
             owner: string;
         };
+        /** @description BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration. */
+        BitbucketDataCenter: {
+            /**
+             * @description Domain is the Bitbucket DataCenter/Server domain, such as "bitbucket.mycompany.com".
+             * @default
+             */
+            domain: string;
+        };
+        /** @description BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug. */
+        BitbucketDataCenterRepo: {
+            /**
+             * @description Name is the repository slug (e.g. "my-repo").
+             * @default
+             */
+            name: string;
+            /**
+             * @description Project is the Bitbucket project key (e.g. "MYPROJ").
+             * @default
+             */
+            project: string;
+        };
         /** @description ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy. */
         ChangeRequestPolicyCommitStatusPhase: {
             /** @description Description is the description of the commit status */
@@ -870,6 +891,7 @@ export type components = {
         GitRepositorySpec: {
             azureDevOps?: components["schemas"]["AzureDevOpsRepo"];
             bitbucketCloud?: components["schemas"]["BitbucketCloudRepo"];
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenterRepo"];
             fake?: components["schemas"]["FakeRepo"];
             forgejo?: components["schemas"]["ForgejoRepo"];
             gitea?: components["schemas"]["GiteaRepo"];
@@ -1758,6 +1780,8 @@ export type components = {
             azureDevOps?: components["schemas"]["AzureDevOps"];
             /** @description BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider */
             bitbucketCloud?: components["schemas"]["BitbucketCloud"];
+            /** @description BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider */
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenter"];
             /** @description Fake required configuration for Fake as the SCM provider */
             fake?: components["schemas"]["Fake"];
             /** @description Forgejo required configuration for Forgejo as the SCM provider */

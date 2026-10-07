@@ -127,6 +127,7 @@ Invalid expression output causes the ChangeTransferPolicy Ready condition to bec
 | GitHub, GitLab, Gitea, Forgejo | Supported; missing labels are created on add | Supported |
 | Azure DevOps | Supported; missing labels are created on add | Not supported (open-PR list responses do not reliably include PR labels) |
 | Bitbucket Cloud | Not supported (no PR labels API) | Not supported |
+| Bitbucket DataCenter/Server | Not supported (no PR labels API) | Not supported |
 
 Supported providers create repository or project labels automatically when labels are first added, using the default navy color (`#00254a`). Pre-create labels only when you need a different color or description.
 
@@ -136,7 +137,7 @@ Using pull request labels increases SCM API traffic: each label change can trigg
 
 - **Zero SCM label calls when idle**: if `spec.labels` equals `status.appliedLabels`, the PullRequest controller skips SCM label add/remove.
 - **Drift repair (supported providers)**: on each reconcile, the controller reads PR labels from the routine open-PR check. It refreshes `status.appliedLabels` for managed labels (the union of `spec.labels` and the previous `appliedLabels`, intersected with what is on the SCM). If that differs from `spec.labels`, it adds or removes labels as usual. Third-party labels on the PR (for example from Tide) are ignored.
-- **Drift repair limitations**: Azure DevOps and Bitbucket Cloud do not participate — those providers do not expose PR labels in that check, so externally removed labels are not re-applied until `spec.labels` changes. This drift resolution behavior may change in a future release.
+- **Drift repair limitations**: Azure DevOps, Bitbucket Cloud and Bitbucket DataCenter/Server do not participate — those providers do not expose PR labels in that check, so externally removed labels are not re-applied until `spec.labels` changes. This drift resolution behavior may change in a future release.
 - The promoter only removes labels it previously applied (`status.appliedLabels`).
 
 ## Prow / Tide example
