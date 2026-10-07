@@ -152,6 +152,7 @@ var _ = BeforeSuite(func() {
 		ClusterOptions: []cluster.Option{
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
+				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
 			},
 		},
 	})
