@@ -1,5 +1,5 @@
 //nolint:goconst // Prometheus label names are inlined next to metric definitions; extracting constants hurts readability.
-package metrics
+package metrics //nolint:revive // max-public-structs: counts every exported type, and these label and result types are the metric vocabulary that belongs next to the metric definitions.
 
 import (
 	"context"
