@@ -60,6 +60,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		ClusterOptions: []cluster.Option{
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
+				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
 			},
 		},
 	})

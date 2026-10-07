@@ -105,6 +105,18 @@ var _ = Describe("OptionsForInstanceID", func() {
 	})
 })
 
+var _ = Describe("ProviderClusterCacheOptions", func() {
+	It("disables deep copy for Argo CD Application Get/List on provider clusters", func() {
+		opts := promotercache.ProviderClusterCacheOptions()
+		Expect(opts.ByObject).To(HaveLen(1))
+		byObj, ok := opts.ByObject[promotercache.UnpartitionedApplicationObject()]
+		Expect(ok).To(BeTrue())
+		Expect(byObj.UnsafeDisableDeepCopy).NotTo(BeNil())
+		Expect(*byObj.UnsafeDisableDeepCopy).To(BeTrue())
+		Expect(byObj.Label).To(BeNil(), "provider Application must stay unfiltered (no DefaultLabelSelector)")
+	})
+})
+
 var _ = Describe("Partitioned promoter CRDs", func() {
 	It("includes every scheme promoter kind except ControllerConfiguration", func() {
 		scheme := utils.GetScheme()
