@@ -117,8 +117,10 @@ var (
 	// Labels for scm_calls metrics
 	scmCallLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "api", "operation", "response_code"}
 
-	// Labels for scm_calls_rate_limit metrics
-	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind"}
+	// Labels for scm_calls_rate_limit metrics.
+	// scm_account separates buckets when one provider credential is shared across accounts
+	// (GitHub App installations). Empty means the credential is the whole bucket.
+	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind", "scm_account"}
 
 	// Labels for WebRequestCommitStatus outbound HTTP metrics
 	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
@@ -286,6 +288,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 	scmProviderKind := scope.SCMCallSCMProviderKind()
 	gitRepository := scope.SCMCallGitRepository()
 	gitRepositoryNamespace := scope.SCMCallGitRepositoryNamespace()
+	scmAccount := scope.SCMCallAccount()
 
 	labels := prometheus.Labels{
 		"git_repository":    gitRepository,
@@ -303,6 +306,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		"git_repository_namespace", gitRepositoryNamespace,
 		"scm_provider", scmProvider,
 		"scm_provider_kind", scmProviderKind,
+		"scm_account", scmAccount,
 		"api", string(api),
 		"operation", string(operation),
 		"response_code", responseCode,
@@ -313,6 +317,7 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		rateLimitLabels := prometheus.Labels{
 			"scm_provider":      scmProvider,
 			"scm_provider_kind": scmProviderKind,
+			"scm_account":       scmAccount,
 		}
 
 		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))
