@@ -58,7 +58,7 @@ Labels:
 * `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels, and those responses update the rate-limit gauges.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
   * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
