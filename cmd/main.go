@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -441,12 +440,13 @@ func runController(
 		return nil
 	})
 
-	if err := g.Wait(); err != nil {
-		setupLog.Error(err, "unable to start")
-		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-		if err != nil {
-			setupLog.Error(err, "unable to kill process")
-		}
+	waitErr := g.Wait()
+	if waitErr != nil {
+		setupLog.Error(waitErr, "unable to start")
+		// Cancel the controller context so sibling goroutines (manager, webhook
+		// receiver) stop. Prefer context cancel over self-signaling SIGTERM so
+		// this path stays portable to Windows.
+		shutdown()
 	}
 
 	setupLog.Info("Cleaning up cloned directories")
@@ -456,6 +456,9 @@ func runController(
 			setupLog.Error(err, "failed to cleanup directory")
 		}
 		setupLog.Info("cleaning directory", "directory", path)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("controller startup failed: %w", waitErr)
 	}
 	return nil
 }
@@ -491,8 +494,10 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("failed to register dashboard scheme: %w", err)
 			}
 
-			// Create single signal handler
-			ctx := ctrl.SetupSignalHandler()
+			// Create single signal handler, then a cancelable child so a manager
+			// failure can stop the dashboard without Unix-only self-signaling.
+			ctx, shutdown := context.WithCancel(ctrl.SetupSignalHandler())
+			defer shutdown()
 
 			ws := webserver.NewWebServer(mgr)
 
@@ -511,20 +516,29 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("dashboard aggregation API did not become available: %w", err)
 			}
 
-			// Start manager in background
+			// Start manager in background; surface its error if the dashboard
+			// exits only because the manager canceled the shared context.
+			mgrErrCh := make(chan error, 1)
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
 					setupLog.Error(err, "dashboard manager exited")
-					if killErr := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); killErr != nil {
-						setupLog.Error(killErr, "unable to kill process")
-					}
+					mgrErrCh <- err
+					shutdown()
 				}
 			}()
 
 			// Make port configurable
 			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
 
-			return ws.StartDashboard(ctx, fmt.Sprintf(":%d", port))
+			if err := ws.StartDashboard(ctx, fmt.Sprintf(":%d", port)); err != nil {
+				return fmt.Errorf("dashboard server failed: %w", err)
+			}
+			select {
+			case err := <-mgrErrCh:
+				return fmt.Errorf("dashboard manager exited: %w", err)
+			default:
+				return nil
+			}
 		},
 	}
 

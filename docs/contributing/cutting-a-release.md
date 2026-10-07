@@ -31,7 +31,7 @@ Merging triggers [`create-release-tag.yaml`](https://github.com/argoproj-labs/gi
 
 The release workflow runs [GoReleaser](https://goreleaser.com/), which:
 
-- Builds multi-arch binaries (linux/darwin, amd64/arm64).
+- Builds multi-arch binaries (linux/darwin/windows, amd64/arm64).
 - Builds and pushes multi-arch Docker images to `quay.io/argoprojlabs/gitops-promoter:<tag>`.
 - Signs container images and checksums with [cosign](https://docs.sigstore.dev/cosign/overview/) (keyless / Sigstore).
 - Creates a **draft** GitHub Release with binaries, checksums, install manifest, and the Argo CD extension archive.
