@@ -270,6 +270,7 @@ type WebRequestCommitStatusConfiguration struct {
 
 	// NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
 	// When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+	// Requires a controller restart.
 	// +optional
 	// +kubebuilder:default=Enabled
 	NamespaceMetadata FeatureMode `json:"namespaceMetadata,omitempty"`
