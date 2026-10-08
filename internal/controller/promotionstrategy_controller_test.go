@@ -6485,6 +6485,7 @@ var _ = Describe("Child creation instance-id label propagation", func() {
 		// The former DependentsSuccessfulCommitStatus call was removed when ordering gates became
 		// explicit CRDs. History objects are created by the ChangeTransferPolicy controller.
 		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
-		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 2),
+		// History, pull request, and an adopted RestoreActiveCommit.
+		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 3),
 	)
 })

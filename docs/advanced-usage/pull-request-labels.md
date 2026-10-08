@@ -132,7 +132,7 @@ Supported providers create repository or project labels automatically when label
 
 ## API load and drift
 
-Using pull request labels increases SCM API traffic: each label change can trigger `create-label`, `add-labels`, and/or `remove-labels` calls on the PullRequest API. Monitor [`scm_calls_total` and `scm_calls_duration_seconds`](../monitoring/metrics.md#scm_calls_total) filtered by `api="PullRequest"` and `operation` in (`create-label`, `add-labels`, `remove-labels`).
+Using pull request labels increases SCM API traffic: each label change can trigger `create-label`, `add-labels`, and/or `remove-labels` calls on the PullRequest API. On GitHub, adding a label also lists repository labels first (`list-labels`, one call per page), and those responses update the rate-limit gauges. Monitor [`scm_calls_total` and `scm_calls_duration_seconds`](../monitoring/metrics.md#scm_calls_total) filtered by `api="PullRequest"` and `operation` in (`list-labels`, `create-label`, `add-labels`, `remove-labels`).
 
 - **Zero SCM label calls when idle**: if `spec.labels` equals `status.appliedLabels`, the PullRequest controller skips SCM label add/remove.
 - **Drift repair (supported providers)**: on each reconcile, the controller reads PR labels from the routine open-PR check. It refreshes `status.appliedLabels` for managed labels (the union of `spec.labels` and the previous `appliedLabels`, intersected with what is on the SCM). If that differs from `spec.labels`, it adds or removes labels as usual. Third-party labels on the PR (for example from Tide) are ignored.

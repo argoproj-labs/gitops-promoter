@@ -30,6 +30,7 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     ldflags:
       - -X github.com/argoproj-labs/gitops-promoter/internal/version.version={{ .Version }}
       - -X github.com/argoproj-labs/gitops-promoter/internal/version.buildDate={{ .Date }}
@@ -109,6 +110,9 @@ docker_signs:
 archives:
   - id: binary
     formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
     ids:
       - "gitops-promoter"
     # this name template makes the OS and Arch compatible with the results of `uname`.

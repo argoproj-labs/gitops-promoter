@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -178,8 +177,9 @@ func runController(
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
 				// Do not copy host Cache ByObject here. Application CRD presence is a local-cluster
-				// concern (WithArgoCDApplicationIfInstalled). Remote Application informers start from
-				// watches with no DefaultLabelSelector, so they stay unfiltered.
+				// concern (WithArgoCDApplicationIfInstalled). Provider clusters get their own
+				// Application ByObject with UnsafeDisableDeepCopy (read-only Lists).
+				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
 			},
 		},
 	}
@@ -288,14 +288,6 @@ func runController(
 	if err = prReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
-	if err = (&controller.RevertCommitReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("RevertCommit"),
-	}).SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
-	}
-
 	// ChangeTransferPolicyHistory controller is set up before the ChangeTransferPolicy controller so
 	// the CTP controller can enqueue history rebuilds after writing promotion-history git notes.
 	ctphReconciler := &controller.ChangeTransferPolicyHistoryReconciler{
@@ -320,6 +312,15 @@ func runController(
 	}
 	if err = ctpReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
+	}
+
+	if err = (&controller.RestoreActiveCommitReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("RestoreActiveCommit"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create RestoreActiveCommit controller: %w", err))
 	}
 
 	if err = (&controller.CommitStatusReconciler{
@@ -470,12 +471,13 @@ func runController(
 		return nil
 	})
 
-	if err := g.Wait(); err != nil {
-		setupLog.Error(err, "unable to start")
-		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-		if err != nil {
-			setupLog.Error(err, "unable to kill process")
-		}
+	waitErr := g.Wait()
+	if waitErr != nil {
+		setupLog.Error(waitErr, "unable to start")
+		// Cancel the controller context so sibling goroutines (manager, webhook
+		// receiver) stop. Prefer context cancel over self-signaling SIGTERM so
+		// this path stays portable to Windows.
+		shutdown()
 	}
 
 	setupLog.Info("Cleaning up cloned directories")
@@ -485,6 +487,9 @@ func runController(
 			setupLog.Error(err, "failed to cleanup directory")
 		}
 		setupLog.Info("cleaning directory", "directory", path)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("controller startup failed: %w", waitErr)
 	}
 	return nil
 }
@@ -548,8 +553,10 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("failed to register dashboard scheme: %w", err)
 			}
 
-			// Create single signal handler
-			ctx := ctrl.SetupSignalHandler()
+			// Create single signal handler, then a cancelable child so a manager
+			// failure can stop the dashboard without Unix-only self-signaling.
+			ctx, shutdown := context.WithCancel(ctrl.SetupSignalHandler())
+			defer shutdown()
 
 			ws := webserver.NewWebServer(mgr)
 
@@ -568,20 +575,29 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("dashboard aggregation API did not become available: %w", err)
 			}
 
-			// Start manager in background
+			// Start manager in background; surface its error if the dashboard
+			// exits only because the manager canceled the shared context.
+			mgrErrCh := make(chan error, 1)
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
 					setupLog.Error(err, "dashboard manager exited")
-					if killErr := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); killErr != nil {
-						setupLog.Error(killErr, "unable to kill process")
-					}
+					mgrErrCh <- err
+					shutdown()
 				}
 			}()
 
 			// Make port configurable
 			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
 
-			return ws.StartDashboard(ctx, fmt.Sprintf(":%d", port))
+			if err := ws.StartDashboard(ctx, fmt.Sprintf(":%d", port)); err != nil {
+				return fmt.Errorf("dashboard server failed: %w", err)
+			}
+			select {
+			case err := <-mgrErrCh:
+				return fmt.Errorf("dashboard manager exited: %w", err)
+			default:
+				return nil
+			}
 		},
 	}
 

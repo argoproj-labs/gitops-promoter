@@ -57,6 +57,9 @@ const (
 	// PullRequestControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the PullRequest controller.
 	PullRequestControllerFieldOwner = "promoter.argoproj.io/pullrequest-controller"
+	// RestoreActiveCommitControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the RestoreActiveCommit controller.
+	RestoreActiveCommitControllerFieldOwner = "promoter.argoproj.io/restoreactivecommit-controller"
 
 	// GitCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the GitCommitStatus controller.

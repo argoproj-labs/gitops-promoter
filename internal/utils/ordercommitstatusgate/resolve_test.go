@@ -160,4 +160,46 @@ var _ = Describe("Resolve", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(key).To(Equal("team-order"))
 	})
+
+	DescribeTable("rejects out-of-tree gates that violate the unstructured contract",
+		func(mutate func(*unstructured.Unstructured), errSubstr string) {
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+						Group: "ordering.example.com",
+						Kind:  "TeamOrderCommitStatus",
+						Name:  "demo",
+					},
+				},
+			}
+			gate := &unstructured.Unstructured{}
+			gate.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "ordering.example.com",
+				Version: "v1alpha1",
+				Kind:    "TeamOrderCommitStatus",
+			})
+			gate.SetName("demo")
+			gate.SetNamespace("default")
+			mutate(gate)
+
+			c := fake.NewClientBuilder().WithObjects(gate).Build()
+			_, err := Resolve(context.Background(), c, nil, ps)
+			Expect(err).To(MatchError(ContainSubstring(errSubstr)))
+		},
+		Entry("missing spec.key", func(gate *unstructured.Unstructured) {
+			Expect(unstructured.SetNestedField(gate.Object, "demo", "spec", "promotionStrategyRef", "name")).To(Succeed())
+		}, "empty spec.key"),
+		Entry("empty spec.key", func(gate *unstructured.Unstructured) {
+			Expect(unstructured.SetNestedField(gate.Object, "", "spec", "key")).To(Succeed())
+			Expect(unstructured.SetNestedField(gate.Object, "demo", "spec", "promotionStrategyRef", "name")).To(Succeed())
+		}, "empty spec.key"),
+		Entry("missing spec.promotionStrategyRef.name", func(gate *unstructured.Unstructured) {
+			Expect(unstructured.SetNestedField(gate.Object, "team-order", "spec", "key")).To(Succeed())
+		}, `promotionStrategyRef.name is ""`),
+		Entry("mismatched spec.promotionStrategyRef.name", func(gate *unstructured.Unstructured) {
+			Expect(unstructured.SetNestedField(gate.Object, "team-order", "spec", "key")).To(Succeed())
+			Expect(unstructured.SetNestedField(gate.Object, "other", "spec", "promotionStrategyRef", "name")).To(Succeed())
+		}, `promotionStrategyRef.name is "other"`),
+	)
 })

@@ -661,6 +661,26 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoreUnblockedAt:
+                      description: |-
+                        RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+                        has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).
+                        While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore
+                        moved off of is blocked from opening a pull request.
+                      format: date-time
+                      type: string
+                    restoredFrom:
+                      description: |-
+                        RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+                        pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+                        tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+                        pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+                        version and describe the original promotion, not the restore. active.hydrated is the restore commit
+                        itself, so active.hydrated.commitTime is when the restore was written.
+                      maxLength: 64
+                      minLength: 40
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
                   type: object
                 maxItems: 20
                 type: array

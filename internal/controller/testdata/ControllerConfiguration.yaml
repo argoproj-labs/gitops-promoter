@@ -179,6 +179,16 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # RestoreActiveCommit controller restores an environment's active branch to a previous hydrated commit
+  restoreActiveCommit:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # ClusterScmProvider support can be disabled to avoid cluster-scoped access
   clusterScmProvider:
     mode: Enabled

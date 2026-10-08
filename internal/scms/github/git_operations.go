@@ -4,23 +4,40 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v92/github"
+	"golang.org/x/sync/singleflight"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 const (
 	// githubAppPrivateKeySecretKey is the key in the secret that contains the private key for the GitHub App.
 	githubAppPrivateKeySecretKey = "githubAppPrivateKey"
+
+	// defaultInstallationHitCacheTTL is how long a listed installation ID is reused before ListInstallations runs again.
+	defaultInstallationHitCacheTTL = 30 * time.Minute
+	// defaultInstallationMissCacheTTL is how long an org missing from that list is remembered before ListInstallations runs again.
+	defaultInstallationMissCacheTTL = 1 * time.Minute
+	// defaultListInstallationsTimeout bounds one paginated ListInstallations call.
+	// A hung page fails that attempt for every caller. Nothing is cached, so the failed reconcile retries later.
+	defaultListInstallationsTimeout = time.Minute
+)
+
+// installationHitCacheTTL, installationMissCacheTTL, and listInstallationsTimeout are vars so tests can shorten them.
+var (
+	installationHitCacheTTL  = defaultInstallationHitCacheTTL
+	installationMissCacheTTL = defaultInstallationMissCacheTTL
+	listInstallationsTimeout = defaultListInstallationsTimeout
 )
 
 // GitAuthenticationProvider provides methods to authenticate with GitHub using a GitHub App.
@@ -148,17 +165,137 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 	return true, baseUrl, uploadUrl
 }
 
-// installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds = make(map[orgAppId]int64)
-
-// orgAppId is a composite key of organization and app ID for caching installation IDs.
-type orgAppId struct {
-	org string
-	id  int64
+// appInstallationKey identifies a GitHub App on one host. App IDs are only unique per GitHub instance.
+type appInstallationKey struct {
+	domain string
+	appID  int64
 }
 
-// appInstallationIdCacheMutex protects access to the installationIds map.
-var appInstallationIdCacheMutex sync.RWMutex
+func installationCacheKey(scmProvider v1alpha1.GenericScmProvider) appInstallationKey {
+	return appInstallationKey{domain: scmProvider.GetSpec().GitHub.Domain, appID: scmProvider.GetSpec().GitHub.AppID}
+}
+
+func (k appInstallationKey) flightKey() string {
+	return fmt.Sprintf("%s/%d", k.domain, k.appID)
+}
+
+// appInstallations is the set of orgs returned by one finished ListInstallations call for a GitHub App.
+// The snapshot is stored only after every page succeeds. It serves installation IDs until
+// installationHitCacheTTL, and treats orgs absent from byOrg as misses until installationMissCacheTTL.
+type appInstallations struct {
+	byOrg   map[string]int64
+	fetched time.Time
+}
+
+// appInstallationCache stores the latest installation snapshot for each GitHub App on a host.
+var appInstallationCache = make(map[appInstallationKey]appInstallations)
+
+// appInstallationCacheMu protects appInstallationCache.
+var appInstallationCacheMu sync.RWMutex
+
+// listInstallationsGroup coalesces concurrent ListInstallations calls per GitHub host and app ID.
+var listInstallationsGroup singleflight.Group
+
+func lookupCachedInstallationID(org string, key appInstallationKey, now time.Time) (int64, bool, error) {
+	appInstallationCacheMu.RLock()
+	defer appInstallationCacheMu.RUnlock()
+
+	snap, ok := appInstallationCache[key]
+	if !ok {
+		return 0, false, nil
+	}
+	age := now.Sub(snap.fetched)
+	if id, found := snap.byOrg[org]; found {
+		if age < installationHitCacheTTL {
+			return id, true, nil
+		}
+		return 0, false, nil
+	}
+	if age < installationMissCacheTTL {
+		return 0, false, fmt.Errorf("installation of app %d not found for org: %s", key.appID, org)
+	}
+	return 0, false, nil
+}
+
+func installationsByOrg(installations []*github.Installation) map[string]int64 {
+	byOrg := make(map[string]int64, len(installations))
+	for _, installation := range installations {
+		if installation == nil || installation.Account == nil || installation.Account.Login == nil || installation.ID == nil {
+			continue
+		}
+		byOrg[*installation.Account.Login] = *installation.ID
+	}
+	return byOrg
+}
+
+// storeInstallationSnapshot replaces the app's cached installations with a finished list.
+func storeInstallationSnapshot(ctx context.Context, byOrg map[string]int64, scmProvider v1alpha1.GenericScmProvider) {
+	logger := log.FromContext(ctx)
+	for org, id := range byOrg {
+		logger.V(4).Info("cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
+	}
+
+	appInstallationCacheMu.Lock()
+	defer appInstallationCacheMu.Unlock()
+	appInstallationCache[installationCacheKey(scmProvider)] = appInstallations{byOrg: maps.Clone(byOrg), fetched: time.Now()}
+}
+
+func listAndCacheGitHubAppInstallations(ctx context.Context, client *github.Client, scmProvider v1alpha1.GenericScmProvider) error {
+	ctx, cancel := context.WithTimeout(ctx, listInstallationsTimeout)
+	defer cancel()
+
+	startTime := time.Now()
+	opts := &github.ListOptions{PerPage: 100}
+	building := make(map[string]int64)
+	var lastResp *github.Response
+
+	for {
+		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
+		if err != nil {
+			statusCode := 500
+			if resp != nil {
+				statusCode = resp.StatusCode
+			}
+			// Provider api: Nil rate limit: the app JWT budget must not overwrite the installation-token gauges.
+			metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.GitHubSCMProviderOperationListInstallations, statusCode, time.Since(startTime), nil)
+			return fmt.Errorf("failed to list installations: %w", err)
+		}
+		lastResp = resp
+		maps.Copy(building, installationsByOrg(installations))
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	storeInstallationSnapshot(ctx, building, scmProvider)
+
+	statusCode := 200
+	if lastResp != nil {
+		statusCode = lastResp.StatusCode
+	}
+	// Provider api: Nil rate limit: the app JWT budget must not overwrite the installation-token gauges.
+	metrics.RecordSCMCall(ctx, scmProvider, metrics.SCMAPIProvider, metrics.GitHubSCMProviderOperationListInstallations, statusCode, time.Since(startTime), nil)
+	return nil
+}
+
+func resolveInstallationID(ctx context.Context, client *github.Client, scmProvider v1alpha1.GenericScmProvider, org string) (int64, error) {
+	key := installationCacheKey(scmProvider)
+	if id, found, err := lookupCachedInstallationID(org, key, time.Now()); found || err != nil {
+		return id, err
+	}
+
+	_, err, _ := listInstallationsGroup.Do(key.flightKey(), func() (any, error) {
+		return nil, listAndCacheGitHubAppInstallations(ctx, client, scmProvider)
+	})
+	if err != nil {
+		return 0, err //nolint:wrapcheck // singleflight.Do returns the fn error unchanged
+	}
+
+	if id, found, err := lookupCachedInstallationID(org, key, time.Now()); found || err != nil {
+		return id, err
+	}
+	return 0, fmt.Errorf("installation of app %d not found for org: %s", key.appID, org)
+}
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
 // We return a client for API calls and a transport that gets used for git operations via GitAuthenticationProvider.
@@ -195,52 +332,33 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	appInstallationIdCacheMutex.RLock()
-	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		appInstallationIdCacheMutex.RUnlock()
+	if id, found, err := lookupCachedInstallationID(org, installationCacheKey(scmProvider), time.Now()); found {
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
-	}
-	appInstallationIdCacheMutex.RUnlock()
-
-	var allInstallations []*github.Installation
-	opts := &github.ListOptions{PerPage: 100}
-
-	startTime := time.Now()
-	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
-	// read within the write lock.
-	// This lock should also help with the fact that on restart we won't slam the GitHub API with multiple requests to list installations.
-	appInstallationIdCacheMutex.Lock()
-	for {
-		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
-		if err != nil {
-			appInstallationIdCacheMutex.Unlock()
-			return nil, nil, fmt.Errorf("failed to list installations: %w", err)
-		}
-
-		allInstallations = append(allInstallations, installations...)
-
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
-	}
-	// We are logging this metric vs using prometheus because this is a provider specific metric that, and we want to try and keep prometheus metrics
-	// generic.
-	logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
-
-	for _, installation := range allInstallations {
-		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
-			logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
-		}
+	} else if err != nil {
+		return nil, nil, err
 	}
 
-	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		appInstallationIdCacheMutex.Unlock()
-		logger.V(4).Info("found cached installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
-		return getInstallationClient(scmProvider, secret, id)
+	id, err := resolveInstallationID(ctx, client, scmProvider, org)
+	if err != nil {
+		return nil, nil, err
 	}
-	appInstallationIdCacheMutex.Unlock()
-	return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
+	logger.V(4).Info("found cached installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
+	return getInstallationClient(scmProvider, secret, id)
+}
+
+// resetInstallationCachesForTest clears installation lookup caches between tests.
+func resetInstallationCachesForTest() {
+	appInstallationCacheMu.Lock()
+	clear(appInstallationCache)
+	appInstallationCacheMu.Unlock()
+
+	clientCacheMu.Lock()
+	clear(clientCache)
+	clientCacheMu.Unlock()
+
+	listInstallationsGroup = singleflight.Group{}
+	installationHitCacheTTL = defaultInstallationHitCacheTTL
+	installationMissCacheTTL = defaultInstallationMissCacheTTL
+	listInstallationsTimeout = defaultListInstallationsTimeout
 }

@@ -536,23 +536,28 @@ func (in ResponseOutputSpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommit) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommit"
+func (in RestoreActiveCommit) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommit"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitList"
+func (in RestoreActiveCommitConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitConfiguration"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitSpec) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitSpec"
+func (in RestoreActiveCommitList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitList"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in RevertCommitStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.RevertCommitStatus"
+func (in RestoreActiveCommitSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in RestoreActiveCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.RestoreActiveCommitStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

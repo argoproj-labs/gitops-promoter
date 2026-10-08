@@ -26,75 +26,79 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// RevertCommitApplyConfiguration represents a declarative configuration of the RevertCommit type for use
+// RestoreActiveCommitApplyConfiguration represents a declarative configuration of the RestoreActiveCommit type for use
 // with apply.
 //
-// RevertCommit is the Schema for the revertcommits API
-type RevertCommitApplyConfiguration struct {
+// RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records
+// the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+// Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the
+// strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+// The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores.
+type RestoreActiveCommitApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *RevertCommitSpecApplyConfiguration `json:"spec,omitempty"`
-	Status                           *apiv1alpha1.RevertCommitStatus     `json:"status,omitempty"`
+	Spec                             *RestoreActiveCommitSpecApplyConfiguration   `json:"spec,omitempty"`
+	Status                           *RestoreActiveCommitStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// RevertCommit constructs a declarative configuration of the RevertCommit type for use with
+// RestoreActiveCommit constructs a declarative configuration of the RestoreActiveCommit type for use with
 // apply.
-func RevertCommit(name, namespace string) *RevertCommitApplyConfiguration {
-	b := &RevertCommitApplyConfiguration{}
+func RestoreActiveCommit(name, namespace string) *RestoreActiveCommitApplyConfiguration {
+	b := &RestoreActiveCommitApplyConfiguration{}
 	b.WithName(name)
 	b.WithNamespace(namespace)
-	b.WithKind("RevertCommit")
+	b.WithKind("RestoreActiveCommit")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b
 }
 
-// ExtractRevertCommitFrom extracts the applied configuration owned by fieldManager from
-// revertCommit for the specified subresource. Pass an empty string for subresource to extract
+// ExtractRestoreActiveCommitFrom extracts the applied configuration owned by fieldManager from
+// restoreActiveCommit for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// revertCommit must be a unmodified RevertCommit API object that was retrieved from the Kubernetes API.
-// ExtractRevertCommitFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// restoreActiveCommit must be a unmodified RestoreActiveCommit API object that was retrieved from the Kubernetes API.
+// ExtractRestoreActiveCommitFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractRevertCommitFrom(revertCommit *apiv1alpha1.RevertCommit, fieldManager string, subresource string) (*RevertCommitApplyConfiguration, error) {
-	b := &RevertCommitApplyConfiguration{}
-	err := managedfields.ExtractInto(revertCommit, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RevertCommit"), fieldManager, b, subresource)
+func ExtractRestoreActiveCommitFrom(restoreActiveCommit *apiv1alpha1.RestoreActiveCommit, fieldManager string, subresource string) (*RestoreActiveCommitApplyConfiguration, error) {
+	b := &RestoreActiveCommitApplyConfiguration{}
+	err := managedfields.ExtractInto(restoreActiveCommit, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RestoreActiveCommit"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(revertCommit.Name)
-	b.WithNamespace(revertCommit.Namespace)
+	b.WithName(restoreActiveCommit.Name)
+	b.WithNamespace(restoreActiveCommit.Namespace)
 
-	b.WithKind("RevertCommit")
+	b.WithKind("RestoreActiveCommit")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractRevertCommit extracts the applied configuration owned by fieldManager from
-// revertCommit. If no managedFields are found in revertCommit for fieldManager, a
-// RevertCommitApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractRestoreActiveCommit extracts the applied configuration owned by fieldManager from
+// restoreActiveCommit. If no managedFields are found in restoreActiveCommit for fieldManager, a
+// RestoreActiveCommitApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// revertCommit must be a unmodified RevertCommit API object that was retrieved from the Kubernetes API.
-// ExtractRevertCommit provides a way to perform a extract/modify-in-place/apply workflow.
+// restoreActiveCommit must be a unmodified RestoreActiveCommit API object that was retrieved from the Kubernetes API.
+// ExtractRestoreActiveCommit provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractRevertCommit(revertCommit *apiv1alpha1.RevertCommit, fieldManager string) (*RevertCommitApplyConfiguration, error) {
-	return ExtractRevertCommitFrom(revertCommit, fieldManager, "")
+func ExtractRestoreActiveCommit(restoreActiveCommit *apiv1alpha1.RestoreActiveCommit, fieldManager string) (*RestoreActiveCommitApplyConfiguration, error) {
+	return ExtractRestoreActiveCommitFrom(restoreActiveCommit, fieldManager, "")
 }
 
-// ExtractRevertCommitStatus extracts the applied configuration owned by fieldManager from
-// revertCommit for the status subresource.
-func ExtractRevertCommitStatus(revertCommit *apiv1alpha1.RevertCommit, fieldManager string) (*RevertCommitApplyConfiguration, error) {
-	return ExtractRevertCommitFrom(revertCommit, fieldManager, "status")
+// ExtractRestoreActiveCommitStatus extracts the applied configuration owned by fieldManager from
+// restoreActiveCommit for the status subresource.
+func ExtractRestoreActiveCommitStatus(restoreActiveCommit *apiv1alpha1.RestoreActiveCommit, fieldManager string) (*RestoreActiveCommitApplyConfiguration, error) {
+	return ExtractRestoreActiveCommitFrom(restoreActiveCommit, fieldManager, "status")
 }
 
-func (b RevertCommitApplyConfiguration) IsApplyConfiguration() {}
+func (b RestoreActiveCommitApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithKind(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithKind(value string) *RestoreActiveCommitApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -102,7 +106,7 @@ func (b *RevertCommitApplyConfiguration) WithKind(value string) *RevertCommitApp
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithAPIVersion(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithAPIVersion(value string) *RestoreActiveCommitApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -110,7 +114,7 @@ func (b *RevertCommitApplyConfiguration) WithAPIVersion(value string) *RevertCom
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithName(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithName(value string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -119,7 +123,7 @@ func (b *RevertCommitApplyConfiguration) WithName(value string) *RevertCommitApp
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithGenerateName(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithGenerateName(value string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -128,7 +132,7 @@ func (b *RevertCommitApplyConfiguration) WithGenerateName(value string) *RevertC
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithNamespace(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithNamespace(value string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -137,7 +141,7 @@ func (b *RevertCommitApplyConfiguration) WithNamespace(value string) *RevertComm
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithUID(value types.UID) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithUID(value types.UID) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -146,7 +150,7 @@ func (b *RevertCommitApplyConfiguration) WithUID(value types.UID) *RevertCommitA
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithResourceVersion(value string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithResourceVersion(value string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -155,7 +159,7 @@ func (b *RevertCommitApplyConfiguration) WithResourceVersion(value string) *Reve
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithGeneration(value int64) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithGeneration(value int64) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -164,7 +168,7 @@ func (b *RevertCommitApplyConfiguration) WithGeneration(value int64) *RevertComm
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithCreationTimestamp(value metav1.Time) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithCreationTimestamp(value metav1.Time) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -173,7 +177,7 @@ func (b *RevertCommitApplyConfiguration) WithCreationTimestamp(value metav1.Time
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -182,7 +186,7 @@ func (b *RevertCommitApplyConfiguration) WithDeletionTimestamp(value metav1.Time
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -192,7 +196,7 @@ func (b *RevertCommitApplyConfiguration) WithDeletionGracePeriodSeconds(value in
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *RevertCommitApplyConfiguration) WithLabels(entries map[string]string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithLabels(entries map[string]string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -207,7 +211,7 @@ func (b *RevertCommitApplyConfiguration) WithLabels(entries map[string]string) *
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *RevertCommitApplyConfiguration) WithAnnotations(entries map[string]string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithAnnotations(entries map[string]string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -221,7 +225,7 @@ func (b *RevertCommitApplyConfiguration) WithAnnotations(entries map[string]stri
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *RevertCommitApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -235,7 +239,7 @@ func (b *RevertCommitApplyConfiguration) WithOwnerReferences(values ...*v1.Owner
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *RevertCommitApplyConfiguration) WithFinalizers(values ...string) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithFinalizers(values ...string) *RestoreActiveCommitApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -243,7 +247,7 @@ func (b *RevertCommitApplyConfiguration) WithFinalizers(values ...string) *Rever
 	return b
 }
 
-func (b *RevertCommitApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *RestoreActiveCommitApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -252,7 +256,7 @@ func (b *RevertCommitApplyConfiguration) ensureObjectMetaApplyConfigurationExist
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithSpec(value *RevertCommitSpecApplyConfiguration) *RevertCommitApplyConfiguration {
+func (b *RestoreActiveCommitApplyConfiguration) WithSpec(value *RestoreActiveCommitSpecApplyConfiguration) *RestoreActiveCommitApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -260,29 +264,29 @@ func (b *RevertCommitApplyConfiguration) WithSpec(value *RevertCommitSpecApplyCo
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *RevertCommitApplyConfiguration) WithStatus(value apiv1alpha1.RevertCommitStatus) *RevertCommitApplyConfiguration {
-	b.Status = &value
+func (b *RestoreActiveCommitApplyConfiguration) WithStatus(value *RestoreActiveCommitStatusApplyConfiguration) *RestoreActiveCommitApplyConfiguration {
+	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *RevertCommitApplyConfiguration) GetKind() *string {
+func (b *RestoreActiveCommitApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *RevertCommitApplyConfiguration) GetAPIVersion() *string {
+func (b *RestoreActiveCommitApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *RevertCommitApplyConfiguration) GetName() *string {
+func (b *RestoreActiveCommitApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *RevertCommitApplyConfiguration) GetNamespace() *string {
+func (b *RestoreActiveCommitApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

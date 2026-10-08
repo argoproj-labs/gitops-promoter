@@ -200,6 +200,12 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
+// ChangeTransferPolicyNameForEnvironment is the object name the PromotionStrategy controller
+// assigns to the ChangeTransferPolicy for one environment branch.
+func ChangeTransferPolicyNameForEnvironment(promotionStrategyName, environmentBranch string) string {
+	return KubeSafeUniqueName(GetChangeTransferPolicyName(promotionStrategyName, environmentBranch))
+}
+
 const changeTransferPolicyHistoryNameSuffix = "-history"
 
 // GetChangeTransferPolicyHistoryName returns the name of the ChangeTransferPolicyHistory owned by

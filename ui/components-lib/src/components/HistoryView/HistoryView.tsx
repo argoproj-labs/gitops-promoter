@@ -339,12 +339,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 </span>
                 {visibleEnvs.map((env, i) => (
                   <span key={env.branch} className="hp-matrix__head-env">
-                    {i > 0 && (
-                      <span className="hp-matrix__head-connector" aria-hidden="true">
-                        <FaArrowRight />
-                      </span>
-                    )}
-                    <span className="hp-matrix__head-pill">{env.branch}</span>
+                    <span className="hp-matrix__head-pill-row">
+                      {i > 0 && (
+                        <span className="hp-matrix__head-connector" aria-hidden="true">
+                          <FaArrowRight />
+                        </span>
+                      )}
+                      <span className="hp-matrix__head-pill">{env.branch}</span>
+                    </span>
                   </span>
                 ))}
               </div>
@@ -456,6 +458,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           row={selectedRow}
           cell={selectedCell}
           branch={selected?.branch ?? null}
+          namespace={namespace}
+          promotionStrategyName={name}
           envs={envs}
           rowsById={rowsById}
           width={drawer.width}

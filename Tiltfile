@@ -132,7 +132,7 @@ promoter_crds = [
     'gitrepositories.promoter.argoproj.io',
     'promotionstrategies.promoter.argoproj.io',
     'pullrequests.promoter.argoproj.io',
-    'revertcommits.promoter.argoproj.io',
+    'restoreactivecommits.promoter.argoproj.io',
     'scheduledcommitstatuses.promoter.argoproj.io',
     'scmproviders.promoter.argoproj.io',
     'timedcommitstatuses.promoter.argoproj.io',

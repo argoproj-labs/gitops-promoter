@@ -18,7 +18,8 @@
   overflow: hidden;
   transition:
     border-color 0.12s ease,
-    background 0.12s ease;
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 
   // Left status rail — a thin colored bar that signals the cell's state
   // without relying on the fill alone.
@@ -35,8 +36,18 @@
   &:hover {
     border-color: $stroke-strong;
   }
+  &:focus-visible {
+    border-radius: $radius-md;
+  }
   &--selected {
-    border-color: $accent !important;
+    z-index: 1;
+    box-shadow:
+      0 0 0 1px $bg-surface,
+      0 0 0 4px $selection,
+      0 6px 16px rgba(15, 35, 60, 0.28);
+    &:focus-visible {
+      outline-offset: 5px;
+    }
   }
 }
 
@@ -54,11 +65,38 @@
     background: $stroke-strong;
   }
 }
+// A restore reuses an earlier version, so it would otherwise look live (green) or
+// replaced (grey). The amber fill is the whole signal that the branch was restored.
+.cell--restore {
+  background: $restored-soft;
+  border-color: $restored-border;
+  &::before {
+    background: $restored-ink;
+  }
+}
 .cell--in-flight {
   background: $pending-soft;
   border-color: $pending-border;
   &::before {
     background: $pending-ink;
+  }
+}
+// A proposed commit blocked by a RestoreActiveCommit keeps the in-flight blue; the stop sign in
+// its pill is what says it will not auto-merge.
+.cell--blocked-env {
+  background: $pending-soft;
+  border-color: $pending-border;
+  &::before {
+    background: $pending-ink;
+  }
+}
+// The proposed commit a RestoreActiveCommit moved off the active branch. It is settled, not failing,
+// so the body reads like a replaced cell; only the BLOCKED pill carries the color.
+.cell--blocked {
+  background: $bg-soft;
+  border-color: $stroke-strong;
+  &::before {
+    background: $stroke-strong;
   }
 }
 .cell--failed {
@@ -148,6 +186,10 @@
     background: $success-ink;
     color: #fff;
   }
+  &--restore {
+    background: $restored-ink;
+    color: #fff;
+  }
   &--was-here {
     background: $bg-surface;
     color: $text-secondary;
@@ -156,6 +198,24 @@
   &--in-flight {
     background: $pending-ink;
     color: #fff;
+  }
+  &--blocked-env {
+    background: $pending-ink;
+    color: #fff;
+  }
+  &--blocked {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+  // Beats the `svg { font-size: 9px }` above. The blocked mark sits straight on the blue
+  // fill; the stroke thickens the octicon's 1.5px lines so they hold up at this size.
+  svg#{&}__stop {
+    color: $held-stop;
+    font-size: 13px;
+    margin: -2px 0;
+    stroke-width: 1.4;
+    overflow: visible;
   }
   &--failed {
     background: $failure-ink;
