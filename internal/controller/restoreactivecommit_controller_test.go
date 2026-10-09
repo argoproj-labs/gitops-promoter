@@ -34,8 +34,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -294,6 +297,151 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			Expect(got[constants.TrailerRestoreUnblockedAt]).To(HaveLen(1))
 			_, err = time.Parse(time.RFC3339, got[constants.TrailerRestoreUnblockedAt][0])
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("records the restore before unblocking when blockEnvironment is false before activeSha is set", func() {
+			ctx := context.Background()
+			// The first reconcile sees blockEnvironment false with no activeSha yet, so it only
+			// records the restore. Nothing else changes spec.generation, so the unblock pass is the
+			// periodic requeue (shipped default 5m). Shorten it before the RestoreActiveCommit
+			// exists so that pass runs inside the test.
+			By("Shortening the RestoreActiveCommit requeue duration")
+			setRestoreActiveCommitRequeueDuration(ctx, 200*time.Millisecond)
+
+			name, scmSecret, scmProvider, gitRepo, _, ctp := changeTransferPolicyResources(ctx, "restore-quick-unblock", "default")
+			strategyName := name + "-ps"
+			ctp.Name = utils.ChangeTransferPolicyNameForEnvironment(strategyName, testBranchDevelopment)
+			ctp.Spec.ActiveBranch = testBranchDevelopment
+			ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+			autoMerge := false
+			ctp.Spec.AutoMerge = &autoMerge
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, ctp)).To(Succeed())
+			DeferCleanup(func() {
+				deleteRestoreActiveCommitsForPolicy(ctx, ctp.Name, ctp.Namespace)
+				_ = k8sClient.Delete(ctx, ctp)
+				_ = k8sClient.Delete(ctx, gitRepo)
+				_ = k8sClient.Delete(ctx, scmProvider)
+				_ = k8sClient.Delete(ctx, scmSecret)
+			})
+
+			gitPath, err := os.MkdirTemp("", "restore-quick-unblock-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+			mustRun := func(args ...string) string {
+				GinkgoHelper()
+				out, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+				return strings.TrimSpace(out)
+			}
+
+			mustRun("clone", testGitRepoCloneURL(gitRepo), ".")
+			mustRun("config", "user.name", "testuser")
+			mustRun("config", "user.email", "testemail@test.com")
+			mustRun("config", "commit.gpgsign", "false")
+			mustRun("checkout", testBranchDevelopment)
+
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v1\n"), 0o644)).To(Succeed())
+			mustRun("add", "version.txt")
+			mustRun("commit", "-m", "version v1")
+			v1Sha := mustRun("rev-parse", "HEAD")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
+
+			note := `{"Pull-request-id":["9"],"Pull-request-merge-time":["2020-01-01T00:00:00Z"]}`
+			mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m", note, v1Sha)
+			mustRun("push", "origin", git.PromoterHistoryNotesRef)
+
+			activeDry := "5555555555555555555555555555555555555555"
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v2\n"), 0o644)).To(Succeed())
+			Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"), []byte(`{"drySha":"`+activeDry+`"}`), 0o644)).To(Succeed())
+			mustRun("add", "version.txt", "hydrator.metadata")
+			mustRun("commit", "-m", "version v2")
+			v2Sha := mustRun("rev-parse", "HEAD")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+
+			mustRun("checkout", "-B", testBranchDevelopmentNext, "origin/"+testBranchDevelopmentNext)
+			Expect(os.WriteFile(path.Join(gitPath, "extra.txt"), []byte("keep\n"), 0o644)).To(Succeed())
+			mustRun("add", "extra.txt")
+			mustRun("commit", "-m", "proposed only")
+			proposedTip := mustRun("rev-parse", "HEAD")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
+
+			ps := promotionStrategyForRestore(strategyName, gitRepo.Name, testBranchDevelopment)
+			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
+			blockEnvironment := false
+			rcName := name + "-rc"
+			rcKey := types.NamespacedName{Name: rcName, Namespace: "default"}
+			rc := &promoterv1alpha1.RestoreActiveCommit{
+				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: "default"},
+				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
+					Branch:               testBranchDevelopment,
+					Sha:                  v1Sha,
+					BlockEnvironment:     &blockEnvironment,
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+			By("Recording activeSha while the object still exists, before the unblock pass deletes it")
+			var activeSha string
+			Eventually(func(g Gomega) {
+				var live promoterv1alpha1.RestoreActiveCommit
+				err := k8sClient.Get(ctx, rcKey, &live)
+				if errors.IsNotFound(err) {
+					g.Expect(activeSha).NotTo(BeEmpty(), "RestoreActiveCommit was deleted before status.activeSha was set")
+					return
+				}
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(live.Spec.BlocksEnvironment()).To(BeFalse())
+				g.Expect(live.Status.ActiveSha).NotTo(BeEmpty())
+				cond := meta.FindStatusCondition(live.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(live.Status.RestoredFrom).To(Equal(v1Sha))
+				g.Expect(live.Status.BlockedDrySha).To(Equal(activeDry))
+				activeSha = live.Status.ActiveSha
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Stamping Promoter-restore-unblocked-at on that commit and deleting the RestoreActiveCommit")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, rcKey, &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
+			mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+
+			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopment)).To(Equal(activeSha))
+			Expect(activeSha).NotTo(Equal(v1Sha))
+			Expect(mustRun("rev-parse", activeSha+"^")).To(Equal(v2Sha))
+			Expect(mustRun("rev-parse", activeSha+"^{tree}")).To(Equal(mustRun("rev-parse", v1Sha+"^{tree}")))
+			Expect(mustRun("show", activeSha+":version.txt")).To(Equal("v1"))
+			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(proposedTip))
+
+			rawNote := mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
+			var got map[string][]string
+			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
+			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1Sha}))
+			Expect(got[constants.TrailerRestoreUnblockedAt]).To(HaveLen(1))
+			_, err = time.Parse(time.RFC3339, got[constants.TrailerRestoreUnblockedAt][0])
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Leaving no RestoreActiveCommit for the policy, because the tip is already unblocked")
+			Consistently(func(g Gomega) {
+				var list promoterv1alpha1.RestoreActiveCommitList
+				g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace("default"))).To(Succeed())
+				for i := range list.Items {
+					g.Expect(changeTransferPolicyNameForRevert(&list.Items[i])).NotTo(Equal(ctp.Name))
+				}
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 		})
 
 		It("releases the finalizer when the ChangeTransferPolicy is already gone", func() {
@@ -689,6 +837,44 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 		proposedTip:       proposedTip,
 		rc:                rc,
 	}
+}
+
+// setRestoreActiveCommitRequeueDuration patches the singleton ControllerConfiguration's
+// restoreActiveCommit.workQueue.requeueDuration for the current test and restores the previous
+// value afterward. Set it before creating the RestoreActiveCommit: the controller applies
+// RequeueAfter from the value it reads at the end of that reconcile.
+func setRestoreActiveCommitRequeueDuration(ctx context.Context, d time.Duration) {
+	GinkgoHelper()
+	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
+	var current promoterv1alpha1.ControllerConfiguration
+	Expect(k8sClient.Get(ctx, key, &current)).To(Succeed())
+	original := current.Spec.RestoreActiveCommit.WorkQueue.RequeueDuration
+
+	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var live promoterv1alpha1.ControllerConfiguration
+		if err := k8sClient.Get(ctx, key, &live); err != nil {
+			return fmt.Errorf("get ControllerConfiguration: %w", err)
+		}
+		live.Spec.RestoreActiveCommit.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
+		if err := k8sClient.Update(ctx, &live); err != nil {
+			return fmt.Errorf("update ControllerConfiguration: %w", err)
+		}
+		return nil
+	})).To(Succeed())
+
+	DeferCleanup(func() {
+		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var live promoterv1alpha1.ControllerConfiguration
+			if err := k8sClient.Get(ctx, key, &live); err != nil {
+				return fmt.Errorf("get ControllerConfiguration: %w", err)
+			}
+			live.Spec.RestoreActiveCommit.WorkQueue.RequeueDuration = original
+			if err := k8sClient.Update(ctx, &live); err != nil {
+				return fmt.Errorf("restore ControllerConfiguration: %w", err)
+			}
+			return nil
+		})).To(Succeed())
+	})
 }
 
 // clearRevertBlockEnvironment sets spec.blockEnvironment to false so the controller stamps
