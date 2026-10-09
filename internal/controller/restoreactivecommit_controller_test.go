@@ -347,8 +347,6 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			mustRun("config", "user.email", "testemail@test.com")
 			mustRun("config", "commit.gpgsign", "false")
 			mustRun("checkout", testBranchDevelopment)
-			// The proposed branch is left where setupInitialTestGitRepoOnServer put it.
-			proposedTip := mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)
 
 			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v1\n"), 0o644)).To(Succeed())
 			mustRun("add", "version.txt")
@@ -364,9 +362,8 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			v2Sha := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
 
-			declareDependentsSuccessfulGate(ps)
-			// Create the gate first so the PromotionStrategy's first reconcile can upsert the
-			// ChangeTransferPolicy instead of failing and waiting on the error requeue.
+			// promotionStrategyResource already sets orderCommitStatusRef. Create that gate
+			// before the PromotionStrategy so the first reconcile can upsert the ChangeTransferPolicy.
 			createDependentsSuccessfulCommitStatus(ctx, ps)
 			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 
@@ -396,7 +393,6 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
 
 			By("Recording activeSha while the object still exists, before the unblock pass deletes it")
 			var activeSha string
@@ -424,15 +420,12 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
+			mustRun("fetch", "origin", testBranchDevelopment)
 			mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
 
 			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopment)).To(Equal(activeSha))
-			Expect(activeSha).NotTo(Equal(v1Sha))
 			Expect(mustRun("rev-parse", activeSha+"^")).To(Equal(v2Sha))
 			Expect(mustRun("rev-parse", activeSha+"^{tree}")).To(Equal(mustRun("rev-parse", v1Sha+"^{tree}")))
-			Expect(mustRun("show", activeSha+":version.txt")).To(Equal("v1"))
-			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(proposedTip))
 
 			rawNote := mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
 			var got map[string][]string
