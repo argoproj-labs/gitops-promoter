@@ -308,21 +308,24 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			By("Shortening the RestoreActiveCommit requeue duration")
 			setRestoreActiveCommitRequeueDuration(ctx, 200*time.Millisecond)
 
-			name, scmSecret, scmProvider, gitRepo, _, ctp := changeTransferPolicyResources(ctx, "restore-quick-unblock", "default")
-			strategyName := name + "-ps"
-			ctp.Name = utils.ChangeTransferPolicyNameForEnvironment(strategyName, testBranchDevelopment)
-			ctp.Spec.ActiveBranch = testBranchDevelopment
-			ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+			_, scmSecret, scmProvider, gitRepo, _, _, ps := promotionStrategyResource(ctx, "restore-quick-unblock", "default")
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 			autoMerge := false
-			ctp.Spec.AutoMerge = &autoMerge
+			ps.Spec.Environments = []promoterv1alpha1.Environment{{
+				Branch:    testBranchDevelopment,
+				AutoMerge: &autoMerge,
+			}}
+			ctpName := utils.ChangeTransferPolicyNameForEnvironment(ps.Name, testBranchDevelopment)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, ctp)).To(Succeed())
 			DeferCleanup(func() {
-				deleteRestoreActiveCommitsForPolicy(ctx, ctp.Name, ctp.Namespace)
-				_ = k8sClient.Delete(ctx, ctp)
+				deleteRestoreActiveCommitsForPolicy(ctx, ctpName, ps.Namespace)
+				_ = k8sClient.Delete(ctx, ps)
+				_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
+				})
 				_ = k8sClient.Delete(ctx, gitRepo)
 				_ = k8sClient.Delete(ctx, scmProvider)
 				_ = k8sClient.Delete(ctx, scmSecret)
@@ -371,17 +374,32 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			proposedTip := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
 
-			ps := promotionStrategyForRestore(strategyName, gitRepo.Name, testBranchDevelopment)
+			declareDependentsSuccessfulGate(ps)
+			// Create the gate first so the PromotionStrategy's first reconcile can upsert the
+			// ChangeTransferPolicy instead of failing and waiting on the error requeue.
+			createDependentsSuccessfulCommitStatus(ctx, ps)
 			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
+			By("Waiting for the PromotionStrategy to create the ChangeTransferPolicy")
+			var ctp promoterv1alpha1.ChangeTransferPolicy
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpName, Namespace: "default"}, &ctp)).To(Succeed())
+				g.Expect(ctp.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+				g.Expect(ctp.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
+				g.Expect(ctp.Spec.AutoMerge).To(HaveValue(BeFalse()))
+				g.Expect(ctp.OwnerReferences).To(HaveLen(1))
+				g.Expect(ctp.OwnerReferences[0].Name).To(Equal(ps.Name))
+				g.Expect(ctp.OwnerReferences[0].Kind).To(Equal("PromotionStrategy"))
+				g.Expect(ctp.OwnerReferences[0].UID).To(Equal(ps.UID))
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			blockEnvironment := false
-			rcName := name + "-rc"
-			rcKey := types.NamespacedName{Name: rcName, Namespace: "default"}
+			rcName := ps.Name + "-rc"
+			rcKey := types.NamespacedName{Name: rcName, Namespace: ps.Namespace}
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: ps.Namespace},
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 					Branch:               testBranchDevelopment,
 					Sha:                  v1Sha,
 					BlockEnvironment:     &blockEnvironment,
