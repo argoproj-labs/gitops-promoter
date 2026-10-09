@@ -111,7 +111,7 @@ require (
 	github.com/google/go-github/v88 v88.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
