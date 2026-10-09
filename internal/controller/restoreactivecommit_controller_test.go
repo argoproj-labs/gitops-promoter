@@ -347,17 +347,14 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			mustRun("config", "user.email", "testemail@test.com")
 			mustRun("config", "commit.gpgsign", "false")
 			mustRun("checkout", testBranchDevelopment)
+			// The proposed branch is left where setupInitialTestGitRepoOnServer put it.
+			proposedTip := mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)
 
 			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v1\n"), 0o644)).To(Succeed())
 			mustRun("add", "version.txt")
 			mustRun("commit", "-m", "version v1")
 			v1Sha := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
-			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
-
-			note := `{"Pull-request-id":["9"],"Pull-request-merge-time":["2020-01-01T00:00:00Z"]}`
-			mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m", note, v1Sha)
-			mustRun("push", "origin", git.PromoterHistoryNotesRef)
 
 			activeDry := "5555555555555555555555555555555555555555"
 			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v2\n"), 0o644)).To(Succeed())
@@ -366,13 +363,6 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			mustRun("commit", "-m", "version v2")
 			v2Sha := mustRun("rev-parse", "HEAD")
 			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
-
-			mustRun("checkout", "-B", testBranchDevelopmentNext, "origin/"+testBranchDevelopmentNext)
-			Expect(os.WriteFile(path.Join(gitPath, "extra.txt"), []byte("keep\n"), 0o644)).To(Succeed())
-			mustRun("add", "extra.txt")
-			mustRun("commit", "-m", "proposed only")
-			proposedTip := mustRun("rev-parse", "HEAD")
-			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopmentNext)
 
 			declareDependentsSuccessfulGate(ps)
 			// Create the gate first so the PromotionStrategy's first reconcile can upsert the
