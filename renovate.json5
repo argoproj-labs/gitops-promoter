@@ -121,7 +121,7 @@
       // make mod-tidy syncs follower deps (kube-openapi digest, SMD /vN) to CR.
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
@@ -165,7 +165,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
@@ -359,7 +359,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           // go fix at the current go.mod language version, then again at the new
           // toolchain's language version if it is newer. The bump is kept only if
           // the resulting code does not compile at the old floor.
@@ -472,7 +472,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make build-installer',
         ],
         fileFilters: [
@@ -492,7 +492,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make build-installer',
         ],
         // build-installer also runs cel-cost-report and generate-extension-icon-styles;
@@ -520,7 +520,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make manifests',
           'make build-installer',
         ],

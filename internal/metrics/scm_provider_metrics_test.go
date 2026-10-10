@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -15,7 +14,7 @@ import (
 var _ = Describe("RecordSCMCall", func() {
 	It("records scm_calls_total with empty git_repository for provider-only scope", func() {
 		provider := &promoterv1alpha1.ClusterScmProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "scm-provider-metrics-test"},
+			Name: "scm-provider-metrics-test",
 		}
 		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationListInstallations, 200, 50*time.Millisecond, nil)
 		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "scm-provider-metrics-test", "", "ClusterScmProvider", "Provider", "list-installations", "200"))).To(Equal(1.0))
@@ -27,7 +26,7 @@ var _ = Describe("RecordSCMCall", func() {
 	It("keeps same-named namespaced resources on separate series", func() {
 		repo := func(namespace string) *promoterv1alpha1.GitRepository {
 			return &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: namespace},
+				Name: "repo", Namespace: namespace,
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Name: "provider"},
 				},
@@ -51,7 +50,7 @@ var _ = Describe("RecordSCMCall", func() {
 
 	It("records the ScmProvider namespace on provider-only calls", func() {
 		provider := &promoterv1alpha1.ScmProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "namespaced-provider", Namespace: "team-a"},
+			Name: "namespaced-provider", Namespace: "team-a",
 		}
 		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationListInstallations, 200, time.Millisecond, nil)
 		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "namespaced-provider", "team-a", "ScmProvider", "Provider", "list-installations", "200"))).To(Equal(1.0))
@@ -59,7 +58,7 @@ var _ = Describe("RecordSCMCall", func() {
 
 	It("leaves scm_provider_namespace empty for a GitRepository that references a ClusterScmProvider", func() {
 		repo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "team-a"},
+			Name: "repo", Namespace: "team-a",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "cluster-provider"},
 			},
@@ -72,7 +71,7 @@ var _ = Describe("RecordSCMCall", func() {
 		providerRef := promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "scm-account-metrics-test"}
 		repo := func(owner string) *promoterv1alpha1.GitRepository {
 			return &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{Name: owner + "-repo", Namespace: "default"},
+				Name: owner + "-repo", Namespace: "default",
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					ScmProviderRef: providerRef,
 					GitHub:         &promoterv1alpha1.GitHubRepo{Owner: owner, Name: "app"},
@@ -99,7 +98,7 @@ var _ = Describe("RecordSCMCall", func() {
 
 	It("leaves scm_account empty when the provider credential is the rate-limit bucket", func() {
 		repo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "gl-repo", Namespace: "default"},
+			Name: "gl-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Name: "scm-account-gitlab-test"},
 				GitLab:         &promoterv1alpha1.GitLabRepo{Namespace: "group/sub", Name: "app", ProjectID: 1},
