@@ -173,7 +173,7 @@ var _ = Describe("BuildBundle", func() {
 	It("assembles a bundle joining all related resources without any Secret", func() {
 		reader := newFakeReader(seedObjects()...)
 
-		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "42")
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "42", true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(bundle).NotTo(BeNil())
 
@@ -246,7 +246,7 @@ var _ = Describe("BuildBundle", func() {
 		}
 		reader := newFakeReader(seeded...)
 
-		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "42")
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "42", true)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("stripping managedFields and the last-applied annotation while preserving others")
@@ -258,7 +258,7 @@ var _ = Describe("BuildBundle", func() {
 	It("returns NotFound when the PromotionStrategy is missing", func() {
 		reader := newFakeReader()
 
-		_, err := buildBundle(context.Background(), reader, testNamespace, "missing", "1")
+		_, err := buildBundle(context.Background(), reader, testNamespace, "missing", "1", true)
 		Expect(err).To(HaveOccurred())
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
@@ -283,10 +283,35 @@ var _ = Describe("BuildBundle", func() {
 		}
 		reader := newFakeReader(objs...)
 
-		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "1")
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "1", true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(bundle.ScmProvider).To(BeNil())
 		Expect(bundle.ClusterScmProvider).NotTo(BeNil())
 		Expect(bundle.ClusterScmProvider.Name).To(Equal("cluster-scm"))
+	})
+
+	It("omits the ClusterScmProvider when ClusterScmProvider support is disabled", func() {
+		objs := []client.Object{
+			&promoterv1alpha1.PromotionStrategy{
+				Name: testPSName, Namespace: testNamespace,
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+				},
+			},
+			&promoterv1alpha1.GitRepository{
+				ObjectMeta: objectMeta("my-repo"),
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: "ClusterScmProvider", Name: "cluster-scm"},
+				},
+			},
+			&promoterv1alpha1.ClusterScmProvider{Name: "cluster-scm"},
+		}
+
+		bundle, err := buildBundle(context.Background(), newFakeReader(objs...), testNamespace, testPSName, "1", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(bundle.GitRepository).NotTo(BeNil())
+		Expect(bundle.ClusterScmProvider).To(BeNil())
 	})
 })

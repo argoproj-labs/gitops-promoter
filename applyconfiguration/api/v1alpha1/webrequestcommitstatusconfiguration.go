@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // WebRequestCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the WebRequestCommitStatusConfiguration type for use
 // with apply.
 //
@@ -28,6 +32,9 @@ type WebRequestCommitStatusConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
+	// NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
+	// When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+	NamespaceMetadata *apiv1alpha1.FeatureMode `json:"namespaceMetadata,omitempty"`
 }
 
 // WebRequestCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusConfiguration type for use with
@@ -41,5 +48,13 @@ func WebRequestCommitStatusConfiguration() *WebRequestCommitStatusConfigurationA
 // If called multiple times, the WorkQueue field is set to the value of the last call.
 func (b *WebRequestCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *WebRequestCommitStatusConfigurationApplyConfiguration {
 	b.WorkQueue = value
+	return b
+}
+
+// WithNamespaceMetadata sets the NamespaceMetadata field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the NamespaceMetadata field is set to the value of the last call.
+func (b *WebRequestCommitStatusConfigurationApplyConfiguration) WithNamespaceMetadata(value apiv1alpha1.FeatureMode) *WebRequestCommitStatusConfigurationApplyConfiguration {
+	b.NamespaceMetadata = &value
 	return b
 }

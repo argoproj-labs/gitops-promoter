@@ -37,7 +37,7 @@ kube-aggregator proxy.
 | `Deployment promoter-apiserver` | runs `gitops-promoter apiserver --secure-port=6443 ...` |
 | `Service promoter-apiserver` | `443 -> 6443` |
 | `APIService v1alpha1.view.promoter.argoproj.io` | registers the group with the kube-aggregator |
-| `ServiceAccount promoter-apiserver` + RBAC | read all promoter CRDs; `system:auth-delegator`; `extension-apiserver-authentication-reader` in `kube-system` |
+| `ServiceAccount promoter-apiserver` + RBAC | read all promoter CRDs and the `ControllerConfiguration`; `system:auth-delegator`; `extension-apiserver-authentication-reader` in `kube-system` |
 
 The base is intentionally **not** folded into `config/default`: the default overlay's
 `namespace: promoter-system` transformer would relocate the

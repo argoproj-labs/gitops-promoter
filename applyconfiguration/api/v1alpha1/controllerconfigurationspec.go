@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // ControllerConfigurationSpecApplyConfiguration represents a declarative configuration of the ControllerConfigurationSpec type for use
 // with apply.
 //
@@ -72,6 +76,11 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	RestoreActiveCommit *RestoreActiveCommitConfigurationApplyConfiguration `json:"restoreActiveCommit,omitempty"`
+	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
+	ClusterScmProvider *ClusterScmProviderConfigurationApplyConfiguration `json:"clusterScmProvider,omitempty"`
+	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+	// Requires a controller restart.
+	Scope *apiv1alpha1.ControllerScope `json:"scope,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -181,5 +190,21 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatu
 // If called multiple times, the RestoreActiveCommit field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithRestoreActiveCommit(value *RestoreActiveCommitConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.RestoreActiveCommit = value
+	return b
+}
+
+// WithClusterScmProvider sets the ClusterScmProvider field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClusterScmProvider field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithClusterScmProvider(value *ClusterScmProviderConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.ClusterScmProvider = value
+	return b
+}
+
+// WithScope sets the Scope field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Scope field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithScope(value apiv1alpha1.ControllerScope) *ControllerConfigurationSpecApplyConfiguration {
+	b.Scope = &value
 	return b
 }

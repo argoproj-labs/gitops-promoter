@@ -1,0 +1,11 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+  namespace: promoter-system
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Disabled
+  webRequestCommitStatus:
+    namespaceMetadata: Disabled

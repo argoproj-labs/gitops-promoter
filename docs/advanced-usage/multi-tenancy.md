@@ -32,6 +32,69 @@ that one tenant's resources do not reference another tenant's resources within t
 If there are no trust boundaries to be enforced among PromotionStrategy users, a GitOps Promoter admin may choose to 
 host all resources in a single namespace, keeping in mind the need to avoid resource name collisions.
 
+## Install modes
+
+By default, GitOps Promoter watches all namespaces and requires a `ClusterRole`. To run it with a namespace-scoped
+`Role` instead, configure these `ControllerConfiguration` fields:
+
+| Field | Values | Description |
+| --- | --- | --- |
+| `spec.scope` | `Cluster` (default), `Namespace` | Which namespaces are watched. `Namespace` watches only the install namespace. |
+| `spec.clusterScmProvider.mode` | `Enabled` (default), `Disabled` | Whether `ClusterScmProvider` resources can be used. |
+| `spec.webRequestCommitStatus.namespaceMetadata` | `Enabled` (default), `Disabled` | Whether `NamespaceMetadata` is available to WebRequestCommitStatus templates and expressions. When disabled, it is empty. |
+
+Restart the controller after changing `spec.scope` or `spec.clusterScmProvider.mode`.
+
+### Cluster (default)
+
+Watches all namespaces. Requires a `ClusterRole`.
+
+```yaml
+spec:
+  scope: Cluster
+  clusterScmProvider:
+    mode: Enabled
+  webRequestCommitStatus:
+    namespaceMetadata: Enabled
+```
+
+### Namespaced with cluster resources
+
+Watches only the install namespace, but keeps `ClusterScmProvider` and `NamespaceMetadata` support. Requires a `Role`
+in the install namespace, plus a `ClusterRole` to read `clusterscmproviders` and `namespaces`.
+
+```yaml
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Enabled
+  webRequestCommitStatus:
+    namespaceMetadata: Enabled
+```
+
+### Fully isolated
+
+Watches only the install namespace and uses no cluster-scoped resources. Requires only a `Role` in the install namespace.
+
+```yaml
+spec:
+  scope: Namespace
+  clusterScmProvider:
+    mode: Disabled
+  webRequestCommitStatus:
+    namespaceMetadata: Disabled
+```
+
+The `-namespaced` release bundles use this mode. See [Installation](../getting-started.md#namespace-isolated).
+
+### Limitations of namespaced modes
+
+* Only resources in the install namespace are reconciled, including CommitStatuses. PromotionStrategies cannot be gated
+  by CommitStatuses in other namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)).
+* CRDs are cluster-scoped and must still be installed by a cluster administrator.
+* The dashboard API is registered cluster-wide and requires cluster-scoped permissions for authentication. Only one
+  dashboard API can be installed per cluster.
+
 ## CommitStatus Tenancy
 
 As with PromotionStrategies, all references from CommitStatuses (to GitRepositories, then ScmProviders, and finally to

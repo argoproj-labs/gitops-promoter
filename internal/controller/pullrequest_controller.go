@@ -595,7 +595,7 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
 	scmProvider, secret, gitRepository, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
-		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
+		ctx, r.Client, r.SettingsMgr, pr.Spec.RepositoryReference, &pr,
 	)
 	if err != nil {
 		if !pr.DeletionTimestamp.IsZero() && k8serrors.IsNotFound(err) {
@@ -616,7 +616,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.GetSpec().Gitea != nil:
 		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().AzureDevOps != nil:
-		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck // provider factory returns descriptive errors
+		return azuredevops.NewAzdoPullRequestProvider(r.Client, r.SettingsMgr, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

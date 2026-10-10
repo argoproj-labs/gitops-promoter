@@ -39,6 +39,15 @@ rules:
       - get
       - list
       - watch
+  # Read at startup for spec.scope and spec.clusterScmProvider.mode.
+  - apiGroups:
+      - promoter.argoproj.io
+    resources:
+      - controllerconfigurations
+    resourceNames:
+      - promoter-controller-configuration
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

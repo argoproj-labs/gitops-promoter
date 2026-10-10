@@ -36,9 +36,13 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -4594,3 +4598,53 @@ func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerB
 	}
 	return ""
 }
+
+var _ = Describe("WebRequestCommitStatus namespace metadata", func() {
+	const controllerNamespace = "promoter-system"
+
+	newReconciler := func(mode promoterv1alpha1.FeatureMode, namespaceGets *int) *WebRequestCommitStatusReconciler {
+		cc := &promoterv1alpha1.ControllerConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: settings.ControllerConfigurationName, Namespace: controllerNamespace},
+		}
+		cc.Spec.WebRequestCommitStatus.NamespaceMetadata = mode
+		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+			Name:        "team-a",
+			Labels:      map[string]string{"team": "payments"},
+			Annotations: map[string]string{"cost-center": "42"},
+		}}
+		c := fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithObjects(cc, ns).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, c ctrlclient.WithWatch, key ctrlclient.ObjectKey, obj ctrlclient.Object, opts ...ctrlclient.GetOption) error {
+					if _, ok := obj.(*corev1.Namespace); ok {
+						*namespaceGets++
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			}).Build()
+		return &WebRequestCommitStatusReconciler{
+			Client:      c,
+			SettingsMgr: settings.NewManager(c, c, settings.ManagerConfig{ControllerNamespace: controllerNamespace}),
+		}
+	}
+
+	It("reads the Namespace when namespace metadata is enabled", func() {
+		gets := 0
+		r := newReconciler(promoterv1alpha1.FeatureModeEnabled, &gets)
+
+		meta, err := r.getNamespaceMetadata(context.Background(), "team-a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(meta.Labels).To(HaveKeyWithValue("team", "payments"))
+		Expect(meta.Annotations).To(HaveKeyWithValue("cost-center", "42"))
+		Expect(gets).To(Equal(1))
+	})
+
+	It("returns empty metadata without reading the Namespace when namespace metadata is disabled", func() {
+		gets := 0
+		r := newReconciler(promoterv1alpha1.FeatureModeDisabled, &gets)
+
+		meta, err := r.getNamespaceMetadata(context.Background(), "team-a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(meta).To(Equal(webrequest.NamespaceMetadata{}))
+		Expect(gets).To(Equal(0))
+	})
+})

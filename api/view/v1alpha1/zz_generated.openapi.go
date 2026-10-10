@@ -60,6 +60,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
 		apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
 		apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref),
+		apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderConfiguration(ref),
 		apiv1alpha1.ClusterScmProviderList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref),
 		apiv1alpha1.CommitBranchState{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref),
 		apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryProposed(ref),
@@ -1595,6 +1596,26 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClusterScmProviderConfiguration defines the configuration for ClusterScmProvider support.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"mode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Mode enables or disables ClusterScmProvider support. When Disabled, ClusterScmProviders are not watched and references to them fail. Requires a controller restart.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -2346,12 +2367,26 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"clusterScmProvider": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ClusterScmProvider contains the configuration for ClusterScmProvider support.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName()),
+						},
+					},
+					"scope": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only). Requires a controller restart.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -6597,6 +6632,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusCon
 							Description: "WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+					"namespaceMetadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions. When Disabled, Namespaces are not watched and NamespaceMetadata is empty.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},

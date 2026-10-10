@@ -921,3 +921,54 @@ var _ = Describe("GetChangeTransferPolicyHistoryName", func() {
 		Expect(name).To(ContainSubstring(ctpName[len(ctpName)-8:]))
 	})
 })
+
+var _ = Describe("GetScmProviderFromGitRepository", func() {
+	const controllerNamespace = "promoter-system"
+	ctx := context.Background()
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: promoterv1alpha1.ClusterScmProviderKind, Name: "cluster-scm"},
+		},
+	}
+
+	controllerConfiguration := func(mode promoterv1alpha1.FeatureMode) *promoterv1alpha1.ControllerConfiguration {
+		cc := &promoterv1alpha1.ControllerConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: settings.ControllerConfigurationName, Namespace: controllerNamespace},
+		}
+		cc.Spec.ClusterScmProvider.Mode = mode
+		return cc
+	}
+
+	It("returns an error without reading the ClusterScmProvider when ClusterScmProvider support is disabled", func() {
+		providerGets := 0
+		fakeClient := fake.NewClientBuilder().WithScheme(utils.GetScheme()).
+			WithObjects(controllerConfiguration(promoterv1alpha1.FeatureModeDisabled)).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*promoterv1alpha1.ClusterScmProvider); ok {
+						providerGets++
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			}).Build()
+		settingsMgr := settings.NewManager(fakeClient, fakeClient, settings.ManagerConfig{ControllerNamespace: controllerNamespace})
+
+		_, err := utils.GetScmProviderFromGitRepository(ctx, fakeClient, settingsMgr, gitRepo, gitRepo)
+		Expect(err).To(MatchError(ContainSubstring("ClusterScmProvider support is disabled")))
+		Expect(providerGets).To(Equal(0))
+	})
+
+	It("reads the ClusterScmProvider when ClusterScmProvider support is enabled", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(utils.GetScheme()).
+			WithObjects(
+				controllerConfiguration(promoterv1alpha1.FeatureModeEnabled),
+				&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}},
+			).Build()
+		settingsMgr := settings.NewManager(fakeClient, fakeClient, settings.ManagerConfig{ControllerNamespace: controllerNamespace})
+
+		provider, err := utils.GetScmProviderFromGitRepository(ctx, fakeClient, settingsMgr, gitRepo, gitRepo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(provider.GetName()).To(Equal("cluster-scm"))
+	})
+})

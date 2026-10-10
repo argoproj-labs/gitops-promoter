@@ -8,6 +8,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"golang.org/x/time/rate"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -78,6 +79,8 @@ type ControllerResultTypes interface {
 type ManagerConfig struct {
 	// ControllerNamespace is the namespace where the promoter controller is running.
 	// This namespace is used when fetching the ControllerConfiguration resource from the cluster.
+	// When ControllerConfiguration.spec.scope is Namespace, the
+	// controller-runtime cache is also limited to this namespace.
 	ControllerNamespace string
 }
 
@@ -254,6 +257,47 @@ func GetRateLimiterDirect[T ControllerConfigurationTypes, R ControllerResultType
 	}
 
 	return limiter, nil
+}
+
+// GetScopeDirect returns spec.scope using a non-cached read.
+// It is safe to call before the manager cache has started.
+func (m *Manager) GetScopeDirect(ctx context.Context) (promoterv1alpha1.ControllerScope, error) {
+	cc, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return "", fmt.Errorf("ControllerConfiguration %q not found in namespace %q (required before controller start): %w",
+				ControllerConfigurationName, m.config.ControllerNamespace, err)
+		}
+		return "", err
+	}
+	return cc.Spec.Scope, nil
+}
+
+// GetClusterScmProviderModeDirect returns spec.clusterScmProvider.mode using a non-cached read.
+func (m *Manager) GetClusterScmProviderModeDirect(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
+	cc, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.ClusterScmProvider.Mode, nil
+}
+
+// GetClusterScmProviderMode returns spec.clusterScmProvider.mode.
+func (m *Manager) GetClusterScmProviderMode(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
+	cc, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.ClusterScmProvider.Mode, nil
+}
+
+// GetWebRequestCommitStatusNamespaceMetadata returns spec.webRequestCommitStatus.namespaceMetadata.
+func (m *Manager) GetWebRequestCommitStatusNamespaceMetadata(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
+	cc, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.WebRequestCommitStatus.NamespaceMetadata, nil
 }
 
 // getWorkQueueForController retrieves the WorkQueue configuration for a specific controller type.

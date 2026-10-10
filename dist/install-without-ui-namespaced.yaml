@@ -9637,6 +9637,157 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promoter-manager-role
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses
+  - dependentssuccessfulcommitstatuses
+  - gitcommitstatuses
+  - promotionstrategies
+  - scheduledcommitstatuses
+  - timedcommitstatuses
+  - webrequestcommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses/finalizers
+  - changetransferpolicies/finalizers
+  - changetransferpolicyhistories/finalizers
+  - clusterscmproviders/finalizers
+  - dependentssuccessfulcommitstatuses/finalizers
+  - gitcommitstatuses/finalizers
+  - gitrepositories/finalizers
+  - promotionstrategies/finalizers
+  - pullrequests/finalizers
+  - scheduledcommitstatuses/finalizers
+  - scmproviders/finalizers
+  - timedcommitstatuses/finalizers
+  - webrequestcommitstatuses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses/status
+  - changetransferpolicies/status
+  - changetransferpolicyhistories/status
+  - clusterscmproviders/status
+  - commitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
+  - gitcommitstatuses/status
+  - gitrepositories/status
+  - promotionstrategies/status
+  - pullrequests/status
+  - restoreactivecommits/status
+  - scheduledcommitstatuses/status
+  - scmproviders/status
+  - timedcommitstatuses/status
+  - webrequestcommitstatuses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  - commitstatuses
+  - pullrequests
+  - restoreactivecommits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicyhistories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - clusterscmproviders
+  - gitrepositories
+  - scmproviders
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
@@ -10044,156 +10195,6 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: promoter-manager-role
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - ""
-  - events.k8s.io
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - argoproj.io
-  resources:
-  - applications
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses
-  - dependentssuccessfulcommitstatuses
-  - gitcommitstatuses
-  - promotionstrategies
-  - scheduledcommitstatuses
-  - timedcommitstatuses
-  - webrequestcommitstatuses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses/finalizers
-  - changetransferpolicies/finalizers
-  - changetransferpolicyhistories/finalizers
-  - clusterscmproviders/finalizers
-  - dependentssuccessfulcommitstatuses/finalizers
-  - gitcommitstatuses/finalizers
-  - gitrepositories/finalizers
-  - promotionstrategies/finalizers
-  - pullrequests/finalizers
-  - scheduledcommitstatuses/finalizers
-  - scmproviders/finalizers
-  - timedcommitstatuses/finalizers
-  - webrequestcommitstatuses/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses/status
-  - changetransferpolicies/status
-  - changetransferpolicyhistories/status
-  - clusterscmproviders/status
-  - commitstatuses/status
-  - dependentssuccessfulcommitstatuses/status
-  - gitcommitstatuses/status
-  - gitrepositories/status
-  - promotionstrategies/status
-  - pullrequests/status
-  - restoreactivecommits/status
-  - scheduledcommitstatuses/status
-  - scmproviders/status
-  - timedcommitstatuses/status
-  - webrequestcommitstatuses/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - changetransferpolicies
-  - commitstatuses
-  - pullrequests
-  - restoreactivecommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - changetransferpolicyhistories
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - clusterscmproviders
-  - gitrepositories
-  - scmproviders
-  verbs:
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resourceNames:
-  - promoter-controller-configuration
-  resources:
-  - controllerconfigurations
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resourceNames:
-  - promoter-controller-configuration
-  resources:
-  - controllerconfigurations/status
-  verbs:
-  - get
-  - patch
-  - update
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
   labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
@@ -10468,7 +10469,7 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/component: rbac
@@ -10478,9 +10479,10 @@ metadata:
     app.kubernetes.io/name: clusterrolebinding
     app.kubernetes.io/part-of: promoter
   name: promoter-manager-rolebinding
+  namespace: promoter-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: promoter-manager-role
 subjects:
 - kind: ServiceAccount
@@ -10699,7 +10701,7 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   clusterScmProvider:
-    mode: Enabled
+    mode: Disabled
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -10842,7 +10844,7 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  scope: Cluster
+  scope: Namespace
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -10857,7 +10859,7 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   webRequestCommitStatus:
-    namespaceMetadata: Enabled
+    namespaceMetadata: Disabled
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

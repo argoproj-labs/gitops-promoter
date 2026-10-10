@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Same as release-combined-byo-cert, but with the fully isolated controller (config/namespaced).
+# Builds the published install-with-dashboard-byo-cert-namespaced.yaml. The dashboard
+# apiserver reads only promoter-system but still uses cluster-scoped delegated authentication.
+
+resources:
+  - ../../namespaced
+  - ../certs-manual
+
+components:
+  - ../namespaced-rbac
+
+images:
+  - name: quay.io/argoprojlabs/gitops-promoter

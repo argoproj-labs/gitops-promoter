@@ -68,17 +68,29 @@ type BundleProvider struct {
 	// give label-selector watchers correct ADDED/DELETED transitions when an
 	// object's labels start or stop matching their selector.
 	known map[types.NamespacedName]labels.Set
+	// namespace, when set, is the only namespace the cache holds. Requests for other namespaces return nothing.
+	namespace string
+	// clusterScmProviderEnabled controls whether ClusterScmProviders are watched and resolved.
+	clusterScmProviderEnabled bool
 
 	mu     sync.RWMutex
 	rv     atomic.Uint64
 	nextID int
 }
 
-// NewBundleProvider creates a provider backed by the given cache.
-func NewBundleProvider(c cache.Cache) *BundleProvider {
+// NewBundleProvider creates a provider backed by the given cache. namespace is the only namespace the cache
+// holds, or empty for all namespaces.
+func NewBundleProvider(c cache.Cache, namespace string, clusterScmProviderEnabled bool) *BundleProvider {
 	p := newProviderWithReader(c)
 	p.cache = c
+	p.namespace = namespace
+	p.clusterScmProviderEnabled = clusterScmProviderEnabled
 	return p
+}
+
+// outOfScope reports whether namespace is outside the namespace the cache holds.
+func (p *BundleProvider) outOfScope(namespace string) bool {
+	return p.namespace != "" && namespace != "" && namespace != p.namespace
 }
 
 // newProviderWithReader creates a provider backed by an arbitrary read-only client.
@@ -91,8 +103,9 @@ func newProviderWithReader(reader client.Reader) *BundleProvider {
 			workqueue.DefaultTypedControllerRateLimiter[types.NamespacedName](),
 			workqueue.TypedRateLimitingQueueConfig[types.NamespacedName]{Name: "dashboard-bundles"},
 		),
-		watchers: map[int]*bundleWatcher{},
-		known:    map[types.NamespacedName]labels.Set{},
+		watchers:                  map[int]*bundleWatcher{},
+		known:                     map[types.NamespacedName]labels.Set{},
+		clusterScmProviderEnabled: true,
 	}
 	p.rv.Store(1)
 	return p
@@ -110,7 +123,7 @@ func (p *BundleProvider) currentResourceVersion() string {
 
 // childKinds are all resource kinds whose changes can affect a bundle.
 func (p *BundleProvider) childKinds() []client.Object {
-	return append([]client.Object{
+	kinds := []client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
 		&promoterv1alpha1.ChangeTransferPolicyHistory{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
@@ -119,8 +132,11 @@ func (p *BundleProvider) childKinds() []client.Object {
 		&promoterv1alpha1.CommitStatus{},
 		&promoterv1alpha1.GitRepository{},
 		&promoterv1alpha1.ScmProvider{},
-		&promoterv1alpha1.ClusterScmProvider{},
-	}, controller.GateCommitStatusKinds()...)
+	}
+	if p.clusterScmProviderEnabled {
+		kinds = append(kinds, &promoterv1alpha1.ClusterScmProvider{})
+	}
+	return append(kinds, controller.GateCommitStatusKinds()...)
 }
 
 // SetupInformers registers event handlers for all child kinds so that any change
@@ -186,7 +202,7 @@ func (p *BundleProvider) processNext(ctx context.Context) bool {
 // resulting watch event (ADDED/MODIFIED/DELETED) to matching watchers. A non-nil
 // error means the rebuild failed transiently and the caller should retry.
 func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedName) error {
-	bundle, err := buildBundle(ctx, p.reader, key.Namespace, key.Name, p.nextResourceVersion())
+	bundle, err := buildBundle(ctx, p.reader, key.Namespace, key.Name, p.nextResourceVersion(), p.clusterScmProviderEnabled)
 	if apierrors.IsNotFound(err) {
 		p.mu.Lock()
 		lastLabels, wasKnown := p.known[key]
@@ -325,7 +341,10 @@ func (p *BundleProvider) keysReferencingScmProvider(ctx context.Context, provide
 
 // Get builds the bundle for a single PromotionStrategy.
 func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*viewv1alpha1.PromotionStrategyDetails, error) {
-	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion())
+	if p.outOfScope(namespace) {
+		return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
+	}
+	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion(), p.clusterScmProviderEnabled)
 }
 
 // List builds bundles for the PromotionStrategies in the given namespace (all
@@ -337,6 +356,9 @@ func (p *BundleProvider) List(ctx context.Context, namespace, name string, label
 	rv := p.currentResourceVersion()
 	out := &viewv1alpha1.PromotionStrategyDetailsList{
 		ResourceVersion: rv,
+	}
+	if p.outOfScope(namespace) {
+		return out, nil
 	}
 
 	if name != "" {
@@ -369,7 +391,7 @@ func (p *BundleProvider) List(ctx context.Context, namespace, name string, label
 		if !matchesLabels(labelSelector, ps.Labels) {
 			continue
 		}
-		bundle, err := buildBundle(ctx, p.reader, ps.Namespace, ps.Name, rv)
+		bundle, err := buildBundle(ctx, p.reader, ps.Namespace, ps.Name, rv, p.clusterScmProviderEnabled)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
