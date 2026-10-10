@@ -17,7 +17,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -180,7 +179,7 @@ func installationIDFromTokenPath(path string) (int64, error) {
 
 func testClusterScmProvider(domain string) *v1alpha1.ClusterScmProvider {
 	return &v1alpha1.ClusterScmProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "github-scm-provider"},
+		Name: "github-scm-provider",
 		Spec: v1alpha1.ScmProviderSpec{
 			GitHub: &v1alpha1.GitHub{
 				Domain: domain,

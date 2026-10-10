@@ -1851,9 +1851,7 @@ func (g *EnvironmentOperations) UnblockRestore(ctx context.Context, restoreSha s
 		}
 	}
 	copied := make(map[string][]string, len(trailers)+1)
-	for key, values := range trailers {
-		copied[key] = values
-	}
+	maps.Copy(copied, trailers)
 	copied[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
 	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
 		return false, fmt.Errorf("write Promoter-restore-unblocked-at for %q: %w", restoreSha, err)
@@ -1908,9 +1906,7 @@ func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha
 		}
 	}
 	copied := make(map[string][]string, len(trailers)+1)
-	for key, values := range trailers {
-		copied[key] = values
-	}
+	maps.Copy(copied, trailers)
 	copied[constants.TrailerRestoredFrom] = []string{targetSha}
 	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
 		return fmt.Errorf("write restore note for %q: %w", restoreSha, err)
