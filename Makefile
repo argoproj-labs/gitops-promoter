@@ -454,7 +454,7 @@ NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.8.2
+KUSTOMIZE_VERSION ?= v5.8.3
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
 ENVTEST_VERSION ?= release-0.25
 GOLANGCI_LINT_VERSION ?= v2.14.0
@@ -462,7 +462,7 @@ DEADCODE_VERSION ?= v0.51.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.0
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.2
+GORELEASER_VERSION ?= v2.18.3
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
