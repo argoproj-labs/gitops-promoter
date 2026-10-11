@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -304,11 +305,34 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 		Method: method,
 	}
 
-	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
+	base, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
 	if err != nil {
 		return RenderedHTTPRequest{}, fmt.Errorf("failed to render URL template: %w", err)
 	}
-	req.URL = url
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return RenderedHTTPRequest{}, fmt.Errorf("failed to parse rendered URL %q: %w", base, err)
+	}
+
+	// Only rewrite RawQuery when there are templates to merge; skipping it entirely when
+	// QueryTemplates is empty preserves the original inline query string verbatim — including
+	// its key order — so signed or order-sensitive URLs are not inadvertently rewritten.
+	if len(wrcs.Spec.HTTPRequest.QueryTemplates) > 0 {
+		q, err := url.ParseQuery(parsed.RawQuery)
+		if err != nil {
+			return RenderedHTTPRequest{}, fmt.Errorf("failed to parse inline query params from rendered URL %q: %w", base, err)
+		}
+		for name, tmpl := range wrcs.Spec.HTTPRequest.QueryTemplates {
+			v, err := utils.RenderStringTemplate(tmpl, td)
+			if err != nil {
+				return RenderedHTTPRequest{}, fmt.Errorf("failed to render query template %q: %w", name, err)
+			}
+			q.Set(name, v)
+		}
+		parsed.RawQuery = q.Encode()
+	}
+	req.URL = parsed.String()
 
 	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
 		body, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, td)

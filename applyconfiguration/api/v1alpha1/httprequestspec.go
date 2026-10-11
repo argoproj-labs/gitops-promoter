@@ -49,6 +49,20 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
 	URLTemplate *string `json:"urlTemplate,omitempty"`
+	// QueryTemplates is an optional map of URL query parameter names to Go template strings.
+	// Each value is rendered with the same variables and Sprig functions available to URLTemplate
+	// (see HTTPRequestSpec for the full variable list). After rendering, the controller URL-encodes
+	// every key and value and appends them to the final URL as a query string.
+	//
+	// Merging with URLTemplate inline params: the controller starts with any query parameters
+	// already present in URLTemplate and then sets each QueryTemplates key on top. If the same
+	// parameter name appears in both URLTemplate and QueryTemplates, the QueryTemplates value
+	// takes precedence (it overwrites the inline one). For example:
+	// urlTemplate: "https://example.com/api?pagination.limit=30"
+	// queryTemplates:
+	// pagination.limit: "50"   # overrides the inline "30"
+	// produces: https://example.com/api?pagination.limit=50
+	QueryTemplates map[string]string `json:"queryTemplates,omitempty"`
 	// Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
 	//
 	// Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves
@@ -129,6 +143,20 @@ func HTTPRequestSpec() *HTTPRequestSpecApplyConfiguration {
 // If called multiple times, the URLTemplate field is set to the value of the last call.
 func (b *HTTPRequestSpecApplyConfiguration) WithURLTemplate(value string) *HTTPRequestSpecApplyConfiguration {
 	b.URLTemplate = &value
+	return b
+}
+
+// WithQueryTemplates puts the entries into the QueryTemplates field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the QueryTemplates field,
+// overwriting an existing map entries in QueryTemplates field with the same key.
+func (b *HTTPRequestSpecApplyConfiguration) WithQueryTemplates(entries map[string]string) *HTTPRequestSpecApplyConfiguration {
+	if b.QueryTemplates == nil && len(entries) > 0 {
+		b.QueryTemplates = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.QueryTemplates[k] = v
+	}
 	return b
 }
 

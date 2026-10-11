@@ -297,7 +297,7 @@ How it works:
 - `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.
 
 > [!NOTE]
-> **`descriptionTemplate`** and **`urlTemplate`** receive both `.TriggerVariables` and `.SuccessVariables` for that reconcile. **`httpRequest.urlTemplate`**, **`headerTemplates`**, and **`bodyTemplate`** are rendered earlier (when building the outbound request): only **`.TriggerVariables`** is set in trigger mode; **`.SuccessVariables`** is still unset there. Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
+> **`descriptionTemplate`** and **`urlTemplate`** receive both `.TriggerVariables` and `.SuccessVariables` for that reconcile. **`httpRequest.urlTemplate`**, **`httpRequest.queryTemplates`** values, **`headerTemplates`**, and **`bodyTemplate`** are rendered earlier (when building the outbound request): only **`.TriggerVariables`** is set in trigger mode; **`.SuccessVariables`** is still unset there. Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
 
 #### Single boolean — one API for the whole strategy
 
@@ -372,7 +372,7 @@ The WebRequestCommitStatus controller renders URLs (and optionally headers and b
 **Recommendations for administrators:**
 
 - **Restrict who can create or modify WebRequestCommitStatus resources** using RBAC. Only trusted actors should be able to set or change `spec.httpRequest.urlTemplate` and related fields.
-- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput`, `ResponseOutput`, or `SuccessOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
+- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput`, `ResponseOutput`, or `SuccessOutput` can influence the rendered URL, `queryTemplates` values, headers, and body. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints, or inject unexpected query parameters.
 - **Consider network policies** to limit egress traffic from the controller (e.g. only to approved external APIs). This helps limit which destinations the controller can reach even if a CRD is misconfigured or compromised.
 
 ### Summary for administrators
@@ -859,6 +859,27 @@ spec:
   mode:
     polling:
       interval: 2m
+```
+
+### Query parameters (`queryTemplates`)
+
+Use `queryTemplates` instead of hand-encoding query strings in `urlTemplate`. Each value is a Go template rendered with the same variables as `urlTemplate`; the controller URL-encodes the results and merges them into the final URL. If the same key appears in both `urlTemplate` and `queryTemplates`, the `queryTemplates` value wins.
+
+```yaml
+httpRequest:
+  urlTemplate: "https://central.example.com/v1/alerts"
+  queryTemplates:
+    query: >-
+      Namespace:petclinic-{{ .Branch | splitList "/" | last }}+Platform Component:false+Entity Type:DEPLOYMENT+Violation State:ACTIVE
+    pagination.limit: "50"
+    pagination.offset: "0"
+  methodTemplate: GET
+```
+
+The controller renders each value, URL-encodes it, and produces:
+
+```
+https://central.example.com/v1/alerts?pagination.limit=50&pagination.offset=0&query=Namespace%3Apetclinic-staging%2BPlatform+Component%3Afalse%2BEntity+Type%3ADEPLOYMENT%2BViolation+State%3AACTIVE
 ```
 
 ### Method varies by reconcile state

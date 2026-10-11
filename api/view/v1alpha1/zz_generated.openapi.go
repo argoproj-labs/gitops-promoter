@@ -3947,6 +3947,21 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"queryTemplates": {
+						SchemaProps: spec.SchemaProps{
+							Description: "QueryTemplates is an optional map of URL query parameter names to Go template strings. Each value is rendered with the same variables and Sprig functions available to URLTemplate (see HTTPRequestSpec for the full variable list). After rendering, the controller URL-encodes every key and value and appends them to the final URL as a query string.\n\nMerging with URLTemplate inline params: the controller starts with any query parameters already present in URLTemplate and then sets each QueryTemplates key on top. If the same parameter name appears in both URLTemplate and QueryTemplates, the QueryTemplates value takes precedence (it overwrites the inline one). For example:\n  urlTemplate: \"https://example.com/api?pagination.limit=30\"\n  queryTemplates:\n    pagination.limit: \"50\"   # overrides the inline \"30\"\nproduces: https://example.com/api?pagination.limit=50",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 					"method": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.\n\nDeprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves identically to `method: GET` and avoids needing two separate fields. Existing resources that set Method continue to work, but new resources should set MethodTemplate. Method may be removed in a future release.",
