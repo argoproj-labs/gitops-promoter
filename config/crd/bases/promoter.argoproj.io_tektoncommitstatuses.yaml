@@ -1,0 +1,362 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: tektoncommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: TektonCommitStatus
+    listKind: TektonCommitStatusList
+    plural: tektoncommitstatuses
+    singular: tektoncommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: PromotionStrategy
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TektonCommitStatus is the schema for the tektoncommitstatus API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#tektoncommitstatus
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TektonCommitStatusSpec defines the desired state of TektonCommitStatus
+            properties:
+              expectedResults:
+                description: |-
+                  ExpectedResults are individual checks to make on results from the Tekton resource
+                  If left empty along with the general expression also being empty, whether this passes will be determined by the completion status of
+                  the Tekton run.
+                items:
+                  properties:
+                    expression:
+                      description: |-
+                        Expression is an expr expression to be used with the result. Must return a boolean.
+                        The result can be accessed through the string variable Result.
+                      type: string
+                    key:
+                      description: Key is the name of the result from the Tekton resource
+                        to use
+                      type: string
+                  required:
+                  - expression
+                  - key
+                  type: object
+                type: array
+              expression:
+                description: |-
+                  Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean.
+                  The results values can be accessed through the map variable Results.
+                  If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of
+                  the Tekton run.
+                type: string
+              key:
+                default: tekton-result
+                description: Key is the gate name referenced in the PromotionStrategy's
+                  activeCommitStatuses or proposedCommitStatuses.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: PromotionStrategyRef is a reference to the promotion
+                  strategy that this commit status applies to.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              pruneRun:
+                default: false
+                description: PruneRun determines if the run of the Tekton Resource
+                  will be deleted after running. Defaults to false.
+                type: boolean
+              tektonResourceRef:
+                description: TektonResource is a reference to the TektonResource to
+                  run for the checks
+                properties:
+                  kind:
+                    description: Kind is the kind of Tekton resource to target.
+                    enum:
+                    - Pipeline
+                    - Task
+                    type: string
+                  name:
+                    description: Name is the name of the Tekton resource to target
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace is the namespace of the Tekton resource to target.
+                      If left blank resource must be in the same namespace as the commit status.
+                    maxLength: 63
+                    minLength: 1
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: Parameters represents parameters to be passed as
+                      args to a the run object
+                    type: object
+                  serviceAccount:
+                    description: |-
+                      ServiceAccount is a ServiceAccount in the same namespace as the commit status to use for CRUD operations
+                      on the targeted Tekton resource
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - kind
+                - name
+                - serviceAccount
+                type: object
+              url:
+                description: URL generates the URL to use in the CommitStatus so something
+                  like a link to the Tekton Dashboard UI can be used
+                properties:
+                  options:
+                    description: "Options sets options for the template. Options are
+                      described by\nstrings, either a simple string or \"key=value\".
+                      There can be at\nmost one equals sign in an option string. If
+                      the option string\nis unrecognized or otherwise invalid, Option
+                      panics.\n\nKnown options:\n\nmissingkey: Control the behavior
+                      during execution if a map is\nindexed with a key that is not
+                      present in the map.\n\n\t\"missingkey=default\" or \"missingkey=invalid\"\n\t\tThe
+                      default behavior: Do nothing and continue execution.\n\t\tIf
+                      printed, the result of the index operation is the string\n\t\t\"<no
+                      value>\".\n\t\"missingkey=zero\"\n\t\tThe operation returns
+                      the zero value for the map type's element.\n\t\"missingkey=error\"\n\t\tExecution
+                      stops immediately with an error."
+                    items:
+                      type: string
+                    type: array
+                  template:
+                    description: |-
+                      Template is a Go text template used to generate the CommitStatus URL. A function called
+                      urlQueryEscape is available to escape URL query parameters. The template can be configured
+                      with options (url.options) to control behavior when a variable is not present.
+
+                      Available template variables depend on the parent resource that embeds URLConfig
+                      (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
+                      corresponding gate documentation for the variable set and examples.
+                    type: string
+                type: object
+            required:
+            - promotionStrategyRef
+            - tektonResourceRef
+            type: object
+          status:
+            properties:
+              conditions:
+                description: Conditions Represents the observations of the current
+                  state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Results holds the results of each evaluation of expressions
+                  from the Tekton run.
+                items:
+                  description: TektonCommitStatusEnvironmentStatus defines the observed
+                    status for a specific environment based on specified result keys.
+                  properties:
+                    activeHydratedSha:
+                      description: |-
+                        ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that the Tekton resource was run on.
+                        This comes from the PromotionStrategy's environment status.
+                        The expression is evaluated against THIS commit's data, not the proposed commit.
+                        May be empty if the PromotionStrategy hasn't reconciled yet.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
+                    branch:
+                      description: Branch is the name of the branch/environment.
+                      minLength: 1
+                      type: string
+                    expressionResult:
+                      description: ExpressionResult holds the result of the general
+                        expression used on all results.
+                      type: boolean
+                    individualExpressionResults:
+                      description: IndividualExpressionResults holds all of the results
+                        of the expressions used on individual keys.
+                      items:
+                        description: IndividualExpressionResult holds the results
+                          of expressions run on an individual result
+                        properties:
+                          expressionResult:
+                            description: ExpressionResult is the result of the expression
+                              evaluated at the key
+                            type: boolean
+                          key:
+                            description: Key is the key of the result.
+                            type: string
+                        required:
+                        - expressionResult
+                        - key
+                        type: object
+                      type: array
+                    lastRunTime:
+                      description: LastRunTime is when the Tekton run was started/created
+                      format: date-time
+                      type: string
+                    phase:
+                      description: |-
+                        Phase is the current phase of the commit status.
+                        Calculated by aggregating the expression results.
+                        If no expressions are provided it is determined via whether the run succeeded or failed.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    proposedHydratedSha:
+                      description: |-
+                        ProposedHydratedSha is the proposed hydrated commit SHA where the Tekton resource was run on.
+                        This comes from the PromotionStrategy's environment status.
+                        The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
+                        promotions based on the validation of the ACTIVE commit.
+                        May be empty if the PromotionStrategy hasn't reconciled yet.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
+                    targetedSha:
+                      description: |-
+                        TargetedSha is the commit SHA that was actually validated by the expression.
+                        This will match either ProposedHydratedSha or ActiveHydratedSha depending on
+                        the Target setting ("proposed" or "active").
+                        This field clarifies which commit's data was used in the expression evaluation.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
+                    tektonRunName:
+                      description: TektonRunName is the name of the run that was created
+                      type: string
+                    tektonRunPhase:
+                      description: TektonRunPhase is the phase that the Tekton run
+                        is in
+                      enum:
+                      - Pending
+                      - Running
+                      - Succeeded
+                      - Failed
+                      - Cancelled
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  type: object
+                type: array
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
