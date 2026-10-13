@@ -54,11 +54,12 @@ jobs:
             base_branch=main
           else
             if ! git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
-              # GITHUB_TOKEN cannot create a branch whose commit contains workflow
-              # files. The release app token has the Workflows permission.
+              # Create the branch at an existing commit. GITHUB_TOKEN cannot add the
+              # workflow files in that commit; the release app can.
               release_sha=$(git rev-list -n 1 "$latest_series_tag")
-              git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-                "${release_sha}:refs/heads/${release_branch}"
+              GH_TOKEN="$APP_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+                -f ref="refs/heads/${release_branch}" \
+                -f sha="${release_sha}"
             fi
 
             gh label create "$release_label" \

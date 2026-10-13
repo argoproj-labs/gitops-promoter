@@ -103,10 +103,12 @@ jobs:
               exit 1
             fi
           else
-            # GITHUB_TOKEN cannot create a branch whose commit contains workflow
-            # files. The release app token has the Workflows permission.
-            git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-              "${GITHUB_SHA}:refs/heads/${RELEASE_BRANCH}"
+            # Create the branch at an existing commit. GITHUB_TOKEN cannot add the
+            # workflow files in that commit; the release app can. Git credentials
+            # stay on GITHUB_TOKEN for the later tag push.
+            GH_TOKEN="$APP_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/${RELEASE_BRANCH}" \
+              -f sha="${GITHUB_SHA}"
           fi
 
           version_number=${RELEASE_BRANCH#release-}
