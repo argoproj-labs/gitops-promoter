@@ -17,6 +17,10 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).
 6. **Iterate on review** — CI must be green; maintainers will help get it over the line.
 
+Bug fixes are merged to `main` first. Maintainers use
+[`cherry-pick/X.Y` labels](backporting-fixes.md) to create PRs for the
+corresponding `release-X.Y` branches.
+
 ## Testing expectations
 
 Substantive new or changed **user-facing behavior** (APIs, controllers, webhooks, or UI) should include **automated tests** in the same pull request unless maintainers explicitly agree otherwise. Reviewers expect this during code review, and **failing tests block merge**.
