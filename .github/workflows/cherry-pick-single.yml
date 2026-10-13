@@ -1,6 +1,7 @@
 # Copied from Argo CD. Keep changes minimal and compare updates against:
 # https://github.com/argoproj/argo-cd/blob/be6b24dd760b6eadfc09e80ae3cdaa82e1b50495/.github/workflows/cherry-pick-single.yml
-# Local changes: checkout main, use this repository in failure-log links, and omit harden-runner.
+# Local changes: checkout main, use this repository in failure-log links, omit
+# harden-runner, and limit the GitHub App token to contents and pull requests.
 name: Cherry Pick Single
 
 on:
@@ -42,6 +43,8 @@ jobs:
         with:
           app-id: ${{ secrets.CHERRYPICK_APP_ID }}
           private-key: ${{ secrets.CHERRYPICK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

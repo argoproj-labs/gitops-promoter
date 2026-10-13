@@ -4,3 +4,7 @@ paths:
   .github/workflows/cherry-pick-single.yml:
     ignore:
       - 'shellcheck reported issue in this script: SC(2086|2129|2006|2015):.+'
+  # actionlint 1.7.12 does not yet accept GitHub's same-repository `$/` syntax.
+  .github/workflows/cherry-pick.yml:
+    ignore:
+      - 'reusable workflow call "\$/.+" is not following the format'

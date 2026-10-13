@@ -42,8 +42,8 @@ open a PR, and comment on the original PR. Configure:
 
 - repository variable `CHERRYPICK_APP_ID`;
 - repository secret `CHERRYPICK_APP_PRIVATE_KEY`;
-- an installed GitHub App with Contents, Issues, and Pull requests read/write
-  permissions and Metadata read permission.
+- an installed GitHub App with Contents and Pull requests write permission.
+  The workflow requests only those permissions for each token.
 
 Apply the same required checks and review rules used for `main` to the
 `release-*` branch pattern. The repository workflows run CI for both direct
@@ -64,6 +64,7 @@ can stay aligned:
 - [Argo CD backporting guide](https://github.com/argoproj/argo-cd/blob/be6b24dd760b6eadfc09e80ae3cdaa82e1b50495/docs/developer-guide/backporting-fixes.md)
 
 Our only workflow changes are the `main` default branch, a
-repository-relative failure-log URL, omission of harden-runner, and
-source-attribution comments. Compare against the pinned upstream files before
-changing the copied workflows.
+repository-relative failure-log URL, omission of harden-runner, a GitHub App
+token limited to contents and pull requests, same-repository workflow syntax,
+and source-attribution comments. Compare against the pinned upstream files
+before changing the copied workflows.
