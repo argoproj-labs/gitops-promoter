@@ -1,13 +1,14 @@
 # Lightweight workflow: detects the "docs: bump manifest versions to vX.Y.Z"
-# commit on main, creates + pushes the corresponding git tag, then dispatches
-# the release workflow (release.yaml) on that tag ref so the OIDC signing
-# identity is refs/tags/vX.Y.Z (not refs/heads/main).
+# commit on main or a release-X.Y branch, creates + pushes the corresponding
+# git tag, then dispatches the release workflow (release.yaml) on that tag ref
+# so the OIDC signing identity is refs/tags/vX.Y.Z.
 name: Create Release Tag
 
 on:
   push:
     branches:
       - main
+      - 'release-*'
     paths:
       - 'docs/getting-started.md'
       - 'docs/integrating-with-argocd/tutorial.md'
@@ -25,6 +26,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      issues: write
     if: >-
       !contains(github.event.head_commit.message, 'Revert') &&
       startsWith(github.event.head_commit.message, 'docs: bump manifest versions to v')
@@ -36,25 +38,109 @@ jobs:
           fetch-depth: 0
 
       - name: Extract version from commit message
-        id: extract_version
+        id: release
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          version=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [[ -z "$version" ]]; then
+            echo "::error::The release commit does not contain a stable vX.Y.Z version."
+            exit 1
+          fi
+          if [[ ! "${version#v}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release versions cannot contain leading zeroes."
+            exit 1
+          fi
+
+          IFS=. read -r major minor patch <<< "${version#v}"
+          release_branch="release-${major}.${minor}"
+
+          case "$REF_NAME" in
+            main)
+              if [[ "$patch" != "0" ]]; then
+                echo "::error::Patch releases must be merged to ${release_branch}, not main."
+                exit 1
+              fi
+              create_release_branch=true
+              ;;
+            "$release_branch")
+              if [[ "$patch" == "0" ]]; then
+                echo "::error::Minor releases must be merged to main."
+                exit 1
+              fi
+              create_release_branch=false
+              ;;
+            *)
+              echo "::error::Version ${version} does not belong on branch ${REF_NAME}."
+              exit 1
+              ;;
+          esac
+
+          if git rev-parse --verify --quiet "refs/tags/${version}" >/dev/null; then
+            echo "::error::Tag ${version} already exists."
+            exit 1
+          fi
+
+          if [[ "$patch" == "0" ]]; then
+            latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+            if [[ -n "$latest_tag" ]] &&
+              [[ "$(printf '%s\n' "${latest_tag#v}" "${version#v}" | sort -V | tail -n 1)" != "${version#v}" ]]; then
+              echo "::error::${version} must be newer than the latest tag, ${latest_tag}."
+              exit 1
+            fi
+          else
+            latest_series_tag=$(git tag --list "v${major}.${minor}.*" --sort=-v:refname | head -n 1)
+            if [[ -z "$latest_series_tag" ]]; then
+              echo "::error::No previous release exists for ${major}.${minor}."
+              exit 1
+            fi
+            latest_patch=${latest_series_tag##*.}
+            if (( patch <= latest_patch )); then
+              echo "::error::Patch version ${patch} must be greater than ${latest_patch} (${latest_series_tag})."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "version=$version"
+            echo "release_branch=$release_branch"
+            echo "create_release_branch=$create_release_branch"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release branch and cherry-pick label
+        if: steps.release.outputs.create_release_branch == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ steps.release.outputs.release_branch }}
+        run: |
+          if remote_sha=$(git ls-remote --heads origin "$RELEASE_BRANCH" | cut -f1) && [[ -n "$remote_sha" ]]; then
+            if [[ "$remote_sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::${RELEASE_BRANCH} already exists at ${remote_sha}, not ${GITHUB_SHA}."
+              exit 1
+            fi
+          else
+            git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          fi
+
+          version_number=${RELEASE_BRANCH#release-}
+          gh label create "cherry-pick/${version_number}" \
+            --color "0E8A16" \
+            --description "Backport a merged PR to ${RELEASE_BRANCH}" \
+            --force
 
       - name: Create and push tag
-        if: steps.extract_version.outputs.version != ''
+        if: steps.release.outputs.version != ''
         run: |
-          git tag ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
-          git push origin ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+          git tag "$VERSION"
+          git push origin "$VERSION"
         env:
-          STEPS_EXTRACT_VERSION_OUTPUTS_VERSION: ${{ steps.extract_version.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
 
       - name: Dispatch release workflow on tag ref
-        if: steps.extract_version.outputs.version != ''
+        if: steps.release.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STEPS_EXTRACT_VERSION_OUTPUTS_VERSION: ${{ steps.extract_version.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          gh workflow run release.yaml --ref ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+          gh workflow run release.yaml --ref "$VERSION"

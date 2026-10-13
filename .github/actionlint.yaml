@@ -1,0 +1,6 @@
+# Keep the copied Argo CD cherry-pick workflow aligned with its upstream
+# actionlint configuration.
+paths:
+  .github/workflows/cherry-pick-single.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(2086|2129|2006|2015):.+'

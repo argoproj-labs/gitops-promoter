@@ -83,6 +83,7 @@ nav:
       - Writing CEL Validation Rules: contributing/writing-cel-rules.md
       - Continuous Integration: contributing/ci.md
       - UI TypeScript types: contributing/ui-types.md
+      - Backporting Fixes: contributing/backporting-fixes.md
       - Cutting a Release: contributing/cutting-a-release.md
       - Using Finalizers: contributing/using-finalizers.md
       - Maintaining CRDs: contributing/maintaining-crds.md
