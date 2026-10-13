@@ -31,47 +31,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEW_VERSION: ${{ inputs.new_version }}
         run: |
-          if [[ ! "$NEW_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::Version must have the form X.Y.Z without a v prefix."
-            exit 1
-          fi
-
-          IFS=. read -r major minor patch <<< "$NEW_VERSION"
-          release_branch="release-${major}.${minor}"
-          release_label="cherry-pick/${major}.${minor}"
-
           git fetch --force --tags origin
-
-          if git rev-parse --verify --quiet "refs/tags/v${NEW_VERSION}" >/dev/null; then
-            echo "::error::Tag v${NEW_VERSION} already exists."
-            exit 1
-          fi
+          release_env=$(./hack/release-line.sh "$NEW_VERSION")
+          eval "$release_env"
 
           if [[ "$patch" == "0" ]]; then
-            latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
-            if [[ -n "$latest_tag" ]] &&
-              [[ "$(printf '%s\n' "${latest_tag#v}" "$NEW_VERSION" | sort -V | tail -n 1)" != "$NEW_VERSION" ]]; then
-              echo "::error::v${NEW_VERSION} must be newer than the latest tag, ${latest_tag}."
-              exit 1
-            fi
             if git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
               echo "::error::${release_branch} already exists; new minor releases must create a new release line."
               exit 1
             fi
             base_branch=main
           else
-            latest_series_tag=$(git tag --list "v${major}.${minor}.*" --sort=-v:refname | head -n 1)
-            if [[ -z "$latest_series_tag" ]]; then
-              echo "::error::Cannot patch ${major}.${minor}: no existing v${major}.${minor}.Z release was found."
-              exit 1
-            fi
-
-            latest_patch=${latest_series_tag##*.}
-            if (( patch <= latest_patch )); then
-              echo "::error::Patch version ${patch} must be greater than ${latest_patch} (${latest_series_tag})."
-              exit 1
-            fi
-
             if ! git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
               # Lazily bootstrap release lines that predate this automation.
               release_sha=$(git rev-list -n 1 "$latest_series_tag")

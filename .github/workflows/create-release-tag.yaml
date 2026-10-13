@@ -43,18 +43,14 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          version=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
-          if [[ -z "$version" ]]; then
+          raw_version=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [[ -z "$raw_version" ]]; then
             echo "::error::The release commit does not contain a stable vX.Y.Z version."
             exit 1
           fi
-          if [[ ! "${version#v}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::Release versions cannot contain leading zeroes."
-            exit 1
-          fi
 
-          IFS=. read -r major minor patch <<< "${version#v}"
-          release_branch="release-${major}.${minor}"
+          release_env=$(./hack/release-line.sh "$raw_version")
+          eval "$release_env"
 
           case "$REF_NAME" in
             main)
@@ -76,31 +72,6 @@ jobs:
               exit 1
               ;;
           esac
-
-          if git rev-parse --verify --quiet "refs/tags/${version}" >/dev/null; then
-            echo "::error::Tag ${version} already exists."
-            exit 1
-          fi
-
-          if [[ "$patch" == "0" ]]; then
-            latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
-            if [[ -n "$latest_tag" ]] &&
-              [[ "$(printf '%s\n' "${latest_tag#v}" "${version#v}" | sort -V | tail -n 1)" != "${version#v}" ]]; then
-              echo "::error::${version} must be newer than the latest tag, ${latest_tag}."
-              exit 1
-            fi
-          else
-            latest_series_tag=$(git tag --list "v${major}.${minor}.*" --sort=-v:refname | head -n 1)
-            if [[ -z "$latest_series_tag" ]]; then
-              echo "::error::No previous release exists for ${major}.${minor}."
-              exit 1
-            fi
-            latest_patch=${latest_series_tag##*.}
-            if (( patch <= latest_patch )); then
-              echo "::error::Patch version ${patch} must be greater than ${latest_patch} (${latest_series_tag})."
-              exit 1
-            fi
-          fi
 
           {
             echo "version=$version"
