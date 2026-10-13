@@ -1182,6 +1182,73 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When the SCM completes a merge asynchronously", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "async-merge")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should not close the PR while the SCM still reports it open after the merge", func() {
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Recording status.state merged while the SCM still reports the PR open, like an accepted Azure DevOps completion")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PR stays open on the SCM and the PullRequest keeps waiting while terminating")
+			Consistently(func(g Gomega) {
+				_, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(state).To(Equal(promoterv1alpha1.PullRequestOpen))
+
+				var current promoterv1alpha1.PullRequest
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &current)).To(Succeed())
+				g.Expect(current.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+			By("Completing the merge on the SCM")
+			mergedTargetSha := pullRequest.Spec.MergeSha
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Verifying the PullRequest is released once the SCM reports it merged")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(state).To(Equal(promoterv1alpha1.PullRequestMerged))
+		})
+	})
+
 	Context("When a PullRequest is externally merged or closed", func() {
 		var name string
 		var scmSecret *v1.Secret

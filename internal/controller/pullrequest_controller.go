@@ -182,8 +182,12 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //		  if the PR is not found:
 //		    Set status.state to 'unknown' and return.
 //		  if the PR is closed:
+//		    if status.state is 'merged':
+//		      Return an error.
 //		    Set status.state to 'closed' and return.
 //		  if the PR is open:
+//		    if status.state is 'merged' (the SCM hasn't completed the merge yet):
+//		      Return an error.
 //		    Call Close, set status.state to 'closed', and return.
 //		  if the PR is merged:
 //		    Set status.state to 'merged'.
@@ -285,10 +289,20 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		switch details.State {
 		case promoterv1alpha1.PullRequestClosed:
+			if pr.Status.State == promoterv1alpha1.PullRequestMerged {
+				// We merged the PR, but the SCM says it was closed without merging. status.state can't move from merged to
+				// closed, so report it instead of failing on the status write.
+				return ctrl.Result{}, fmt.Errorf("pull request %q was merged, but the SCM reports it closed", pr.Status.ID)
+			}
 			pr.Status.State = promoterv1alpha1.PullRequestClosed
 			// Status is now Finalized; persist and the ->Finalized predicate will requeue to release the finalizer.
 			return ctrl.Result{}, nil
 		case promoterv1alpha1.PullRequestOpen:
+			if pr.Status.State == promoterv1alpha1.PullRequestMerged {
+				// We merged the PR, but SCMs that complete merges asynchronously (Azure DevOps) can still report it open.
+				// Closing it now would abandon the pending merge; standard retry re-runs Get until the SCM reports it merged.
+				return ctrl.Result{}, fmt.Errorf("pull request %q was merged, but the SCM still reports it open, waiting for the SCM to complete the merge", pr.Status.ID)
+			}
 			// Still open on the SCM; closing discharges the finalizer's obligation.
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
