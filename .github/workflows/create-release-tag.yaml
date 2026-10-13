@@ -91,7 +91,11 @@ jobs:
               exit 1
             fi
           else
-            git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+            # Create the branch ref directly. git push of a new branch is rejected
+            # because GITHUB_TOKEN cannot add the workflow files in that commit.
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/${RELEASE_BRANCH}" \
+              -f sha="${GITHUB_SHA}"
           fi
 
           version_number=${RELEASE_BRANCH#release-}
