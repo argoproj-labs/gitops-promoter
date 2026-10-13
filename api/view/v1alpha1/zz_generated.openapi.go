@@ -6636,7 +6636,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusCon
 					},
 					"namespaceMetadata": {
 						SchemaProps: spec.SchemaProps{
-							Description: "NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions. When Disabled, Namespaces are not watched and NamespaceMetadata is empty.",
+							Description: "NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions. When Disabled, Namespaces are not watched and NamespaceMetadata is empty. Requires a controller restart.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
