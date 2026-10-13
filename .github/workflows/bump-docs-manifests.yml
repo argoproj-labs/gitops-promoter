@@ -18,6 +18,7 @@ jobs:
       issues: write
       pull-requests: write
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,10 +26,20 @@ jobs:
           fetch-depth: 0
           ref: main
 
+      - name: Generate release app token
+        id: release-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
+
       - name: Select release branch
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_TOKEN: ${{ steps.release-token.outputs.token }}
           NEW_VERSION: ${{ inputs.new_version }}
         run: |
           git fetch --force --tags origin
@@ -43,11 +54,10 @@ jobs:
             base_branch=main
           else
             if ! git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
-              # Point the new branch at an existing commit. git push treats a new
-              # branch as adding every file in that commit, including workflow
-              # files, which GITHUB_TOKEN cannot do.
+              # Create the branch at an existing commit. GITHUB_TOKEN cannot add the
+              # workflow files in that commit; the release app can.
               release_sha=$(git rev-list -n 1 "$latest_series_tag")
-              gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              GH_TOKEN="$APP_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
                 -f ref="refs/heads/${release_branch}" \
                 -f sha="${release_sha}"
             fi
