@@ -30,7 +30,12 @@ if git rev-parse --verify --quiet "refs/tags/${version}" >/dev/null; then
   exit 1
 fi
 
-latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+# Git globs also match suffixes such as v1.2.0-rc1, so keep only stable tags.
+stable_tags() {
+  git tag --list "$1" --sort=-v:refname | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true
+}
+
+latest_tag=$(stable_tags 'v[0-9]*.[0-9]*.[0-9]*' | head -n 1)
 latest_series_tag=""
 if [[ "$patch" == "0" ]]; then
   if [[ -n "$latest_tag" && "$(printf '%s\n' "${latest_tag#v}" "$version_number" | sort -V | tail -n 1)" != "$version_number" ]]; then
@@ -38,7 +43,7 @@ if [[ "$patch" == "0" ]]; then
     exit 1
   fi
 else
-  latest_series_tag=$(git tag --list "v${major}.${minor}.*" --sort=-v:refname | head -n 1)
+  latest_series_tag=$(stable_tags "v${major}.${minor}.*" | head -n 1)
   if [[ -z "$latest_series_tag" ]]; then
     echo "::error::Cannot patch ${major}.${minor}: no existing v${major}.${minor}.Z release was found." >&2
     exit 1
