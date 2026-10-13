@@ -43,9 +43,13 @@ jobs:
             base_branch=main
           else
             if ! git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
-              # Lazily bootstrap release lines that predate this automation.
+              # Point the new branch at an existing commit. git push treats a new
+              # branch as adding every file in that commit, including workflow
+              # files, which GITHUB_TOKEN cannot do.
               release_sha=$(git rev-list -n 1 "$latest_series_tag")
-              git push origin "${release_sha}:refs/heads/${release_branch}"
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+                -f ref="refs/heads/${release_branch}" \
+                -f sha="${release_sha}"
             fi
 
             gh label create "$release_label" \
