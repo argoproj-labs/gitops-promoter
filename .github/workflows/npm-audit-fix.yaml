@@ -8,6 +8,11 @@ on:
         default: "false"
         required: false
         type: boolean
+      target_branch:
+        description: "Branch to update and open the pull request against. Leave empty for main."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -22,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target_branch || 'main' }}
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -53,6 +60,7 @@ jobs:
 
             > [!NOTE]
             > After the PR is created, you must **close and reopen it** to trigger CI checks.
-          branch: npm-audit-fix/automated
+          base: ${{ inputs.target_branch || 'main' }}
+          branch: npm-audit-fix/${{ inputs.target_branch || 'main' }}
           delete-branch: true
           signoff: true
