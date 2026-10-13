@@ -23,6 +23,7 @@ defaults:
 jobs:
   create-tag:
     runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: write
       actions: write
@@ -79,10 +80,21 @@ jobs:
             echo "create_release_branch=$create_release_branch"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Generate release app token
+        id: release-token
+        if: steps.release.outputs.create_release_branch == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
+
       - name: Create release branch and cherry-pick label
         if: steps.release.outputs.create_release_branch == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_TOKEN: ${{ steps.release-token.outputs.token }}
           RELEASE_BRANCH: ${{ steps.release.outputs.release_branch }}
         run: |
           if remote_sha=$(git ls-remote --heads origin "$RELEASE_BRANCH" | cut -f1) && [[ -n "$remote_sha" ]]; then
@@ -91,11 +103,10 @@ jobs:
               exit 1
             fi
           else
-            # Create the branch ref directly. git push of a new branch is rejected
-            # because GITHUB_TOKEN cannot add the workflow files in that commit.
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/heads/${RELEASE_BRANCH}" \
-              -f sha="${GITHUB_SHA}"
+            # GITHUB_TOKEN cannot create a branch whose commit contains workflow
+            # files. The release app token has the Workflows permission.
+            git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "${GITHUB_SHA}:refs/heads/${RELEASE_BRANCH}"
           fi
 
           version_number=${RELEASE_BRANCH#release-}

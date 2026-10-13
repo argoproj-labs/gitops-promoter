@@ -8,6 +8,7 @@ Each minor series has its own `release-X.Y` branch. Minor releases (`X.Y.0`) are
 
 - Maintainer access to the repository (merge to `main` and `release-*`).
 - Repository secrets `QUAY_USERNAME` and `QUAY_TOKEN` configured for the Quay.io container registry.
+- A `release` environment with variable `RELEASE_APP_ID` and secret `RELEASE_APP_PRIVATE_KEY`. The GitHub App needs Contents and Workflows write permission so it can create a `release-*` branch. Leave required reviewers off so branch creation is not paused.
 
 ## Steps
 
