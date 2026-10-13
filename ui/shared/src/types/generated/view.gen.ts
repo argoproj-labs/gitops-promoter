@@ -960,6 +960,7 @@ export type components = {
          *       - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
          *       - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
          *       - {{ index .TriggerVariables "key" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile
+         *       - {{ index .HTTPRequestVariables "key" }}: result of httpRequest.httpRequestVariables.expression for this reconcile (nil when not configured)
          *
          *     Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
          *
@@ -1010,6 +1011,8 @@ export type components = {
             headerTemplates?: {
                 [key: string]: string;
             };
+            /** @description HTTPRequestVariables optionally holds an expr expression that produces a free-form map of variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate as {{ index .HTTPRequestVariables "key" }}. Evaluated before the HTTP request (same timing as the templates above). Available in both polling and trigger modes. See HTTPRequestVariablesSpec for details. */
+            httpRequestVariables?: components["schemas"]["HTTPRequestVariablesSpec"];
             /**
              * @description Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
              *
@@ -1025,6 +1028,22 @@ export type components = {
              * @default
              */
             urlTemplate: string;
+        };
+        /**
+         * @description HTTPRequestVariablesSpec holds an expr expression that computes a free-form map of variables made available to all httpRequest templates as .HTTPRequestVariables.
+         *
+         *     The expression is evaluated before the HTTP request is made — the same timing as the templates above — so it shares their variable set (see HTTPRequestSpec for the full list). It is available in both polling and trigger modes, unlike TriggerVariables which require trigger mode.
+         *
+         *     The expression must return a map/object. Every key is then accessible in templates via {{ index .HTTPRequestVariables "key" }}.
+         *
+         *     The built-in expr function urlValuesEncode(map) URL-encodes a map of query-parameter key/value pairs and returns a percent-encoded key=value&… string suitable for appending to a URL.
+         */
+        HTTPRequestVariablesSpec: {
+            /**
+             * @description Expression is an expr expression that must return a map/object. The result is exposed to all httpRequest Go templates as .HTTPRequestVariables. Available variables match those documented on HTTPRequestSpec.
+             * @default
+             */
+            expression: string;
         };
         /** @description HealthyDryShas is a list of dry commits that were observed to be healthy in the environment. */
         HealthyDryShas: {
