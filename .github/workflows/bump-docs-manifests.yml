@@ -15,11 +15,55 @@ jobs:
   bump-docs:
     permissions:
       contents: write
+      issues: write
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Select release branch
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ inputs.new_version }}
+        run: |
+          git fetch --force --tags origin
+          release_env=$(./hack/release-line.sh "$NEW_VERSION")
+          eval "$release_env"
+
+          if [[ "$patch" == "0" ]]; then
+            if git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
+              echo "::error::${release_branch} already exists; new minor releases must create a new release line."
+              exit 1
+            fi
+            base_branch=main
+          else
+            if ! git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
+              # Lazily bootstrap release lines that predate this automation.
+              release_sha=$(git rev-list -n 1 "$latest_series_tag")
+              git push origin "${release_sha}:refs/heads/${release_branch}"
+            fi
+
+            gh label create "$release_label" \
+              --color "0E8A16" \
+              --description "Backport a merged PR to ${release_branch}" \
+              --force
+            base_branch=$release_branch
+          fi
+
+          git fetch origin "$base_branch"
+          if [[ "$patch" != "0" ]] &&
+            ! git merge-base --is-ancestor "$latest_series_tag" "origin/$base_branch"; then
+            echo "::error::${base_branch} does not contain its latest tag, ${latest_series_tag}."
+            exit 1
+          fi
+          git checkout -B "$base_branch" "origin/$base_branch"
+          echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
+
       - name: Set up Git
         run: |
           git config user.name "${GITHUB_ACTOR}"
@@ -27,7 +71,7 @@ jobs:
       - name: Bump manifest versions in docs
         run: |
           chmod +x hack/bump-docs-manifests.sh
-          ./hack/bump-docs-manifests.sh ${GITHUB_EVENT_INPUTS_NEW_VERSION}
+          ./hack/bump-docs-manifests.sh "${GITHUB_EVENT_INPUTS_NEW_VERSION}"
           git add docs/getting-started.md docs/integrating-with-argocd/tutorial.md docs/integrating-with-argocd/index.md cmd/demo/config/promoter_version cmd/demo/config/argocd-extension.yaml cmd/demo/config/config.yaml
         env:
           GITHUB_EVENT_INPUTS_NEW_VERSION: ${{ github.event.inputs.new_version }}
@@ -36,7 +80,8 @@ jobs:
         with:
           commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
-          body: "Automated PR to bump manifest versions in documentation."
+          body: "Automated PR to bump manifest versions in documentation for `${{ steps.release.outputs.base_branch }}`."
+          base: ${{ steps.release.outputs.base_branch }}
           branch: "bump-docs-manifests/v${{ github.event.inputs.new_version }}"
           delete-branch: true
           signoff: true
