@@ -406,6 +406,11 @@ func (in HTTPRequestSpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in HTTPRequestVariablesSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.HTTPRequestVariablesSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in HealthyDryShas) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.HealthyDryShas"
 }
