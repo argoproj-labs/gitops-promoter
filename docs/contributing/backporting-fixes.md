@@ -40,8 +40,9 @@ already be present there.
 The copied workflows authenticate as a GitHub App so they can push a branch,
 open a PR, and comment on the original PR. Configure:
 
-- repository variable `CHERRYPICK_APP_ID`;
-- repository secret `CHERRYPICK_APP_PRIVATE_KEY`;
+- variable `CHERRYPICK_APP_ID` and secret `CHERRYPICK_APP_PRIVATE_KEY` on a
+  `cherry-pick` environment, with no required reviewers so backports are not
+  paused for approval;
 - an installed GitHub App with Contents and Pull requests write permission.
   The workflow requests only those permissions for each token.
 
@@ -66,5 +67,6 @@ can stay aligned:
 Our only workflow changes are the `main` default branch, a
 repository-relative failure-log URL, omission of harden-runner, a GitHub App
 token limited to contents and pull requests, same-repository workflow syntax,
-and source-attribution comments. Compare against the pinned upstream files
-before changing the copied workflows.
+the `cherry-pick` environment for the app ID and private key, and source-attribution
+comments. Compare against the pinned upstream files before changing the copied
+workflows.

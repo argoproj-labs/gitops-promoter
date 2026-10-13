@@ -1,7 +1,8 @@
 # Copied from Argo CD. Keep changes minimal and compare updates against:
 # https://github.com/argoproj/argo-cd/blob/be6b24dd760b6eadfc09e80ae3cdaa82e1b50495/.github/workflows/cherry-pick.yml
-# Local changes: the default branch is main, harden-runner is omitted, and the
-# reusable workflow uses same-repository syntax.
+# Local changes: the default branch is main, harden-runner is omitted, the
+# reusable workflow uses same-repository syntax, and its job reads the app
+# ID and private key from the cherry-pick environment.
 name: Cherry Pick
 
 on:
@@ -58,6 +59,3 @@ jobs:
       version_number: ${{ matrix.version }}
       pr_number: ${{ github.event.pull_request.number }}
       pr_title: ${{ github.event.pull_request.title }}
-    secrets:
-      CHERRYPICK_APP_ID: ${{ vars.CHERRYPICK_APP_ID }}
-      CHERRYPICK_APP_PRIVATE_KEY: ${{ secrets.CHERRYPICK_APP_PRIVATE_KEY }}
