@@ -124,27 +124,60 @@ other gates as usual, for example a
 
 ## Cutting a release
 
-Releasing usually means shipping whatever the last dev-track environment is running. Read the DRY SHA from its
-`hydrator.metadata`, confirm that the environment is healthy (in the dashboard or the Argo CD UI), and move the tag:
+Releasing usually means shipping whatever the last dev-track environment is running. Run the release from a CI job
+(or by hand) with a script that refuses to move the tag unless the release is safe:
 
 ```bash
-git fetch origin
-DRY_SHA=$(git show origin/environment/nightly:apps/my-app/hydrator.metadata | jq -r .drySha)
-git tag -f release-current "$DRY_SHA"
-git push -f origin release-current
+#!/usr/bin/env bash
+set -euo pipefail
+
+STRATEGY=my-app
+SOURCE_ENV=environment/nightly
+TAG=release-current
+
+# 1. Read the DRY SHA the source environment is running, and require all of its active commit statuses to pass.
+ENV_STATUS=$(kubectl get promotionstrategy "$STRATEGY" -o json |
+  jq -c --arg b "$SOURCE_ENV" '.status.environments[] | select(.branch == $b)')
+DRY_SHA=$(jq -r '.active.dry.sha' <<<"$ENV_STATUS")
+if ! jq -e '(.active.commitStatuses // []) | length > 0 and all(.phase == "success")' <<<"$ENV_STATUS" >/dev/null; then
+  echo "$SOURCE_ENV is not healthy on $DRY_SHA; not releasing" >&2
+  exit 1
+fi
+
+# 2. Refuse to release if the current release contains commits that never made it to main (for example a hotfix that
+#    was not cherry-picked). git cherry compares by patch ID, so clean cherry-picks count as present.
+git fetch origin main --tags --force
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  MISSING=$(git cherry origin/main "refs/tags/$TAG" | grep '^+' || true)
+  if [ -n "$MISSING" ]; then
+    echo "$TAG has commits that are not on main:" >&2
+    echo "$MISSING" >&2
+    exit 1
+  fi
+fi
+
+# 3. Move the tag.
+git tag -f "$TAG" "$DRY_SHA"
+git push -f origin "refs/tags/$TAG"
 ```
 
-Adjust the `hydrator.metadata` path to match where your hydrator writes it (see
-[Using a Custom Hydrator](custom-hydrator.md#3-include-hydratormetadata-file)).
+The first check reads the same `status.environments[].active` data that the dashboard shows. Without
+`kubectl` access, you can read the DRY SHA from the environment branch's `hydrator.metadata` instead
+(`git show origin/environment/nightly:apps/my-app/hydrator.metadata | jq -r .drySha`, adjusting the path to match
+[where your hydrator writes it](custom-hydrator.md#3-include-hydratormetadata-file)), but then you must confirm the
+environment's health some other way.
+
+The second check can report a false positive when a hotfix needed conflict resolution to cherry-pick onto `main`,
+because the patch IDs then differ. In that case, confirm that the fix is on `main` and move the tag by hand.
 
 The release track then promotes that commit like any other change: `int` first, then `preprod` and `uat`, and then a
 pull request for `prod`. Because the tag points at a commit on `main`, the promotion pull requests describe the original
 change. There is no intermediate merge commit.
 
 > [!IMPORTANT]
-> Promoter does not verify that the commit you tag was healthy in the dev track. Choosing a verified commit is the
-> responsibility of whoever moves the tag. If a CI job moves the tag, have it check the dev track's commit statuses
-> first, and restrict who can push to the tag (for example with a protected tag rule).
+> Promoter itself does not verify that the commit you tag was healthy in the dev track; the script above does. Make
+> sure it is the only way the tag moves by restricting who can push to the tag (for example with a protected tag rule
+> that only the release job's identity can bypass).
 
 > [!NOTE]
 > Argo CD resolves `targetRevision` to a commit SHA and caches the result. After the tag moves, the hydrator picks up
@@ -189,12 +222,13 @@ To ship a fix without the unreleased changes on `main`:
 3. Cherry-pick the fix onto `main` so that the next release includes it.
 
 > [!WARNING]
-> If the fix never makes it to `main`, the next tag move removes it from the release track.
+> If the fix never makes it to `main`, the next tag move removes it from the release track. The `git cherry` check in
+> the [release script](#cutting-a-release) blocks the next release until the fix is on `main`.
 
 ## Limitations
 
-* **No cross-track verification.** The gate never checks the release track against the dev track, so Promoter can't
-  stop you from tagging a commit that never passed `ci` or `nightly`.
+* **No cross-track verification in Promoter.** The gate never checks the release track against the dev track. The
+  [release script](#cutting-a-release) does that check, but only if it is the only way the tag moves.
 * **Extra reconciles.** The PromotionStrategy controller expects every environment to end up on the same DRY SHA and
   periodically re-queues the ChangeTransferPolicies of environments that lag behind. While the tracks are on
   different commits, which is most of the time, this causes extra reconciles and git fetches for the release-track
