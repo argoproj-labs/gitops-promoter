@@ -19,7 +19,7 @@ type fakeAzdoGitClient struct {
 	iterationErr           error
 	pullRequestStatusErr   error
 	pullRequests           []git.GitPullRequest
-	iterations             []git.GitPullRequestIteration
+	iterationsByPR         map[int][]git.GitPullRequestIteration
 	pullRequestCalls       int
 	iterationCalls         int
 	pullRequestStatusCalls int
@@ -37,12 +37,16 @@ func (f *fakeAzdoGitClient) GetPullRequests(context.Context, git.GetPullRequests
 	return &f.pullRequests, nil
 }
 
-func (f *fakeAzdoGitClient) GetPullRequestIterations(context.Context, git.GetPullRequestIterationsArgs) (*[]git.GitPullRequestIteration, error) {
+func (f *fakeAzdoGitClient) GetPullRequestIterations(_ context.Context, args git.GetPullRequestIterationsArgs) (*[]git.GitPullRequestIteration, error) {
 	f.iterationCalls++
 	if f.iterationErr != nil {
 		return nil, f.iterationErr
 	}
-	return &f.iterations, nil
+	var iterations []git.GitPullRequestIteration
+	if args.PullRequestId != nil {
+		iterations = f.iterationsByPR[*args.PullRequestId]
+	}
+	return &iterations, nil
 }
 
 func (f *fakeAzdoGitClient) CreatePullRequestStatus(_ context.Context, args git.CreatePullRequestStatusArgs) (*git.GitPullRequestStatus, error) {
@@ -95,29 +99,34 @@ var _ = Describe("CommitStatus", func() {
 		It("mirrors the status onto the latest matching pull request iteration", func() {
 			iterationID := 7
 			staleIterationID := 1
+			otherIterationID := 3
 			iterationSHA := testSHA
-			otherSHA := "0000000000000000000000000000000000000000"
+			// lastMergeSourceCommit still names the previous head. The new commit is only on an iteration.
+			previousHead := "0000000000000000000000000000000000000000"
 			gitClient := &fakeAzdoGitClient{
 				pullRequests: []git.GitPullRequest{
-					openPullRequest(41, otherSHA),
-					openPullRequest(42, testSHA),
+					openPullRequest(41, previousHead),
+					openPullRequest(42, previousHead),
 				},
-				iterations: []git.GitPullRequestIteration{
-					{
+				iterationsByPR: map[int][]git.GitPullRequestIteration{
+					41: {{
+						Id:              &otherIterationID,
+						SourceRefCommit: &git.GitCommitRef{CommitId: &previousHead},
+					}},
+					42: {{
 						Id:              &staleIterationID,
 						SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
-					},
-					{
+					}, {
 						Id:              &iterationID,
 						SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
-					},
+					}},
 				},
 			}
 
 			commitStatus := testCommitStatus(v1alpha1.CommitPhaseSuccess)
 			mirrorPullRequestStatus(gitClient, commitStatus)
 
-			Expect(gitClient.iterationCalls).To(Equal(1))
+			Expect(gitClient.iterationCalls).To(Equal(2))
 			Expect(gitClient.pullRequestStatusCalls).To(Equal(1))
 
 			args := gitClient.lastPullRequestStatus
@@ -129,14 +138,22 @@ var _ = Describe("CommitStatus", func() {
 			Expect(args.Status.State).To(HaveValue(Equal(git.GitStatusStateValues.Succeeded)))
 		})
 
-		It("does nothing when no active pull request matches the SHA", func() {
+		It("does not create a status when no iteration matches the SHA", func() {
+			otherIterationID := 3
+			otherSHA := "0000000000000000000000000000000000000000"
 			gitClient := &fakeAzdoGitClient{
-				pullRequests: []git.GitPullRequest{openPullRequest(41, "0000000000000000000000000000000000000000")},
+				pullRequests: []git.GitPullRequest{openPullRequest(41, otherSHA)},
+				iterationsByPR: map[int][]git.GitPullRequestIteration{
+					41: {{
+						Id:              &otherIterationID,
+						SourceRefCommit: &git.GitCommitRef{CommitId: &otherSHA},
+					}},
+				},
 			}
 
 			mirrorPullRequestStatus(gitClient, testCommitStatus(v1alpha1.CommitPhasePending))
 
-			Expect(gitClient.iterationCalls).To(Equal(0))
+			Expect(gitClient.iterationCalls).To(Equal(1))
 			Expect(gitClient.pullRequestStatusCalls).To(Equal(0))
 		})
 

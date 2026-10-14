@@ -127,9 +127,11 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 
 	// Azure DevOps does not show commit statuses on pull requests. Best-effort mirror
-	// the status onto the iteration of any open PR whose head is this SHA. This must
-	// never make the CommitStatus reconciliation fail: active SHAs commonly have no
-	// PR, and the PR APIs may be unavailable or temporarily inconsistent.
+	// the status onto the iteration whose source commit is this SHA. Match iterations
+	// rather than lastMergeSourceCommit: that field stays on the previous head until
+	// Azure DevOps finishes the merge preview for a new push. This must never make
+	// the CommitStatus reconciliation fail: active SHAs commonly have no PR, and the
+	// PR APIs may be unavailable or temporarily inconsistent.
 	prCtx, cancel := context.WithTimeout(ctx, pullRequestStatusTimeout)
 	defer cancel()
 	cs.setPullRequestStatusBestEffort(prCtx, gitClient, gitRepo, commitStatus)
@@ -145,7 +147,7 @@ func (cs CommitStatus) setPullRequestStatusBestEffort(
 ) {
 	logger := log.FromContext(ctx)
 
-	prIDs, err := cs.openPullRequestIDsForSHA(ctx, gitClient, gitRepo, commitStatus.Spec.Sha)
+	prIDs, err := cs.openPullRequestIDs(ctx, gitClient, gitRepo)
 	if err != nil {
 		logger.V(4).Info("Skipping Azure DevOps PR status: failed to list pull requests", "error", err)
 		return
@@ -168,12 +170,12 @@ func (cs CommitStatus) setPullRequestStatusBestEffort(
 	}
 }
 
-// openPullRequestIDsForSHA returns the IDs of active pull requests whose source branch head is sha.
-func (cs CommitStatus) openPullRequestIDsForSHA(
+// openPullRequestIDs returns the IDs of active pull requests in the repository.
+// The caller matches the commit SHA against each pull request's iterations.
+func (cs CommitStatus) openPullRequestIDs(
 	ctx context.Context,
 	gitClient azdoGitClient,
 	gitRepo *v1alpha1.GitRepository,
-	sha string,
 ) ([]int, error) {
 	searchCriteria := git.GitPullRequestSearchCriteria{
 		Status: &git.PullRequestStatusValues.Active,
@@ -204,12 +206,10 @@ func (cs CommitStatus) openPullRequestIDsForSHA(
 	var prIDs []int
 	for i := range *pullRequests {
 		pr := (*pullRequests)[i]
-		if pr.PullRequestId == nil || pr.LastMergeSourceCommit == nil || pr.LastMergeSourceCommit.CommitId == nil {
+		if pr.PullRequestId == nil {
 			continue
 		}
-		if strings.EqualFold(*pr.LastMergeSourceCommit.CommitId, sha) {
-			prIDs = append(prIDs, *pr.PullRequestId)
-		}
+		prIDs = append(prIDs, *pr.PullRequestId)
 	}
 	return prIDs, nil
 }
