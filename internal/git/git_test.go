@@ -1427,10 +1427,12 @@ func (f *fakeGitProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string
 	// Return the local bare repo path for testing
 	return f.tempDirPath
 }
+
 func (f *fakeGitProvider) GetUser(ctx context.Context) (string, error) {
 	if f.userErr != nil {
 		return "", f.userErr
 	}
 	return "user", nil
 }
+
 func (f *fakeGitProvider) GetToken(ctx context.Context) (string, error) { return "token", nil }

@@ -208,7 +208,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 		if removeErr := os.RemoveAll(path); removeErr != nil {
-			err = fmt.Errorf("%w (failed to remove incomplete clone %q: %v)", err, path, removeErr)
+			err = fmt.Errorf("%w (failed to remove incomplete clone %q: %w)", err, path, removeErr)
 		}
 		return err
 	}
