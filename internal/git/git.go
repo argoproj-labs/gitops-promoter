@@ -203,10 +203,10 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	logger.V(4).Info("Created directory", "directory", path)
 
 	start := time.Now()
-	err = g.initClone(ctx, path)
+	stdout, stderr, err := g.initClone(ctx, path)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
 		if removeErr := os.RemoveAll(path); removeErr != nil {
 			err = fmt.Errorf("%w (failed to remove incomplete clone %q: %w)", err, path, removeErr)
 		}
@@ -222,26 +222,28 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 
 // initClone creates a bare partial clone with no configured fetch refspec. Branch objects arrive
 // only through a later fetch that names them. Blobs stay promisor objects until something reads them.
-func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) error {
+// Command output is returned for the caller to log. It is not included in the error, which is what
+// surfaces on the reconcile.
+func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) (string, string, error) {
 	repoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
 	args := []string{"init", "--bare"}
 	stdout, stderr, err := g.runCmd(ctx, dir, args...)
 	if err != nil {
-		return fmt.Errorf("git %s failed: %w (stdout: %s stderr: %s)", strings.Join(args, " "), err, stdout, stderr)
+		return stdout, stderr, fmt.Errorf("git %s failed: %w", strings.Join(args, " "), cmdFailure(err, stderr))
 	}
 
 	// The URL is caller-controlled. git config owns its quoting; writing it with Go's %q is a
 	// different escape language and can make the config file unreadable.
 	stdout, stderr, err = g.runCmd(ctx, dir, "config", "remote.origin.url", repoURL)
 	if err != nil {
-		return fmt.Errorf("git config remote.origin.url failed: %w (stdout: %s stderr: %s)", err, stdout, stderr)
+		return stdout, stderr, fmt.Errorf("git config remote.origin.url failed: %w", cmdFailure(err, stderr))
 	}
 
 	// The remaining keys are fixed. This is a new repository, so append them directly instead of
 	// paying for a subprocess and a credential lookup per key.
 	config, err := os.OpenFile(path.Join(dir, "config"), os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
-		return fmt.Errorf("failed to open clone config: %w", err)
+		return "", "", fmt.Errorf("failed to open clone config: %w", err)
 	}
 	_, writeErr := config.WriteString(`
 [remote "origin"]
@@ -255,12 +257,24 @@ func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) error
 `)
 	closeErr := config.Close()
 	if writeErr != nil {
-		return fmt.Errorf("failed to write clone config: %w", writeErr)
+		return "", "", fmt.Errorf("failed to write clone config: %w", writeErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("failed to close clone config: %w", closeErr)
+		return "", "", fmt.Errorf("failed to close clone config: %w", closeErr)
 	}
-	return nil
+	return "", "", nil
+}
+
+// cmdFailure drops command output from err. runCmd appends stderr to the error text, and that text
+// is logged separately by the caller rather than returned to the reconcile.
+func cmdFailure(err error, stderr string) error {
+	if stderr == "" {
+		return err
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return cause
+	}
+	return err
 }
 
 // RemoveClone deletes this environment's on-disk clone and forgets it, so a later CloneRepo for the
