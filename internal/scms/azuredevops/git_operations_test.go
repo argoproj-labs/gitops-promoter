@@ -55,7 +55,8 @@ var _ = Describe("GitAuthenticationProvider", func() {
 				scmProvider := &v1alpha1.ScmProvider{Spec: tc.scmSpec}
 				secret := &corev1.Secret{}
 
-				provider := azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret)
+				provider, err := azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret)
+				Expect(err).NotTo(HaveOccurred())
 
 				repo := v1alpha1.GitRepository{Spec: tc.repoSpec}
 				url := provider.GetGitHttpsRepoUrl(repo)

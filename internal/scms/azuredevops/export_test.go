@@ -26,3 +26,9 @@ func (cs CommitStatus) SetPullRequestStatusBestEffort(
 ) {
 	cs.setPullRequestStatusBestEffort(ctx, gitClient, gitRepo, commitStatus)
 }
+
+func SetWorkloadIdentityTokenFunc(f func(context.Context, *v1alpha1.AzureWorkloadIdentity) (string, error)) (restore func()) {
+	original := workloadIdentityTokenFunc
+	workloadIdentityTokenFunc = f
+	return func() { workloadIdentityTokenFunc = original }
+}

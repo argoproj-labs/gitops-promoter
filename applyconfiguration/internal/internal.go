@@ -146,6 +146,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: organization
       type:
         scalar: string
+    - name: workloadIdentity
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureDevOpsRepo
   map:
     fields:
@@ -153,6 +156,15 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
     - name: project
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
+  map:
+    fields:
+    - name: clientID
+      type:
+        scalar: string
+    - name: tenantID
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BasicAuth
