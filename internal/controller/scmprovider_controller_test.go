@@ -343,3 +343,21 @@ var _ = Describe("ScmProvider Controller", func() {
 		})
 	})
 })
+
+var _ = Describe("ScmProvider azureDevOps.workloadIdentity validation", func() {
+	It("rejects workloadIdentity, which is only supported on ClusterScmProvider", func() {
+		provider := &promoterv1alpha1.ScmProvider{
+			Name:      "azdo-wi-namespaced",
+			Namespace: "default",
+			Spec: promoterv1alpha1.ScmProviderSpec{
+				AzureDevOps: &promoterv1alpha1.AzureDevOps{
+					Organization:     "example-org",
+					WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
+				},
+			},
+		}
+		err := k8sClient.Create(context.Background(), provider)
+		Expect(errors.IsInvalid(err)).To(BeTrue(), "expected an Invalid error, got %v", err)
+		Expect(err).To(MatchError(ContainSubstring("azureDevOps.workloadIdentity is only supported on ClusterScmProvider")))
+	})
+})

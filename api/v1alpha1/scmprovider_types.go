@@ -32,6 +32,7 @@ var ScmProviderKind = reflect.TypeFor[ScmProvider]().Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
+// +kubebuilder:validation:XValidation:rule="!has(self.azureDevOps) || !has(self.azureDevOps.workloadIdentity) || !has(self.secretRef)",message="secretRef must not be set when azureDevOps.workloadIdentity is used"
 type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -99,6 +100,7 @@ type ScmProviderStatus struct {
 //+kubebuilder:subresource:status
 
 // ScmProvider is the Schema for the scmproviders API
+// +kubebuilder:validation:XValidation:rule="!has(self.spec) || !has(self.spec.azureDevOps) || !has(self.spec.azureDevOps.workloadIdentity)",message="azureDevOps.workloadIdentity is only supported on ClusterScmProvider"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`

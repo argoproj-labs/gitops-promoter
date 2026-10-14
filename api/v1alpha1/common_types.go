@@ -87,6 +87,7 @@ type Gitea struct {
 }
 
 // AzureDevOps is an Azure DevOps SCM provider configuration. It is used to configure the Azure DevOps settings.
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadIdentity) || !has(self.domain)",message="workloadIdentity is only supported for Azure DevOps Services, leave domain empty"
 type AzureDevOps struct {
 	// Organization is the Azure DevOps organization name.
 	// +kubebuilder:validation:Required
@@ -101,6 +102,28 @@ type AzureDevOps struct {
 	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
 	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
+	// WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
+	// The controller pod must be configured for Azure workload identity, which projects a federated service account token
+	// and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
+	// Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set,
+	// secretRef must be omitted.
+	// +optional
+	WorkloadIdentity *AzureWorkloadIdentity `json:"workloadIdentity,omitempty"`
+}
+
+// AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on
+// ClusterScmProvider.
+type AzureWorkloadIdentity struct {
+	// ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as.
+	// Defaults to the AZURE_CLIENT_ID environment variable of the controller.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	ClientID string `json:"clientID,omitempty"`
+	// TenantID is the Microsoft Entra tenant ID of the identity.
+	// Defaults to the AZURE_TENANT_ID environment variable of the controller.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	TenantID string `json:"tenantID,omitempty"`
 }
 
 // Fake is a placeholder for a fake SCM provider, used for testing purposes.

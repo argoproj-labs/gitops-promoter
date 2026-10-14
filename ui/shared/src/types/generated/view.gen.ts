@@ -99,6 +99,8 @@ export type components = {
              * @default
              */
             organization: string;
+            /** @description WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set, secretRef must be omitted. */
+            workloadIdentity?: components["schemas"]["AzureWorkloadIdentity"];
         };
         /** @description AzureDevOpsRepo is a repository in Azure DevOps, identified by its project and name. */
         AzureDevOpsRepo: {
@@ -112,6 +114,13 @@ export type components = {
              * @default
              */
             project: string;
+        };
+        /** @description AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on ClusterScmProvider. */
+        AzureWorkloadIdentity: {
+            /** @description ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as. Defaults to the AZURE_CLIENT_ID environment variable of the controller. */
+            clientID?: string;
+            /** @description TenantID is the Microsoft Entra tenant ID of the identity. Defaults to the AZURE_TENANT_ID environment variable of the controller. */
+            tenantID?: string;
         };
         /**
          * @description BasicAuth defines HTTP Basic Authentication.

@@ -43,6 +43,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(ref),
 		apiv1alpha1.AzureDevOps{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref),
 		apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref),
+		apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureWorkloadIdentity(ref),
 		apiv1alpha1.BasicAuth{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_BasicAuth(ref),
 		apiv1alpha1.BearerAuth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_BearerAuth(ref),
 		apiv1alpha1.BitbucketCloud{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref),
@@ -861,10 +862,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref common.Re
 							Format:      "",
 						},
 					},
+					"workloadIdentity": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set, secretRef must be omitted.",
+							Ref:         ref(apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"organization"},
 			},
 		},
+		Dependencies: []string{
+			apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()},
 	}
 }
 
@@ -893,6 +902,33 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref commo
 					},
 				},
 				Required: []string{"project", "name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureWorkloadIdentity(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on ClusterScmProvider.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"clientID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as. Defaults to the AZURE_CLIENT_ID environment variable of the controller.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tenantID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TenantID is the Microsoft Entra tenant ID of the identity. Defaults to the AZURE_TENANT_ID environment variable of the controller.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}
