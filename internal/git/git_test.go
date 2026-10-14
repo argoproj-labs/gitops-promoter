@@ -236,6 +236,61 @@ var _ = Describe("GetBranchSha", func() {
 		Expect(gitObjectPresent(clonePath, commitSha)).To(BeTrue())
 		Expect(gitObjectPresent(clonePath, blobSha)).To(BeFalse())
 	})
+
+	It("removes an incomplete clone when initialization fails", func() {
+		tempRoot, err := os.MkdirTemp("", "clone-failure-*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			Expect(os.RemoveAll(tempRoot)).To(Succeed())
+		}()
+		GinkgoT().Setenv("TMPDIR", tempRoot)
+
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops := git.NewEnvironmentOperations(repo, &fakeGitProvider{
+			tempDirPath: "/unused",
+			userErr:     errors.New("test credential failure"),
+		}, "default/clone-failure")
+
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(MatchError(ContainSubstring("test credential failure")))
+		Expect(ops.ClonePath()).To(BeEmpty())
+		entries, err := os.ReadDir(tempRoot)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entries).To(BeEmpty())
+	})
+
+	It("stores a remote URL without letting it change other config", func() {
+		hostileURL := "https://example.com/repo.git\"\n[core]\n\thooksPath = /tmp/pwned\n"
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops := git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: hostileURL}, "default/clone-url")
+		defer func() {
+			Expect(ops.RemoveClone()).To(Succeed())
+		}()
+
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
+		clonePath := ops.ClonePath()
+
+		_, err := runGitCmd(clonePath, "config", "--get", "core.hooksPath")
+		Expect(err).To(HaveOccurred())
+		storedURL, err := runGitCmd(clonePath, "config", "--get", "remote.origin.url")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSuffix(storedURL, "\n")).To(Equal(hostileURL))
+		_, err = runGitCmd(clonePath, "config", "--get", "remote.origin.promisor")
+		Expect(err).NotTo(HaveOccurred())
+	})
 })
 
 var _ = Describe("GetBranchSha skip-fetch behavior", func() {
@@ -1365,11 +1420,17 @@ func gitObjectPresent(dir, sha string) bool {
 
 type fakeGitProvider struct {
 	tempDirPath string
+	userErr     error
 }
 
 func (f *fakeGitProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
 	// Return the local bare repo path for testing
 	return f.tempDirPath
 }
-func (f *fakeGitProvider) GetUser(ctx context.Context) (string, error)  { return "user", nil }
+func (f *fakeGitProvider) GetUser(ctx context.Context) (string, error) {
+	if f.userErr != nil {
+		return "", f.userErr
+	}
+	return "user", nil
+}
 func (f *fakeGitProvider) GetToken(ctx context.Context) (string, error) { return "token", nil }

@@ -207,6 +207,9 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+		if removeErr := os.RemoveAll(path); removeErr != nil {
+			err = fmt.Errorf("%w (failed to remove incomplete clone %q: %v)", err, path, removeErr)
+		}
 		return err
 	}
 
@@ -221,22 +224,41 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 // only through a later fetch that names them. Blobs stay promisor objects until something reads them.
 func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) error {
 	repoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
-	const configCmd = "config"
-	steps := [][]string{
-		{"init", "--bare"},
-		{"remote", "add", "origin", repoURL},
-		{configCmd, "--unset-all", "remote.origin.fetch"},
-		{configCmd, "remote.origin.promisor", "true"},
-		{configCmd, "remote.origin.partialclonefilter", "blob:none"},
-		{configCmd, "extensions.partialClone", "origin"},
-		{configCmd, "user.name", "GitOps Promoter"},
-		{configCmd, "user.email", "GitOpsPromoter@argoproj.io"},
+	args := []string{"init", "--bare"}
+	stdout, stderr, err := g.runCmd(ctx, dir, args...)
+	if err != nil {
+		return fmt.Errorf("git %s failed: %w (stdout: %s stderr: %s)", strings.Join(args, " "), err, stdout, stderr)
 	}
-	for _, args := range steps {
-		stdout, stderr, err := g.runCmd(ctx, dir, args...)
-		if err != nil {
-			return fmt.Errorf("git %s failed: %w (stdout: %s stderr: %s)", strings.Join(args, " "), err, stdout, stderr)
-		}
+
+	// The URL is caller-controlled. git config owns its quoting; writing it with Go's %q is a
+	// different escape language and can make the config file unreadable.
+	stdout, stderr, err = g.runCmd(ctx, dir, "config", "remote.origin.url", repoURL)
+	if err != nil {
+		return fmt.Errorf("git config remote.origin.url failed: %w (stdout: %s stderr: %s)", err, stdout, stderr)
+	}
+
+	// The remaining keys are fixed. This is a new repository, so append them directly instead of
+	// paying for a subprocess and a credential lookup per key.
+	config, err := os.OpenFile(path.Join(dir, "config"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("failed to open clone config: %w", err)
+	}
+	_, writeErr := config.WriteString(`
+[remote "origin"]
+	promisor = true
+	partialclonefilter = blob:none
+[extensions]
+	partialClone = origin
+[user]
+	name = GitOps Promoter
+	email = GitOpsPromoter@argoproj.io
+`)
+	closeErr := config.Close()
+	if writeErr != nil {
+		return fmt.Errorf("failed to write clone config: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("failed to close clone config: %w", closeErr)
 	}
 	return nil
 }
