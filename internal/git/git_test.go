@@ -33,19 +33,6 @@ func runGitCmd(dir string, args ...string) (string, error) {
 	return string(output), err
 }
 
-// cloneHeadAndStatus captures a clone's HEAD position and porcelain status, used to assert that an
-// operation left the clone's worktree/index/HEAD untouched (the clone-state invariant). HEAD is
-// captured as both its resolved SHA (empty when unborn — some test setups clone a repo with no
-// default branch) and its symbolic ref, so a move is detected either way.
-func cloneHeadAndStatus(clonePath string) (string, string) {
-	GinkgoHelper()
-	head, _ := runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "HEAD")
-	symref, _ := runGitCmd(clonePath, "symbolic-ref", "-q", "HEAD")
-	status, err := runGitCmd(clonePath, "status", "--porcelain")
-	Expect(err).NotTo(HaveOccurred())
-	return strings.TrimSpace(head) + "|" + strings.TrimSpace(symref), status
-}
-
 var _ = Describe("GetBranchSha", func() {
 	var tempRepoDir string
 
@@ -126,6 +113,128 @@ var _ = Describe("GetBranchSha", func() {
 			// Having a missing branch is a common error, so we're ensuring the error message is clear.
 			Expect(err.Error()).To(ContainSubstring("couldn't find remote ref"))
 		})
+	})
+
+	It("does not store a branch until that branch is fetched", func() {
+		bareDir, err := os.MkdirTemp("", "clone-refs-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		workDir, err := os.MkdirTemp("", "clone-refs-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			Expect(os.RemoveAll(bareDir)).To(Succeed())
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}()
+
+		_, err = runGitCmd(bareDir, "init", "--bare", "-b", "master")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "clone", bareDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "dev.txt"), []byte("dev"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "dev.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "dev")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "env/dev")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/dev")
+		Expect(err).NotTo(HaveOccurred())
+		devSha := strings.TrimSpace(mustGit(workDir, "rev-parse", "HEAD"))
+
+		_, err = runGitCmd(workDir, "checkout", "--orphan", "env/other")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "rm", "-rf", ".")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "other.txt"), []byte("other"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "other.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "other")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/other")
+		Expect(err).NotTo(HaveOccurred())
+		otherSha := strings.TrimSpace(mustGit(workDir, "rev-parse", "HEAD"))
+
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops := git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: bareDir}, "default/clone-branches")
+		defer func() {
+			Expect(ops.RemoveClone()).To(Succeed())
+		}()
+
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
+		clonePath := ops.ClonePath()
+
+		Expect(gitObjectPresent(clonePath, devSha)).To(BeFalse())
+		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
+		_, err = runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
+		Expect(err).To(HaveOccurred())
+
+		Expect(ops.FetchBranch(GinkgoT().Context(), "env/dev")).To(Succeed())
+
+		Expect(gitObjectPresent(clonePath, devSha)).To(BeTrue())
+		Expect(strings.TrimSpace(mustGit(clonePath, "rev-parse", "refs/remotes/origin/env/dev"))).To(Equal(devSha))
+		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
+		_, err = runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("stores the commit and none of its file contents", func() {
+		sourceDir, err := os.MkdirTemp("", "clone-contents-src-*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			Expect(os.RemoveAll(sourceDir)).To(Succeed())
+		}()
+
+		_, err = runGitCmd(sourceDir, "init", "-b", "master")
+		Expect(err).NotTo(HaveOccurred())
+		// A partial clone only omits blobs when the server agrees to filter. GitHub does;
+		// a local source does not unless this is set.
+		_, err = runGitCmd(sourceDir, "config", "uploadpack.allowFilter", "true")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.MkdirAll(filepath.Join(sourceDir, "apps", "demo"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(sourceDir, "apps", "demo", "payload.txt"), []byte("file-contents-that-must-not-be-stored"), 0o644)).To(Succeed())
+		_, err = runGitCmd(sourceDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "commit", "-m", "add payload")
+		Expect(err).NotTo(HaveOccurred())
+
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops := git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: "file://" + sourceDir}, "default/clone-contents")
+		defer func() {
+			Expect(ops.RemoveClone()).To(Succeed())
+		}()
+
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
+		Expect(ops.FetchBranch(GinkgoT().Context(), "master")).To(Succeed())
+		clonePath := ops.ClonePath()
+
+		commitSha := strings.TrimSpace(mustGit(sourceDir, "rev-parse", "HEAD"))
+		blobSha := strings.TrimSpace(mustGit(sourceDir, "rev-parse", "HEAD:apps/demo/payload.txt"))
+
+		Expect(gitObjectPresent(clonePath, commitSha)).To(BeTrue())
+		Expect(gitObjectPresent(clonePath, blobSha)).To(BeFalse())
 	})
 })
 
@@ -730,43 +839,6 @@ var _ = Describe("ActivePath support", func() {
 		Expect(strings.TrimSpace(commitSha)).To(Equal(branchSha))
 	})
 
-	It("treats a missing activePath hydrator.metadata as empty even when the path exists in the worktree", func() {
-		// Regression for the activePath convergence bug: metadata must be read from the commit
-		// object (cat-file on sha:path), not from the clone worktree. When the clone's working tree
-		// already holds apps/app-one/hydrator.metadata but the active branch ref does not, a
-		// worktree-sensitive read fails or returns the wrong blob. GetShaMetadataFromFile treats a
-		// genuinely-absent path as "no metadata yet", not a hard error, or the CTP can never promote.
-		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
-		// Active branch intentionally has NO apps/app-one/hydrator.metadata.
-		_, err := runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "active without app-one metadata")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "branch", "-M", "active")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
-		Expect(err).NotTo(HaveOccurred())
-
-		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
-		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
-
-		// Place the path in the clone's working tree to prove the read is worktree-independent:
-		// a worktree-only copy must not be mistaken for metadata on the ref.
-		clonePath := g.ClonePath()
-		Expect(os.MkdirAll(filepath.Join(clonePath, "apps", "app-one"), 0o755)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(clonePath, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"worktree-only"}`), 0o644)).To(Succeed())
-
-		branchSha, err := g.GetBranchSha(GinkgoT().Context(), "active", "")
-		Expect(err).NotTo(HaveOccurred(), "missing activePath metadata on the ref must not be a hard error")
-		Expect(branchSha).NotTo(BeEmpty(), "the branch SHA still resolves from the ref")
-
-		metadata, err := g.GetShaMetadataFromFile(GinkgoT().Context(), branchSha, "apps/app-one")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metadata.Sha).To(BeEmpty(), "worktree-only metadata must not be mistaken for metadata on the ref")
-	})
-
 	It("GetShaMetadataFromFile returns empty without error when the path is absent from the commit", func() {
 		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
@@ -903,15 +975,8 @@ var _ = Describe("ActivePath support", func() {
 		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
 		Expect(err).NotTo(HaveOccurred())
 
-		// The path-scoped merge must not touch the clone's worktree/index/HEAD.
-		headBefore, statusBefore := cloneHeadAndStatus(g.ClonePath())
-
 		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
-
-		headAfter, statusAfter := cloneHeadAndStatus(g.ClonePath())
-		Expect(headAfter).To(Equal(headBefore), "merge must not move HEAD")
-		Expect(statusAfter).To(Equal(statusBefore), "merge must not dirty the worktree/index")
 
 		_, err = runGitCmd(workDir, "fetch", "origin")
 		Expect(err).NotTo(HaveOccurred())
@@ -1021,165 +1086,6 @@ var _ = Describe("ActivePath support", func() {
 		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"))
-	})
-
-	// Regression for the conflict-resolution wedge: if a prior merge was interrupted between
-	// `merge --no-commit` and `commit`, the clone is left with MERGE_HEAD set and an unmerged
-	// index. A worktree-based implementation then fails every subsequent reconcile at its opening
-	// `checkout -B` ("you need to resolve your current index first"), permanently stalling
-	// conflict resolution for that policy until the process restarts. The merge functions must
-	// instead compute the result from the object DB and succeed regardless of the clone's state.
-	It("MergeWithOursStrategyForPath succeeds even when the clone is left in a wedged mid-merge state", func() {
-		base := map[string]string{
-			"apps/app-one/config.yaml": "version: base\n",
-			"apps/app-two/config.yaml": "version: base\n",
-		}
-		for filePath, content := range base {
-			Expect(os.MkdirAll(filepath.Dir(filepath.Join(workDir, filePath)), 0o755)).To(Succeed())
-			Expect(os.WriteFile(filepath.Join(workDir, filePath), []byte(content), 0o644)).To(Succeed())
-		}
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"base"}`), 0o644)).To(Succeed())
-		_, err := runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "base")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "branch", "-M", "active")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = runGitCmd(workDir, "checkout", "-b", "proposed-app-one-next")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"proposed"}`), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "proposed")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "proposed-app-one-next")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Advance active so it conflicts with proposed.
-		_, err = runGitCmd(workDir, "checkout", "active")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "active advance")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "origin", "active")
-		Expect(err).NotTo(HaveOccurred())
-
-		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
-		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
-		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed-app-one-next", "")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Inject the wedge: start a path-scoped merge in the clone and abandon it before commit,
-		// exactly as an interrupted/failed prior reconcile would leave it.
-		clonePath := g.ClonePath()
-		Expect(clonePath).NotTo(BeEmpty())
-		_, err = runGitCmd(clonePath, "checkout", "-B", "proposed-app-one-next", "origin/proposed-app-one-next")
-		Expect(err).NotTo(HaveOccurred())
-		// This merge conflicts; the non-zero exit is expected and intentionally ignored.
-		_, _ = runGitCmd(clonePath, "merge", "--no-commit", "--no-ff", "origin/active")
-		_, statErr := os.Stat(filepath.Join(clonePath, ".git", "MERGE_HEAD"))
-		Expect(statErr).NotTo(HaveOccurred(), "precondition: clone must be left mid-merge with MERGE_HEAD set")
-		headBefore, statusBefore := cloneHeadAndStatus(clonePath)
-
-		// The merge must still succeed despite the wedged clone state, and must leave that state
-		// untouched (it operates entirely on the object DB).
-		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
-		Expect(err).NotTo(HaveOccurred(), "path-scoped merge must succeed from a pre-wedged clone")
-
-		headAfter, statusAfter := cloneHeadAndStatus(clonePath)
-		Expect(headAfter).To(Equal(headBefore), "merge must not move HEAD even from a wedged clone")
-		Expect(statusAfter).To(Equal(statusBefore), "merge must not touch the wedged worktree/index")
-
-		// Verify the remote advanced with the correct resolved tree.
-		_, err = runGitCmd(workDir, "fetch", "origin")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "checkout", "-B", "proposed-app-one-next", "origin/proposed-app-one-next")
-		Expect(err).NotTo(HaveOccurred())
-		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"), "app-one keeps proposed content")
-		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"), "app-two uses active content")
-	})
-
-	It("MergeWithOursStrategy succeeds even when the clone is left in a wedged mid-merge state", func() {
-		Expect(os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte("version: base\n"), 0o644)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"base"}`), 0o644)).To(Succeed())
-		_, err := runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "base")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "branch", "-M", "active")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = runGitCmd(workDir, "checkout", "-b", "proposed")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "proposed")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "proposed")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Advance active so it conflicts with proposed.
-		_, err = runGitCmd(workDir, "checkout", "active")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "-A")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "active advance")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "origin", "active")
-		Expect(err).NotTo(HaveOccurred())
-
-		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
-		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
-		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed", "")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Inject the wedge in the clone.
-		clonePath := g.ClonePath()
-		Expect(clonePath).NotTo(BeEmpty())
-		_, err = runGitCmd(clonePath, "checkout", "-B", "proposed", "origin/proposed")
-		Expect(err).NotTo(HaveOccurred())
-		_, _ = runGitCmd(clonePath, "merge", "--no-commit", "--no-ff", "origin/active")
-		_, statErr := os.Stat(filepath.Join(clonePath, ".git", "MERGE_HEAD"))
-		Expect(statErr).NotTo(HaveOccurred(), "precondition: clone must be left mid-merge with MERGE_HEAD set")
-		headBefore, statusBefore := cloneHeadAndStatus(clonePath)
-
-		err = g.MergeWithOursStrategy(GinkgoT().Context(), "proposed", "active")
-		Expect(err).NotTo(HaveOccurred(), "ours-strategy merge must succeed from a pre-wedged clone")
-
-		headAfter, statusAfter := cloneHeadAndStatus(clonePath)
-		Expect(headAfter).To(Equal(headBefore), "merge must not move HEAD even from a wedged clone")
-		Expect(statusAfter).To(Equal(statusBefore), "merge must not touch the wedged worktree/index")
-
-		// The ours strategy keeps proposed's tree; the remote tip must reflect proposed content.
-		_, err = runGitCmd(workDir, "fetch", "origin")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "checkout", "-B", "proposed", "origin/proposed")
-		Expect(err).NotTo(HaveOccurred())
-		content, err := os.ReadFile(filepath.Join(workDir, "config.yaml"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(content))).To(Equal("version: proposed"), "ours strategy keeps proposed content")
 	})
 })
 
@@ -1446,101 +1352,6 @@ var _ = Describe("gitBin", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
-
-var _ = Describe("CloneRepo branches", func() {
-	var (
-		bareDir  string
-		workDir  string
-		repo     *v1alpha1.GitRepository
-		ops      *git.EnvironmentOperations
-		devSha   string
-		otherSha string
-	)
-
-	BeforeEach(func() {
-		var err error
-		bareDir, err = os.MkdirTemp("", "clone-refs-bare-*")
-		Expect(err).NotTo(HaveOccurred())
-		workDir, err = os.MkdirTemp("", "clone-refs-work-*")
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = runGitCmd(bareDir, "init", "--bare", "-b", "master")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "clone", bareDir, ".")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(os.WriteFile(filepath.Join(workDir, "dev.txt"), []byte("dev"), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "dev.txt")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "dev")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "branch", "-M", "env/dev")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/dev")
-		Expect(err).NotTo(HaveOccurred())
-		devSha = strings.TrimSpace(mustGitOutput(workDir, "rev-parse", "HEAD"))
-
-		_, err = runGitCmd(workDir, "checkout", "--orphan", "env/other")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "rm", "-rf", ".")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(filepath.Join(workDir, "other.txt"), []byte("other"), 0o644)).To(Succeed())
-		_, err = runGitCmd(workDir, "add", "other.txt")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "commit", "-m", "other")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/other")
-		Expect(err).NotTo(HaveOccurred())
-		otherSha = strings.TrimSpace(mustGitOutput(workDir, "rev-parse", "HEAD"))
-
-		repo = &v1alpha1.GitRepository{
-			Spec: v1alpha1.GitRepositorySpec{
-				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
-				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
-			},
-			Name:      "testrepo",
-			Namespace: "default",
-		}
-		ops = git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: bareDir}, "default/clone-branches")
-	})
-
-	AfterEach(func() {
-		if ops != nil {
-			Expect(ops.RemoveClone()).To(Succeed())
-		}
-		Expect(os.RemoveAll(bareDir)).To(Succeed())
-		Expect(os.RemoveAll(workDir)).To(Succeed())
-	})
-
-	It("does not store a branch until that branch is fetched", func() {
-		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
-		clonePath := ops.ClonePath()
-
-		Expect(gitObjectPresent(clonePath, devSha)).To(BeFalse())
-		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
-		_, err := runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
-		Expect(err).To(HaveOccurred())
-
-		Expect(ops.FetchBranch(GinkgoT().Context(), "env/dev")).To(Succeed())
-
-		Expect(gitObjectPresent(clonePath, devSha)).To(BeTrue())
-		Expect(strings.TrimSpace(mustGitOutput(clonePath, "rev-parse", "refs/remotes/origin/env/dev"))).To(Equal(devSha))
-		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
-		_, err = runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
-		Expect(err).To(HaveOccurred())
-	})
-})
-
-func mustGitOutput(dir string, args ...string) string {
-	GinkgoHelper()
-	out, err := runGitCmd(dir, args...)
-	Expect(err).NotTo(HaveOccurred())
-	return out
-}
 
 // gitObjectPresent reports whether sha is stored in dir. Lazy fetch is disabled so a missing
 // object stays missing instead of being downloaded in order to answer the question.

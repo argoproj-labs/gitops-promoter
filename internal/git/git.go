@@ -11,11 +11,11 @@
 // # Concurrency
 //
 // EnvironmentOperations is NOT safe for concurrent use within a single identity. Its methods shell
-// out to git against a shared working copy (the .git index, HEAD, refs, FETCH_HEAD and the object
-// store), so concurrent calls for the same identity can corrupt that state or compute a result from
-// a mix of versions. Callers MUST serialize all operations for a given identity. (Callers that
-// already process one owner at a time, such as a controller whose work queue serializes reconciles
-// per object, get this for free.)
+// out to git against one bare repository (refs, FETCH_HEAD, and the object store), so concurrent
+// calls for the same identity can corrupt that state or compute a result from a mix of versions.
+// Callers MUST serialize all operations for a given identity. (Callers that already process one
+// owner at a time, such as a controller whose work queue serializes reconciles per object, get this
+// for free.)
 //
 // Because each identity has its own clone, EnvironmentOperations for DIFFERENT identities are
 // independent and may be used concurrently. The one exception is remote operations: two identities
@@ -26,30 +26,22 @@
 // The package-level functions that do not use a clone (LsRemote, AddTrailerToCommitMessage,
 // ParseTrailersFromMessage) are concurrency-safe.
 //
-// # Clone state invariant
+// # Clone
 //
-// Operations leave HEAD and `git status --porcelain` unchanged on return (success or error), and
-// do not create in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD, rebase-merge, rebase-apply).
-// CloneRepo downloads no branches, so a fresh clone's HEAD is unborn until a caller fetches and
-// checks out; nothing in this package checks out. In practice every operation satisfies this
-// because none of them mutate the clone's index, worktree, or HEAD:
+// CloneRepo creates a bare repository: an object store and refs, with no work tree and no index.
+// It downloads no branch history. Callers fetch the refs they need, and the remote has no fetch
+// refspec, so a fetch cannot pull every branch by default. Blobs stay promisor objects until a
+// command reads file contents.
 //
 //   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
-//     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
-//     clone and never write to the index/worktree/HEAD.
+//     cat-file, log, notes, rev-list, merge-tree --write-tree).
 //   - The merges (MergeWithOursStrategy, MergeWithOursStrategyForPath) and RestoreActiveBranch
-//     build their result entirely in the object DB — commit-tree, and a temporary index
-//     (GIT_INDEX_FILE) plus read-tree/write-tree/commit-tree when the result is path-scoped —
-//     then push the computed commit straight to the remote ref. They never check out a branch,
-//     so they cannot be wedged by, nor leave behind, a dirty worktree or a half-finished merge.
+//     build their result in the object DB — commit-tree, and a temporary index (GIT_INDEX_FILE)
+//     plus read-tree/write-tree/commit-tree when the result is path-scoped — then push the computed
+//     commit straight to the remote ref.
 //
-// The clone's working tree therefore stays exactly as CloneRepo left it for the life of the clone.
-//
-// MAINTAINER NOTE: new code MUST NOT introduce worktree-mutating git operations (checkout, merge,
-// reset, add, commit, rm against the real index/worktree). Prefer object-DB plumbing as the merges
-// do; if a worktree mutation is ever truly unavoidable, it MUST restore the resting state before
-// returning (on success AND error) and be covered by an invariant test (see the merge specs that
-// assert HEAD and `git status --porcelain` are unchanged across a merge).
+// MAINTAINER NOTE: new code MUST NOT add a work tree or check out this clone (checkout, switch,
+// restore, reset, pull, merge, add, commit). Prefer object-DB plumbing as the merges do.
 //
 // Note on freshness preconditions (a separate concern from the resting-state invariant): operations
 // that read a specific ref/SHA/note assume the relevant objects were already fetched. HasConflict
@@ -98,9 +90,9 @@ import (
 // EnvironmentOperations provides methods for interacting with a specific clone of a Git repository.
 //
 // EnvironmentOperations is NOT safe for concurrent use within a single identity: its methods operate
-// on a shared on-disk clone, so callers must serialize all operations for a given identity. Distinct
-// identities use distinct clones and are independent (see the package documentation for details,
-// including the remote-operation caveat).
+// on one bare on-disk repository, so callers must serialize all operations for a given identity.
+// Distinct identities use distinct repositories and are independent (see the package documentation
+// for details, including the remote-operation caveat).
 type EnvironmentOperations struct {
 	gap     scms.GitOperationsProvider
 	gitRepo *v1alpha1.GitRepository
@@ -193,7 +185,7 @@ func (g *EnvironmentOperations) ClonePath() string {
 	return gitpaths.Get(g.cloneKey())
 }
 
-// CloneRepo prepares an on-disk clone for this identity if one does not already exist.
+// CloneRepo prepares a bare on-disk repository for this identity if one does not already exist.
 // No branch history is downloaded. Callers fetch the refs they need; the remote has no fetch
 // refspec, so a later fetch cannot pull every branch by default.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
@@ -225,20 +217,18 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
-// initClone creates a partial clone with no configured fetch refspec. Branch objects arrive only
-// through a later fetch that names them. Blobs stay promisor objects, matching the previous
-// `git clone --filter=blob:none` behavior.
+// initClone creates a bare partial clone with no configured fetch refspec. Branch objects arrive
+// only through a later fetch that names them. Blobs stay promisor objects until something reads them.
 func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) error {
 	repoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
 	const configCmd = "config"
 	steps := [][]string{
-		{"init"},
+		{"init", "--bare"},
 		{"remote", "add", "origin", repoURL},
 		{configCmd, "--unset-all", "remote.origin.fetch"},
 		{configCmd, "remote.origin.promisor", "true"},
 		{configCmd, "remote.origin.partialclonefilter", "blob:none"},
 		{configCmd, "extensions.partialClone", "origin"},
-		{configCmd, "pull.rebase", "false"},
 		{configCmd, "user.name", "GitOps Promoter"},
 		{configCmd, "user.email", "GitOpsPromoter@argoproj.io"},
 	}
@@ -1945,8 +1935,7 @@ func (g *EnvironmentOperations) restoreTree(ctx context.Context, activeRef, targ
 
 // overlayPathTree returns baseRef's tree with path replaced by sourceRef's content at path, or with
 // path removed when sourceRef has nothing there. The tree is built in a temporary index
-// (GIT_INDEX_FILE) outside the clone, so the clone's real index/worktree/HEAD are never touched and
-// the index cannot appear as an untracked file.
+// (GIT_INDEX_FILE) outside the clone. The clone is bare, so it has no index of its own.
 func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, sourceRef, path string) (string, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
@@ -1979,7 +1968,8 @@ func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, so
 		return "", fmt.Errorf("failed to inspect %q on %q: %w (stderr: %s)", path, sourceRef, err, stderr)
 	}
 	if strings.TrimSpace(lsTreeStdout) != "" {
-		if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "--prefix="+path+"/", sourceRef+":"+path); err != nil {
+		// -i skips the work-tree check. read-tree --prefix otherwise refuses to run in a bare repository.
+		if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "-i", "--prefix="+path+"/", sourceRef+":"+path); err != nil {
 			return "", fmt.Errorf("failed to overlay %q from %q: %w (stderr: %s)", path, sourceRef, err, stderr)
 		}
 	}
