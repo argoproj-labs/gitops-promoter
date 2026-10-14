@@ -1,14 +1,17 @@
-package azuredevops
+package azuredevops_test
 
 import (
 	"context"
 	"errors"
-	"testing"
-
-	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
+
+var _ azuredevops.AzdoGitClient = &fakeAzdoGitClient{}
 
 type fakeAzdoGitClient struct {
 	lastPullRequestStatus  git.CreatePullRequestStatusArgs
@@ -83,82 +86,79 @@ func openPullRequest(id int, headSHA string) git.GitPullRequest {
 	}
 }
 
-func TestSetPullRequestStatusBestEffort(t *testing.T) {
-	t.Parallel()
-
-	iterationID := 7
-	staleIterationID := 1
-	iterationSHA := testSHA
-	otherSHA := "0000000000000000000000000000000000000000"
-	gitClient := &fakeAzdoGitClient{
-		pullRequests: []git.GitPullRequest{
-			openPullRequest(41, otherSHA),
-			openPullRequest(42, testSHA),
-		},
-		iterations: []git.GitPullRequestIteration{
-			{
-				Id:              &staleIterationID,
-				SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
-			},
-			{
-				Id:              &iterationID,
-				SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
-			},
-		},
-	}
-
-	commitStatus := testCommitStatus(v1alpha1.CommitPhaseSuccess)
-	CommitStatus{}.setPullRequestStatusBestEffort(context.Background(), gitClient, testGitRepository(), commitStatus)
-
-	if gitClient.iterationCalls != 1 {
-		t.Fatalf("expected one iteration lookup, got %d", gitClient.iterationCalls)
-	}
-	if gitClient.pullRequestStatusCalls != 1 {
-		t.Fatalf("expected one PR status create, got %d", gitClient.pullRequestStatusCalls)
-	}
-	args := gitClient.lastPullRequestStatus
-	if args.PullRequestId == nil || *args.PullRequestId != 42 {
-		t.Fatalf("expected PR 42, got %v", args.PullRequestId)
-	}
-	if args.Status == nil || args.Status.IterationId == nil || *args.Status.IterationId != iterationID {
-		t.Fatalf("expected iteration %d, got %#v", iterationID, args.Status)
-	}
-	if args.Status.Context == nil || args.Status.Context.Name == nil || *args.Status.Context.Name != commitStatus.Spec.Name {
-		t.Fatalf("unexpected status context: %#v", args.Status.Context)
-	}
-	if args.Status.State == nil || *args.Status.State != git.GitStatusStateValues.Succeeded {
-		t.Fatalf("unexpected status state: %#v", args.Status.State)
-	}
+func mirrorPullRequestStatus(gitClient azuredevops.AzdoGitClient, commitStatus *v1alpha1.CommitStatus) {
+	azuredevops.CommitStatus{}.SetPullRequestStatusBestEffort(context.Background(), gitClient, testGitRepository(), commitStatus)
 }
 
-func TestSetPullRequestStatusBestEffortIgnoresFailuresAndMissingPRs(t *testing.T) {
-	t.Parallel()
+var _ = Describe("CommitStatus", func() {
+	Describe("SetPullRequestStatusBestEffort", func() {
+		It("mirrors the status onto the latest matching pull request iteration", func() {
+			iterationID := 7
+			staleIterationID := 1
+			iterationSHA := testSHA
+			otherSHA := "0000000000000000000000000000000000000000"
+			gitClient := &fakeAzdoGitClient{
+				pullRequests: []git.GitPullRequest{
+					openPullRequest(41, otherSHA),
+					openPullRequest(42, testSHA),
+				},
+				iterations: []git.GitPullRequestIteration{
+					{
+						Id:              &staleIterationID,
+						SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
+					},
+					{
+						Id:              &iterationID,
+						SourceRefCommit: &git.GitCommitRef{CommitId: &iterationSHA},
+					},
+				},
+			}
 
-	commitStatus := testCommitStatus(v1alpha1.CommitPhasePending)
-	provider := CommitStatus{}
-	repo := testGitRepository()
+			commitStatus := testCommitStatus(v1alpha1.CommitPhaseSuccess)
+			mirrorPullRequestStatus(gitClient, commitStatus)
 
-	// No active PR has this SHA at its head, so nothing else is queried.
-	noMatch := &fakeAzdoGitClient{pullRequests: []git.GitPullRequest{openPullRequest(41, "0000000000000000000000000000000000000000")}}
-	provider.setPullRequestStatusBestEffort(context.Background(), noMatch, repo, commitStatus)
-	if noMatch.iterationCalls != 0 || noMatch.pullRequestStatusCalls != 0 {
-		t.Fatal("unexpected Azure DevOps calls without a matching PR")
-	}
+			Expect(gitClient.iterationCalls).To(Equal(1))
+			Expect(gitClient.pullRequestStatusCalls).To(Equal(1))
 
-	// A failed PR listing is swallowed.
-	listFailure := &fakeAzdoGitClient{pullRequestErr: errors.New("temporary failure")}
-	provider.setPullRequestStatusBestEffort(context.Background(), listFailure, repo, commitStatus)
-	if listFailure.iterationCalls != 0 || listFailure.pullRequestStatusCalls != 0 {
-		t.Fatal("unexpected Azure DevOps calls after a failed listing")
-	}
+			args := gitClient.lastPullRequestStatus
+			Expect(args.PullRequestId).To(HaveValue(Equal(42)))
+			Expect(args.Status).NotTo(BeNil())
+			Expect(args.Status.IterationId).To(HaveValue(Equal(iterationID)))
+			Expect(args.Status.Context).NotTo(BeNil())
+			Expect(args.Status.Context.Name).To(HaveValue(Equal(commitStatus.Spec.Name)))
+			Expect(args.Status.State).To(HaveValue(Equal(git.GitStatusStateValues.Succeeded)))
+		})
 
-	// A failed iteration lookup is swallowed too.
-	iterationFailure := &fakeAzdoGitClient{
-		pullRequests: []git.GitPullRequest{openPullRequest(42, testSHA)},
-		iterationErr: errors.New("temporary failure"),
-	}
-	provider.setPullRequestStatusBestEffort(context.Background(), iterationFailure, repo, commitStatus)
-	if iterationFailure.iterationCalls != 1 || iterationFailure.pullRequestStatusCalls != 0 {
-		t.Fatalf("expected failed lookup to be swallowed; iterations=%d creates=%d", iterationFailure.iterationCalls, iterationFailure.pullRequestStatusCalls)
-	}
-}
+		It("does nothing when no active pull request matches the SHA", func() {
+			gitClient := &fakeAzdoGitClient{
+				pullRequests: []git.GitPullRequest{openPullRequest(41, "0000000000000000000000000000000000000000")},
+			}
+
+			mirrorPullRequestStatus(gitClient, testCommitStatus(v1alpha1.CommitPhasePending))
+
+			Expect(gitClient.iterationCalls).To(Equal(0))
+			Expect(gitClient.pullRequestStatusCalls).To(Equal(0))
+		})
+
+		It("swallows a failed pull request listing", func() {
+			gitClient := &fakeAzdoGitClient{pullRequestErr: errors.New("temporary failure")}
+
+			mirrorPullRequestStatus(gitClient, testCommitStatus(v1alpha1.CommitPhasePending))
+
+			Expect(gitClient.iterationCalls).To(Equal(0))
+			Expect(gitClient.pullRequestStatusCalls).To(Equal(0))
+		})
+
+		It("swallows a failed iteration lookup", func() {
+			gitClient := &fakeAzdoGitClient{
+				pullRequests: []git.GitPullRequest{openPullRequest(42, testSHA)},
+				iterationErr: errors.New("temporary failure"),
+			}
+
+			mirrorPullRequestStatus(gitClient, testCommitStatus(v1alpha1.CommitPhasePending))
+
+			Expect(gitClient.iterationCalls).To(Equal(1))
+			Expect(gitClient.pullRequestStatusCalls).To(Equal(0))
+		})
+	})
+})
