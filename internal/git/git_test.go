@@ -782,6 +782,8 @@ var _ = Describe("ActivePath support", func() {
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
 
 		commitSha, err := runGitCmd(workDir, "rev-parse", "active")
 		Expect(err).NotTo(HaveOccurred())
@@ -827,6 +829,8 @@ var _ = Describe("ActivePath support", func() {
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err = g.GetBranchSha(GinkgoT().Context(), strings.TrimSpace(defaultBranch), "")
+		Expect(err).NotTo(HaveOccurred())
 
 		commitSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
 		Expect(err).NotTo(HaveOccurred())
@@ -895,6 +899,8 @@ var _ = Describe("ActivePath support", func() {
 		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed-app-one-next", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
 		Expect(err).NotTo(HaveOccurred())
 
 		// The path-scoped merge must not touch the clone's worktree/index/HEAD.
@@ -989,6 +995,8 @@ var _ = Describe("ActivePath support", func() {
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed-app-one-next", "")
 		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
 
 		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
@@ -1067,6 +1075,8 @@ var _ = Describe("ActivePath support", func() {
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed-app-one-next", "")
 		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
 
 		// Inject the wedge: start a path-scoped merge in the clone and abandon it before commit,
 		// exactly as an interrupted/failed prior reconcile would leave it.
@@ -1139,6 +1149,8 @@ var _ = Describe("ActivePath support", func() {
 		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchSha(GinkgoT().Context(), "proposed", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(GinkgoT().Context(), "active", "")
 		Expect(err).NotTo(HaveOccurred())
 
 		// Inject the wedge in the clone.
@@ -1364,13 +1376,12 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 
 		By("running ours-merge on proposed-next; the merge commit has no hydrator note")
 		clonePath := g.ClonePath()
-		_, err = runGitCmd(clonePath, "fetch", "origin", "proposed-next", "active")
-		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchBranch(GinkgoT().Context(), "proposed-next")).To(Succeed())
+		Expect(g.FetchBranch(GinkgoT().Context(), "active")).To(Succeed())
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
 		Expect(g.MergeWithOursStrategy(GinkgoT().Context(), "proposed-next", "active")).To(Succeed())
 
-		_, err = runGitCmd(clonePath, "fetch", "origin", "proposed-next")
-		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchBranch(GinkgoT().Context(), "proposed-next")).To(Succeed())
 		mergeSha, err := runGitCmd(clonePath, "rev-parse", "origin/proposed-next")
 		Expect(err).NotTo(HaveOccurred())
 		mergeSha = strings.TrimSpace(mergeSha)
@@ -1413,8 +1424,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		clonePath := g.ClonePath()
-		_, err = runGitCmd(clonePath, "fetch", "origin", "proposed-next")
-		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchBranch(GinkgoT().Context(), "proposed-next")).To(Succeed())
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
 		tipSha, err := runGitCmd(clonePath, "rev-parse", "origin/proposed-next")
 		Expect(err).NotTo(HaveOccurred())
@@ -1434,6 +1444,111 @@ var _ = Describe("gitBin", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
+
+var _ = Describe("CloneRepo branches", func() {
+	var (
+		bareDir  string
+		workDir  string
+		repo     *v1alpha1.GitRepository
+		ops      *git.EnvironmentOperations
+		devSha   string
+		otherSha string
+	)
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "clone-refs-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		workDir, err = os.MkdirTemp("", "clone-refs-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(bareDir, "init", "--bare", "-b", "master")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "clone", bareDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "dev.txt"), []byte("dev"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "dev.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "dev")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "env/dev")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/dev")
+		Expect(err).NotTo(HaveOccurred())
+		devSha = strings.TrimSpace(mustGitOutput(workDir, "rev-parse", "HEAD"))
+
+		_, err = runGitCmd(workDir, "checkout", "--orphan", "env/other")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "rm", "-rf", ".")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "other.txt"), []byte("other"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "other.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "other")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "env/other")
+		Expect(err).NotTo(HaveOccurred())
+		otherSha = strings.TrimSpace(mustGitOutput(workDir, "rev-parse", "HEAD"))
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops = git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: bareDir}, "default/clone-branches")
+	})
+
+	AfterEach(func() {
+		if ops != nil {
+			Expect(ops.RemoveClone()).To(Succeed())
+		}
+		Expect(os.RemoveAll(bareDir)).To(Succeed())
+		Expect(os.RemoveAll(workDir)).To(Succeed())
+	})
+
+	It("does not store a branch until that branch is fetched", func() {
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
+		clonePath := ops.ClonePath()
+
+		Expect(gitObjectPresent(clonePath, devSha)).To(BeFalse())
+		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
+		_, err := runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
+		Expect(err).To(HaveOccurred())
+
+		Expect(ops.FetchBranch(GinkgoT().Context(), "env/dev")).To(Succeed())
+
+		Expect(gitObjectPresent(clonePath, devSha)).To(BeTrue())
+		Expect(strings.TrimSpace(mustGitOutput(clonePath, "rev-parse", "refs/remotes/origin/env/dev"))).To(Equal(devSha))
+		Expect(gitObjectPresent(clonePath, otherSha)).To(BeFalse())
+		_, err = runGitCmd(clonePath, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/env/other")
+		Expect(err).To(HaveOccurred())
+	})
+})
+
+func mustGitOutput(dir string, args ...string) string {
+	GinkgoHelper()
+	out, err := runGitCmd(dir, args...)
+	Expect(err).NotTo(HaveOccurred())
+	return out
+}
+
+// gitObjectPresent reports whether sha is stored in dir. Lazy fetch is disabled so a missing
+// object stays missing instead of being downloaded in order to answer the question.
+func gitObjectPresent(dir, sha string) bool {
+	GinkgoHelper()
+	cmd := exec.CommandContext(context.Background(), "git", "cat-file", "-e", sha)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0")
+	return cmd.Run() == nil
+}
 
 type fakeGitProvider struct {
 	tempDirPath string

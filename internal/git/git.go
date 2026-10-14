@@ -28,10 +28,11 @@
 //
 // # Clone state invariant
 //
-// Operations leave the clone in a "resting state" on return (success or error): an empty
-// `git status --porcelain`, no in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD,
-// rebase-merge, rebase-apply), and a HEAD that resolves to a commit. In practice every operation
-// here satisfies this trivially, because none of them mutate the clone's index, worktree, or HEAD:
+// Operations leave HEAD and `git status --porcelain` unchanged on return (success or error), and
+// do not create in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD, rebase-merge, rebase-apply).
+// CloneRepo downloads no branches, so a fresh clone's HEAD is unborn until a caller fetches and
+// checks out; nothing in this package checks out. In practice every operation satisfies this
+// because none of them mutate the clone's index, worktree, or HEAD:
 //
 //   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
 //     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
@@ -192,7 +193,9 @@ func (g *EnvironmentOperations) ClonePath() string {
 	return gitpaths.Get(g.cloneKey())
 }
 
-// CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
+// CloneRepo prepares an on-disk clone for this identity if one does not already exist.
+// No branch history is downloaded. Callers fetch the refs they need; the remote has no fetch
+// refspec, so a later fetch cannot pull every branch by default.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if g.ClonePath() != "" {
 		// Already cloned
@@ -208,27 +211,10 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	logger.V(4).Info("Created directory", "directory", path)
 
 	start := time.Now()
-	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
+	err = g.initClone(ctx, path)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
-		return err
-	}
-
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-		return err
-	}
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-		return err
-	}
-
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 		return err
 	}
 
@@ -236,6 +222,32 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 
 	gitpaths.Set(g.cloneKey(), path)
 
+	return nil
+}
+
+// initClone creates a partial clone with no configured fetch refspec. Branch objects arrive only
+// through a later fetch that names them. Blobs stay promisor objects, matching the previous
+// `git clone --filter=blob:none` behavior.
+func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) error {
+	repoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
+	const configCmd = "config"
+	steps := [][]string{
+		{"init"},
+		{"remote", "add", "origin", repoURL},
+		{configCmd, "--unset-all", "remote.origin.fetch"},
+		{configCmd, "remote.origin.promisor", "true"},
+		{configCmd, "remote.origin.partialclonefilter", "blob:none"},
+		{configCmd, "extensions.partialClone", "origin"},
+		{configCmd, "pull.rebase", "false"},
+		{configCmd, "user.name", "GitOps Promoter"},
+		{configCmd, "user.email", "GitOpsPromoter@argoproj.io"},
+	}
+	for _, args := range steps {
+		stdout, stderr, err := g.runCmd(ctx, dir, args...)
+		if err != nil {
+			return fmt.Errorf("git %s failed: %w (stdout: %s stderr: %s)", strings.Join(args, " "), err, stdout, stderr)
+		}
+	}
 	return nil
 }
 
@@ -504,7 +516,10 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 	}
 
 	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	// The destination is explicit because the clone has no remote.origin.fetch wildcard.
+	// `git fetch origin <branch>` would store FETCH_HEAD only and leave origin/<branch> unset.
+	refspec := "+" + branchRef(branch) + ":" + trackingRef(branch)
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", refspec)
 	g.forgetLocalRef(trackingRef(branch))
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
@@ -877,12 +892,14 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
-	// The push also moves the clone's origin/<proposed> tracking ref.
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+	if err := g.recordTrackingRef(ctx, proposedBranch, commitSha); err != nil {
+		return err
 	}
 
 	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
@@ -921,12 +938,14 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
 	_, stderr, err := g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
-	// The push also moves the clone's origin/<proposed> tracking ref.
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+	if err := g.recordTrackingRef(ctx, proposedBranch, commitSha); err != nil {
+		return err
 	}
 
 	logger.Info("Successfully merged branches with path-scoped strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
@@ -2039,9 +2058,10 @@ func (g *EnvironmentOperations) commitTree(ctx context.Context, tree string, par
 // forward; the lease also rejects one that was rewound to an ancestor, where a plain push would
 // fast-forward and put back the commits that were removed.
 //
-// The push moves the clone's origin/<branch> tracking ref. The branch is dropped from the remote
-// snapshot and the local ref cache either way, so a later GetBranchSha re-probes instead of
-// returning the pre-push tip.
+// The branch is dropped from the remote snapshot and the local ref cache either way, so a later
+// GetBranchSha re-probes instead of returning the pre-push tip. On success, origin/<branch> is
+// pointed at commitSha. git push does not do that itself: this clone has no fetch refspec, and
+// push only advances a remote-tracking ref when one maps the destination.
 func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitSha, branch, expectedTip string) error {
 	lease := "refs/heads/" + branch + ":" + expectedTip
 	refspec := commitSha + ":refs/heads/" + branch
@@ -2051,5 +2071,15 @@ func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitS
 	if err != nil {
 		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
 	}
+	return g.recordTrackingRef(ctx, branch, commitSha)
+}
+
+// recordTrackingRef points origin/<branch> at sha. Call it after a successful push of that commit.
+func (g *EnvironmentOperations) recordTrackingRef(ctx context.Context, branch, sha string) error {
+	_, stderr, err := g.runCmd(ctx, g.ClonePath(), "update-ref", trackingRef(branch), sha)
+	if err != nil {
+		return fmt.Errorf("failed to record %s at %s: %w (stderr: %s)", trackingRef(branch), sha, err, stderr)
+	}
+	g.forgetLocalRef(trackingRef(branch))
 	return nil
 }

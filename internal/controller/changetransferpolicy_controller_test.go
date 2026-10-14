@@ -3847,13 +3847,17 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 
 	It("writes the note as soon as the PR reports the merge, without releasing the finalizer", func() {
 		By("Confirming the controller's clone has not fetched the merge yet")
-		// The clone predates the external merge; origin/<active> only advances when FetchBranch runs.
-		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).NotTo(Equal(squashSha))
+		// The clone predates the external merge. The tracking ref is either absent or still the
+		// pre-merge tip; it only advances when FetchBranch runs.
+		activeTip, err := runGitCmd(ctx, gitOps.ClonePath(), "rev-parse", "--verify", "--quiet", "origin/"+activeBranch)
+		if err == nil {
+			Expect(strings.TrimSpace(activeTip)).NotTo(Equal(squashSha))
+		}
 
 		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
 		r := newReconciler(pr)
 
-		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Verifying the active branch was fetched so the merge commit could be read")
