@@ -85,12 +85,8 @@ var _ = Describe("RestoreActiveBranch", func() {
 		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development-next")
 
 		g := newOps()
-		head, status := cloneHeadAndStatus(g.ClonePath())
 		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
 		Expect(err).NotTo(HaveOccurred())
-		afterHead, afterStatus := cloneHeadAndStatus(g.ClonePath())
-		Expect(afterHead).To(Equal(head))
-		Expect(afterStatus).To(Equal(status))
 
 		Expect(restored.ActiveSha).NotTo(Equal(v1))
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", restored.ActiveSha+"^"))).To(Equal(v2))

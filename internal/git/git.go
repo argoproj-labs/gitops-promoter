@@ -11,11 +11,11 @@
 // # Concurrency
 //
 // EnvironmentOperations is NOT safe for concurrent use within a single identity. Its methods shell
-// out to git against a shared working copy (the .git index, HEAD, refs, FETCH_HEAD and the object
-// store), so concurrent calls for the same identity can corrupt that state or compute a result from
-// a mix of versions. Callers MUST serialize all operations for a given identity. (Callers that
-// already process one owner at a time, such as a controller whose work queue serializes reconciles
-// per object, get this for free.)
+// out to git against one bare repository (refs, FETCH_HEAD, and the object store), so concurrent
+// calls for the same identity can corrupt that state or compute a result from a mix of versions.
+// Callers MUST serialize all operations for a given identity. (Callers that already process one
+// owner at a time, such as a controller whose work queue serializes reconciles per object, get this
+// for free.)
 //
 // Because each identity has its own clone, EnvironmentOperations for DIFFERENT identities are
 // independent and may be used concurrently. The one exception is remote operations: two identities
@@ -26,29 +26,22 @@
 // The package-level functions that do not use a clone (LsRemote, AddTrailerToCommitMessage,
 // ParseTrailersFromMessage) are concurrency-safe.
 //
-// # Clone state invariant
+// # Clone
 //
-// Operations leave the clone in a "resting state" on return (success or error): an empty
-// `git status --porcelain`, no in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD,
-// rebase-merge, rebase-apply), and a HEAD that resolves to a commit. In practice every operation
-// here satisfies this trivially, because none of them mutate the clone's index, worktree, or HEAD:
+// CloneRepo creates a bare repository: an object store and refs, with no work tree and no index.
+// It downloads no branch history. Callers fetch the refs they need, and the remote has no fetch
+// refspec, so a fetch cannot pull every branch by default. Blobs stay promisor objects until a
+// command reads file contents.
 //
 //   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
-//     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
-//     clone and never write to the index/worktree/HEAD.
+//     cat-file, log, notes, rev-list, merge-tree --write-tree).
 //   - The merges (MergeWithOursStrategy, MergeWithOursStrategyForPath) and RestoreActiveBranch
-//     build their result entirely in the object DB — commit-tree, and a temporary index
-//     (GIT_INDEX_FILE) plus read-tree/write-tree/commit-tree when the result is path-scoped —
-//     then push the computed commit straight to the remote ref. They never check out a branch,
-//     so they cannot be wedged by, nor leave behind, a dirty worktree or a half-finished merge.
+//     build their result in the object DB — commit-tree, and a temporary index (GIT_INDEX_FILE)
+//     plus read-tree/write-tree/commit-tree when the result is path-scoped — then push the computed
+//     commit straight to the remote ref.
 //
-// The clone's working tree therefore stays exactly as CloneRepo left it for the life of the clone.
-//
-// MAINTAINER NOTE: new code MUST NOT introduce worktree-mutating git operations (checkout, merge,
-// reset, add, commit, rm against the real index/worktree). Prefer object-DB plumbing as the merges
-// do; if a worktree mutation is ever truly unavoidable, it MUST restore the resting state before
-// returning (on success AND error) and be covered by an invariant test (see the merge specs that
-// assert HEAD and `git status --porcelain` are unchanged across a merge).
+// MAINTAINER NOTE: new code MUST NOT add a work tree or check out this clone (checkout, switch,
+// restore, reset, pull, merge, add, commit). Prefer object-DB plumbing as the merges do.
 //
 // Note on freshness preconditions (a separate concern from the resting-state invariant): operations
 // that read a specific ref/SHA/note assume the relevant objects were already fetched. HasConflict
@@ -97,9 +90,9 @@ import (
 // EnvironmentOperations provides methods for interacting with a specific clone of a Git repository.
 //
 // EnvironmentOperations is NOT safe for concurrent use within a single identity: its methods operate
-// on a shared on-disk clone, so callers must serialize all operations for a given identity. Distinct
-// identities use distinct clones and are independent (see the package documentation for details,
-// including the remote-operation caveat).
+// on one bare on-disk repository, so callers must serialize all operations for a given identity.
+// Distinct identities use distinct repositories and are independent (see the package documentation
+// for details, including the remote-operation caveat).
 type EnvironmentOperations struct {
 	gap     scms.GitOperationsProvider
 	gitRepo *v1alpha1.GitRepository
@@ -192,7 +185,9 @@ func (g *EnvironmentOperations) ClonePath() string {
 	return gitpaths.Get(g.cloneKey())
 }
 
-// CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
+// CloneRepo prepares a bare on-disk repository for this identity if one does not already exist.
+// No branch history is downloaded. Callers fetch the refs they need; the remote has no fetch
+// refspec, so a later fetch cannot pull every branch by default.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if g.ClonePath() != "" {
 		// Already cloned
@@ -208,27 +203,13 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	logger.V(4).Info("Created directory", "directory", path)
 
 	start := time.Now()
-	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
+	stdout, stderr, err := g.initClone(ctx, path)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
-		return err
-	}
-
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-		return err
-	}
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-		return err
-	}
-
-	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
-	if err != nil {
-		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+		if removeErr := os.RemoveAll(path); removeErr != nil {
+			err = fmt.Errorf("%w (failed to remove incomplete clone %q: %w)", err, path, removeErr)
+		}
 		return err
 	}
 
@@ -237,6 +218,63 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	gitpaths.Set(g.cloneKey(), path)
 
 	return nil
+}
+
+// initClone creates a bare partial clone with no configured fetch refspec. Branch objects arrive
+// only through a later fetch that names them. Blobs stay promisor objects until something reads them.
+// Command output is returned for the caller to log. It is not included in the error, which is what
+// surfaces on the reconcile.
+func (g *EnvironmentOperations) initClone(ctx context.Context, dir string) (string, string, error) {
+	repoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
+	args := []string{"init", "--bare"}
+	stdout, stderr, err := g.runCmd(ctx, dir, args...)
+	if err != nil {
+		return stdout, stderr, fmt.Errorf("git %s failed: %w", strings.Join(args, " "), cmdFailure(err, stderr))
+	}
+
+	// The URL is caller-controlled. git config owns its quoting; writing it with Go's %q is a
+	// different escape language and can make the config file unreadable.
+	stdout, stderr, err = g.runCmd(ctx, dir, "config", "remote.origin.url", repoURL)
+	if err != nil {
+		return stdout, stderr, fmt.Errorf("git config remote.origin.url failed: %w", cmdFailure(err, stderr))
+	}
+
+	// The remaining keys are fixed. This is a new repository, so append them directly instead of
+	// paying for a subprocess and a credential lookup per key.
+	config, err := os.OpenFile(path.Join(dir, "config"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to open clone config: %w", err)
+	}
+	_, writeErr := config.WriteString(`
+[remote "origin"]
+	promisor = true
+	partialclonefilter = blob:none
+[extensions]
+	partialClone = origin
+[user]
+	name = GitOps Promoter
+	email = GitOpsPromoter@argoproj.io
+`)
+	closeErr := config.Close()
+	if writeErr != nil {
+		return "", "", fmt.Errorf("failed to write clone config: %w", writeErr)
+	}
+	if closeErr != nil {
+		return "", "", fmt.Errorf("failed to close clone config: %w", closeErr)
+	}
+	return "", "", nil
+}
+
+// cmdFailure drops command output from err. runCmd appends stderr to the error text, and that text
+// is logged separately by the caller rather than returned to the reconcile.
+func cmdFailure(err error, stderr string) error {
+	if stderr == "" {
+		return err
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return cause
+	}
+	return err
 }
 
 // RemoveClone deletes this environment's on-disk clone and forgets it, so a later CloneRepo for the
@@ -504,7 +542,10 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 	}
 
 	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	// The destination is explicit because the clone has no remote.origin.fetch wildcard.
+	// `git fetch origin <branch>` would store FETCH_HEAD only and leave origin/<branch> unset.
+	refspec := "+" + branchRef(branch) + ":" + trackingRef(branch)
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", refspec)
 	g.forgetLocalRef(trackingRef(branch))
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
@@ -876,8 +917,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	}
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// origin/<proposed> stays at the pre-push tip until the next fetch. This clone has no fetch
+	// refspec, so git push does not move that remote-tracking ref.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
-	// The push also moves the clone's origin/<proposed> tracking ref.
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
@@ -920,8 +962,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	}
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// origin/<proposed> stays at the pre-push tip until the next fetch. This clone has no fetch
+	// refspec, so git push does not move that remote-tracking ref.
 	_, stderr, err := g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
-	// The push also moves the clone's origin/<proposed> tracking ref.
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
@@ -1928,8 +1971,7 @@ func (g *EnvironmentOperations) restoreTree(ctx context.Context, activeRef, targ
 
 // overlayPathTree returns baseRef's tree with path replaced by sourceRef's content at path, or with
 // path removed when sourceRef has nothing there. The tree is built in a temporary index
-// (GIT_INDEX_FILE) outside the clone, so the clone's real index/worktree/HEAD are never touched and
-// the index cannot appear as an untracked file.
+// (GIT_INDEX_FILE) outside the clone. The clone is bare, so it has no index of its own.
 func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, sourceRef, path string) (string, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
@@ -1962,7 +2004,8 @@ func (g *EnvironmentOperations) overlayPathTree(ctx context.Context, baseRef, so
 		return "", fmt.Errorf("failed to inspect %q on %q: %w (stderr: %s)", path, sourceRef, err, stderr)
 	}
 	if strings.TrimSpace(lsTreeStdout) != "" {
-		if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "--prefix="+path+"/", sourceRef+":"+path); err != nil {
+		// -i skips the work-tree check. read-tree --prefix otherwise refuses to run in a bare repository.
+		if _, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "-i", "--prefix="+path+"/", sourceRef+":"+path); err != nil {
 			return "", fmt.Errorf("failed to overlay %q from %q: %w (stderr: %s)", path, sourceRef, err, stderr)
 		}
 	}
@@ -2039,9 +2082,10 @@ func (g *EnvironmentOperations) commitTree(ctx context.Context, tree string, par
 // forward; the lease also rejects one that was rewound to an ancestor, where a plain push would
 // fast-forward and put back the commits that were removed.
 //
-// The push moves the clone's origin/<branch> tracking ref. The branch is dropped from the remote
-// snapshot and the local ref cache either way, so a later GetBranchSha re-probes instead of
-// returning the pre-push tip.
+// The branch is dropped from the remote snapshot and the local ref cache either way, so a later
+// GetBranchSha re-probes instead of returning the pre-push tip. origin/<branch> stays at that
+// pre-push tip until the next fetch: this clone has no fetch refspec, and git push only advances
+// a remote-tracking ref when one maps the destination.
 func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitSha, branch, expectedTip string) error {
 	lease := "refs/heads/" + branch + ":" + expectedTip
 	refspec := commitSha + ":refs/heads/" + branch
