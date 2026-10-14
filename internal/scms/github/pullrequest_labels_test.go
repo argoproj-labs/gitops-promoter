@@ -13,7 +13,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	dto "github.com/prometheus/client_model/go"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -152,7 +151,7 @@ func newLabelListPullRequest(serverURL string) *PullRequest {
 
 func labelListGitRepo(name, providerName string) *v1alpha1.GitRepository {
 	return &v1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: v1alpha1.GitRepositorySpec{
 			GitHub: &v1alpha1.GitHubRepo{Owner: "acme", Name: "widgets"},
 			ScmProviderRef: v1alpha1.ScmProviderObjectReference{
