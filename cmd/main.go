@@ -62,6 +62,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -98,14 +99,16 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
+	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":9080",
+		"The address the metric endpoint binds to. Use :8443 for HTTPS or :9080 for HTTP.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	cmd.Flags().StringVar(&pprofAddr, "pprof-bind-address", "",
 		"The address the pprof endpoint binds to. If unset, pprof is disabled.")
 	cmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
+	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false,
+		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
@@ -206,16 +209,25 @@ func runController(
 
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
+	// Metrics are served by controller-runtime (no kube-rbac-proxy sidecar).
+	// In-cluster config binds HTTPS on :8443; FilterProvider enforces kube authn/authz.
+	// More info: https://book.kubebuilder.io/reference/metrics
+	metricsServerOptions := metricsserver.Options{
+		BindAddress:   metricsAddr,
+		SecureServing: secureMetrics,
+		TLSOpts:       tlsOpts,
+	}
+	if secureMetrics {
+		// Only authorized users and service accounts can access /metrics.
+		// RBAC is configured in config/rbac/kustomization.yaml.
+		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
+	}
+
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
-		Scheme: scheme,
-		Client: promotercache.ClientOptions(),
-		Cache:  cacheOpts,
-		Metrics: metricsserver.Options{
-			BindAddress:    metricsAddr,
-			SecureServing:  secureMetrics,
-			TLSOpts:        tlsOpts,
-			FilterProvider: metrics.ScrapeLogFilterProvider(),
-		},
+		Scheme:                 scheme,
+		Client:                 promotercache.ClientOptions(),
+		Cache:                  cacheOpts,
+		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		PprofBindAddress:       pprofAddr,
