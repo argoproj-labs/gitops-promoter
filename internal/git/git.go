@@ -28,10 +28,18 @@
 //
 // # Clone state invariant
 //
-// Operations leave the clone in a "resting state" on return (success or error): an empty
-// `git status --porcelain`, no in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD,
-// rebase-merge, rebase-apply), and a HEAD that resolves to a commit. In practice every operation
-// here satisfies this trivially, because none of them mutate the clone's index, worktree, or HEAD:
+// CloneRepo leaves an empty working tree. File contents are not written there, and the partial
+// clone filter is not asked to download blobs just to populate files. The tree stays empty for the
+// life of the clone: no operation may check out or otherwise write it.
+//
+// An operation must leave HEAD and `git status --porcelain` unchanged on return (success or error),
+// and must not create in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD, rebase-merge,
+// rebase-apply). It does not have to make porcelain empty. A fresh clone reports every tracked path
+// as deleted, because HEAD resolves and the index is empty; clearing that status means checking the
+// tree out, which downloads the blobs this invariant exists to avoid. Tests compare HEAD and
+// porcelain before and after an operation, including operations that start from an already dirty clone.
+//
+// Every operation here satisfies this because none of them mutate the clone's index, worktree, or HEAD:
 //
 //   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
 //     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
@@ -42,13 +50,11 @@
 //     then push the computed commit straight to the remote ref. They never check out a branch,
 //     so they cannot be wedged by, nor leave behind, a dirty worktree or a half-finished merge.
 //
-// The clone's working tree therefore stays exactly as CloneRepo left it for the life of the clone.
-//
-// MAINTAINER NOTE: new code MUST NOT introduce worktree-mutating git operations (checkout, merge,
-// reset, add, commit, rm against the real index/worktree). Prefer object-DB plumbing as the merges
-// do; if a worktree mutation is ever truly unavoidable, it MUST restore the resting state before
-// returning (on success AND error) and be covered by an invariant test (see the merge specs that
-// assert HEAD and `git status --porcelain` are unchanged across a merge).
+// MAINTAINER NOTE: new code MUST NOT check out or otherwise write the worktree (checkout, switch,
+// restore, reset, pull, merge, add, commit, or rm against the real index/worktree). Prefer object-DB
+// plumbing as the merges do. Checking a tree out and then deleting the files has already downloaded
+// the blobs. Cover worktree-sensitive changes with a test that asserts HEAD and
+// `git status --porcelain` are unchanged, as the merge specs do.
 //
 // Note on freshness preconditions (a separate concern from the resting-state invariant): operations
 // that read a specific ref/SHA/note assume the relevant objects were already fetched. HasConflict
@@ -193,6 +199,7 @@ func (g *EnvironmentOperations) ClonePath() string {
 }
 
 // CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
+// The working tree is left empty, so file contents are not stored on disk just to populate a checkout.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if g.ClonePath() != "" {
 		// Already cloned
@@ -208,7 +215,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	logger.V(4).Info("Created directory", "directory", path)
 
 	start := time.Now()
-	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
+	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", "--no-checkout", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)

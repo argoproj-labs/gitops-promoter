@@ -1435,6 +1435,107 @@ var _ = Describe("gitBin", func() {
 	})
 })
 
+var _ = Describe("CloneRepo worktree", func() {
+	var (
+		sourceDir string
+		repo      *v1alpha1.GitRepository
+		ops       *git.EnvironmentOperations
+	)
+
+	BeforeEach(func() {
+		var err error
+		sourceDir, err = os.MkdirTemp("", "clone-worktree-src-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(sourceDir, "init", "-b", "master")
+		Expect(err).NotTo(HaveOccurred())
+		// A partial clone only omits blobs when the server agrees to filter. GitHub does;
+		// a local source does not unless this is set.
+		_, err = runGitCmd(sourceDir, "config", "uploadpack.allowFilter", "true")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.MkdirAll(filepath.Join(sourceDir, "apps", "demo"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(sourceDir, "apps", "demo", "payload.txt"), []byte("file-contents-that-must-not-be-stored"), 0o644)).To(Succeed())
+		_, err = runGitCmd(sourceDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(sourceDir, "commit", "-m", "add payload")
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+			Name:      "testrepo",
+			Namespace: "default",
+		}
+		ops = git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: "file://" + sourceDir}, "default/clone-worktree")
+	})
+
+	AfterEach(func() {
+		if ops != nil {
+			Expect(ops.RemoveClone()).To(Succeed())
+		}
+		if sourceDir != "" {
+			Expect(os.RemoveAll(sourceDir)).To(Succeed())
+		}
+	})
+
+	It("stores the commit and none of its file contents", func() {
+		Expect(ops.CloneRepo(GinkgoT().Context())).To(Succeed())
+		clonePath := ops.ClonePath()
+		Expect(clonePath).NotTo(BeEmpty())
+
+		commitSha := strings.TrimSpace(mustGitOutput(sourceDir, "rev-parse", "HEAD"))
+		blobSha := strings.TrimSpace(mustGitOutput(sourceDir, "rev-parse", "HEAD:apps/demo/payload.txt"))
+
+		// The history is what later reads address. The file body is not.
+		Expect(gitObjectPresent(clonePath, commitSha)).To(BeTrue())
+		Expect(gitObjectPresent(clonePath, blobSha)).To(BeFalse())
+		Expect(worktreeFiles(clonePath)).To(BeEmpty())
+	})
+})
+
+func mustGitOutput(dir string, args ...string) string {
+	GinkgoHelper()
+	out, err := runGitCmd(dir, args...)
+	Expect(err).NotTo(HaveOccurred())
+	return out
+}
+
+// gitObjectPresent reports whether sha is stored in dir. Lazy fetch is disabled so a missing
+// blob stays missing instead of being downloaded in order to answer the question.
+func gitObjectPresent(dir, sha string) bool {
+	GinkgoHelper()
+	cmd := exec.CommandContext(context.Background(), "git", "cat-file", "-e", sha)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0")
+	return cmd.Run() == nil
+}
+
+func worktreeFiles(dir string) []string {
+	GinkgoHelper()
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+		Expect(walkErr).NotTo(HaveOccurred())
+		rel, err := filepath.Rel(dir, path)
+		Expect(err).NotTo(HaveOccurred())
+		if rel == ".git" {
+			return filepath.SkipDir
+		}
+		if !entry.IsDir() {
+			files = append(files, rel)
+		}
+		return nil
+	})
+	Expect(err).NotTo(HaveOccurred())
+	return files
+}
+
 type fakeGitProvider struct {
 	tempDirPath string
 }
