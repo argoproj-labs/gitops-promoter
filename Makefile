@@ -5,7 +5,7 @@ ENVTEST_K8S_VERSION = 1.37.0
 
 CURRENT_DIR=$(shell pwd)
 
-MKDOCS_DOCKER_IMAGE?=python:3.14-alpine
+MKDOCS_DOCKER_IMAGE?=python:3.15-alpine
 MKDOCS_RUN_ARGS?=
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
