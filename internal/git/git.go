@@ -891,15 +891,14 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	}
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// origin/<proposed> stays at the pre-push tip until the next fetch. This clone has no fetch
+	// refspec, so git push does not move that remote-tracking ref.
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
-	}
-	if err := g.recordTrackingRef(ctx, proposedBranch, commitSha); err != nil {
-		return err
 	}
 
 	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
@@ -937,15 +936,14 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	}
 
 	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	// origin/<proposed> stays at the pre-push tip until the next fetch. This clone has no fetch
+	// refspec, so git push does not move that remote-tracking ref.
 	_, stderr, err := g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	g.forgetRemoteRef(branchRef(proposedBranch))
 	g.forgetLocalRef(trackingRef(proposedBranch))
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
-	}
-	if err := g.recordTrackingRef(ctx, proposedBranch, commitSha); err != nil {
-		return err
 	}
 
 	logger.Info("Successfully merged branches with path-scoped strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
@@ -2059,9 +2057,9 @@ func (g *EnvironmentOperations) commitTree(ctx context.Context, tree string, par
 // fast-forward and put back the commits that were removed.
 //
 // The branch is dropped from the remote snapshot and the local ref cache either way, so a later
-// GetBranchSha re-probes instead of returning the pre-push tip. On success, origin/<branch> is
-// pointed at commitSha. git push does not do that itself: this clone has no fetch refspec, and
-// push only advances a remote-tracking ref when one maps the destination.
+// GetBranchSha re-probes instead of returning the pre-push tip. origin/<branch> stays at that
+// pre-push tip until the next fetch: this clone has no fetch refspec, and git push only advances
+// a remote-tracking ref when one maps the destination.
 func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitSha, branch, expectedTip string) error {
 	lease := "refs/heads/" + branch + ":" + expectedTip
 	refspec := commitSha + ":refs/heads/" + branch
@@ -2071,15 +2069,5 @@ func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitS
 	if err != nil {
 		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
 	}
-	return g.recordTrackingRef(ctx, branch, commitSha)
-}
-
-// recordTrackingRef points origin/<branch> at sha. Call it after a successful push of that commit.
-func (g *EnvironmentOperations) recordTrackingRef(ctx context.Context, branch, sha string) error {
-	_, stderr, err := g.runCmd(ctx, g.ClonePath(), "update-ref", trackingRef(branch), sha)
-	if err != nil {
-		return fmt.Errorf("failed to record %s at %s: %w (stderr: %s)", trackingRef(branch), sha, err, stderr)
-	}
-	g.forgetLocalRef(trackingRef(branch))
 	return nil
 }

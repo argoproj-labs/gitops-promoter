@@ -938,6 +938,8 @@ var _ = Describe("ActivePath support", func() {
 		Expect(strings.TrimSpace(string(rootMetadata))).To(ContainSubstring("active-root"),
 			"root hydrator.metadata is no longer special-cased: outside activePath, active wins on conflict")
 
+		// The push leaves origin/<proposed> at the pre-push tip. HasConflict reads that ref.
+		Expect(g.FetchBranch(GinkgoT().Context(), "proposed-app-one-next")).To(Succeed())
 		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed-app-one-next", "active")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(hasConflict).To(BeFalse(), "resolved proposed branch should merge cleanly into active for SCM")
