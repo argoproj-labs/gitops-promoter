@@ -63,3 +63,6 @@ This mode would require GitOps Promoter to maintain historical data about past c
 can be applied potentially much later when higher environments' tags are advanced to newer commits. But the storage
 problem should be solvable in a way that is transparent to the user. Keep an eye on the [roadmap](roadmap.md) for
 updates about the progress of this approach.
+
+Until then, you can get part of this behavior by hydrating upper environments from a tag that you advance manually. For a
+worked example, see [Holding Back Upper Environments with Release Tracks](advanced-usage/release-tracks.md).
