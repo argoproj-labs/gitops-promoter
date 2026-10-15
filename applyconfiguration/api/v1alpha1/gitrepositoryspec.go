@@ -24,14 +24,15 @@ package v1alpha1
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 // GitRepositorySpec defines the desired state of GitRepository
 type GitRepositorySpecApplyConfiguration struct {
-	GitHub         *GitHubRepoApplyConfiguration                 `json:"github,omitempty"`
-	GitLab         *GitLabRepoApplyConfiguration                 `json:"gitlab,omitempty"`
-	Forgejo        *ForgejoRepoApplyConfiguration                `json:"forgejo,omitempty"`
-	Gitea          *GiteaRepoApplyConfiguration                  `json:"gitea,omitempty"`
-	BitbucketCloud *BitbucketCloudRepoApplyConfiguration         `json:"bitbucketCloud,omitempty"`
-	AzureDevOps    *AzureDevOpsRepoApplyConfiguration            `json:"azureDevOps,omitempty"`
-	Fake           *FakeRepoApplyConfiguration                   `json:"fake,omitempty"`
-	ScmProviderRef *ScmProviderObjectReferenceApplyConfiguration `json:"scmProviderRef,omitempty"`
+	GitHub              *GitHubRepoApplyConfiguration                 `json:"github,omitempty"`
+	GitLab              *GitLabRepoApplyConfiguration                 `json:"gitlab,omitempty"`
+	Forgejo             *ForgejoRepoApplyConfiguration                `json:"forgejo,omitempty"`
+	Gitea               *GiteaRepoApplyConfiguration                  `json:"gitea,omitempty"`
+	BitbucketCloud      *BitbucketCloudRepoApplyConfiguration         `json:"bitbucketCloud,omitempty"`
+	BitbucketDataCenter *BitbucketDataCenterRepoApplyConfiguration    `json:"bitbucketDataCenter,omitempty"`
+	AzureDevOps         *AzureDevOpsRepoApplyConfiguration            `json:"azureDevOps,omitempty"`
+	Fake                *FakeRepoApplyConfiguration                   `json:"fake,omitempty"`
+	ScmProviderRef      *ScmProviderObjectReferenceApplyConfiguration `json:"scmProviderRef,omitempty"`
 }
 
 // GitRepositorySpecApplyConfiguration constructs a declarative configuration of the GitRepositorySpec type for use with
@@ -77,6 +78,14 @@ func (b *GitRepositorySpecApplyConfiguration) WithGitea(value *GiteaRepoApplyCon
 // If called multiple times, the BitbucketCloud field is set to the value of the last call.
 func (b *GitRepositorySpecApplyConfiguration) WithBitbucketCloud(value *BitbucketCloudRepoApplyConfiguration) *GitRepositorySpecApplyConfiguration {
 	b.BitbucketCloud = value
+	return b
+}
+
+// WithBitbucketDataCenter sets the BitbucketDataCenter field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BitbucketDataCenter field is set to the value of the last call.
+func (b *GitRepositorySpecApplyConfiguration) WithBitbucketDataCenter(value *BitbucketDataCenterRepoApplyConfiguration) *GitRepositorySpecApplyConfiguration {
+	b.BitbucketDataCenter = value
 	return b
 }
 
