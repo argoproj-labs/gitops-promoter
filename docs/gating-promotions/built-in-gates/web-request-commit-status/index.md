@@ -122,7 +122,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). Per-environment in `environments` context; aggregate of all branches in `promotionstrategy` context. |
 | `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. Use `find(PromotionStrategy.Status.Environments, {.Branch == Branch})` to access per-environment data (e.g. `.Proposed.Hydrated.Sha`). |
 | `WebRequestCommitStatus` | WebRequestCommitStatus | The full WebRequestCommitStatus spec and status (snapshot from the previous reconcile). Access per-branch status via `Status.Environments` or `Status.PromotionStrategyContext`. |
-| `NamespaceMetadata` | object | Labels and annotations of the WebRequestCommitStatus's namespace: `NamespaceMetadata.Labels` and `NamespaceMetadata.Annotations` (`map[string]string`). Same binding as Go templates. |
+| `NamespaceMetadata` | object | Labels and annotations of the WebRequestCommitStatus's namespace: `NamespaceMetadata.Labels` and `NamespaceMetadata.Annotations` (`map[string]string`). Same binding as Go templates. Empty when `ControllerConfiguration.spec.webRequestCommitStatus.namespaceMetadata` is `Disabled`. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
 | `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
