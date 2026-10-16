@@ -288,10 +288,9 @@ func (s *Server) azureListPRs(w http.ResponseWriter, r *http.Request, _ principa
 	now := s.now()
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var out []map[string]any
 	prs := s.store.prs[rp.id]
-	for i := len(prs) - 1; i >= 0; i-- { // newest first
-		pr := prs[i]
+	out := make([]map[string]any, 0, len(prs))
+	for _, pr := range slices.Backward(prs) { // newest first
 		native := map[prState]string{prOpen: "active", prClosed: "abandoned", prMerged: "completed"}[pr.state]
 		if !pr.visibleInLists(now) || (status != "all" && status != native) {
 			continue

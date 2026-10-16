@@ -28,6 +28,7 @@ Substantive new or changed **user-facing behavior** (APIs, controllers, webhooks
 **How we test (stack):**
 
 - **Go (controller and cluster behavior):** [Ginkgo](https://onsi.github.io/ginkgo/) suites with **envtest**, which runs a real Kubernetes API server from test binaries for integration-style tests against our APIs and reconcilers.
+- **SCM providers:** a Ginkgo contract suite and the e2e suite run the real provider implementations against the [test SCM server](test-scm-server.md), which impersonates every supported SCM.
 - **UI (dashboard and Argo CD extension):** unit tests via the **Node.js** tooling and npm scripts used in CI (lint and test targets for the dashboard and extension).
 - **Static analysis:** **golangci-lint**, **Nilaway**, and other checks run in CI on every change.
 
@@ -51,6 +52,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 | CRD maintenance checklist       | [Maintaining CRDs](maintaining-crds.md)                                                                  |
 | Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
 | Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
+| Test SCM server                 | [`test/scmserver/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/test/scmserver) (see [Test SCM Server](test-scm-server.md)) |
 
 ## Design patterns
 

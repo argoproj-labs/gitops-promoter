@@ -333,7 +333,7 @@ func removeLabel(labels []string, name string) ([]string, bool) {
 
 // statusesLocked returns the statuses recorded for sha in r, oldest first.
 func (s *store) statusesLocked(r *repo, sha string) []*commitStatus {
-	var out []*commitStatus
+	out := []*commitStatus{}
 	for _, cs := range s.statuses[r.id] {
 		if cs.sha == sha {
 			out = append(out, cs)

@@ -248,6 +248,11 @@ func (d *webhookDispatcher) deliver(ctx context.Context, sub WebhookSubscription
 		d.record(delivery)
 		return
 	}
+	if resp == nil {
+		delivery.Error = "nil response"
+		d.record(delivery)
+		return
+	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 	delivery.StatusCode = resp.StatusCode

@@ -177,10 +177,9 @@ func (s *Server) giteaListPulls(w http.ResponseWriter, r *http.Request, p Provid
 	now := s.now()
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var matches []*pullRequest
 	prs := s.store.prs[rp.id]
-	for i := len(prs) - 1; i >= 0; i-- { // newest first
-		pr := prs[i]
+	matches := make([]*pullRequest, 0, len(prs))
+	for _, pr := range slices.Backward(prs) { // newest first
 		if !pr.visibleInLists(now) {
 			continue
 		}

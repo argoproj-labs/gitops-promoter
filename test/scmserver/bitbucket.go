@@ -263,10 +263,9 @@ func (s *Server) bitbucketListPRs(w http.ResponseWriter, r *http.Request, _ prin
 	now := s.now()
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var matches []*pullRequest
 	prs := s.store.prs[rp.id]
-	for i := len(prs) - 1; i >= 0; i-- { // newest first
-		pr := prs[i]
+	matches := make([]*pullRequest, 0, len(prs))
+	for _, pr := range slices.Backward(prs) { // newest first
 		if !pr.visibleInLists(now) {
 			continue
 		}

@@ -38,28 +38,30 @@ func gitlabNotFound(w http.ResponseWriter, what string) {
 
 // gitlabProject resolves a project by numeric ID or URL-encoded path.
 func (s *Server) gitlabProject(w http.ResponseWriter, r *http.Request) (*repo, bool) {
-	id := r.PathValue("id")
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var (
-		rp  *repo
-		err error
-	)
-	if n, convErr := strconv.ParseInt(id, 10, 64); convErr == nil {
-		rp, err = s.store.findRepoByIDLocked(GitLab, n)
-	} else {
-		path, _ := url.PathUnescape(id)
-		idx := strings.LastIndex(path, "/")
-		err = errNotFound
-		if idx > 0 {
-			rp, err = s.store.findRepoLocked(GitLab, path[:idx], "", path[idx+1:])
-		}
-	}
+	rp, err := s.gitlabProjectLocked(r.PathValue("id"))
 	if err != nil {
 		gitlabNotFound(w, "Project")
 		return nil, false
 	}
 	return rp, true
+}
+
+// gitlabProjectLocked resolves a project by numeric ID or URL-encoded "namespace/name" path.
+func (s *Server) gitlabProjectLocked(id string) (*repo, error) {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		return s.store.findRepoByIDLocked(GitLab, n)
+	}
+	path, err := url.PathUnescape(id)
+	if err != nil {
+		return nil, errNotFound
+	}
+	idx := strings.LastIndex(path, "/")
+	if idx <= 0 {
+		return nil, errNotFound
+	}
+	return s.store.findRepoLocked(GitLab, path[:idx], "", path[idx+1:])
 }
 
 func (s *Server) gitlabMR(w http.ResponseWriter, r *http.Request) (*pullRequest, bool) {
@@ -229,10 +231,9 @@ func (s *Server) gitlabListMRs(w http.ResponseWriter, r *http.Request, _ princip
 	now := s.now()
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var matches []*pullRequest
 	prs := s.store.prs[rp.id]
-	for i := len(prs) - 1; i >= 0; i-- { // newest first: order_by=created_at, sort=desc
-		pr := prs[i]
+	matches := make([]*pullRequest, 0, len(prs))
+	for _, pr := range slices.Backward(prs) { // newest first: order_by=created_at, sort=desc
 		if !pr.visibleInLists(now) {
 			continue
 		}

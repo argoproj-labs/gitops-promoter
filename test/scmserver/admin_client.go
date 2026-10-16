@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,6 +44,9 @@ func (c *AdminClient) do(ctx context.Context, method, path string, in, out any) 
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
+	if resp == nil {
+		return fmt.Errorf("%s %s: nil response", method, path)
+	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -74,6 +78,9 @@ func (c *AdminClient) CAPEM(ctx context.Context) ([]byte, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("get CA: %w", err)
+	}
+	if resp == nil {
+		return nil, errors.New("get CA: nil response")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)

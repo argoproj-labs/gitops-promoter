@@ -90,7 +90,8 @@ func githubInstallationJSON(app *githubApp, inst githubInstallation) map[string]
 
 func (s *Server) githubListInstallations(w http.ResponseWriter, r *http.Request, app *githubApp) {
 	s.store.mu.Lock()
-	installations := slices.Clone(app.installations)
+	installations := make([]githubInstallation, len(app.installations))
+	copy(installations, app.installations)
 	s.store.mu.Unlock()
 	page, size := pageParams(r, "per_page", 30, 100)
 	start, end := pageWindow(len(installations), page, size)
@@ -155,10 +156,11 @@ func (s *Server) githubRepo(w http.ResponseWriter, r *http.Request, who principa
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	rp, err := s.store.findRepoLocked(GitHub, r.PathValue("owner"), "", r.PathValue("repo"))
-	if err == nil && who.installationID != 0 && !s.installationCoversLocked(who.installationID, rp.owner) {
-		err = errNotFound
-	}
 	if err != nil {
+		writeProviderError(w, GitHub, http.StatusNotFound, "Not Found")
+		return nil, false
+	}
+	if who.installationID != 0 && !s.installationCoversLocked(who.installationID, rp.owner) {
 		writeProviderError(w, GitHub, http.StatusNotFound, "Not Found")
 		return nil, false
 	}
@@ -367,10 +369,9 @@ func (s *Server) githubListPulls(w http.ResponseWriter, r *http.Request, who pri
 
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	var matches []*pullRequest
 	prs := s.store.prs[rp.id]
-	for i := len(prs) - 1; i >= 0; i-- { // newest first, GitHub's default sort
-		pr := prs[i]
+	matches := make([]*pullRequest, 0, len(prs))
+	for _, pr := range slices.Backward(prs) { // newest first, GitHub's default sort
 		if !pr.visibleInLists(now) {
 			continue
 		}
@@ -972,21 +973,21 @@ func (s *Server) githubCombinedStatus(w http.ResponseWriter, r *http.Request, wh
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	latest := map[string]*commitStatus{}
-	var order []string
+	// The latest status per context, in the order the contexts first appeared.
+	latest := []*commitStatus{}
 	for _, cs := range s.store.statusesLocked(rp, sha) {
 		if cs.status != "" {
 			continue
 		}
-		if _, seen := latest[cs.context]; !seen {
-			order = append(order, cs.context)
+		if i := slices.IndexFunc(latest, func(l *commitStatus) bool { return l.context == cs.context }); i >= 0 {
+			latest[i] = cs
+		} else {
+			latest = append(latest, cs)
 		}
-		latest[cs.context] = cs
 	}
 	state := "success"
-	statuses := make([]map[string]any, 0, len(order))
-	for _, name := range order {
-		cs := latest[name]
+	statuses := make([]map[string]any, 0, len(latest))
+	for _, cs := range latest {
 		switch cs.state {
 		case "failure", "error":
 			state = "failure"
@@ -1000,7 +1001,7 @@ func (s *Server) githubCombinedStatus(w http.ResponseWriter, r *http.Request, wh
 			"id": cs.id, "state": cs.state, "context": cs.context, "description": cs.description, "target_url": cs.targetURL,
 		})
 	}
-	if len(order) == 0 {
+	if len(latest) == 0 {
 		state = "pending"
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": state, "sha": sha, "total_count": len(statuses), "statuses": statuses})
