@@ -29,7 +29,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/test/utils"
 )
 
-const namespace = "promoter-system"
+const (
+	namespace = "promoter-system"
+	// argoCDApplicationCRD is the Argo CD Application CRD the integration suites also load.
+	argoCDApplicationCRD = "test/external_crds/argoproj.io_applications.yaml"
+)
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
@@ -39,8 +43,15 @@ var _ = Describe("controller", Ordered, func() {
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
 
+		// The default ControllerConfiguration watches local Argo CD Applications, so the controller cannot
+		// start without the Application CRD.
+		By("installing the Argo CD Application CRD")
+		cmd := exec.Command("kubectl", "apply", "-f", argoCDApplicationCRD)
+		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
 		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		cmd = exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
 	})
 
@@ -53,6 +64,10 @@ var _ = Describe("controller", Ordered, func() {
 
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
+		_, _ = utils.Run(cmd)
+
+		By("removing the Argo CD Application CRD")
+		cmd = exec.Command("kubectl", "delete", "-f", argoCDApplicationCRD, "--ignore-not-found")
 		_, _ = utils.Run(cmd)
 	})
 
