@@ -9660,6 +9660,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-argocdcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9687,6 +9688,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-argocdcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9710,6 +9712,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-changetransferpolicyhistory-admin-role
 rules:
 - apiGroups:
@@ -9731,6 +9734,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-changetransferpolicyhistory-editor-role
 rules:
 - apiGroups:
@@ -9758,6 +9762,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-changetransferpolicyhistory-viewer-role
 rules:
 - apiGroups:
@@ -9781,6 +9786,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-clusterscmprovider-admin-role
 rules:
 - apiGroups:
@@ -9802,6 +9808,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-clusterscmprovider-editor-role
 rules:
 - apiGroups:
@@ -9829,6 +9836,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-clusterscmprovider-viewer-role
 rules:
 - apiGroups:
@@ -9852,6 +9860,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-controllerconfiguration-admin-role
 rules:
 - apiGroups:
@@ -9873,6 +9882,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-controllerconfiguration-editor-role
 rules:
 - apiGroups:
@@ -9900,6 +9910,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-controllerconfiguration-viewer-role
 rules:
 - apiGroups:
@@ -9923,6 +9934,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-dependentssuccessfulcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9944,6 +9956,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-dependentssuccessfulcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9971,6 +9984,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-dependentssuccessfulcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9994,6 +10008,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-gitcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10015,6 +10030,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-gitcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10042,6 +10058,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-gitcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10275,6 +10292,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-scheduledcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10296,6 +10314,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-scheduledcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10323,6 +10342,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-scheduledcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10346,6 +10366,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-timedcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10367,6 +10388,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-timedcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10394,6 +10416,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-timedcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10417,6 +10440,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-webrequestcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10438,6 +10462,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-webrequestcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10465,6 +10490,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-webrequestcommitstatus-viewer-role
 rules:
 - apiGroups:
