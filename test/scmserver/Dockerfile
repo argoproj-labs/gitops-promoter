@@ -7,10 +7,10 @@ ARG TARGETARCH
 WORKDIR /workspace
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN go mod download
-
 COPY test/scmserver/ test/scmserver/
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o scm-server ./test/scmserver/cmd
+# Only the few modules the server imports are downloaded, rather than the whole module graph.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o scm-server ./test/scmserver/cmd
 
 FROM alpine:3.22
 # git-daemon provides git-http-backend, which serves the hosted repositories over smart HTTP.
