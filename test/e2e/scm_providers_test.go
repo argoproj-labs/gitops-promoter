@@ -149,6 +149,14 @@ func scmProviderSpecs() {
 		DeferCleanup(kubectlIgnoringErrors, "delete", "ns", scmE2ENamespace, "--ignore-not-found", "--wait=false")
 	}, NodeTimeout(15*time.Minute))
 
+	// AfterEach rather than DeferCleanup: the enclosing container's AfterAll removes the controller before
+	// cleanups run, and its logs are the most useful evidence of why a promotion stalled.
+	AfterEach(func(ctx SpecContext) {
+		if CurrentSpecReport().Failed() {
+			printSCMDiagnostics(ctx, admin)
+		}
+	}, NodeTimeout(2*time.Minute))
+
 	DescribeTable("promotes through the provider's API with the real provider implementation",
 		func(ctx SpecContext, p scmserver.Provider) {
 			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy", string(p),
@@ -249,6 +257,51 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 		}
 	}
 	GinkgoWriter.Printf("promoted dry commit %s through %s\n", drySHA, p)
+}
+
+// printSCMDiagnostics writes the state of the controller, the test SCM server and the promotion resources to the
+// spec output, so a failed promotion can be diagnosed from the CI log alone.
+func printSCMDiagnostics(ctx context.Context, admin *scmserver.AdminClient) {
+	for _, args := range [][]string{
+		{"get", "pods", "-A", "-o", "wide"},
+		{"logs", "-n", namespace, "deployment/promoter-controller-manager", "-c", "manager", "--tail=500"},
+		{"logs", "-n", namespace, "deployment/promoter-controller-manager", "-c", "manager", "--previous", "--tail=100"},
+		{"logs", "-n", scmServerNamespace, "deployment/scm-server", "--tail=200"},
+		{
+			"get", "scmproviders,gitrepositories,promotionstrategies,changetransferpolicies,pullrequests,commitstatuses",
+			"-n", scmE2ENamespace, "-o", "yaml",
+		},
+		{"get", "events", "-n", scmE2ENamespace, "--sort-by=.lastTimestamp"},
+		{"get", "events", "-n", namespace, "--sort-by=.lastTimestamp"},
+	} {
+		out, err := utils.Run(exec.CommandContext(ctx, "kubectl", args...))
+		if err != nil {
+			GinkgoWriter.Printf("%v\n", err)
+			continue
+		}
+		GinkgoWriter.Printf("%s\n", out)
+	}
+	if admin == nil {
+		return
+	}
+	if requests, err := admin.Requests(ctx); err != nil {
+		GinkgoWriter.Printf("listing SCM server requests: %v\n", err)
+	} else {
+		GinkgoWriter.Printf("SCM server requests (%d):\n", len(requests))
+		for _, r := range requests {
+			GinkgoWriter.Printf("  %s %-11s %-6s %s?%s -> %d (%s)\n", r.Time.Format(time.TimeOnly), r.Provider, r.Method,
+				r.Path, r.Query, r.StatusCode, r.Principal)
+		}
+	}
+	if deliveries, err := admin.WebhookDeliveries(ctx); err != nil {
+		GinkgoWriter.Printf("listing webhook deliveries: %v\n", err)
+	} else {
+		GinkgoWriter.Printf("webhook deliveries (%d):\n", len(deliveries))
+		for _, d := range deliveries {
+			GinkgoWriter.Printf("  %s %-11s %s %s %s -> %d %s\n", d.Time.Format(time.TimeOnly), d.Provider, d.Repo, d.Ref,
+				d.URL, d.StatusCode, d.Error)
+		}
+	}
 }
 
 // scmOwner is the owner (organization, namespace or workspace) of the provider's e2e repository.
