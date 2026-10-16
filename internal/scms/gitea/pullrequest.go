@@ -191,6 +191,9 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	if !merged {
+		if resp == nil {
+			return scms.MergeResult{}, fmt.Errorf("gitea refused to merge pull request %d", prID)
+		}
 		return scms.MergeResult{}, fmt.Errorf("gitea refused to merge pull request %d: %s", prID, resp.Status)
 	}
 	if resp != nil {
