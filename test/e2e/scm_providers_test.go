@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,9 @@ const (
 	// requeueInterval is the work queue requeue interval, and the rate limiter's slow delay, the suite configures on
 	// the deployed controller.
 	requeueInterval = 5 * time.Second
+	// webhookOnlyRequeue is the requeue interval of the webhook-driven spec: long enough that no requeue fires within
+	// its timeout, so only webhooks and watches can advance the promotion.
+	webhookOnlyRequeue = time.Hour
 	// holdTime is how long a spec watches a pull request it expects the controller to leave open. A pull request the
 	// controller wants to merge merges within one requeue interval of it noticing the pull request, so a hold longer
 	// than requeueInterval proves the controller declined.
@@ -110,16 +114,7 @@ func scmProviderSpecs() {
 		// Every wait in the suite is quantized by the controllers' requeue interval, so it is short. A merge the
 		// provider refuses (branch protection) is retried by the PullRequest work queue's rate limiter, whose default
 		// slow delay is 5 minutes; shorten it too. holdTime must exceed requeueInterval.
-		requeue := `{"spec":{` +
-			`"promotionStrategy":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
-			`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
-			`"pullRequest":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `","rateLimiter":{"maxOf":[` +
-			`{"bucket":{"qps":10,"bucket":100}},` +
-			`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + requeueInterval.String() + `","maxFastAttempts":3}}]}}},` +
-			`"commitStatus":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
-			`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}}}}`
-		run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
-			"-n", namespace, "--type=merge", "-p", requeue)
+		configureRequeue(ctx, requeueInterval)
 
 		By("making the controller trust the server's CA for API calls and git")
 		run(ctx, "", "kubectl", "create", "secret", "generic", "scm-server-ca", "-n", namespace,
@@ -217,7 +212,7 @@ func scmProviderSpecs() {
 	It("promotes through the provider's API with the real provider implementation", func(ctx SpecContext) {
 		cleanupPromotions("promotionstrategy", func(p scmserver.Provider) string { return string(p) })
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
-			newFlow(p).promote(ctx, p)
+			newFlow(p).promote(ctx, p, string(p))
 		})
 	}, NodeTimeout(12*time.Minute))
 
@@ -256,6 +251,36 @@ func scmProviderSpecs() {
 			newFlow(p).promoteThroughProtection(ctx, p, name(p))
 		})
 	}, NodeTimeout(12*time.Minute))
+
+	// With requeues this long, nothing but the server's push webhooks (and the controllers' own watches) can move a
+	// promotion along within the timeout: the hydration push, the merge into development and the merge into staging
+	// each have to reach the webhook receiver, be attributed to the right ChangeTransferPolicy and trigger it.
+	It("promotes driven by the provider's push webhooks alone, with requeues disabled", func(ctx SpecContext) {
+		configureRequeue(ctx, webhookOnlyRequeue)
+		DeferCleanup(func(ctx SpecContext) { configureRequeue(ctx, requeueInterval) })
+		name := func(p scmserver.Provider) string { return string(p) + "-webhook" }
+		cleanupPromotions("promotionstrategy", name)
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promote(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
+}
+
+// configureRequeue sets every controller's work queue requeue interval, and the PullRequest rate limiter's slow
+// delay, on the deployed ControllerConfiguration.
+func configureRequeue(ctx context.Context, interval time.Duration) {
+	GinkgoHelper()
+	d := interval.String()
+	requeue := `{"spec":{` +
+		`"promotionStrategy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"pullRequest":{"workQueue":{"requeueDuration":"` + d + `","rateLimiter":{"maxOf":[` +
+		`{"bucket":{"qps":10,"bucket":100}},` +
+		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + d + `","maxFastAttempts":3}}]}}},` +
+		`"commitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}}}}`
+	run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
+		"-n", namespace, "--type=merge", "-p", requeue)
 }
 
 // forEachProvider runs body for every provider of the test SCM server concurrently and waits for all of them. A
@@ -286,23 +311,21 @@ type promotionFlow struct {
 	githubKey        []byte
 }
 
-func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
+// promote promotes a hydrated change through development and staging on provider p, with the controller merging the
+// pull requests. name names the promotion's resources and the repository.
+func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider, name string) {
 	GinkgoHelper()
-	req := scmserver.CreateRepoRequest{Provider: p, Owner: scmOwner(p), Name: "promotion"}
-	if p == scmserver.AzureDevOps {
-		req.Project = "e2e"
-	}
-	repo, err := f.admin.CreateRepo(ctx, req)
-	Expect(err).NotTo(HaveOccurred())
-	_, err = f.admin.AddWebhook(ctx, scmserver.WebhookSubscription{Provider: p, Repo: repo.FullName, URL: f.webhook})
-	Expect(err).NotTo(HaveOccurred())
+	repo := f.newRepo(ctx, p, name)
 
 	environments := []string{"environment/development", "environment/staging"}
 	seedEnvironments(ctx, f.admin, repo, environments)
-	f.apply(ctx, promotionManifests(p, string(p), repo, f.domain, f.githubKey, true, ""))
+	f.apply(ctx, promotionManifests(p, name, repo, f.domain, f.githubKey, true, ""))
 
 	By("hydrating a new dry commit to every environment")
 	drySHA := hydrate(ctx, f.admin, repo, environments)
+
+	By("delivering the hydration pushes to the promoter's webhook receiver")
+	f.expectWebhooksDelivered(ctx, repo, environments[0]+"-next", environments[1]+"-next")
 
 	for _, env := range environments {
 		By("merging the pull request into " + env)
@@ -322,6 +345,9 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 		}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 	}
 
+	By("delivering the merge pushes to the promoter's webhook receiver")
+	f.expectWebhooksDelivered(ctx, repo, environments...)
+
 	By("reporting the ordering gate as a commit status on the provider")
 	statuses, err := f.admin.CommitStatuses(ctx, repo.ID, "")
 	Expect(err).NotTo(HaveOccurred())
@@ -331,7 +357,7 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 	Eventually(func(g Gomega) {
 		repos, err := f.pullRequestRepos(ctx)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(repos).NotTo(ContainElement(string(p)))
+		g.Expect(repos).NotTo(ContainElement(name))
 	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 
 	if p == scmserver.AzureDevOps {
@@ -682,6 +708,31 @@ func (f promotionFlow) promoteAfterClose(ctx context.Context, p scmserver.Provid
 	Expect(merged.Number).To(Equal(reopened.Number))
 	f.expectActive(ctx, name, map[string]string{development: drySHA})
 	GinkgoWriter.Printf("promoted dry commit %s through %s after closing pull request %d\n", drySHA, p, closed.Number)
+}
+
+// expectWebhooksDelivered waits until the server has delivered a push webhook for every one of branches in repo to
+// the promoter's webhook receiver, and the receiver accepted each with 204. The receiver answers 400 when it cannot
+// tell which provider sent the payload, so a 204 proves the delivery reached it with headers it recognizes.
+func (f promotionFlow) expectWebhooksDelivered(ctx context.Context, repo scmserver.RepoInfo, branches ...string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		deliveries, err := f.admin.WebhookDeliveries(ctx)
+		g.Expect(err).NotTo(HaveOccurred())
+		for _, branch := range branches {
+			ref := "refs/heads/" + branch
+			var matched []scmserver.WebhookDelivery
+			for _, d := range deliveries {
+				if d.Repo == repo.FullName && d.Ref == ref && !d.Dropped {
+					matched = append(matched, d)
+				}
+			}
+			g.Expect(matched).NotTo(BeEmpty(), "no webhook delivered for %s of %s", ref, repo.FullName)
+			for _, d := range matched {
+				g.Expect(d.Error).To(BeEmpty(), "delivery %s for %s", d.ID, ref)
+				g.Expect(d.StatusCode).To(Equal(http.StatusNoContent), "delivery %s for %s", d.ID, ref)
+			}
+		}
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 }
 
 // requiredStatus is the status context promoteThroughProtection's branch protection requires.
