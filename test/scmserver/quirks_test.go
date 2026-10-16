@@ -649,12 +649,30 @@ var _ = Describe("push webhooks", func() {
 	})
 })
 
-// prEventSpec describes how one provider announces a pull request's lifecycle: the action names its webhooks carry
-// for open, close, reopen and merge (an empty name means the provider sends no event for that transition), and the
-// payload field that marks the merged pull request.
+// prEventSpec describes how one provider announces a pull request's lifecycle: how to recognize its pull request
+// event and read the action, pull request ID and repository from it, the action names it uses for open, close,
+// reopen and merge (an empty name means the provider sends no event for that transition), and the payload field
+// that marks the merged pull request. The promoter's webhook receiver does not consume these events yet; the paths
+// are what a receiver would read.
 type prEventSpec struct {
+	// isEvent reports whether a delivery is this provider's pull request event rather than a push.
+	isEvent func(d sinkDelivery) bool
+	// action reads the provider's action name from a delivery.
+	action func(d sinkDelivery) string
+	// idPath and repoPath are gjson paths to the pull request ID and the repository's name; repo is the expected
+	// name, the repository's full name when nil.
+	repo                             func(f *fixture) string
+	idPath, repoPath                 string
 	opened, closed, reopened, merged string
 	mergedPath, mergedValue          string
+}
+
+func headerEvent(name, value string) func(d sinkDelivery) bool {
+	return func(d sinkDelivery) bool { return d.header.Get(name) == value }
+}
+
+func bodyField(path string) func(d sinkDelivery) string {
+	return func(d sinkDelivery) string { return gjson.GetBytes(d.body, path).String() }
 }
 
 func (e prEventSpec) actions() []string {
@@ -668,7 +686,7 @@ func (e prEventSpec) actions() []string {
 }
 
 var _ = Describe("pull request webhooks", func() {
-	DescribeTable("announce opened, closed, reopened and merged pull requests the way the promoter's webhook receiver reads them",
+	DescribeTable("announce opened, closed, reopened and merged pull requests in the provider's format",
 		func(ctx SpecContext, p scmserver.Provider, detectedAs string, want prEventSpec) {
 			f := newFixture(ctx, p)
 			sink := newWebhookSink()
@@ -687,17 +705,13 @@ var _ = Describe("pull request webhooks", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 
-			type received struct {
-				event webhookreceiver.PullRequestEvent
-				body  []byte
-			}
-			var events []received
+			var events []sinkDelivery
 			Eventually(func(g Gomega) {
 				events = nil
 				for _, d := range sink.received() {
 					g.Expect(d.provider).To(Equal(detectedAs))
-					if ev, ok := webhookreceiver.ParsePullRequestEvent(d.provider, d.header, d.body); ok {
-						events = append(events, received{event: ev, body: d.body})
+					if want.isEvent(d) {
+						events = append(events, d)
 					}
 				}
 				g.Expect(events).To(HaveLen(len(want.actions())))
@@ -706,11 +720,15 @@ var _ = Describe("pull request webhooks", func() {
 			// Deliveries are sent concurrently, so compare the set of actions rather than their order.
 			actions := make([]string, 0, len(events))
 			merged := 0
-			for _, r := range events {
-				actions = append(actions, r.event.Action)
-				Expect(r.event.ID).To(Equal(prObj.Status.ID))
-				Expect(r.event.MatchesGitRepository(detectedAs, f.gitRepo.Spec)).To(BeTrue(), "repository %+v does not match the GitRepository", r.event.Repo)
-				if gjson.GetBytes(r.body, want.mergedPath).String() == want.mergedValue {
+			for _, d := range events {
+				actions = append(actions, want.action(d))
+				Expect(gjson.GetBytes(d.body, want.idPath).String()).To(Equal(prObj.Status.ID))
+				wantRepo := f.repo.FullName
+				if want.repo != nil {
+					wantRepo = want.repo(f)
+				}
+				Expect(gjson.GetBytes(d.body, want.repoPath).String()).To(Equal(wantRepo))
+				if gjson.GetBytes(d.body, want.mergedPath).String() == want.mergedValue {
 					merged++
 				}
 			}
@@ -734,22 +752,57 @@ var _ = Describe("pull request webhooks", func() {
 		},
 		// https://docs.github.com/webhooks/webhook-events-and-payloads#pull_request
 		Entry("GitHub", scmserver.GitHub, webhookreceiver.ProviderGitHub,
-			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+			prEventSpec{
+				isEvent: headerEvent("X-Github-Event", "pull_request"), action: bodyField("action"),
+				idPath: "pull_request.number", repoPath: "repository.full_name",
+				opened: "opened", closed: "closed", reopened: "reopened", merged: "closed",
+				mergedPath: "pull_request.merged", mergedValue: "true",
+			}),
 		// https://docs.gitlab.com/user/project/integrations/webhook_events/#merge-request-events
 		Entry("GitLab", scmserver.GitLab, webhookreceiver.ProviderGitLab,
-			prEventSpec{opened: "open", closed: "close", reopened: "reopen", merged: "merge", mergedPath: "object_attributes.state", mergedValue: "merged"}),
+			prEventSpec{
+				isEvent: headerEvent("X-Gitlab-Event", "Merge Request Hook"), action: bodyField("object_attributes.action"),
+				idPath: "object_attributes.iid", repoPath: "project.path_with_namespace",
+				opened: "open", closed: "close", reopened: "reopen", merged: "merge",
+				mergedPath: "object_attributes.state", mergedValue: "merged",
+			}),
 		// https://learn.microsoft.com/azure/devops/service-hooks/events#git.pullrequest.updated
 		Entry("Azure DevOps", scmserver.AzureDevOps, webhookreceiver.ProviderAzureDevops,
-			prEventSpec{opened: "git.pullrequest.created", closed: "git.pullrequest.updated", reopened: "git.pullrequest.updated", merged: "git.pullrequest.updated", mergedPath: "resource.status", mergedValue: "completed"}),
+			prEventSpec{
+				isEvent: func(d sinkDelivery) bool {
+					return strings.HasPrefix(gjson.GetBytes(d.body, "eventType").String(), "git.pullrequest.")
+				},
+				action: bodyField("eventType"),
+				// Azure DevOps names the repository alone; the project is resource.repository.project.name.
+				idPath: "resource.pullRequestId", repoPath: "resource.repository.name", repo: func(f *fixture) string { return f.repo.Name },
+				opened: "git.pullrequest.created", closed: "git.pullrequest.updated", reopened: "git.pullrequest.updated", merged: "git.pullrequest.updated",
+				mergedPath: "resource.status", mergedValue: "completed",
+			}),
 		// https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Pull-request-events: a declined pull request
 		// cannot be reopened, so no event exists for it.
 		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, webhookreceiver.ProviderBitbucketCloud,
-			prEventSpec{opened: "pullrequest:created", closed: "pullrequest:rejected", merged: "pullrequest:fulfilled", mergedPath: "pullrequest.state", mergedValue: "MERGED"}),
+			prEventSpec{
+				isEvent: func(d sinkDelivery) bool { return strings.HasPrefix(d.header.Get("X-Event-Key"), "pullrequest:") },
+				action:  func(d sinkDelivery) string { return d.header.Get("X-Event-Key") },
+				idPath:  "pullrequest.id", repoPath: "repository.full_name",
+				opened: "pullrequest:created", closed: "pullrequest:rejected", merged: "pullrequest:fulfilled",
+				mergedPath: "pullrequest.state", mergedValue: "MERGED",
+			}),
 		// https://docs.gitea.com/usage/webhooks: GitHub's shape and headers, so the receiver classifies them as GitHub.
 		Entry("Gitea", scmserver.Gitea, webhookreceiver.ProviderGitHub,
-			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+			prEventSpec{
+				isEvent: headerEvent("X-Gitea-Event", "pull_request"), action: bodyField("action"),
+				idPath: "pull_request.number", repoPath: "repository.full_name",
+				opened: "opened", closed: "closed", reopened: "reopened", merged: "closed",
+				mergedPath: "pull_request.merged", mergedValue: "true",
+			}),
 		Entry("Forgejo", scmserver.Forgejo, webhookreceiver.ProviderGitHub,
-			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+			prEventSpec{
+				isEvent: headerEvent("X-Forgejo-Event", "pull_request"), action: bodyField("action"),
+				idPath: "pull_request.number", repoPath: "repository.full_name",
+				opened: "opened", closed: "closed", reopened: "reopened", merged: "closed",
+				mergedPath: "pull_request.merged", mergedValue: "true",
+			}),
 	)
 
 	It("announces a pull request a push settles", func(ctx SpecContext) {
@@ -765,12 +818,14 @@ var _ = Describe("pull request webhooks", func() {
 		Eventually(func(g Gomega) {
 			var actions []string
 			for _, d := range sink.received() {
-				if ev, ok := webhookreceiver.ParsePullRequestEvent(d.provider, d.header, d.body); ok {
-					g.Expect(ev.ID).To(Equal(prObj.Status.ID))
-					actions = append(actions, ev.Action)
-					if ev.Action == "closed" {
-						g.Expect(gjson.GetBytes(d.body, "pull_request.merged").Bool()).To(BeTrue())
-					}
+				if d.header.Get("X-Github-Event") != "pull_request" {
+					continue
+				}
+				g.Expect(gjson.GetBytes(d.body, "pull_request.number").String()).To(Equal(prObj.Status.ID))
+				action := gjson.GetBytes(d.body, "action").String()
+				actions = append(actions, action)
+				if action == "closed" {
+					g.Expect(gjson.GetBytes(d.body, "pull_request.merged").Bool()).To(BeTrue())
 				}
 			}
 			g.Expect(actions).To(ConsistOf("opened", "closed"))

@@ -42,6 +42,11 @@ const (
 	// longer than any spec, so no requeue fires during a scenario: the server's push webhooks and the controllers'
 	// watches have to carry every promotion on their own.
 	requeueInterval = time.Hour
+	// pollingRequeue is the requeue interval for the one scenario that needs the controller to poll the provider:
+	// a pull request closed on the provider sends no push, and the webhook receiver handles push events only, so the
+	// controller learns of it only by re-reading the pull request. The server does send the provider's pull request
+	// event; the receiver does not consume it yet.
+	pollingRequeue = 5 * time.Second
 	// retryDelay is the PullRequest rate limiter's slow delay, which retries a merge the provider refused (branch
 	// protection). It defaults to 5 minutes.
 	retryDelay = 5 * time.Second
@@ -231,9 +236,12 @@ func scmProviderSpecs() {
 		})
 	}, NodeTimeout(12*time.Minute))
 
-	// Closing a pull request on the provider pushes nothing; the provider's pull request webhook is what tells the
-	// controller to re-read it, so this scenario, too, runs with requeues off.
+	// Closing a pull request on the provider pushes nothing, so no push webhook announces it, and the receiver ignores
+	// the pull request event the server sends; the controller only notices when it re-reads the pull request on a
+	// requeue. This scenario alone runs with a short requeue.
 	It("opens a new pull request when a person closes one on the provider", func(ctx SpecContext) {
+		configureRequeue(ctx, pollingRequeue)
+		DeferCleanup(func(ctx SpecContext) { configureRequeue(ctx, requeueInterval) })
 		name := func(p scmserver.Provider) string { return string(p) + "-reopened" }
 		cleanupPromotions("promotionstrategy", name)
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
@@ -659,7 +667,7 @@ func (f promotionFlow) promoteAfterClose(ctx context.Context, p scmserver.Provid
 	_, err := f.admin.PullRequestAction(ctx, repo.ID, closed.Number, scmserver.PullRequestAction{Action: "close"})
 	Expect(err).NotTo(HaveOccurred())
 
-	By("delivering the pull request's closed event to the promoter's webhook receiver")
+	By("delivering the pull request's closed event to the promoter's webhook receiver, which accepts and ignores it")
 	f.expectPullRequestWebhookDelivered(ctx, repo, closed.Number, "closed")
 
 	By("opening a new pull request for the same proposed commit")
@@ -730,7 +738,8 @@ func (f promotionFlow) expectWebhooksDelivered(ctx context.Context, repo scmserv
 
 // expectPullRequestWebhookDelivered waits until the server has delivered the pull request webhook for action (opened,
 // closed, reopened or merged) on pull request number of repo to the promoter's webhook receiver, and the receiver
-// accepted it with 204.
+// accepted it with 204. The receiver answers 204 to any event it cannot read a push from, so this checks the
+// plumbing, not that the controller acted on the event.
 func (f promotionFlow) expectPullRequestWebhookDelivered(
 	ctx context.Context, repo scmserver.RepoInfo, number int, action string,
 ) {

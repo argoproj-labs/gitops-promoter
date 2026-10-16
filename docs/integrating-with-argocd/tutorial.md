@@ -123,7 +123,7 @@ smee -u https://smee.io/<YOUR CHANNEL ID> -t http://localhost:3333/
 
 Then set the webhook URL in your GitHub App settings to `https://smee.io/<YOUR CHANNEL ID>`.
 
-In the `Subscribe to events` section, check `Push` and `Pull request`.
+In the `Subscribe to events` section, check `Push`.
 
 #### Using requeue durations
 
