@@ -101,6 +101,13 @@ var _ = Describe("controller", Ordered, func() {
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
+			By("validating that the controller-manager runs the image built from this checkout")
+			cmd = exec.Command("kubectl", "get", "deployment", "promoter-controller-manager", "-n", namespace,
+				"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="manager")].image}`)
+			deployedImage, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			ExpectWithOffset(1, string(deployedImage)).To(Equal(projectimage))
+
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func() error {
 				// Get pod name
