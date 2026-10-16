@@ -379,7 +379,7 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 		r.uuid = "{" + newGUID() + "}"
 	default:
 	}
-	parts := []string{string(req.Provider), req.Owner}
+	parts := []string{req.Provider.dirName(), req.Owner}
 	if req.Project != "" {
 		parts = append(parts, req.Project)
 	}

@@ -76,6 +76,27 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// dirName is the directory holding the provider's repositories under the data directory. It is a constant per
+// provider rather than the (already validated) provider value itself, so no request data reaches the path.
+func (p Provider) dirName() string {
+	switch p {
+	case GitHub:
+		return "github"
+	case GitLab:
+		return "gitlab"
+	case AzureDevOps:
+		return "azuredevops"
+	case BitbucketCloud:
+		return "bitbucket"
+	case Gitea:
+		return "gitea"
+	case Forgejo:
+		return "forgejo"
+	default:
+		return "unknown"
+	}
+}
+
 // String returns the provider name.
 func (p Provider) String() string {
 	return string(p)
