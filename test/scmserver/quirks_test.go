@@ -57,6 +57,23 @@ func requestsMatching(p scmserver.Provider, method, fragment string) []scmserver
 	return out
 }
 
+// countRepoLabels reads X-Total-Count from the Gitea or Forgejo labels endpoint of repository fullName.
+func countRepoLabels(ctx context.Context, p scmserver.Provider, fullName string) int {
+	GinkgoHelper()
+	url := "https://" + srv.Domain(p) + "/api/v1/repos/" + fullName + "/labels?limit=1"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "token "+testToken)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.Header.Get("Link")).To(BeEmpty(), "real servers send no Link header on label lists")
+	total, err := strconv.Atoi(resp.Header.Get("X-Total-Count"))
+	Expect(err).NotTo(HaveOccurred())
+	return total
+}
+
 func statusCodes(records []scmserver.RequestRecord) []int {
 	codes := make([]int, 0, len(records))
 	for _, rec := range records {
@@ -253,6 +270,37 @@ var _ = Describe("provider quirks", func() {
 			Expect(rule.ID).NotTo(BeZero())
 		})
 	})
+
+	DescribeTable("Gitea and Forgejo label lists carry no Link header, so the providers must page by page size",
+		func(ctx SpecContext, p scmserver.Provider) {
+			f := newFixture(ctx, p)
+			prObj := f.createPR(ctx, "many-labels")
+
+			// Fill more than one page (50) of repository labels through the provider, which creates missing ones.
+			names := make([]string, 0, 55)
+			for i := range 55 {
+				names = append(names, fmt.Sprintf("label-%02d", i))
+			}
+			Expect(f.prs.AddLabels(ctx, prObj, names)).To(Succeed())
+			Expect(countRepoLabels(ctx, p, f.repo.FullName)).To(Equal(55))
+
+			By("resolving a label on the second page instead of creating a duplicate")
+			other := f.pullRequest("more-labels")
+			other.Spec.SourceBranch = "environment/development-other"
+			_, err := srv.Commit(ctx, f.repo.ID, scmserver.CommitRequest{
+				Branch: other.Spec.SourceBranch, Parent: f.baseSHA, Files: map[string]string{"manifest.yaml": "replicas: 6\n"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			id, err := f.prs.Create(ctx, other.Spec.Title, other.Spec.SourceBranch, other.Spec.TargetBranch, other.Spec.Description, other)
+			Expect(err).NotTo(HaveOccurred())
+			other.Status.ID = id
+			Expect(f.prs.AddLabels(ctx, other, []string{names[len(names)-1]})).To(Succeed())
+			Expect(countRepoLabels(ctx, p, f.repo.FullName)).To(Equal(55), "the existing label on page 2 must be reused")
+			Expect(f.serverPR(ctx, id).Labels).To(ConsistOf(names[len(names)-1]))
+		},
+		Entry("Gitea", scmserver.Gitea),
+		Entry("Forgejo", scmserver.Forgejo),
+	)
 
 	DescribeTable("Gitea and Forgejo SDKs report rejected merges as not merged, which the providers return as errors",
 		func(ctx SpecContext, p scmserver.Provider) {
