@@ -950,8 +950,12 @@ func seedEnvironments(ctx context.Context, admin *scmserver.AdminClient, repo sc
 	})
 	Expect(err).NotTo(HaveOccurred())
 	for _, env := range environments {
+		// The message names the repository so that seeds made in the same second in different repositories get
+		// different SHAs. The webhook receiver finds the ChangeTransferPolicy to wake by a push's previous SHA and
+		// gives up when several match, which would leave a merge made on the provider unnoticed until a requeue.
 		next, err := admin.Commit(ctx, repo.ID, scmserver.CommitRequest{
-			Branch: env + "-next", Orphan: true, Message: "initial empty commit for " + env + "-next",
+			Branch: env + "-next", Orphan: true,
+			Message: fmt.Sprintf("initial empty commit for %s-next in %s", env, repo.FullName),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = admin.SetBranch(ctx, repo.ID, env, scmserver.BranchRequest{SHA: next.SHA})
