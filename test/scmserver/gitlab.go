@@ -359,6 +359,7 @@ func (s *Server) gitlabCreateMR(w http.ResponseWriter, r *http.Request, who prin
 		writeProviderError(w, GitLab, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.webhooks.notifyPullRequest(ctx, s, pr, prActionOpened)
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	writeJSON(w, http.StatusCreated, s.gitlabMRJSONLocked(pr, requestBaseURL(r)))
@@ -393,6 +394,7 @@ func (s *Server) gitlabUpdateMR(w http.ResponseWriter, r *http.Request, _ princi
 	}
 	reopened := false
 	s.store.mu.Lock()
+	before := pr.state
 	now := s.now()
 	if req.Title != nil {
 		pr.title = *req.Title
@@ -429,7 +431,9 @@ func (s *Server) gitlabUpdateMR(w http.ResponseWriter, r *http.Request, _ princi
 		}
 	}
 	pr.updatedAt = now
+	after := pr.state
 	s.store.mu.Unlock()
+	s.notifyPullRequestTransition(r.Context(), pr, before, after)
 	if reopened || req.TargetBranch != nil {
 		if err := s.refreshPR(r.Context(), pr); err != nil {
 			writeProviderError(w, GitLab, http.StatusInternalServerError, err.Error())

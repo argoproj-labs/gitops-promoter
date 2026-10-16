@@ -47,15 +47,17 @@ const (
 	maxPendingMissRetries = 256
 )
 
-// EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
-// without modifying the CTP object. This matches controller.CTPEnqueueFunc.
+// EnqueueFunc is a function type that can be used to enqueue CTP or PullRequest reconcile requests
+// without modifying the object. This matches controller.CTPEnqueueFunc and controller.PREnqueueFunc.
 type EnqueueFunc func(namespace, name string)
 
-// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
+// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies (push
+// events) and PullRequests (pull request events).
 type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
+	enqueuePR  EnqueueFunc
 
 	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
 	// it so they are cancelled on shutdown without watching a separate signal.
@@ -73,12 +75,14 @@ type WebhookReceiver struct {
 	maxPendingRetries int
 }
 
-// NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *WebhookReceiver {
+// NewWebhookReceiver creates a new instance of WebhookReceiver. enqueueCTP wakes a ChangeTransferPolicy for a push
+// event; enqueuePR wakes a PullRequest for a pull request event.
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueuePR EnqueueFunc) *WebhookReceiver {
 	return &WebhookReceiver{
 		mgr:        mgr,
 		k8sClient:  mgr.GetClient(),
 		enqueueCTP: enqueueCTP,
+		enqueuePR:  enqueuePR,
 	}
 }
 
@@ -200,6 +204,16 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := log.IntoContext(r.Context(), reqLogger)
+
+	// A pull request event (opened, closed, reopened, merged on the provider) wakes the PullRequest resources that
+	// track it, so the controller sees the change now rather than on its next requeue.
+	if ev, ok := ParsePullRequestEvent(provider, r.Header, jsonBytes); ok {
+		ctpFound = wr.handlePullRequestEvent(ctx, provider, ev) > 0
+		responseCode = http.StatusNoContent
+		w.WriteHeader(responseCode)
+		return
+	}
+
 	beforeSha, ref := parseWebhookPush(provider, jsonBytes)
 	if beforeSha == "" {
 		reqLogger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)

@@ -340,6 +340,7 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	s.store.mu.Unlock()
 	r.gitMu.Unlock()
 
+	s.webhooks.notifyPullRequest(ctx, s, pr, prActionMerged)
 	s.afterRefChanges(ctx, r, []refChange{{ref: "refs/heads/" + target, before: base, after: mergeSHA}}, author.name)
 	return mergeSHA, nil
 }
@@ -370,9 +371,12 @@ func (s *Server) afterRefChanges(ctx context.Context, r *repo, changes []refChan
 	}
 	s.store.mu.Unlock()
 	for _, pr := range affected {
-		settled, err := s.settlePROutOfBand(ctx, pr, changed, deleted)
+		settled, action, err := s.settlePROutOfBand(ctx, pr, changed, deleted)
 		if err != nil {
 			s.log.Error("settle pull request after push", "repo", r.fullName(), "number", pr.number, "error", err)
+		}
+		if action != "" {
+			s.webhooks.notifyPullRequest(ctx, s, pr, action)
 		}
 		if settled {
 			continue
@@ -385,57 +389,57 @@ func (s *Server) afterRefChanges(ctx context.Context, r *repo, changes []refChan
 
 // settlePROutOfBand closes or merges an open pull request the way its provider does when a push, rather than the
 // pull request API, settles it: the source branch was deleted, or the head commit reached the target branch. It
-// returns true when the pull request is no longer open.
-func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed, deleted map[string]bool) (bool, error) {
+// returns true when the pull request is no longer open, and the pull request event this call caused, if any.
+func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed, deleted map[string]bool) (bool, prAction, error) {
 	s.store.mu.Lock()
 	r := pr.repo
 	state, source, target := pr.state, pr.source, pr.target
 	s.store.mu.Unlock()
 	if state != prOpen {
-		return true, nil
+		return true, "", nil
 	}
 	now := s.now()
 	if deleted[source] && closesOnSourceDeletion(r.provider) {
 		s.store.mu.Lock()
 		defer s.store.mu.Unlock()
 		if pr.state != prOpen {
-			return true, nil
+			return true, "", nil
 		}
 		pr.state = prClosed
 		pr.closedAt = now
 		pr.updatedAt = now
 		pr.completionQueued = false
 		pr.asyncMergePending = false
-		return true, nil
+		return true, prActionClosed, nil
 	}
 	if !changed[target] || !marksMergedByPush(r.provider) {
-		return false, nil
+		return false, "", nil
 	}
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	head, err := s.git.branchSHA(ctx, r.dir, source)
 	if err != nil {
-		return false, nil //nolint:nilerr // a missing source branch is handled by refreshPR
+		return false, "", nil //nolint:nilerr // a missing source branch is handled by refreshPR
 	}
 	tip, err := s.git.branchSHA(ctx, r.dir, target)
 	if err != nil {
-		return false, nil //nolint:nilerr // a missing target branch is handled by refreshPR
+		return false, "", nil //nolint:nilerr // a missing target branch is handled by refreshPR
 	}
 	contained, err := s.git.isAncestor(ctx, r.dir, head, tip)
 	if err != nil || !contained {
-		return false, err
+		return false, "", err
 	}
 	mergeSHA, err := s.git.mergeCommitOf(ctx, r.dir, head, tip)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	_ = s.git.deleteRef(ctx, r.dir, pullRefPrefix(r.provider, pr.number)+"/merge")
 
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	if pr.state != prOpen {
-		return true, nil
+		return true, "", nil
 	}
 	pr.state = prMerged
 	pr.headSHA = head
@@ -449,7 +453,7 @@ func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed
 	pr.updatedAt = now
 	pr.completionQueued = false
 	pr.asyncMergePending = false
-	return true, nil
+	return true, prActionMerged, nil
 }
 
 func isSuccessState(cs *commitStatus) bool {

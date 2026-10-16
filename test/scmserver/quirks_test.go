@@ -615,11 +615,17 @@ var _ = Describe("push webhooks", func() {
 		}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 
 		Eventually(func(g Gomega) {
-			received := sink.received()
-			g.Expect(received).To(HaveLen(1))
-			g.Expect(gjson.GetBytes(received[0].body, "ref").String()).To(Equal("refs/heads/" + targetBranch))
-			g.Expect(gjson.GetBytes(received[0].body, "before").String()).To(Equal(f.baseSHA))
-			g.Expect(gjson.GetBytes(received[0].body, "after").String()).To(Equal(f.branchSHA(ctx, targetBranch)))
+			// The pull request's own events (opened, closed) arrive on the same subscription.
+			var pushes []sinkDelivery
+			for _, d := range sink.received() {
+				if d.header.Get("X-Github-Event") == "push" {
+					pushes = append(pushes, d)
+				}
+			}
+			g.Expect(pushes).To(HaveLen(1))
+			g.Expect(gjson.GetBytes(pushes[0].body, "ref").String()).To(Equal("refs/heads/" + targetBranch))
+			g.Expect(gjson.GetBytes(pushes[0].body, "before").String()).To(Equal(f.baseSHA))
+			g.Expect(gjson.GetBytes(pushes[0].body, "after").String()).To(Equal(f.branchSHA(ctx, targetBranch)))
 		}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 	})
 
@@ -640,5 +646,134 @@ var _ = Describe("push webhooks", func() {
 			g.Expect(dropped).To(BeTrue())
 		}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 		Consistently(sink.received).WithContext(ctx).WithTimeout(300 * time.Millisecond).Should(BeEmpty())
+	})
+})
+
+// prEventSpec describes how one provider announces a pull request's lifecycle: the action names its webhooks carry
+// for open, close, reopen and merge (an empty name means the provider sends no event for that transition), and the
+// payload field that marks the merged pull request.
+type prEventSpec struct {
+	opened, closed, reopened, merged string
+	mergedPath, mergedValue          string
+}
+
+func (e prEventSpec) actions() []string {
+	var actions []string
+	for _, a := range []string{e.opened, e.closed, e.reopened, e.merged} {
+		if a != "" {
+			actions = append(actions, a)
+		}
+	}
+	return actions
+}
+
+var _ = Describe("pull request webhooks", func() {
+	DescribeTable("announce opened, closed, reopened and merged pull requests the way the promoter's webhook receiver reads them",
+		func(ctx SpecContext, p scmserver.Provider, detectedAs string, want prEventSpec) {
+			f := newFixture(ctx, p)
+			sink := newWebhookSink()
+			srv.AddWebhook(scmserver.WebhookSubscription{Provider: p, Repo: f.repo.FullName, URL: sink.server.URL, Secret: "s3cret"})
+
+			// Open, close, reopen and merge through the promoter's own provider implementation, except the reopen,
+			// which the promoter never does and Bitbucket Cloud does not allow: a person does that on the provider.
+			prObj := f.createPR(ctx, "pr-webhooks")
+			number, err := strconv.Atoi(prObj.Status.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.prs.Close(ctx, prObj)).To(Succeed())
+			_, err = admin.PullRequestAction(ctx, f.repo.ID, number, scmserver.PullRequestAction{Action: "reopen"})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				_, err := f.prs.Merge(ctx, prObj)
+				g.Expect(err).NotTo(HaveOccurred())
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+
+			type received struct {
+				event webhookreceiver.PullRequestEvent
+				body  []byte
+			}
+			var events []received
+			Eventually(func(g Gomega) {
+				events = nil
+				for _, d := range sink.received() {
+					g.Expect(d.provider).To(Equal(detectedAs))
+					if ev, ok := webhookreceiver.ParsePullRequestEvent(d.provider, d.header, d.body); ok {
+						events = append(events, received{event: ev, body: d.body})
+					}
+				}
+				g.Expect(events).To(HaveLen(len(want.actions())))
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+
+			// Deliveries are sent concurrently, so compare the set of actions rather than their order.
+			actions := make([]string, 0, len(events))
+			merged := 0
+			for _, r := range events {
+				actions = append(actions, r.event.Action)
+				Expect(r.event.ID).To(Equal(prObj.Status.ID))
+				Expect(r.event.MatchesGitRepository(detectedAs, f.gitRepo.Spec)).To(BeTrue(), "repository %+v does not match the GitRepository", r.event.Repo)
+				if gjson.GetBytes(r.body, want.mergedPath).String() == want.mergedValue {
+					merged++
+				}
+			}
+			Expect(actions).To(ConsistOf(want.actions()))
+			Expect(merged).To(Equal(1), "exactly one event carries the merged pull request")
+
+			// The server's delivery log records the pull request events alongside the pushes.
+			var logged []string
+			for _, d := range srv.WebhookDeliveries() {
+				if d.Repo == f.repo.FullName && d.Event == "pull_request" {
+					Expect(d.Number).To(Equal(number))
+					Expect(d.StatusCode).To(Equal(http.StatusNoContent))
+					logged = append(logged, d.Action)
+				}
+			}
+			wantLogged := []string{"opened", "closed", "merged"}
+			if want.reopened != "" {
+				wantLogged = append(wantLogged, "reopened")
+			}
+			Expect(logged).To(ConsistOf(wantLogged))
+		},
+		// https://docs.github.com/webhooks/webhook-events-and-payloads#pull_request
+		Entry("GitHub", scmserver.GitHub, webhookreceiver.ProviderGitHub,
+			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+		// https://docs.gitlab.com/user/project/integrations/webhook_events/#merge-request-events
+		Entry("GitLab", scmserver.GitLab, webhookreceiver.ProviderGitLab,
+			prEventSpec{opened: "open", closed: "close", reopened: "reopen", merged: "merge", mergedPath: "object_attributes.state", mergedValue: "merged"}),
+		// https://learn.microsoft.com/azure/devops/service-hooks/events#git.pullrequest.updated
+		Entry("Azure DevOps", scmserver.AzureDevOps, webhookreceiver.ProviderAzureDevops,
+			prEventSpec{opened: "git.pullrequest.created", closed: "git.pullrequest.updated", reopened: "git.pullrequest.updated", merged: "git.pullrequest.updated", mergedPath: "resource.status", mergedValue: "completed"}),
+		// https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Pull-request-events: a declined pull request
+		// cannot be reopened, so no event exists for it.
+		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, webhookreceiver.ProviderBitbucketCloud,
+			prEventSpec{opened: "pullrequest:created", closed: "pullrequest:rejected", merged: "pullrequest:fulfilled", mergedPath: "pullrequest.state", mergedValue: "MERGED"}),
+		// https://docs.gitea.com/usage/webhooks: GitHub's shape and headers, so the receiver classifies them as GitHub.
+		Entry("Gitea", scmserver.Gitea, webhookreceiver.ProviderGitHub,
+			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+		Entry("Forgejo", scmserver.Forgejo, webhookreceiver.ProviderGitHub,
+			prEventSpec{opened: "opened", closed: "closed", reopened: "reopened", merged: "closed", mergedPath: "pull_request.merged", mergedValue: "true"}),
+	)
+
+	It("announces a pull request a push settles", func(ctx SpecContext) {
+		f := newFixture(ctx, scmserver.GitHub)
+		sink := newWebhookSink()
+		srv.AddWebhook(scmserver.WebhookSubscription{Provider: scmserver.GitHub, Repo: f.repo.FullName, URL: sink.server.URL})
+		prObj := f.createPR(ctx, "settled-by-push")
+
+		// Land the source branch on the target by hand, as a person merging locally and pushing would.
+		_, err := admin.SetBranch(ctx, f.repo.ID, targetBranch, scmserver.BranchRequest{SHA: f.headSHA})
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			var actions []string
+			for _, d := range sink.received() {
+				if ev, ok := webhookreceiver.ParsePullRequestEvent(d.provider, d.header, d.body); ok {
+					g.Expect(ev.ID).To(Equal(prObj.Status.ID))
+					actions = append(actions, ev.Action)
+					if ev.Action == "closed" {
+						g.Expect(gjson.GetBytes(d.body, "pull_request.merged").Bool()).To(BeTrue())
+					}
+				}
+			}
+			g.Expect(actions).To(ConsistOf("opened", "closed"))
+		}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 	})
 })

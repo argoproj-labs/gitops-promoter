@@ -834,12 +834,15 @@ func (s *Server) adminPullAction(w http.ResponseWriter, r *http.Request) {
 		}
 	case "close", "reopen", "set-labels", "hide", "show", "complete-now", "fail-completion":
 		s.store.mu.Lock()
+		before := pr.state
 		err := applySimplePRAction(pr, req, now)
+		after := pr.state
 		s.store.mu.Unlock()
 		if err != nil {
 			adminError(w, http.StatusConflict, err)
 			return
 		}
+		s.notifyPullRequestTransition(ctx, pr, before, after)
 		if req.Action == "reopen" {
 			if err := s.refreshPR(ctx, pr); err != nil {
 				adminError(w, http.StatusInternalServerError, err)

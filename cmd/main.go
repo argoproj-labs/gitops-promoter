@@ -413,7 +413,9 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(localManager,
+		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.EnqueueFunc(prReconciler.GetEnqueueFunc()))
 
 	g, ctx := errgroup.WithContext(runCtx)
 

@@ -380,6 +380,9 @@ func (s *Server) bitbucketCreatePR(w http.ResponseWriter, r *http.Request, who p
 		writeProviderError(w, BitbucketCloud, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if status == http.StatusCreated {
+		s.webhooks.notifyPullRequest(ctx, s, pr, prActionOpened)
+	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	w.Header().Set("Location", fmt.Sprintf("%s%s/repositories/%s/pullrequests/%d", requestBaseURL(r), bitbucketAPI, rp.fullName(), pr.number))
@@ -446,8 +449,8 @@ func (s *Server) bitbucketDeclinePR(w http.ResponseWriter, r *http.Request, _ pr
 		return
 	}
 	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
 	if pr.state != prOpen {
+		s.store.mu.Unlock()
 		bitbucketError(w, http.StatusBadRequest, "You can't decline a pull request that is not open.", nil)
 		return
 	}
@@ -456,6 +459,10 @@ func (s *Server) bitbucketDeclinePR(w http.ResponseWriter, r *http.Request, _ pr
 	pr.closedAt = now
 	pr.updatedAt = now
 	pr.asyncMergePending = false
+	s.store.mu.Unlock()
+	s.webhooks.notifyPullRequest(r.Context(), s, pr, prActionClosed)
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
 	writeJSON(w, http.StatusOK, s.bitbucketPRJSONLocked(pr, requestBaseURL(r)))
 }
 

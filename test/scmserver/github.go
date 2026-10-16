@@ -470,6 +470,7 @@ func (s *Server) githubCreatePull(w http.ResponseWriter, r *http.Request, who pr
 		writeProviderError(w, GitHub, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.webhooks.notifyPullRequest(ctx, s, pr, prActionOpened)
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	w.Header().Set("Location", fmt.Sprintf("%s%s/repos/%s/pulls/%d", requestBaseURL(r), githubAPI, rp.fullName(), pr.number))
@@ -502,6 +503,7 @@ func (s *Server) githubEditPull(w http.ResponseWriter, r *http.Request, who prin
 	}
 	reopened := false
 	s.store.mu.Lock()
+	before := pr.state
 	now := s.now()
 	if req.Title != nil {
 		pr.title = *req.Title
@@ -533,7 +535,9 @@ func (s *Server) githubEditPull(w http.ResponseWriter, r *http.Request, who prin
 		}
 	}
 	pr.updatedAt = now
+	after := pr.state
 	s.store.mu.Unlock()
+	s.notifyPullRequestTransition(r.Context(), pr, before, after)
 	if reopened || req.Base != nil {
 		if err := s.refreshPR(r.Context(), pr); err != nil {
 			writeProviderError(w, GitHub, http.StatusInternalServerError, err.Error())

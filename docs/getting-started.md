@@ -79,13 +79,16 @@ During the creation the GitHub App, you will need to configure the following set
 **Webhooks (Optional - but highly recommended)**
 
 > [!NOTE]
-> We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
+> We do support configuration of a GitHub App webhook that triggers PR creation upon Push and that re-reads a pull
+> request GitOps Promoter opened when it is closed, reopened or merged on GitHub. However, we do not configure
 > the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach
 > the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
 > you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
 > `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
+
+Subscribe to events: `Push` and `Pull request`
 
 Here is an example Ingress configuration for the webhook receiver:
 
@@ -349,13 +352,14 @@ To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a
 **Webhooks (Optional - but highly recommended)**
 
 > [!NOTE]
-> We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push. However, we do not configure
+> We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push and that re-reads a pull
+> request GitOps Promoter opened when it is declined or merged on Bitbucket Cloud. However, we do not configure
 > the ingress to allow Bitbucket Cloud to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket Cloud to reach
 > the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
 > you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
 > `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
 
-To enable webhook support for automatic PR creation on push:
+To enable webhook support for automatic PR creation on push and for pull request changes:
 
 1. Navigate to your repository URL
 2. Click on "Repository settings" in the sidebar
@@ -364,7 +368,7 @@ To enable webhook support for automatic PR creation on push:
 5. Configure the webhook:
    * **Title**: GitOps Promoter
    * **URL**: `https://argo-github-app-webhook.com/` # Replace with your domain
-   * **Triggers**: Select "Repository: Push"
+   * **Triggers**: Select "Repository: Push", "Pull Request: Merged" and "Pull Request: Declined"
 
 Here is an example Ingress configuration for the webhook receiver:
 

@@ -250,6 +250,7 @@ func (s *Server) giteaCreatePull(w http.ResponseWriter, r *http.Request, p Provi
 		writeProviderError(w, p, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.webhooks.notifyPullRequest(ctx, s, pr, prActionOpened)
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	writeJSON(w, http.StatusCreated, s.giteaPullJSONLocked(pr, requestBaseURL(r)))
@@ -293,6 +294,7 @@ func (s *Server) giteaEditPull(w http.ResponseWriter, r *http.Request, p Provide
 	}
 	reopened := false
 	s.store.mu.Lock()
+	before := pr.state
 	now := s.now()
 	if strings.TrimSpace(req.Title) != "" {
 		pr.title = req.Title
@@ -328,7 +330,9 @@ func (s *Server) giteaEditPull(w http.ResponseWriter, r *http.Request, p Provide
 		}
 	}
 	pr.updatedAt = now
+	after := pr.state
 	s.store.mu.Unlock()
+	s.notifyPullRequestTransition(r.Context(), pr, before, after)
 	if reopened || req.Base != "" {
 		if err := s.refreshPR(r.Context(), pr); err != nil {
 			writeProviderError(w, p, http.StatusInternalServerError, err.Error())

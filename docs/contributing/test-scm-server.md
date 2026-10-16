@@ -9,7 +9,7 @@
 - Gitea
 - Forgejo
 
-It serves each provider's REST API over HTTPS, hosts real git repositories over smart HTTP, merges pull requests with real merge commits, and sends provider-shaped push webhooks. Point an `ScmProvider`'s `domain` at it and trust its CA, and the **unmodified** provider implementations in `internal/scms` run against it.
+It serves each provider's REST API over HTTPS, hosts real git repositories over smart HTTP, merges pull requests with real merge commits, and sends provider-shaped push and pull request webhooks. Point an `ScmProvider`'s `domain` at it and trust its CA, and the **unmodified** provider implementations in `internal/scms` run against it.
 
 It is used in two places:
 
@@ -79,7 +79,7 @@ The admin API is plain HTTP. `scmserver.AdminClient` wraps it for Go tests.
 | `GET/DELETE /api/requests`                              | The request log                                                                 |
 | `GET /api/behavior`, `PUT /api/behavior/{provider}`     | Read or change provider behavior (see below)                                    |
 | `GET/POST/DELETE /api/faults`                           | Fault injection rules                                                           |
-| `GET/POST /api/webhooks`, `GET /api/webhooks/deliveries` | Push webhook subscriptions and the delivery log                                 |
+| `GET/POST /api/webhooks`, `GET /api/webhooks/deliveries` | Webhook subscriptions and the delivery log                                      |
 | `POST /api/reset`                                       | Delete all state                                                                |
 
 `--config` preloads credentials, GitHub Apps, repositories, webhooks and behavior from a YAML or JSON file.
@@ -90,6 +90,9 @@ The server reproduces the provider behavior the controller has to cope with. Eac
 
 Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows its server code; otherwise it follows the official REST documentation and the SDK the promoter uses.
 
+- **Webhooks**
+    - Every branch update sends the provider's push event, and every pull request transition sends its pull request event: GitHub's and Gitea's `pull_request` (a merge is `closed` with `merged: true`), GitLab's `Merge Request Hook` (`open`, `close`, `reopen`, `merge`), Azure DevOps' `git.pullrequest.created` and `git.pullrequest.updated`, and Bitbucket Cloud's `pullrequest:created`, `pullrequest:rejected` and `pullrequest:fulfilled` (Bitbucket Cloud has no reopen). A pull request a push settles (its head reaches the target branch, or its source branch is deleted) sends the same event the provider would.
+    - Deliveries carry the provider's headers and signatures, and the promoter's webhook receiver classifies and parses each one the way it does the real provider's.
 - **Azure DevOps**
     - A completion request (`status=completed`) returns 200 while the pull request stays `active` with `mergeStatus: queued` and the *preview* merge commit. The real merge lands `completionDelay` later.
     - A completion request for a conflicting pull request, or one whose required statuses have not passed, is refused with 400; a stale `lastMergeSourceCommit` gets 409. Azure DevOps does not document these responses. `azureAsyncCompletionFailures` switches to the other model: the request is accepted and fails later, leaving the pull request active with `mergeFailureMessage`.
@@ -145,10 +148,10 @@ A `FaultRule` makes matching requests fail. It matches on provider, method and p
 5. runs the plain promotion for all six providers at once. Each provider gets a repository with a webhook to the promoter's receiver, seeded environment branches, and an `ScmProvider`, `GitRepository` and `PromotionStrategy`; the spec hydrates a change and waits for it to merge into development and staging.
 6. runs the gated promotion for all six providers at once. A proposed commit status gates development, and the controller reports it on the provider. The spec checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
 7. runs the hand-merged promotion for all six providers at once, with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the spec checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
-8. closes the controller's pull request on every provider at once, and checks that the controller opens a new pull request for the same proposed commit, tracks only the new one, and promotes through it.
+8. closes the controller's pull request on every provider at once, and checks that the provider's pull request webhook reaches the receiver, and that the controller opens a new pull request for the same proposed commit, tracks only the new one, and promotes through it.
 9. requires a status on the development branch of every provider at once. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. A refused merge is retried on the PullRequest work queue's rate limiter, which waits 5 minutes between retries by default.
 
-The suite runs the controller with every requeue interval set to an hour, longer than any scenario, so nothing but the server's push webhooks and the controllers' own watches can carry a promotion through. Every repository the suite creates is subscribed to the deployed controller's webhook receiver, and the plain promotion also checks the server's delivery log: each hydration push and each merge must have reached the receiver and been answered with 204. The one exception is the closed pull request scenario: closing a pull request on the provider pushes nothing, so the controller only notices on a requeue, and that scenario runs with a 5 second requeue. The rate limiter's slow delay is 5 seconds throughout.
+The suite runs the controller with every requeue interval set to an hour, longer than any scenario, so nothing but the server's webhooks and the controllers' own watches can carry a promotion through. Every repository the suite creates is subscribed to the deployed controller's webhook receiver, and the specs check the server's delivery log: each hydration push, each merge and the closed pull request must have reached the receiver and been answered with 204. The rate limiter's slow delay is 5 seconds throughout.
 
 Each scenario runs its six providers concurrently, since every provider has its own repositories and promotion resources, so a scenario takes as long as its slowest provider.
 
@@ -157,6 +160,6 @@ Each scenario runs its six providers concurrently, since every provider has its 
 When you add an SCM provider (see [Adding an SCM Provider](adding-an-scm-provider.md)):
 
 - teach the server its API: a `test/scmserver/<provider>.go` with routes registered in `Server.providerHandler`;
-- add its push webhook format to `webhook.go`;
+- add its push and pull request webhook formats to `webhook.go`;
 - add it to `AllProviders` and to the `Entry` lists of the contract, webhook and every e2e table;
 - give any provider-specific behavior a spec in `quirks_test.go`.

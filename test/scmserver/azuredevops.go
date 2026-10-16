@@ -363,6 +363,7 @@ func (s *Server) azureCreatePR(w http.ResponseWriter, r *http.Request, who princ
 		writeProviderError(w, AzureDevOps, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.webhooks.notifyPullRequest(ctx, s, pr, prActionOpened)
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	writeJSON(w, http.StatusCreated, s.azurePRJSONLocked(pr, requestBaseURL(r), true))
@@ -437,6 +438,7 @@ func (s *Server) azureUpdatePR(w http.ResponseWriter, r *http.Request, who princ
 	}
 	behavior := s.behavior.get(AzureDevOps)
 	s.store.mu.Lock()
+	before := pr.state
 	now := s.now()
 	retarget := false
 	if req.Title != nil {
@@ -457,7 +459,9 @@ func (s *Server) azureUpdatePR(w http.ResponseWriter, r *http.Request, who princ
 		}
 	}
 	pr.updatedAt = now
+	after := pr.state
 	s.store.mu.Unlock()
+	s.notifyPullRequestTransition(r.Context(), pr, before, after)
 	if retarget {
 		if err := s.refreshPR(r.Context(), pr); err != nil {
 			writeProviderError(w, AzureDevOps, http.StatusInternalServerError, err.Error())

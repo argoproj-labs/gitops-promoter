@@ -35,6 +35,8 @@ Check the [Custom Hydration](advanced-usage/custom-hydrator.md) documentation fo
 
 Webhooks allow GitOps Promoter to react to events from your Git repository in real-time. This means that when you push
 a new commit, GitOps Promoter can start the promotion process immediately, rather than waiting for a scheduled poll.
+Pull request webhooks do the same for the pull requests GitOps Promoter opens: when someone closes, reopens or merges
+one on the SCM, GitOps Promoter re-reads it at once instead of on its next requeue.
 Using webhooks can lead to faster deployments and a more responsive development process. Additionally, webhooks can
 reduce the load on your Git server by eliminating the need for frequent polling.
 

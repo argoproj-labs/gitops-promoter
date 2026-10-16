@@ -42,10 +42,6 @@ const (
 	// longer than any spec, so no requeue fires during a scenario: the server's push webhooks and the controllers'
 	// watches have to carry every promotion on their own.
 	requeueInterval = time.Hour
-	// pollingRequeue is the requeue interval for the one scenario that needs the controller to poll the provider:
-	// a pull request closed on the provider sends no push, and the webhook receiver handles push events only, so the
-	// controller learns of it only by re-reading the pull request.
-	pollingRequeue = 5 * time.Second
 	// retryDelay is the PullRequest rate limiter's slow delay, which retries a merge the provider refused (branch
 	// protection). It defaults to 5 minutes.
 	retryDelay = 5 * time.Second
@@ -235,11 +231,9 @@ func scmProviderSpecs() {
 		})
 	}, NodeTimeout(12*time.Minute))
 
-	// Closing a pull request on the provider pushes nothing, so no webhook announces it; the controller only notices
-	// when it re-reads the pull request on a requeue. This scenario alone runs with a short requeue.
+	// Closing a pull request on the provider pushes nothing; the provider's pull request webhook is what tells the
+	// controller to re-read it, so this scenario, too, runs with requeues off.
 	It("opens a new pull request when a person closes one on the provider", func(ctx SpecContext) {
-		configureRequeue(ctx, pollingRequeue)
-		DeferCleanup(func(ctx SpecContext) { configureRequeue(ctx, requeueInterval) })
 		name := func(p scmserver.Provider) string { return string(p) + "-reopened" }
 		cleanupPromotions("promotionstrategy", name)
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
@@ -665,6 +659,9 @@ func (f promotionFlow) promoteAfterClose(ctx context.Context, p scmserver.Provid
 	_, err := f.admin.PullRequestAction(ctx, repo.ID, closed.Number, scmserver.PullRequestAction{Action: "close"})
 	Expect(err).NotTo(HaveOccurred())
 
+	By("delivering the pull request's closed event to the promoter's webhook receiver")
+	f.expectPullRequestWebhookDelivered(ctx, repo, closed.Number, "closed")
+
 	By("opening a new pull request for the same proposed commit")
 	var reopened scmserver.PullRequestInfo
 	Eventually(func(g Gomega) {
@@ -727,6 +724,30 @@ func (f promotionFlow) expectWebhooksDelivered(ctx context.Context, repo scmserv
 				g.Expect(d.Error).To(BeEmpty(), "delivery %s for %s", d.ID, ref)
 				g.Expect(d.StatusCode).To(Equal(http.StatusNoContent), "delivery %s for %s", d.ID, ref)
 			}
+		}
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+}
+
+// expectPullRequestWebhookDelivered waits until the server has delivered the pull request webhook for action (opened,
+// closed, reopened or merged) on pull request number of repo to the promoter's webhook receiver, and the receiver
+// accepted it with 204.
+func (f promotionFlow) expectPullRequestWebhookDelivered(
+	ctx context.Context, repo scmserver.RepoInfo, number int, action string,
+) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		deliveries, err := f.admin.WebhookDeliveries(ctx)
+		g.Expect(err).NotTo(HaveOccurred())
+		var matched []scmserver.WebhookDelivery
+		for _, d := range deliveries {
+			if d.Repo == repo.FullName && d.Event == "pull_request" && d.Number == number && d.Action == action && !d.Dropped {
+				matched = append(matched, d)
+			}
+		}
+		g.Expect(matched).NotTo(BeEmpty(), "no %s webhook delivered for pull request %d of %s", action, number, repo.FullName)
+		for _, d := range matched {
+			g.Expect(d.Error).To(BeEmpty(), "delivery %s", d.ID)
+			g.Expect(d.StatusCode).To(Equal(http.StatusNoContent), "delivery %s", d.ID)
 		}
 	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 }
@@ -923,7 +944,11 @@ func printSCMDiagnostics(ctx context.Context, admin *scmserver.AdminClient) {
 	} else {
 		GinkgoWriter.Printf("webhook deliveries (%d):\n", len(deliveries))
 		for _, d := range deliveries {
-			GinkgoWriter.Printf("  %s %-11s %s %s %s -> %d %s\n", d.Time.Format(time.TimeOnly), d.Provider, d.Repo, d.Ref,
+			subject := d.Ref
+			if d.Event == "pull_request" {
+				subject = fmt.Sprintf("pull request %d %s", d.Number, d.Action)
+			}
+			GinkgoWriter.Printf("  %s %-11s %s %s %s -> %d %s\n", d.Time.Format(time.TimeOnly), d.Provider, d.Repo, subject,
 				d.URL, d.StatusCode, d.Error)
 		}
 	}

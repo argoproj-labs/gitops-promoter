@@ -21,7 +21,8 @@ import (
 
 const maxWebhookDeliveries = 2000
 
-// WebhookSubscription delivers push events for repositories of a provider to a URL.
+// WebhookSubscription delivers push and pull request events for repositories of a provider to a URL, as a hook
+// subscribed to both event types on the provider would.
 type WebhookSubscription struct {
 	// Provider whose repositories are watched.
 	Provider Provider `json:"provider"`
@@ -39,21 +40,25 @@ type WebhookSubscription struct {
 
 // WebhookDelivery records one webhook delivery attempt.
 type WebhookDelivery struct {
-	Time           time.Time         `json:"time"`
-	Headers        map[string]string `json:"headers"`
-	ID             string            `json:"id"`
-	Provider       Provider          `json:"provider"`
-	Repo           string            `json:"repo"`
-	Event          string            `json:"event"`
-	Ref            string            `json:"ref"`
-	Before         string            `json:"before"`
-	After          string            `json:"after"`
-	URL            string            `json:"url"`
-	Error          string            `json:"error,omitempty"`
-	Payload        json.RawMessage   `json:"payload"`
-	SubscriptionID int64             `json:"subscriptionID"`
-	StatusCode     int               `json:"statusCode"`
-	Dropped        bool              `json:"dropped"`
+	Time     time.Time         `json:"time"`
+	Headers  map[string]string `json:"headers"`
+	ID       string            `json:"id"`
+	Provider Provider          `json:"provider"`
+	Repo     string            `json:"repo"`
+	Event    string            `json:"event"`
+	Ref      string            `json:"ref"`
+	Before   string            `json:"before"`
+	After    string            `json:"after"`
+	// Action is the provider-neutral pull request action of a pull request event: opened, closed, reopened, merged.
+	Action         string          `json:"action,omitempty"`
+	URL            string          `json:"url"`
+	Error          string          `json:"error,omitempty"`
+	Payload        json.RawMessage `json:"payload"`
+	SubscriptionID int64           `json:"subscriptionID"`
+	// Number is the pull request number of a pull request event.
+	Number     int  `json:"number,omitempty"`
+	StatusCode int  `json:"statusCode"`
+	Dropped    bool `json:"dropped"`
 }
 
 type webhookDispatcher struct {
@@ -191,23 +196,91 @@ func (d *webhookDispatcher) notifyPush(ctx context.Context, s *Server, r *repo, 
 				before: change.before, after: change.after, pusher: pusher, hookID: sub.ID,
 				deliver: newGUID(), occurred: s.now(),
 			}
-			d.wg.Add(1)
-			go func() {
-				defer d.wg.Done()
-				d.deliver(context.WithoutCancel(ctx), sub, ev, behavior)
-			}()
+			delivery := WebhookDelivery{
+				ID: ev.deliver, SubscriptionID: sub.ID, Provider: sub.Provider, Repo: snap.fullName, Event: "push",
+				Ref: ev.ref, Before: ev.before, After: ev.after, URL: sub.URL,
+			}
+			payload, headers, err := buildPushPayload(ev, sub.Secret)
+			d.dispatch(ctx, sub, delivery, payload, headers, err, behavior)
 		}
 	}
 }
 
-func (d *webhookDispatcher) deliver(ctx context.Context, sub WebhookSubscription, ev pushEvent, behavior Behavior) {
-	delivery := WebhookDelivery{
-		ID: ev.deliver, SubscriptionID: sub.ID, Provider: sub.Provider, Repo: ev.repo.fullName, Event: "push",
-		Ref: ev.ref, Before: ev.before, After: ev.after, URL: sub.URL,
+// prAction is a provider-neutral pull request lifecycle event.
+type prAction string
+
+const (
+	prActionOpened   prAction = "opened"
+	prActionClosed   prAction = "closed"
+	prActionReopened prAction = "reopened"
+	prActionMerged   prAction = "merged"
+)
+
+// transitionAction maps a pull request state change to the event a provider sends for it, or "" for no event.
+func transitionAction(before, after prState) prAction {
+	switch {
+	case before == after:
+		return ""
+	case after == prMerged:
+		return prActionMerged
+	case after == prClosed:
+		return prActionClosed
+	case after == prOpen && before == prClosed:
+		return prActionReopened
+	default:
+		return ""
 	}
-	payload, headers, err := buildPushPayload(ev, sub.Secret)
-	if err != nil {
-		delivery.Error = err.Error()
+}
+
+// notifyPullRequestTransition sends the pull request event, if any, for a state change from before to after.
+func (s *Server) notifyPullRequestTransition(ctx context.Context, pr *pullRequest, before, after prState) {
+	if action := transitionAction(before, after); action != "" {
+		s.webhooks.notifyPullRequest(ctx, s, pr, action)
+	}
+}
+
+// notifyPullRequest delivers a pull request event for pr to every matching subscription, asynchronously, in the
+// provider's own format: GitHub's and Gitea's "pull_request", GitLab's "Merge Request Hook", Azure DevOps'
+// git.pullrequest.* service hook and Bitbucket Cloud's pullrequest:* events.
+func (d *webhookDispatcher) notifyPullRequest(ctx context.Context, s *Server, pr *pullRequest, action prAction) {
+	s.store.mu.Lock()
+	r := pr.repo
+	snap := snapshotRepo(r)
+	number := pr.number
+	s.store.mu.Unlock()
+
+	d.mu.Lock()
+	var subs []WebhookSubscription
+	for _, sub := range d.subs {
+		if sub.Provider == snap.provider && (sub.Repo == "" || strings.EqualFold(sub.Repo, snap.fullName)) {
+			subs = append(subs, sub)
+		}
+	}
+	d.mu.Unlock()
+	if len(subs) == 0 {
+		return
+	}
+
+	behavior := s.behavior.get(snap.provider)
+	for _, sub := range subs {
+		id := newGUID()
+		delivery := WebhookDelivery{
+			ID: id, SubscriptionID: sub.ID, Provider: sub.Provider, Repo: snap.fullName, Event: "pull_request",
+			Action: string(action), Number: number, URL: sub.URL,
+		}
+		payload, headers, err := s.buildPullRequestPayload(pr, action, id, sub.ID, sub.Secret)
+		if err == nil && payload == nil {
+			// The provider sends no event for this transition.
+			continue
+		}
+		d.dispatch(ctx, sub, delivery, payload, headers, err, behavior)
+	}
+}
+
+// dispatch records a built delivery and sends it in the background. A build error is recorded without sending.
+func (d *webhookDispatcher) dispatch(ctx context.Context, sub WebhookSubscription, delivery WebhookDelivery, payload []byte, headers http.Header, buildErr error, behavior Behavior) {
+	if buildErr != nil {
+		delivery.Error = buildErr.Error()
 		delivery.Time = time.Now().UTC()
 		d.record(delivery)
 		return
@@ -217,7 +290,12 @@ func (d *webhookDispatcher) deliver(ctx context.Context, sub WebhookSubscription
 	for k, v := range headers {
 		delivery.Headers[k] = strings.Join(v, ",")
 	}
+	d.wg.Go(func() {
+		d.deliver(context.WithoutCancel(ctx), sub, delivery, payload, headers, behavior)
+	})
+}
 
+func (d *webhookDispatcher) deliver(ctx context.Context, sub WebhookSubscription, delivery WebhookDelivery, payload []byte, headers http.Header, behavior Behavior) {
 	if behavior.WebhookDelay.Duration > 0 {
 		select {
 		case <-time.After(behavior.WebhookDelay.Duration):
@@ -334,7 +412,7 @@ func buildPushPayload(ev pushEvent, secret string) ([]byte, http.Header, error) 
 			headers.Set("X-Hub-Signature", "sha256="+hmacHex(secret, payload, true))
 		}
 	case Gitea, Forgejo:
-		addGiteaHeaders(headers, ev, secret, payload)
+		addGiteaHeaders(headers, ev.repo.provider, "push", ev.deliver, secret, payload)
 	default:
 	}
 	return payload, headers, nil
@@ -343,28 +421,168 @@ func buildPushPayload(ev pushEvent, secret string) ([]byte, http.Header, error) 
 // addGiteaHeaders adds the header set Gitea and Forgejo send with every webhook. Both also send GitHub and Gogs
 // compatibility headers (X-GitHub-Event is set with that exact, non-canonical spelling), so a receiver that checks
 // GitHub headers first classifies their deliveries as GitHub.
-func addGiteaHeaders(headers http.Header, ev pushEvent, secret string, payload []byte) {
+func addGiteaHeaders(headers http.Header, p Provider, event, deliveryID, secret string, payload []byte) {
 	sig256, sig1 := "", ""
 	if secret != "" {
 		sig256 = hmacHex(secret, payload, true)
 		sig1 = hmacHex(secret, payload, false)
 	}
 	prefixes := []string{"X-Gitea", "X-Gogs"}
-	if ev.repo.provider == Forgejo {
+	if p == Forgejo {
 		prefixes = append([]string{"X-Forgejo"}, prefixes...)
 	}
 	for _, prefix := range prefixes {
-		headers.Set(prefix+"-Delivery", ev.deliver)
-		headers.Set(prefix+"-Event", "push")
-		headers.Set(prefix+"-Event-Type", "push")
+		headers.Set(prefix+"-Delivery", deliveryID)
+		headers.Set(prefix+"-Event", event)
+		headers.Set(prefix+"-Event-Type", event)
 		headers.Set(prefix+"-Signature", sig256)
 	}
 	headers.Set("X-Hub-Signature", "sha1="+sig1)
 	headers.Set("X-Hub-Signature-256", "sha256="+sig256)
-	headers["X-GitHub-Delivery"] = []string{ev.deliver}
-	headers["X-GitHub-Event"] = []string{"push"}
-	headers["X-GitHub-Event-Type"] = []string{"push"}
+	headers["X-GitHub-Delivery"] = []string{deliveryID}
+	headers["X-GitHub-Event"] = []string{event}
+	headers["X-GitHub-Event-Type"] = []string{event}
 	headers.Set("User-Agent", "Go-http-client/1.1")
+}
+
+// buildPullRequestPayload renders a pull request event for pr in its provider's webhook format with the headers the
+// provider sends. It returns a nil payload and nil error when the provider sends no event for action.
+func (s *Server) buildPullRequestPayload(pr *pullRequest, action prAction, deliveryID string, hookID int64, secret string) ([]byte, http.Header, error) {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	r := pr.repo
+	p := r.provider
+	base := s.publicBaseURL(p)
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json")
+	var body any
+
+	switch p {
+	case GitHub:
+		// https://docs.github.com/webhooks/webhook-events-and-payloads#pull_request: a merge is action "closed" with
+		// pull_request.merged true.
+		ghAction := map[prAction]string{prActionOpened: "opened", prActionClosed: "closed", prActionReopened: "reopened", prActionMerged: "closed"}[action]
+		body = map[string]any{
+			"action":       ghAction,
+			"number":       pr.number,
+			"pull_request": s.githubPullJSONLocked(pr, base),
+			"repository":   s.githubRepoJSON(r, base),
+			"sender":       s.githubUserJSON(pr.author),
+		}
+		headers.Set("User-Agent", "GitHub-Hookshot/scmserver")
+		headers.Set("X-Github-Event", "pull_request")
+		headers.Set("X-Github-Delivery", deliveryID)
+		headers.Set("X-Github-Hook-Id", strconv.FormatInt(hookID, 10))
+		headers.Set("X-Github-Hook-Installation-Target-Type", "repository")
+	case GitLab:
+		// https://docs.gitlab.com/user/project/integrations/webhook_events/#merge-request-events
+		glAction := map[prAction]string{prActionOpened: "open", prActionClosed: "close", prActionReopened: "reopen", prActionMerged: "merge"}[action]
+		attrs := s.gitlabMRJSONLocked(pr, base)
+		attrs["action"] = glAction
+		attrs["last_commit"] = map[string]any{"id": pr.headSHA}
+		project := s.gitlabProjectJSON(r, base)
+		body = map[string]any{
+			"object_kind":       "merge_request",
+			"event_type":        "merge_request",
+			"user":              gitlabUserJSON(pr.author),
+			"project":           project,
+			"object_attributes": attrs,
+			"labels":            []any{},
+			"changes":           map[string]any{},
+			"repository": map[string]any{
+				"name": r.name, "url": base + "/" + r.fullName() + ".git", "homepage": base + "/" + r.fullName(),
+			},
+		}
+		headers.Set("User-Agent", "GitLab/17.5.0")
+		headers.Set("X-Gitlab-Event", "Merge Request Hook")
+		headers.Set("X-Gitlab-Event-Uuid", deliveryID)
+		headers.Set("X-Gitlab-Webhook-Uuid", deliveryID)
+		headers.Set("X-Gitlab-Instance", base)
+		if secret != "" {
+			headers.Set("X-Gitlab-Token", secret)
+		}
+	case Gitea, Forgejo:
+		// https://docs.gitea.com/usage/webhooks: the pull_request event uses GitHub's shape; a merge is "closed" with
+		// pull_request.merged true.
+		gtAction := map[prAction]string{prActionOpened: "opened", prActionClosed: "closed", prActionReopened: "reopened", prActionMerged: "closed"}[action]
+		body = map[string]any{
+			"action":       gtAction,
+			"number":       pr.number,
+			"pull_request": s.giteaPullJSONLocked(pr, base),
+			"repository":   s.giteaRepoJSON(r, base),
+			"sender":       giteaUserJSON(pr.author),
+		}
+	case BitbucketCloud:
+		// https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Pull-request-events. A declined pull
+		// request cannot be reopened, so there is no event for it.
+		eventKey := map[prAction]string{prActionOpened: "pullrequest:created", prActionClosed: "pullrequest:rejected", prActionMerged: "pullrequest:fulfilled"}[action]
+		if eventKey == "" {
+			return nil, nil, nil
+		}
+		body = map[string]any{
+			"pullrequest": s.bitbucketPRJSONLocked(pr, base),
+			"repository":  s.bitbucketRepoJSON(r, base),
+			"actor":       bitbucketUserJSON(pr.author),
+		}
+		headers.Set("User-Agent", "Bitbucket-Webhooks/2.0")
+		headers.Set("X-Event-Key", eventKey)
+		headers.Set("X-Hook-Uuid", "{"+newGUID()+"}")
+		headers.Set("X-Request-Uuid", deliveryID)
+		headers.Set("X-Attempt-Number", "1")
+	case AzureDevOps:
+		// https://learn.microsoft.com/azure/devops/service-hooks/events#git.pullrequest.updated: status changes
+		// (abandoned, reactivated, completed) are "Pull request updated" events; creation is git.pullrequest.created.
+		eventType := "git.pullrequest.updated"
+		if action == prActionOpened {
+			eventType = "git.pullrequest.created"
+		}
+		text := fmt.Sprintf("%s %s pull request %d (%s) in %s", pr.author, action, pr.number, pr.title, r.name)
+		body = map[string]any{
+			"subscriptionId":  newGUID(),
+			"notificationId":  1,
+			"id":              deliveryID,
+			"eventType":       eventType,
+			"publisherId":     "tfs",
+			"message":         map[string]any{"text": text, "html": text, "markdown": text},
+			"detailedMessage": map[string]any{"text": text, "html": text, "markdown": text},
+			"resource":        s.azurePRJSONLocked(pr, base, true),
+			"resourceVersion": "1.0",
+			"resourceContainers": map[string]any{
+				"collection": map[string]any{"id": newGUID()},
+				"account":    map[string]any{"id": newGUID()},
+				"project":    map[string]any{"id": r.projectUUID},
+			},
+			"createdDate": s.now().Format(azureTimeFormat),
+		}
+		headers.Set("Content-Type", "application/json; charset=utf-8")
+		headers.Set("X-Vss-Activityid", deliveryID)
+		headers.Set("X-Vss-Subscriptionid", newGUID())
+		if secret != "" {
+			headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("scmserver:"+secret)))
+		}
+	default:
+		return nil, nil, fmt.Errorf("unsupported provider %q", p)
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal %s pull request payload: %w", p, err)
+	}
+	switch p {
+	case GitHub:
+		if secret != "" {
+			headers.Set("X-Hub-Signature-256", "sha256="+hmacHex(secret, payload, true))
+			headers.Set("X-Hub-Signature", "sha1="+hmacHex(secret, payload, false))
+		}
+	case BitbucketCloud:
+		if secret != "" {
+			headers.Set("X-Hub-Signature", "sha256="+hmacHex(secret, payload, true))
+		}
+	case Gitea, Forgejo:
+		addGiteaHeaders(headers, p, "pull_request", deliveryID, secret, payload)
+	default:
+	}
+	return payload, headers, nil
 }
 
 func refShortName(ref string) string {
