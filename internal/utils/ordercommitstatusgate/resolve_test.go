@@ -164,7 +164,7 @@ var _ = Describe("Resolve", func() {
 	DescribeTable("rejects out-of-tree gates that violate the unstructured contract",
 		func(mutate func(*unstructured.Unstructured), errSubstr string) {
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+				Name: "demo", Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
 						Group: "ordering.example.com",

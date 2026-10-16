@@ -59,7 +59,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			ctx := context.Background()
 			name := "restore-missing-" + utils.KubeSafeUniqueName(randomString(10))
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Name: name, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
 					Branch:               testBranchDevelopment,
@@ -88,7 +88,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Name: name, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 					Branch:               testBranchDevelopment,
@@ -114,7 +114,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			ctx := context.Background()
 			name := "restore-immutable-" + utils.KubeSafeUniqueName(randomString(10))
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Name: name, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
 					Branch:               testBranchDevelopment,
@@ -238,7 +238,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 
 			rcName := name + "-rc"
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: "default"},
+				Name: rcName, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
 					Branch:               testBranchDevelopment,
@@ -324,7 +324,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 				deleteRestoreActiveCommitsForPolicy(ctx, ctpName, ps.Namespace)
 				_ = k8sClient.Delete(ctx, ps)
 				_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
+					Name: ps.Name, Namespace: ps.Namespace,
 				})
 				_ = k8sClient.Delete(ctx, gitRepo)
 				_ = k8sClient.Delete(ctx, scmProvider)
@@ -384,7 +384,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			rcName := ps.Name + "-rc"
 			rcKey := types.NamespacedName{Name: rcName, Namespace: ps.Namespace}
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: rcName, Namespace: ps.Namespace},
+				Name: rcName, Namespace: ps.Namespace,
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 					Branch:               testBranchDevelopment,
@@ -496,7 +496,7 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name + "-rc", Namespace: "default"},
+				Name: name + "-rc", Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
 					Branch:               testBranchDevelopment,
@@ -688,7 +688,7 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 	DeferCleanup(func() {
 		_ = k8sClient.Delete(ctx, promotionStrategy)
 		_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: "default"},
+			Name: promotionStrategy.Name, Namespace: "default",
 		})
 		_ = k8sClient.Delete(ctx, gitRepo)
 		_ = k8sClient.Delete(ctx, scmProvider)
@@ -788,7 +788,7 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 
 	By("Restoring development to the first promotion")
 	rc := &promoterv1alpha1.RestoreActiveCommit{
-		ObjectMeta: metav1.ObjectMeta{Name: name + "-rc", Namespace: "default"},
+		Name: name + "-rc", Namespace: "default",
 		Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: promotionStrategy.Name},
 			Branch:               testBranchDevelopment,
@@ -896,7 +896,7 @@ func clearRevertBlockEnvironment(ctx context.Context, key types.NamespacedName) 
 // ChangeTransferPolicy, so a test can own that policy itself.
 func promotionStrategyForRestore(name, repoName, branch string) *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: repoName},
 			OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{

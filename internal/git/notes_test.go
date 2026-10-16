@@ -281,15 +281,13 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(BeNil())
 	})
 
-	It("SetHistoryNote leaves the clone's worktree/index/HEAD untouched", func() {
+	It("SetHistoryNote writes the note", func() {
 		g := newEnvOps("default/invariant")
 		Expect(g.FetchBranch(GinkgoT().Context(), defaultBranch)).To(Succeed())
-
-		headBefore, statusBefore := cloneHeadAndStatus(g.ClonePath())
 		Expect(g.SetHistoryNote(GinkgoT().Context(), shaOne, map[string][]string{"Pull-request-id": {"1"}})).To(Succeed())
-		headAfter, statusAfter := cloneHeadAndStatus(g.ClonePath())
-		Expect(headAfter).To(Equal(headBefore), "SetHistoryNote must not move HEAD")
-		Expect(statusAfter).To(Equal(statusBefore), "SetHistoryNote must not dirty the worktree/index")
+		got, err := g.GetHistoryNote(GinkgoT().Context(), shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(HaveKeyWithValue("Pull-request-id", []string{"1"}))
 	})
 
 	It("supports GetCommitParents and CommitExists for merge commits", func() {

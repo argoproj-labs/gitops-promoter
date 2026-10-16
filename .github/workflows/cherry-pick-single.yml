@@ -7,6 +7,9 @@ name: Cherry Pick Single
 
 on:
   workflow_call:
+    secrets:
+      CHERRYPICK_APP_PRIVATE_KEY:
+        required: true
     inputs:
 
       merge_commit_sha:

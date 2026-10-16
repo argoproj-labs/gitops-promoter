@@ -5,7 +5,7 @@ ENVTEST_K8S_VERSION = 1.37.0
 
 CURRENT_DIR=$(shell pwd)
 
-MKDOCS_DOCKER_IMAGE?=python:3.14-alpine
+MKDOCS_DOCKER_IMAGE?=python:3.15-alpine
 MKDOCS_RUN_ARGS?=
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -473,9 +473,9 @@ KUSTOMIZE_VERSION ?= v5.8.3
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
 ENVTEST_VERSION ?= release-0.25
 GOLANGCI_LINT_VERSION ?= v2.14.0
-DEADCODE_VERSION ?= v0.51.0
+DEADCODE_VERSION ?= v0.52.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v3.8.0
+MOCKERY_VERSION ?= v3.8.1
 NILAWAY_VERSION ?= latest
 GORELEASER_VERSION ?= v2.18.3
 
