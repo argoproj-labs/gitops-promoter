@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 	"github.com/argoproj-labs/gitops-promoter/test/utils"
 )
@@ -402,7 +403,7 @@ func (f promotionFlow) promoteByHand(ctx context.Context, p scmserver.Provider, 
 		drySHA := hydrate(ctx, f.admin, repo, environments)
 		for _, env := range environments {
 			By(fmt.Sprintf("merging the pull request into %s with %s on the provider", env, style))
-			merged := f.mergeByHand(ctx, repo, env, squash)
+			merged := f.mergeByHand(ctx, repo, name, env, squash)
 
 			By("finalizing the PullRequest resource of " + env)
 			Eventually(func(g Gomega) {
@@ -704,7 +705,7 @@ func (f promotionFlow) promoteAfterClose(ctx context.Context, p scmserver.Provid
 	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 
 	By("promoting through the new pull request")
-	merged := f.mergeByHand(ctx, repo, development, false)
+	merged := f.mergeByHand(ctx, repo, name, development, false)
 	Expect(merged.Number).To(Equal(reopened.Number))
 	f.expectActive(ctx, name, map[string]string{development: drySHA})
 	GinkgoWriter.Printf("promoted dry commit %s through %s after closing pull request %d\n", drySHA, p, closed.Number)
@@ -848,10 +849,12 @@ func (f promotionFlow) expectActive(ctx context.Context, name string, drySHAs ma
 }
 
 // mergeByHand merges the open pull request into env through the server's admin API, as a person would in the
-// provider's UI, once the pull request carries the tip of env's proposed branch. It retries while the merge conflicts,
-// which it does after a squash until the controller merges env back into the proposed branch. It returns the merged
-// pull request.
-func (f promotionFlow) mergeByHand(ctx context.Context, repo scmserver.RepoInfo, env string, squash bool,
+// provider's UI, once the pull request carries the tip of env's proposed branch and the controller has recorded the
+// pull request's ID in its PullRequest resource. The promotion-history note is built from that resource's commit
+// message trailers, so a merge before the controller has written them leaves the history without the pull request.
+// It retries while the merge conflicts, which it does after a squash until the controller merges env back into the
+// proposed branch. name names the promotion's resources. It returns the merged pull request.
+func (f promotionFlow) mergeByHand(ctx context.Context, repo scmserver.RepoInfo, name, env string, squash bool,
 ) scmserver.PullRequestInfo {
 	GinkgoHelper()
 	var merged scmserver.PullRequestInfo
@@ -869,6 +872,14 @@ func (f promotionFlow) mergeByHand(ctx context.Context, repo scmserver.RepoInfo,
 		g.Expect(open).To(HaveLen(1), "open pull requests into %s", env)
 		g.Expect(open[0].HeadSHA).To(Equal(info.Branches[env+"-next"]),
 			"the pull request does not carry the proposed tip yet")
+		var resources v1alpha1.PullRequestList
+		g.Expect(f.list(ctx, "pullrequests", &resources)).To(Succeed())
+		trailer := fmt.Sprintf("%s: %d\n", constants.TrailerPullRequestID, open[0].Number)
+		g.Expect(resources.Items).To(ContainElement(SatisfyAll(
+			HaveField("Spec.RepositoryReference.Name", name),
+			HaveField("Spec.TargetBranch", env),
+			HaveField("Spec.Commit.Message", ContainSubstring(trailer)),
+		)), "the controller has not recorded pull request %d into %s yet", open[0].Number, env)
 		merged, err = f.admin.PullRequestAction(ctx, repo.ID, open[0].Number,
 			scmserver.PullRequestAction{Action: "merge", Squash: squash})
 		g.Expect(err).NotTo(HaveOccurred())
