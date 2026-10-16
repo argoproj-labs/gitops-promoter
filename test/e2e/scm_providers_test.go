@@ -268,13 +268,16 @@ func scmProviderSpecs() {
 }
 
 // configureRequeue sets every controller's work queue requeue interval, and the PullRequest rate limiter's slow
-// delay, on the deployed ControllerConfiguration.
+// delay, on the deployed ControllerConfiguration. The ChangeTransferPolicyHistory controller is included: it rebuilds
+// an entry that lacks a pull request ID on its requeue, so when a hand-merged pull request's promotion-history note
+// lands after the rebuild the pull request ID appears within one interval instead of its default requeue.
 func configureRequeue(ctx context.Context, interval time.Duration) {
 	GinkgoHelper()
 	d := interval.String()
 	requeue := `{"spec":{` +
 		`"promotionStrategy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"changeTransferPolicyHistory":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"pullRequest":{"workQueue":{"requeueDuration":"` + d + `","rateLimiter":{"maxOf":[` +
 		`{"bucket":{"qps":10,"bucket":100}},` +
 		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + d + `","maxFastAttempts":3}}]}}},` +
