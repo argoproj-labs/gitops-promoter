@@ -624,7 +624,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().BitbucketCloud != nil:
-		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck // provider factory returns descriptive errors
+		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().BitbucketCloud.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Gitea != nil:

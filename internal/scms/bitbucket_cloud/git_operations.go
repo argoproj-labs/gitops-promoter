@@ -23,7 +23,7 @@ var _ scms.GitOperationsProvider = &GitAuthenticationProvider{}
 
 // NewBitbucketCloudGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Bitbucket Cloud.
 func NewBitbucketCloudGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
-	client, err := GetClient(*secret)
+	client, err := GetClient(*secret, domainFromScmProvider(scmProvider))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Bitbucket Cloud Client: %w", err)
 	}
@@ -36,8 +36,8 @@ func NewBitbucketCloudGitAuthenticationProvider(scmProvider v1alpha1.GenericScmP
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a Bitbucket Cloud repository based on the provided GitRepository object.
-func (GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
-	repoUrl := fmt.Sprintf("%s/%s/%s.git", BitbucketBaseURL, repo.Spec.BitbucketCloud.Owner, repo.Spec.BitbucketCloud.Name)
+func (bb GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
+	repoUrl := fmt.Sprintf("%s/%s/%s.git", webBaseURL(domainFromScmProvider(bb.scmProvider)), repo.Spec.BitbucketCloud.Owner, repo.Spec.BitbucketCloud.Name)
 	if _, err := url.Parse(repoUrl); err != nil {
 		return ""
 	}
@@ -54,14 +54,21 @@ func (GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
 	return "x-token-auth", nil
 }
 
-// GetClient creates a new Bitbucket Cloud client using the provided secret.
-func GetClient(secret v1.Secret) (*bitbucket.Client, error) {
+// GetClient creates a new Bitbucket Cloud client using the provided secret. A non-empty domain sends API
+// requests to https://<domain>/2.0 instead of the Bitbucket Cloud API.
+func GetClient(secret v1.Secret, domain string) (*bitbucket.Client, error) {
 	token := string(secret.Data["token"])
 	if token == "" {
 		return nil, fmt.Errorf("secret %q is missing required data key 'token'", secret.Name)
 	}
 
-	client, err := bitbucket.NewOAuthbearerToken(token)
+	var client *bitbucket.Client
+	var err error
+	if domain == "" {
+		client, err = bitbucket.NewOAuthbearerToken(token)
+	} else {
+		client, err = bitbucket.NewOAuthbearerTokenWithBaseUrlStr(token, apiBaseURL(domain))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Bitbucket client: %w", err)
 	}

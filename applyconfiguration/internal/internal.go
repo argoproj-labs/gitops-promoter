@@ -161,16 +161,10 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.api.core.v1.LocalObjectReference
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloud
   map:
-    elementType:
-      scalar: untyped
-      list:
-        elementType:
-          namedType: __untyped_atomic_
-        elementRelationship: atomic
-      map:
-        elementType:
-          namedType: __untyped_deduced_
-        elementRelationship: separable
+    fields:
+    - name: domain
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloudRepo
   map:
     fields:
