@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -35,6 +36,13 @@ const (
 	scmGitHubAppID     = int64(424242)
 	webhookReceiverURL = "http://promoter-webhook-receiver.promoter-system.svc:3333/"
 	promotionTimeout   = 5 * time.Minute
+	// requeueInterval is the work queue requeue interval, and the rate limiter's slow delay, the suite configures on
+	// the deployed controller.
+	requeueInterval = 5 * time.Second
+	// holdTime is how long a spec watches a pull request it expects the controller to leave open. A pull request the
+	// controller wants to merge merges within one requeue interval of it noticing the pull request, so a hold longer
+	// than requeueInterval proves the controller declined.
+	holdTime = 8 * time.Second
 )
 
 // scmServerPorts are the Service ports of each provider listener of the test SCM server.
@@ -99,16 +107,17 @@ func scmProviderSpecs() {
 			"--for=condition=Available", "--timeout=3m")
 
 		By("shortening requeue intervals so polling paths finish within the spec timeouts")
-		// A merge the provider refuses (branch protection) is retried by the PullRequest work queue's rate limiter, whose
-		// default slow delay is 5 minutes; shorten it too.
+		// Every wait in the suite is quantized by the controllers' requeue interval, so it is short. A merge the
+		// provider refuses (branch protection) is retried by the PullRequest work queue's rate limiter, whose default
+		// slow delay is 5 minutes; shorten it too. holdTime must exceed requeueInterval.
 		requeue := `{"spec":{` +
-			`"promotionStrategy":{"workQueue":{"requeueDuration":"15s"}},` +
-			`"changeTransferPolicy":{"workQueue":{"requeueDuration":"15s"}},` +
-			`"pullRequest":{"workQueue":{"requeueDuration":"15s","rateLimiter":{"maxOf":[` +
+			`"promotionStrategy":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
+			`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
+			`"pullRequest":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `","rateLimiter":{"maxOf":[` +
 			`{"bucket":{"qps":10,"bucket":100}},` +
-			`{"fastSlow":{"fastDelay":"1s","slowDelay":"15s","maxFastAttempts":3}}]}}},` +
-			`"commitStatus":{"workQueue":{"requeueDuration":"15s"}},` +
-			`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"15s"}}}}`
+			`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + requeueInterval.String() + `","maxFastAttempts":3}}]}}},` +
+			`"commitStatus":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}},` +
+			`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + requeueInterval.String() + `"}}}}`
 		run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
 			"-n", namespace, "--type=merge", "-p", requeue)
 
@@ -163,34 +172,6 @@ func scmProviderSpecs() {
 		}
 	}, NodeTimeout(2*time.Minute))
 
-	DescribeTable("promotes through the provider's API with the real provider implementation",
-		func(ctx SpecContext, p scmserver.Provider) {
-			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy", string(p),
-				"--ignore-not-found")
-			flow := promotionFlow{
-				admin:     admin,
-				githubKey: githubKey,
-				domain:    fmt.Sprintf("%s:%d", scmServerHost, scmServerPorts[p]),
-				webhook:   webhookReceiverURL,
-				apply: func(ctx context.Context, manifests string) {
-					run(ctx, manifests, "kubectl", "apply", "-n", scmE2ENamespace, "-f", "-")
-				},
-				pullRequestRepos: func(ctx context.Context) ([]string, error) {
-					out, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", "pullrequests", "-n", scmE2ENamespace,
-						"-o", "jsonpath={range .items[*]}{.spec.gitRepositoryRef.name}{\"\\n\"}{end}"))
-					return utils.GetNonEmptyLines(string(out)), err
-				},
-			}
-			flow.promote(ctx, p)
-		},
-		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
-		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
-		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
-		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
-		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
-		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
-	)
-
 	// newFlow returns a promotionFlow for p that applies and lists resources in the e2e namespace with kubectl.
 	newFlow := func(p scmserver.Provider) promotionFlow {
 		return promotionFlow{
@@ -200,6 +181,11 @@ func scmProviderSpecs() {
 			webhook:   webhookReceiverURL,
 			apply: func(ctx context.Context, manifests string) {
 				run(ctx, manifests, "kubectl", "apply", "-n", scmE2ENamespace, "-f", "-")
+			},
+			pullRequestRepos: func(ctx context.Context) ([]string, error) {
+				out, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", "pullrequests", "-n", scmE2ENamespace,
+					"-o", "jsonpath={range .items[*]}{.spec.gitRepositoryRef.name}{\"\\n\"}{end}"))
+				return utils.GetNonEmptyLines(string(out)), err
 			},
 			list: func(ctx context.Context, resource string, into any) error {
 				out, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", resource, "-n", scmE2ENamespace,
@@ -212,71 +198,79 @@ func scmProviderSpecs() {
 		}
 	}
 
-	DescribeTable("holds a promotion on a proposed commit status and follows the proposal when it moves",
-		func(ctx SpecContext, p scmserver.Provider) {
-			name := string(p) + "-gated"
-			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy,commitstatus",
-				name, name+"-gate", "--ignore-not-found")
-			flow := newFlow(p)
-			flow.promoteThroughGate(ctx, p, name)
-		},
-		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
-		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
-		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
-		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
-		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
-		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
-	)
+	// cleanupPromotions deletes, after the spec, the promotion resources every provider's flow created under
+	// name(p) and suffixes. It runs on the spec's goroutine, before the providers fan out.
+	cleanupPromotions := func(kinds string, name func(p scmserver.Provider) string, suffixes ...string) {
+		for _, p := range scmserver.AllProviders {
+			args := make([]any, 0, 7+len(suffixes))
+			args = append(args, kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, kinds, name(p))
+			for _, suffix := range suffixes {
+				args = append(args, name(p)+suffix)
+			}
+			DeferCleanup(append(args, "--ignore-not-found")...)
+		}
+	}
 
-	DescribeTable("promotes pull requests a person merges on the provider with a merge or a squash commit",
-		func(ctx SpecContext, p scmserver.Provider) {
-			name := string(p) + "-by-hand"
-			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy", name,
-				"--ignore-not-found")
-			flow := newFlow(p)
-			flow.promoteByHand(ctx, p, name)
-		},
-		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
-		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
-		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
-		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
-		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
-		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
-	)
+	// Each scenario runs for all six providers at once. Every provider has its own repositories on the server and its
+	// own promotion resources, and the controller reconciles them independently, so the scenario takes as long as its
+	// slowest provider rather than the sum.
+	It("promotes through the provider's API with the real provider implementation", func(ctx SpecContext) {
+		cleanupPromotions("promotionstrategy", func(p scmserver.Provider) string { return string(p) })
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promote(ctx, p)
+		})
+	}, NodeTimeout(12*time.Minute))
 
-	DescribeTable("opens a new pull request when a person closes one on the provider",
-		func(ctx SpecContext, p scmserver.Provider) {
-			name := string(p) + "-reopened"
-			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy", name,
-				"--ignore-not-found")
-			newFlow(p).promoteAfterClose(ctx, p, name)
-		},
-		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
-		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
-		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
-		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
-		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
-		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
-	)
+	It("holds a promotion on a proposed commit status and follows the proposal when it moves", func(ctx SpecContext) {
+		name := func(p scmserver.Provider) string { return string(p) + "-gated" }
+		cleanupPromotions("promotionstrategy,commitstatus", name, "-gate")
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promoteThroughGate(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
 
-	DescribeTable("waits for a merge the provider blocks until a required status passes",
-		func(ctx SpecContext, p scmserver.Provider) {
-			name := string(p) + "-protected"
-			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy,commitstatus",
-				name, name+"-required", "--ignore-not-found")
-			newFlow(p).promoteThroughProtection(ctx, p, name)
-		},
-		// The test SCM server refuses an Azure DevOps completion request synchronously while the required status has
-		// not passed, so the provider's Merge returns an error and the controller retries, as for the other providers.
-		// Azure DevOps does not document that response; Behavior.AzureAsyncCompletionFailures models the alternative,
-		// an accepted completion that fails later, which the provider treats as merged and waits for indefinitely.
-		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
-		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
-		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
-		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
-		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
-		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
-	)
+	It("promotes pull requests a person merges on the provider with a merge or a squash commit", func(ctx SpecContext) {
+		name := func(p scmserver.Provider) string { return string(p) + "-by-hand" }
+		cleanupPromotions("promotionstrategy", name)
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promoteByHand(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
+
+	It("opens a new pull request when a person closes one on the provider", func(ctx SpecContext) {
+		name := func(p scmserver.Provider) string { return string(p) + "-reopened" }
+		cleanupPromotions("promotionstrategy", name)
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promoteAfterClose(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
+
+	// The test SCM server refuses an Azure DevOps completion request synchronously while the required status has not
+	// passed, so the provider's Merge returns an error and the controller retries, as for the other providers. Azure
+	// DevOps does not document that response; Behavior.AzureAsyncCompletionFailures models the alternative, an
+	// accepted completion that fails later, which the provider treats as merged and waits for indefinitely.
+	It("waits for a merge the provider blocks until a required status passes", func(ctx SpecContext) {
+		name := func(p scmserver.Provider) string { return string(p) + "-protected" }
+		cleanupPromotions("promotionstrategy,commitstatus", name, "-required")
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promoteThroughProtection(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
+}
+
+// forEachProvider runs body for every provider of the test SCM server concurrently and waits for all of them. A
+// failure in one provider fails the spec, and the other providers still run to completion so the diagnostics printed
+// afterwards show every provider's final state.
+func forEachProvider(ctx context.Context, body func(ctx context.Context, p scmserver.Provider)) {
+	GinkgoHelper()
+	var wg sync.WaitGroup
+	for _, p := range scmserver.AllProviders {
+		wg.Go(func() {
+			defer GinkgoRecover()
+			body(ctx, p)
+		})
+	}
+	wg.Wait()
 }
 
 // promotionFlow promotes a hydrated change through one provider of the test SCM server and verifies the result on
@@ -444,10 +438,6 @@ const (
 
 // gateKey is the proposed commit status that gates promotion into development in promoteThroughGate.
 const gateKey = "e2e-gate"
-
-// gateHoldTime is how long promoteThroughGate expects a gated pull request to stay open. An ungated pull request
-// merges within seconds of the controller noticing it, and the controller requeues every 15 seconds.
-const gateHoldTime = 20 * time.Second
 
 // promoteThroughGate promotes through one provider of the test SCM server with a proposed commit status gating
 // development, reported on the provider through the controller's real commit status implementation. It checks that the
@@ -619,7 +609,7 @@ func (f promotionFlow) expectHeld(ctx context.Context, repo scmserver.RepoInfo, 
 				g.Expect(pr.State).To(Equal("open"), "pull request %d into %s", pr.Number, env)
 			}
 		}
-	}).WithContext(ctx).WithTimeout(gateHoldTime).WithPolling(2 * time.Second).Should(Succeed())
+	}).WithContext(ctx).WithTimeout(holdTime).WithPolling(2 * time.Second).Should(Succeed())
 }
 
 // statusSucceeded reports whether a provider's commit status, build status or check run is successful.
