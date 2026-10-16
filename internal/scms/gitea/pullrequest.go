@@ -183,12 +183,15 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 	}
 
 	start := time.Now()
-	_, resp, err := pr.giteaClient.MergePullRequest(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, prID, options)
+	merged, resp, err := pr.giteaClient.MergePullRequest(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, prID, options)
 	if resp != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
+	}
+	if !merged {
+		return scms.MergeResult{}, fmt.Errorf("gitea refused to merge pull request %d: %s", prID, resp.Status)
 	}
 	if resp != nil {
 		logger.V(4).Info("gitea response status", "status", resp.Status)
