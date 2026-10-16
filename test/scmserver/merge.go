@@ -126,6 +126,24 @@ func defaultMergeMessage(pr *pullRequest, requested string) string {
 	}
 }
 
+// defaultSquashMessage is the commit message a provider uses for a squash merge when the request does not supply one.
+// requested is the message passed by the client and may be empty.
+func defaultSquashMessage(pr *pullRequest, requested string) string {
+	if requested != "" {
+		return requested
+	}
+	switch pr.repo.provider {
+	case GitHub, Gitea, Forgejo:
+		return fmt.Sprintf("%s (#%d)", pr.title, pr.number)
+	case AzureDevOps:
+		return fmt.Sprintf("Merged PR %d: %s", pr.number, pr.title)
+	case BitbucketCloud:
+		return fmt.Sprintf("%s (pull request #%d)", pr.title, pr.number)
+	default:
+		return pr.title
+	}
+}
+
 // refreshPR recomputes the head, base, conflict state and test-merge commit of an open pull request, and restarts
 // the provider's asynchronous mergeability check.
 func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
@@ -193,10 +211,13 @@ type mergeRequest struct {
 	expectedHead string
 	message      string
 	author       signature
+	// squash lands the pull request as a single commit whose only parent is the target branch, as the providers'
+	// squash merge does.
+	squash bool
 }
 
-// landMerge merges a pull request into its target branch with a merge commit, marks it merged and notifies
-// subscribers. It returns the SHA of the merge commit.
+// landMerge merges a pull request into its target branch with a merge commit, or a squash commit when req.squash is
+// set, marks it merged and notifies subscribers. It returns the SHA of the commit it landed.
 func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error) {
 	pr := req.pr
 	s.store.mu.Lock()
@@ -239,7 +260,11 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	author.when = now
 	committer := providerBot(r.provider)
 	committer.when = now
-	mergeSHA, err := s.git.commitTree(ctx, r.dir, tree, []string{base, head}, req.message, author, committer)
+	parents := []string{base, head}
+	if req.squash {
+		parents = []string{base}
+	}
+	mergeSHA, err := s.git.commitTree(ctx, r.dir, tree, parents, req.message, author, committer)
 	if err != nil {
 		r.gitMu.Unlock()
 		return "", err
@@ -256,6 +281,7 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	pr.headSHA = head
 	pr.baseSHA = base
 	pr.mergeCommitSHA = mergeSHA
+	pr.squashed = req.squash
 	pr.mergedAt = now
 	pr.closedAt = now
 	pr.updatedAt = now

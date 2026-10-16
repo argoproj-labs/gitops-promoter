@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -122,6 +123,54 @@ var _ = Describe("admin API", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(prs).To(BeEmpty())
 	})
+
+	DescribeTable("merges pull requests out of band with a merge or a squash commit",
+		func(ctx SpecContext, p scmserver.Provider, squash bool) {
+			f := newFixture(ctx, p)
+			prObj := f.createPR(ctx, "manual-merge")
+			number, err := strconv.Atoi(prObj.Status.ID)
+			Expect(err).NotTo(HaveOccurred())
+
+			info, err := admin.PullRequestAction(ctx, f.repo.ID, number, scmserver.PullRequestAction{Action: "merge", Squash: squash})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.State).To(Equal("merged"))
+			Expect(info.Squashed).To(Equal(squash))
+			Expect(f.branchSHA(ctx, targetBranch)).To(Equal(info.MergeCommitSHA))
+
+			By("landing a commit with the pull request's tree and the expected parents")
+			dir := filepath.Join(GinkgoT().TempDir(), "clone")
+			out, err := git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
+			Expect(err).NotTo(HaveOccurred(), out)
+			out, err = git(ctx, dir, "rev-list", "--parents", "-n", "1", info.MergeCommitSHA)
+			Expect(err).NotTo(HaveOccurred(), out)
+			parents := strings.Fields(out)[1:]
+			if squash {
+				Expect(parents).To(Equal([]string{f.baseSHA}))
+			} else {
+				Expect(parents).To(Equal([]string{f.baseSHA, f.headSHA}))
+			}
+			mergedTree, err := git(ctx, dir, "rev-parse", info.MergeCommitSHA+"^{tree}")
+			Expect(err).NotTo(HaveOccurred(), mergedTree)
+			headTree, err := git(ctx, dir, "rev-parse", f.headSHA+"^{tree}")
+			Expect(err).NotTo(HaveOccurred(), headTree)
+			Expect(mergedTree).To(Equal(headTree))
+
+			By("reporting the landed commit through the provider's API")
+			got, err := f.prs.Get(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.State).To(Equal(v1alpha1.PullRequestMerged))
+			Expect(got.MergedTargetSHA).To(Equal(info.MergeCommitSHA))
+		},
+		func() []TableEntry {
+			entries := make([]TableEntry, 0, 2*len(scmserver.AllProviders))
+			for _, p := range scmserver.AllProviders {
+				entries = append(entries,
+					Entry(string(p)+" merge commit", p, false),
+					Entry(string(p)+" squash commit", p, true))
+			}
+			return entries
+		}(),
+	)
 
 	It("manages fault rules and records their hits", func(ctx SpecContext) {
 		f := newFixture(ctx, scmserver.GitLab)

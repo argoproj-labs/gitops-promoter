@@ -86,6 +86,8 @@ type pullRequest struct {
 	globalID              int64
 	number                int
 	conflicts             bool
+	// squashed is true when the pull request was merged as a single squash commit.
+	squashed bool
 	// completionQueued is true while an Azure DevOps completion request is waiting to be processed.
 	completionQueued bool
 	// asyncMergePending is true while a Bitbucket asynchronous merge task is running.

@@ -138,6 +138,7 @@ type PullRequestInfo struct {
 	CompletionQueued      bool       `json:"completionQueued"`
 	AsyncMergePending     bool       `json:"asyncMergePending"`
 	HiddenFromLists       bool       `json:"hiddenFromLists"`
+	Squashed              bool       `json:"squashed"`
 }
 
 // PullRequestAction changes a pull request out of band, as a person using the provider's UI would.
@@ -149,6 +150,9 @@ type PullRequestAction struct {
 	Message string `json:"message,omitempty"`
 	// Labels for set-labels.
 	Labels []string `json:"labels,omitempty"`
+	// Squash makes merge land the pull request as a single commit on the target branch, with the target branch as
+	// its only parent, instead of a merge commit.
+	Squash bool `json:"squash,omitempty"`
 }
 
 // CommitStatusInfo describes a commit status, build status or check run.
@@ -727,7 +731,7 @@ func (s *Server) pullInfoLocked(pr *pullRequest) PullRequestInfo {
 		MergeCommitSHA: pr.mergeCommitSHA, PreviewMergeSHA: pr.previewMergeSHA, Labels: slices.Clone(pr.labels),
 		CreatedAt: pr.createdAt, UpdatedAt: pr.updatedAt, ClosedAt: timePtr(pr.closedAt),
 		MergedAt: timePtr(pr.mergedAt), CompletionRequestedAt: timePtr(pr.completionRequestedAt),
-		CompletionFailure: pr.completionFailure, Conflicts: pr.conflicts,
+		CompletionFailure: pr.completionFailure, Conflicts: pr.conflicts, Squashed: pr.squashed,
 		MergeabilityKnown: pr.mergeabilityKnown(now), CompletionQueued: pr.completionQueued,
 		AsyncMergePending: pr.asyncMergePending, HiddenFromLists: !pr.visibleInLists(now),
 	}
@@ -817,8 +821,12 @@ func (s *Server) adminPullAction(w http.ResponseWriter, r *http.Request) {
 	case "merge":
 		s.store.mu.Lock()
 		message := defaultMergeMessage(pr, req.Message)
+		if req.Squash {
+			message = defaultSquashMessage(pr, req.Message)
+		}
 		s.store.mu.Unlock()
-		if _, err := s.landMerge(ctx, mergeRequest{pr: pr, message: message, author: actor(pr.repo.provider, "admin")}); err != nil {
+		merge := mergeRequest{pr: pr, message: message, author: actor(pr.repo.provider, "admin"), squash: req.Squash}
+		if _, err := s.landMerge(ctx, merge); err != nil {
 			adminError(w, http.StatusConflict, err)
 			return
 		}

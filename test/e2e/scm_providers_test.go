@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -184,15 +185,48 @@ func scmProviderSpecs() {
 		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
 		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
 	)
+
+	DescribeTable("promotes pull requests a person merges on the provider with a merge or a squash commit",
+		func(ctx SpecContext, p scmserver.Provider) {
+			name := string(p) + "-by-hand"
+			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy", name,
+				"--ignore-not-found")
+			flow := promotionFlow{
+				admin:     admin,
+				githubKey: githubKey,
+				domain:    fmt.Sprintf("%s:%d", scmServerHost, scmServerPorts[p]),
+				webhook:   webhookReceiverURL,
+				apply: func(ctx context.Context, manifests string) {
+					run(ctx, manifests, "kubectl", "apply", "-n", scmE2ENamespace, "-f", "-")
+				},
+				list: func(ctx context.Context, resource string, into any) error {
+					out, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", resource, "-n", scmE2ENamespace,
+						"-o", "json"))
+					if err != nil {
+						return fmt.Errorf("listing %s: %w", resource, err)
+					}
+					return json.Unmarshal(out, into)
+				},
+			}
+			flow.promoteByHand(ctx, p, name)
+		},
+		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
+		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
+		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
+		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
+		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
+		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
+	)
 }
 
 // promotionFlow promotes a hydrated change through one provider of the test SCM server and verifies the result on
-// the server. apply applies the provider's manifests and pullRequestRepos lists the repository of every remaining
-// PullRequest resource.
+// the server. apply applies the provider's manifests, pullRequestRepos lists the repository of every remaining
+// PullRequest resource, and list decodes the JSON list of a resource kind in the test namespace into into.
 type promotionFlow struct {
 	admin            *scmserver.AdminClient
 	apply            func(ctx context.Context, manifests string)
 	pullRequestRepos func(ctx context.Context) ([]string, error)
+	list             func(ctx context.Context, resource string, into any) error
 	domain           string
 	webhook          string
 	githubKey        []byte
@@ -211,7 +245,7 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 
 	environments := []string{"environment/development", "environment/staging"}
 	seedEnvironments(ctx, f.admin, repo, environments)
-	f.apply(ctx, promotionManifests(p, repo, f.domain, f.githubKey))
+	f.apply(ctx, promotionManifests(p, string(p), repo, f.domain, f.githubKey, true))
 
 	By("hydrating a new dry commit to every environment")
 	drySHA := hydrate(ctx, f.admin, repo, environments)
@@ -257,6 +291,120 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 		}
 	}
 	GinkgoWriter.Printf("promoted dry commit %s through %s\n", drySHA, p)
+}
+
+// promoteByHand promotes three hydrated changes through one provider of the test SCM server with auto-merge off,
+// merging every pull request the controller opens as a person would in the provider's UI: first with a merge commit,
+// then with a squash commit, then with a merge commit again. The last round follows a squash, whose single-parent
+// commit leaves the environment branch without the proposed branch's history, so its pull request conflicts until the
+// controller merges the environment branch back into the proposed branch. name names the promotion's resources.
+func (f promotionFlow) promoteByHand(ctx context.Context, p scmserver.Provider, name string) {
+	GinkgoHelper()
+	req := scmserver.CreateRepoRequest{Provider: p, Owner: scmOwner(p), Name: "promotion-by-hand"}
+	if p == scmserver.AzureDevOps {
+		req.Project = "e2e"
+	}
+	repo, err := f.admin.CreateRepo(ctx, req)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.admin.AddWebhook(ctx, scmserver.WebhookSubscription{Provider: p, Repo: repo.FullName, URL: f.webhook})
+	Expect(err).NotTo(HaveOccurred())
+
+	environments := []string{"environment/development", "environment/staging"}
+	seedEnvironments(ctx, f.admin, repo, environments)
+	f.apply(ctx, promotionManifests(p, name, repo, f.domain, f.githubKey, false))
+
+	for _, squash := range []bool{false, true, false} {
+		style := "a merge commit"
+		if squash {
+			style = "a squash commit"
+		}
+		By("hydrating a new dry commit to every environment")
+		drySHA := hydrate(ctx, f.admin, repo, environments)
+		for _, env := range environments {
+			By(fmt.Sprintf("merging the pull request into %s with %s on the provider", env, style))
+			merged := f.mergeByHand(ctx, repo, env, squash)
+
+			By("finalizing the PullRequest resource of " + env)
+			Eventually(func(g Gomega) {
+				var prs v1alpha1.PullRequestList
+				g.Expect(f.list(ctx, "pullrequests", &prs)).To(Succeed())
+				for _, pr := range prs.Items {
+					g.Expect(pr.Spec.RepositoryReference.Name == name && pr.Spec.TargetBranch == env).To(BeFalse(),
+						"PullRequest %s into %s still exists: %+v", pr.Name, env, pr.Status)
+				}
+			}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("recording the merged pull request in the history of " + env)
+			Eventually(func(g Gomega) {
+				var histories v1alpha1.ChangeTransferPolicyHistoryList
+				g.Expect(f.list(ctx, "changetransferpolicyhistories", &histories)).To(Succeed())
+				var history *v1alpha1.ChangeTransferPolicyHistory
+				for i := range histories.Items {
+					spec := histories.Items[i].Spec
+					if spec.RepositoryReference.Name == name && spec.ActiveBranch == env {
+						history = &histories.Items[i]
+					}
+				}
+				g.Expect(history).NotTo(BeNil(), "no ChangeTransferPolicyHistory for %s", env)
+				g.Expect(history.Status.History).NotTo(BeEmpty())
+				entry := history.Status.History[0]
+				g.Expect(entry.Active.Hydrated.Sha).To(Equal(merged.MergeCommitSHA))
+				g.Expect(entry.Active.Dry.Sha).To(Equal(drySHA))
+				g.Expect(entry.PullRequest).NotTo(BeNil())
+				g.Expect(entry.PullRequest.ID).To(Equal(strconv.Itoa(merged.Number)))
+				g.Expect(entry.PullRequest.MergedTargetSha).To(Equal(merged.MergeCommitSHA))
+			}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+		}
+
+		By("reporting the dry commit as active in every environment")
+		Eventually(func(g Gomega) {
+			var strategies v1alpha1.PromotionStrategyList
+			g.Expect(f.list(ctx, "promotionstrategies", &strategies)).To(Succeed())
+			var strategy *v1alpha1.PromotionStrategy
+			for i := range strategies.Items {
+				if strategies.Items[i].Name == name {
+					strategy = &strategies.Items[i]
+				}
+			}
+			g.Expect(strategy).NotTo(BeNil())
+			g.Expect(strategy.Status.Environments).To(HaveLen(len(environments)))
+			for _, env := range strategy.Status.Environments {
+				g.Expect(env.Active.Dry.Sha).To(Equal(drySHA), "active dry commit of %s", env.Branch)
+			}
+		}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+		GinkgoWriter.Printf("promoted dry commit %s through %s, merging with %s\n", drySHA, p, style)
+	}
+}
+
+// mergeByHand merges the open pull request into env through the server's admin API, as a person would in the
+// provider's UI, once the pull request carries the tip of env's proposed branch. It retries while the merge conflicts,
+// which it does after a squash until the controller merges env back into the proposed branch. It returns the merged
+// pull request.
+func (f promotionFlow) mergeByHand(ctx context.Context, repo scmserver.RepoInfo, env string, squash bool,
+) scmserver.PullRequestInfo {
+	GinkgoHelper()
+	var merged scmserver.PullRequestInfo
+	Eventually(func(g Gomega) {
+		info, err := f.admin.Repo(ctx, repo.ID)
+		g.Expect(err).NotTo(HaveOccurred())
+		prs, err := f.admin.PullRequests(ctx, repo.ID, "open")
+		g.Expect(err).NotTo(HaveOccurred())
+		var open []scmserver.PullRequestInfo
+		for _, pr := range prs {
+			if pr.Target == env {
+				open = append(open, pr)
+			}
+		}
+		g.Expect(open).To(HaveLen(1), "open pull requests into %s", env)
+		g.Expect(open[0].HeadSHA).To(Equal(info.Branches[env+"-next"]),
+			"the pull request does not carry the proposed tip yet")
+		merged, err = f.admin.PullRequestAction(ctx, repo.ID, open[0].Number,
+			scmserver.PullRequestAction{Action: "merge", Squash: squash})
+		g.Expect(err).NotTo(HaveOccurred())
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+	Expect(merged.State).To(Equal("merged"))
+	Expect(merged.Squashed).To(Equal(squash))
+	return merged
 }
 
 // printSCMDiagnostics writes the state of the controller, the test SCM server and the promotion resources to the
@@ -366,10 +514,11 @@ func hydrate(ctx context.Context, admin *scmserver.AdminClient, repo scmserver.R
 }
 
 // promotionManifests returns the Secret, ScmProvider, GitRepository, PromotionStrategy and ordering gate that point
-// the controller at the provider's listener on the test SCM server at domain. Every object is named after the
-// provider.
-func promotionManifests(p scmserver.Provider, repo scmserver.RepoInfo, domain string, githubKey []byte) string {
-	name := string(p)
+// the controller at the provider's listener on the test SCM server at domain. Every object is called name. autoMerge
+// sets whether the controller merges the pull requests itself.
+func promotionManifests(p scmserver.Provider, name string, repo scmserver.RepoInfo, domain string, githubKey []byte,
+	autoMerge bool,
+) string {
 	secretData := fmt.Sprintf("  token: %s\n", scmToken)
 	var providerSpec, repoSpec string
 	switch p {
@@ -433,9 +582,9 @@ spec:
     name: %[1]s
   environments:
     - branch: environment/development
-      autoMerge: true
+      autoMerge: %[5]t
     - branch: environment/staging
-      autoMerge: true
+      autoMerge: %[5]t
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: DependentsSuccessfulCommitStatus
@@ -445,7 +594,7 @@ spec:
   key: dependents-successful
   promotionStrategyRef:
     name: %[1]s
-`, name, secretData, providerSpec, repoSpec)
+`, name, secretData, providerSpec, repoSpec, autoMerge)
 }
 
 func indent(s, prefix string) string {

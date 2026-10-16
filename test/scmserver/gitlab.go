@@ -139,9 +139,15 @@ func (s *Server) gitlabMRJSONLocked(pr *pullRequest, base string) map[string]any
 	r := pr.repo
 	state := map[prState]string{prOpen: "opened", prClosed: "closed", prMerged: "merged"}[pr.state]
 	mergeStatus, detailed := s.gitlabMergeStatusLocked(pr)
-	var mergeCommit any
+	// A squash merge reports its commit as squash_commit_sha and no merge commit, as GitLab does for projects that
+	// fast-forward squashed merge requests.
+	var mergeCommit, squashCommit any
 	if pr.state == prMerged {
-		mergeCommit = pr.mergeCommitSHA
+		if pr.squashed {
+			squashCommit = pr.mergeCommitSHA
+		} else {
+			mergeCommit = pr.mergeCommitSHA
+		}
 	}
 	var mergedBy any
 	if pr.state == prMerged {
@@ -178,8 +184,8 @@ func (s *Server) gitlabMRJSONLocked(pr *pullRequest, base string) map[string]any
 		"has_conflicts":                pr.conflicts,
 		"sha":                          pr.headSHA,
 		"merge_commit_sha":             mergeCommit,
-		"squash_commit_sha":            nil,
-		"squash":                       false,
+		"squash_commit_sha":            squashCommit,
+		"squash":                       pr.squashed,
 		"should_remove_source_branch":  false,
 		"force_remove_source_branch":   false,
 		"web_url":                      fmt.Sprintf("%s/%s/-/merge_requests/%d", base, r.fullName(), pr.number),
