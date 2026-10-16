@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -186,6 +187,38 @@ func scmProviderSpecs() {
 		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
 	)
 
+	DescribeTable("holds a promotion on a proposed commit status and follows the proposal when it moves",
+		func(ctx SpecContext, p scmserver.Provider) {
+			name := string(p) + "-gated"
+			DeferCleanup(kubectlIgnoringErrors, "delete", "-n", scmE2ENamespace, "promotionstrategy,commitstatus",
+				name, name+"-gate", "--ignore-not-found")
+			flow := promotionFlow{
+				admin:     admin,
+				githubKey: githubKey,
+				domain:    fmt.Sprintf("%s:%d", scmServerHost, scmServerPorts[p]),
+				webhook:   webhookReceiverURL,
+				apply: func(ctx context.Context, manifests string) {
+					run(ctx, manifests, "kubectl", "apply", "-n", scmE2ENamespace, "-f", "-")
+				},
+				list: func(ctx context.Context, resource string, into any) error {
+					out, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", resource, "-n", scmE2ENamespace,
+						"-o", "json"))
+					if err != nil {
+						return fmt.Errorf("listing %s: %w", resource, err)
+					}
+					return json.Unmarshal(out, into)
+				},
+			}
+			flow.promoteThroughGate(ctx, p, name)
+		},
+		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
+		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
+		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
+		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
+		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
+		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
+	)
+
 	DescribeTable("promotes pull requests a person merges on the provider with a merge or a squash commit",
 		func(ctx SpecContext, p scmserver.Provider) {
 			name := string(p) + "-by-hand"
@@ -245,7 +278,7 @@ func (f promotionFlow) promote(ctx context.Context, p scmserver.Provider) {
 
 	environments := []string{"environment/development", "environment/staging"}
 	seedEnvironments(ctx, f.admin, repo, environments)
-	f.apply(ctx, promotionManifests(p, string(p), repo, f.domain, f.githubKey, true))
+	f.apply(ctx, promotionManifests(p, string(p), repo, f.domain, f.githubKey, true, ""))
 
 	By("hydrating a new dry commit to every environment")
 	drySHA := hydrate(ctx, f.admin, repo, environments)
@@ -311,7 +344,7 @@ func (f promotionFlow) promoteByHand(ctx context.Context, p scmserver.Provider, 
 
 	environments := []string{"environment/development", "environment/staging"}
 	seedEnvironments(ctx, f.admin, repo, environments)
-	f.apply(ctx, promotionManifests(p, name, repo, f.domain, f.githubKey, false))
+	f.apply(ctx, promotionManifests(p, name, repo, f.domain, f.githubKey, false, ""))
 
 	for _, squash := range []bool{false, true, false} {
 		style := "a merge commit"
@@ -373,6 +406,198 @@ func (f promotionFlow) promoteByHand(ctx context.Context, p scmserver.Provider, 
 			}
 		}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 		GinkgoWriter.Printf("promoted dry commit %s through %s, merging with %s\n", drySHA, p, style)
+	}
+}
+
+// gateKey is the proposed commit status that gates promotion into development in promoteThroughGate.
+const gateKey = "e2e-gate"
+
+// gateHoldTime is how long promoteThroughGate expects a gated pull request to stay open. An ungated pull request
+// merges within seconds of the controller noticing it, and the controller requeues every 15 seconds.
+const gateHoldTime = 20 * time.Second
+
+// promoteThroughGate promotes through one provider of the test SCM server with a proposed commit status gating
+// development, reported on the provider through the controller's real commit status implementation. It checks that the
+// controller:
+//   - holds the pull request while the gate is pending on the proposed commit;
+//   - keeps the same pull request when a newer hydrated commit moves the proposed branch, so it targets the new head;
+//   - keeps holding when the gate succeeds only on the stale proposed commit;
+//   - merges the newer commit, and only it, once the gate succeeds on it, and then promotes it to staging.
+//
+// name names the promotion's resources.
+func (f promotionFlow) promoteThroughGate(ctx context.Context, p scmserver.Provider, name string) {
+	GinkgoHelper()
+	const development, staging = "environment/development", "environment/staging"
+	req := scmserver.CreateRepoRequest{Provider: p, Owner: scmOwner(p), Name: "gated-promotion"}
+	if p == scmserver.AzureDevOps {
+		req.Project = "e2e"
+	}
+	repo, err := f.admin.CreateRepo(ctx, req)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.admin.AddWebhook(ctx, scmserver.WebhookSubscription{Provider: p, Repo: repo.FullName, URL: f.webhook})
+	Expect(err).NotTo(HaveOccurred())
+	environments := []string{development, staging}
+	seedEnvironments(ctx, f.admin, repo, environments)
+	f.apply(ctx, promotionManifests(p, name, repo, f.domain, f.githubKey, true, gateKey))
+
+	By("hydrating a first dry commit")
+	hydrate(ctx, f.admin, repo, environments)
+	first := f.proposedTip(ctx, repo, development)
+	opened := f.openPullRequestOn(ctx, repo, development, first)
+
+	By("reporting the gate as pending on the first proposed commit")
+	f.setGate(ctx, name, first, v1alpha1.CommitPhasePending)
+	f.expectGate(ctx, repo, first, false)
+	f.expectHeld(ctx, repo, development, opened.Number)
+
+	By("hydrating a second dry commit while the pull request is open")
+	secondDry := hydrate(ctx, f.admin, repo, environments)
+	second := f.proposedTip(ctx, repo, development)
+	Expect(second).NotTo(Equal(first))
+	Expect(f.openPullRequestOn(ctx, repo, development, second).Number).To(Equal(opened.Number),
+		"the controller keeps the open pull request instead of opening another")
+
+	By("passing the gate on the stale first commit only")
+	f.setGate(ctx, name, first, v1alpha1.CommitPhaseSuccess)
+	f.expectGate(ctx, repo, first, true)
+	f.expectHeld(ctx, repo, development, opened.Number)
+
+	By("passing the gate on the second commit")
+	f.setGate(ctx, name, second, v1alpha1.CommitPhaseSuccess)
+	f.expectGate(ctx, repo, second, true)
+	for _, env := range environments {
+		By("merging the second dry commit into " + env)
+		Eventually(func(g Gomega) {
+			prs, err := f.admin.PullRequests(ctx, repo.ID, "")
+			g.Expect(err).NotTo(HaveOccurred())
+			var merged []scmserver.PullRequestInfo
+			for _, pr := range prs {
+				if pr.Target == env {
+					g.Expect(pr.State).To(Equal("merged"), "pull request %d into %s", pr.Number, env)
+					merged = append(merged, pr)
+				}
+			}
+			g.Expect(merged).To(HaveLen(1), "pull requests into %s", env)
+			if env == development {
+				g.Expect(merged[0].Number).To(Equal(opened.Number))
+				g.Expect(merged[0].HeadSHA).To(Equal(second), "the merge took the newer proposed commit")
+			}
+			info, err := f.admin.Repo(ctx, repo.ID)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(info.Branches[env]).To(Equal(merged[0].MergeCommitSHA))
+		}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+	}
+
+	By("reporting the second dry commit as active in every environment")
+	Eventually(func(g Gomega) {
+		var strategies v1alpha1.PromotionStrategyList
+		g.Expect(f.list(ctx, "promotionstrategies", &strategies)).To(Succeed())
+		var strategy *v1alpha1.PromotionStrategy
+		for i := range strategies.Items {
+			if strategies.Items[i].Name == name {
+				strategy = &strategies.Items[i]
+			}
+		}
+		g.Expect(strategy).NotTo(BeNil())
+		g.Expect(strategy.Status.Environments).To(HaveLen(len(environments)))
+		for _, env := range strategy.Status.Environments {
+			g.Expect(env.Active.Dry.Sha).To(Equal(secondDry), "active dry commit of %s", env.Branch)
+		}
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+	GinkgoWriter.Printf("promoted dry commit %s through %s past the %s gate\n", secondDry, p, gateKey)
+}
+
+// proposedTip returns the commit at the tip of env's proposed branch.
+func (f promotionFlow) proposedTip(ctx context.Context, repo scmserver.RepoInfo, env string) string {
+	GinkgoHelper()
+	info, err := f.admin.Repo(ctx, repo.ID)
+	Expect(err).NotTo(HaveOccurred())
+	return info.Branches[env+"-next"]
+}
+
+// openPullRequestOn waits for exactly one open pull request into env, with head as its head commit, and returns it.
+func (f promotionFlow) openPullRequestOn(ctx context.Context, repo scmserver.RepoInfo, env, head string,
+) scmserver.PullRequestInfo {
+	GinkgoHelper()
+	var open []scmserver.PullRequestInfo
+	Eventually(func(g Gomega) {
+		prs, err := f.admin.PullRequests(ctx, repo.ID, "")
+		g.Expect(err).NotTo(HaveOccurred())
+		open = nil
+		for _, pr := range prs {
+			if pr.Target != env {
+				continue
+			}
+			g.Expect(pr.State).To(Equal("open"), "pull request %d into %s", pr.Number, env)
+			open = append(open, pr)
+		}
+		g.Expect(open).To(HaveLen(1), "pull requests into %s", env)
+		g.Expect(open[0].HeadSHA).To(Equal(head))
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+	return open[0]
+}
+
+// setGate points the gate's CommitStatus at sha with phase. The controller reports it on the provider.
+func (f promotionFlow) setGate(ctx context.Context, name, sha string, phase v1alpha1.CommitStatusPhase) {
+	GinkgoHelper()
+	f.apply(ctx, fmt.Sprintf(`apiVersion: promoter.argoproj.io/v1alpha1
+kind: CommitStatus
+metadata:
+  name: %[1]s-gate
+  labels:
+    promoter.argoproj.io/commit-status: %[2]s
+spec:
+  gitRepositoryRef:
+    name: %[1]s
+  sha: %[3]s
+  name: %[2]s
+  description: e2e gate
+  phase: %[4]s
+`, name, gateKey, sha, phase))
+}
+
+// expectGate waits until the provider reports the gate on sha, as successful or as not yet successful.
+func (f promotionFlow) expectGate(ctx context.Context, repo scmserver.RepoInfo, sha string, successful bool) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		statuses, err := f.admin.CommitStatuses(ctx, repo.ID, sha)
+		g.Expect(err).NotTo(HaveOccurred())
+		var gate []scmserver.CommitStatusInfo
+		for _, cs := range statuses {
+			if cs.Context == gateKey {
+				gate = append(gate, cs)
+			}
+		}
+		g.Expect(gate).NotTo(BeEmpty(), "no %s status on %s", gateKey, sha)
+		latest := slices.MaxFunc(gate, func(a, b scmserver.CommitStatusInfo) int { return a.UpdatedAt.Compare(b.UpdatedAt) })
+		g.Expect(statusSucceeded(latest)).To(Equal(successful), "%s status on %s: %+v", gateKey, sha, latest)
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+}
+
+// expectHeld checks that pull request number into env stays open and that no pull request merges into env.
+func (f promotionFlow) expectHeld(ctx context.Context, repo scmserver.RepoInfo, env string, number int) {
+	GinkgoHelper()
+	Consistently(func(g Gomega) {
+		prs, err := f.admin.PullRequests(ctx, repo.ID, "")
+		g.Expect(err).NotTo(HaveOccurred())
+		for _, pr := range prs {
+			if pr.Target == env {
+				g.Expect(pr.Number).To(Equal(number))
+				g.Expect(pr.State).To(Equal("open"), "pull request %d into %s", pr.Number, env)
+			}
+		}
+	}).WithContext(ctx).WithTimeout(gateHoldTime).WithPolling(2 * time.Second).Should(Succeed())
+}
+
+// statusSucceeded reports whether a provider's commit status, build status or check run is successful.
+func statusSucceeded(cs scmserver.CommitStatusInfo) bool {
+	switch strings.ToLower(cs.State) {
+	case "success", "successful", "succeeded":
+		return true
+	case "completed":
+		return cs.Conclusion == "success"
+	default:
+		return false
 	}
 }
 
@@ -515,10 +740,15 @@ func hydrate(ctx context.Context, admin *scmserver.AdminClient, repo scmserver.R
 
 // promotionManifests returns the Secret, ScmProvider, GitRepository, PromotionStrategy and ordering gate that point
 // the controller at the provider's listener on the test SCM server at domain. Every object is called name. autoMerge
-// sets whether the controller merges the pull requests itself.
+// sets whether the controller merges the pull requests itself, and a non-empty developmentGate is the key of a proposed
+// commit status that gates promotion into development.
 func promotionManifests(p scmserver.Provider, name string, repo scmserver.RepoInfo, domain string, githubKey []byte,
-	autoMerge bool,
+	autoMerge bool, developmentGate string,
 ) string {
+	developmentStatuses := ""
+	if developmentGate != "" {
+		developmentStatuses = "\n      proposedCommitStatuses:\n        - key: " + developmentGate
+	}
 	secretData := fmt.Sprintf("  token: %s\n", scmToken)
 	var providerSpec, repoSpec string
 	switch p {
@@ -582,7 +812,7 @@ spec:
     name: %[1]s
   environments:
     - branch: environment/development
-      autoMerge: %[5]t
+      autoMerge: %[5]t%[6]s
     - branch: environment/staging
       autoMerge: %[5]t
 ---
@@ -594,7 +824,7 @@ spec:
   key: dependents-successful
   promotionStrategyRef:
     name: %[1]s
-`, name, secretData, providerSpec, repoSpec, autoMerge)
+`, name, secretData, providerSpec, repoSpec, autoMerge, developmentStatuses)
 }
 
 func indent(s, prefix string) string {

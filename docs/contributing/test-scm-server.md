@@ -131,7 +131,8 @@ A `FaultRule` makes matching requests fail. It matches on provider, method and p
 3. mounts the CA into the controller and sets `SSL_CERT_FILE` and `GIT_SSL_CAINFO`;
 4. port-forwards the admin API;
 5. runs one table entry per provider. Each entry creates a repository with a webhook to the promoter's receiver, seeds the environment branches, applies an `ScmProvider`, `GitRepository` and `PromotionStrategy`, hydrates a change, and waits for it to merge into development and staging.
-6. runs a second table entry per provider with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the entry checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
+6. runs a gated table entry per provider. A proposed commit status gates development, and the controller reports it on the provider. The entry checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
+7. runs another table entry per provider with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the entry checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
 
 ## Adding a provider
 
@@ -139,5 +140,5 @@ When you add an SCM provider (see [Adding an SCM Provider](adding-an-scm-provide
 
 - teach the server its API: a `test/scmserver/<provider>.go` with routes registered in `Server.providerHandler`;
 - add its push webhook format to `webhook.go`;
-- add it to `AllProviders` and to the `Entry` lists of the contract, webhook and both e2e tables;
+- add it to `AllProviders` and to the `Entry` lists of the contract, webhook and every e2e table;
 - give any provider-specific behavior a spec in `quirks_test.go`.
