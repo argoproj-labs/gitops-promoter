@@ -96,7 +96,7 @@ The server reproduces the provider behavior the controller has to cope with. Eac
     - `detailed_merge_status` is `checking` for `mergeabilityDelay`, and merges during that window get 405.
     - Commit statuses follow GitLab's state machine; re-sending the same state gets 400 "Cannot transition status…".
 - **Gitea and Forgejo**
-    - A stale `head_commit_id` gets 409, a conflict or ongoing check gets 405, and both SDKs report these as success.
+    - A stale `head_commit_id` gets 409, and a conflict or ongoing check gets 405. Both SDKs report these as not merged with no error, which the providers turn into an error.
     - Webhooks carry their GitHub compatibility headers, so the promoter's receiver classifies them as GitHub.
 - **Bitbucket Cloud**
     - Merge responses carry abbreviated hashes.
@@ -134,7 +134,7 @@ A `FaultRule` makes matching requests fail. It matches on provider, method and p
 6. runs a gated table entry per provider. A proposed commit status gates development, and the controller reports it on the provider. The entry checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
 7. runs another table entry per provider with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the entry checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
 8. runs a table entry per provider that closes the controller's pull request on the provider, and checks that the controller opens a new pull request for the same proposed commit, tracks only the new one, and promotes through it.
-9. runs a table entry for GitHub, GitLab and Bitbucket Cloud whose development branch requires a status before pull requests can merge. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. The suite shortens the PullRequest work queue's retry delay for this: a refused merge is retried on that queue's rate limiter, which waits 5 minutes between retries by default.
+9. runs a table entry for every provider but Azure DevOps whose development branch requires a status before pull requests can merge. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. The suite shortens the PullRequest work queue's retry delay for this: a refused merge is retried on that queue's rate limiter, which waits 5 minutes between retries by default.
 
 ## Adding a provider
 

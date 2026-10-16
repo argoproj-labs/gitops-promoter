@@ -357,7 +357,7 @@ func (s *Server) giteaIsMerged(w http.ResponseWriter, r *http.Request, p Provide
 
 // giteaMergePull implements POST /repos/:owner/:repo/pulls/:index/merge with Gitea's status codes: 405 when the pull
 // request is closed, still being checked, conflicting or blocked by required statuses, and 409 when head_commit_id is
-// stale. Both SDKs report these failures as success, exactly as against a real server.
+// stale. Both SDKs report these failures as not merged without an error, exactly as against a real server.
 func (s *Server) giteaMergePull(w http.ResponseWriter, r *http.Request, p Provider, who principal) {
 	pr, ok := s.giteaPull(w, r, p)
 	if !ok {

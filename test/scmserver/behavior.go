@@ -62,8 +62,8 @@ func DefaultBehavior(p Provider) Behavior {
 		b.RateLimit = 1000
 	default:
 		// Gitea and Forgejo answer merges attempted during their mergeability check with 405, which their Go SDKs
-		// report as success. Keep the check instantaneous by default so promotions do not silently stall; raise
-		// MergeabilityDelay to reproduce that failure mode.
+		// report as not merged without an error. Keep the check instantaneous by default so promotions are not slowed
+		// by merge retries; raise MergeabilityDelay to reproduce it.
 	}
 	return b
 }

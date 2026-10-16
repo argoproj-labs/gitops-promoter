@@ -237,8 +237,8 @@ var _ = Describe("provider contract", func() {
 
 			By("rejecting the stale merge SHA")
 			_, err = f.prs.Merge(ctx, prObj)
-			if p == scmserver.Gitea || p == scmserver.Forgejo || p == scmserver.BitbucketCloud {
-				// The Gitea and Forgejo SDKs report rejected merges as success, and Bitbucket Cloud has no SHA guard.
+			if p == scmserver.BitbucketCloud {
+				// Bitbucket Cloud has no SHA guard.
 				return
 			}
 			Expect(err).To(HaveOccurred())

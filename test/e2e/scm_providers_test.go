@@ -266,12 +266,13 @@ func scmProviderSpecs() {
 				name, name+"-required", "--ignore-not-found")
 			newFlow(p).promoteThroughProtection(ctx, p, name)
 		},
-		// Azure DevOps, Gitea and Forgejo are not covered yet: against them the controller records a merge the provider
-		// refuses as done and waits for it indefinitely. The Gitea and Forgejo providers ignore the merged flag the SDK
-		// returns for a refused merge, and the Azure DevOps provider treats an accepted completion request as merged.
+		// Azure DevOps is not covered yet: the provider treats an accepted completion request as merged, so when the
+		// completion is then rejected by policy the controller waits for it indefinitely.
 		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
 		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
 		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
+		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
+		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),
 	)
 }
 

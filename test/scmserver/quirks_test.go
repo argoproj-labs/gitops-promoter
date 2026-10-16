@@ -184,7 +184,7 @@ var _ = Describe("provider quirks", func() {
 		})
 	})
 
-	DescribeTable("Gitea and Forgejo SDKs report rejected merges as success",
+	DescribeTable("Gitea and Forgejo SDKs report rejected merges as not merged, which the providers return as errors",
 		func(ctx SpecContext, p scmserver.Provider) {
 			f := newFixture(ctx, p)
 			prObj := f.createPR(ctx, "swallowed")
@@ -193,8 +193,9 @@ var _ = Describe("provider quirks", func() {
 				g.Expect(f.serverPR(ctx, prObj.Status.ID).HeadSHA).To(Equal(moved))
 			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 
+			// The SDK returns false with no error for the 409; the provider must not report it as merged.
 			_, err := f.prs.Merge(ctx, prObj)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("refused to merge pull request")))
 
 			Expect(statusCodes(requestsMatching(p, http.MethodPost, "/merge"))).To(ContainElement(http.StatusConflict))
 			got, err := f.prs.Get(ctx, prObj)
