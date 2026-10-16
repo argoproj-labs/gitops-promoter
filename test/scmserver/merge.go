@@ -140,6 +140,7 @@ func defaultSquashMessage(pr *pullRequest, requested string) string {
 	case BitbucketCloud:
 		return fmt.Sprintf("%s (pull request #%d)", pr.title, pr.number)
 	default:
+		// GitLab's default squash commit template is the merge request title.
 		return pr.title
 	}
 }
@@ -197,6 +198,10 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 	defer s.store.mu.Unlock()
 	if pr.headSHA != head || pr.baseSHA != base || pr.mergeableAt.IsZero() {
 		pr.mergeableAt = s.now().Add(behavior.MergeabilityDelay.Duration)
+		// Azure DevOps re-runs the merge when either branch moves, clearing a previous completion failure.
+		if !pr.completionQueued {
+			pr.completionFailure = ""
+		}
 	}
 	pr.headSHA = head
 	pr.baseSHA = base
@@ -209,15 +214,39 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 type mergeRequest struct {
 	pr           *pullRequest
 	expectedHead string
-	message      string
-	author       signature
-	// squash lands the pull request as a single commit whose only parent is the target branch, as the providers'
-	// squash merge does.
+	// message is the merge commit message.
+	message string
+	// squashMessage is the squash commit message; it defaults to message.
+	squashMessage string
+	author        signature
+	// squash squashes the pull request into a single commit with the target branch as its only parent. Every provider
+	// but GitLab lands that commit on the target branch. GitLab's default merge method (merge commit) squashes first
+	// and then merges the squash commit with a merge commit (app/services/merge_requests/merge_strategies/
+	// from_source_branch.rb), so the target branch tip is the merge commit and squash_commit_sha is its second parent.
 	squash bool
 }
 
-// landMerge merges a pull request into its target branch with a merge commit, or a squash commit when req.squash is
-// set, marks it merged and notifies subscribers. It returns the SHA of the commit it landed.
+// marksMergedByPush reports whether provider p marks an open pull request merged when its head commit reaches the
+// target branch by a push (GitHub; GitLab's RefreshService#post_merge_manually_merged; Gitea's
+// manuallyMergedByPushedCommit; Bitbucket Cloud). Azure DevOps leaves such a pull request active.
+func marksMergedByPush(p Provider) bool {
+	return p != AzureDevOps
+}
+
+// closesOnSourceDeletion reports whether provider p closes an open pull request when its source branch is deleted
+// (GitHub; GitLab's RefreshService#close_upon_missing_source_branch_ref; Gitea's CloseBranchPulls). Azure DevOps
+// keeps the pull request active, and Bitbucket Cloud's behavior is not reproduced.
+func closesOnSourceDeletion(p Provider) bool {
+	switch p {
+	case GitHub, GitLab, Gitea, Forgejo:
+		return true
+	default:
+		return false
+	}
+}
+
+// landMerge merges a pull request into its target branch with a merge commit, or squashes it when req.squash is set,
+// marks it merged and notifies subscribers. It returns the SHA of the commit that became the target branch tip.
 func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error) {
 	pr := req.pr
 	s.store.mu.Lock()
@@ -268,11 +297,23 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	author.when = now
 	committer := providerBot(r.provider)
 	committer.when = now
-	parents := []string{base, head}
-	if req.squash {
-		parents = []string{base}
+	squashMessage := req.squashMessage
+	if squashMessage == "" {
+		squashMessage = req.message
 	}
-	mergeSHA, err := s.git.commitTree(ctx, r.dir, tree, parents, req.message, author, committer)
+	var mergeSHA, squashSHA string
+	switch {
+	case req.squash && r.provider == GitLab:
+		squashSHA, err = s.git.commitTree(ctx, r.dir, tree, []string{base}, squashMessage, author, committer)
+		if err == nil {
+			mergeSHA, err = s.git.commitTree(ctx, r.dir, tree, []string{base, squashSHA}, req.message, author, committer)
+		}
+	case req.squash:
+		mergeSHA, err = s.git.commitTree(ctx, r.dir, tree, []string{base}, squashMessage, author, committer)
+		squashSHA = mergeSHA
+	default:
+		mergeSHA, err = s.git.commitTree(ctx, r.dir, tree, []string{base, head}, req.message, author, committer)
+	}
 	if err != nil {
 		r.gitMu.Unlock()
 		return "", err
@@ -289,6 +330,7 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	pr.headSHA = head
 	pr.baseSHA = base
 	pr.mergeCommitSHA = mergeSHA
+	pr.squashCommitSHA = squashSHA
 	pr.squashed = req.squash
 	pr.mergedAt = now
 	pr.closedAt = now
@@ -310,9 +352,13 @@ func (s *Server) afterRefChanges(ctx context.Context, r *repo, changes []refChan
 	s.webhooks.notifyPush(ctx, s, r, changes, pusher)
 
 	changed := map[string]bool{}
+	deleted := map[string]bool{}
 	for _, c := range changes {
 		if branch, ok := strings.CutPrefix(c.ref, "refs/heads/"); ok {
 			changed[branch] = true
+			if c.after == zeroSHA {
+				deleted[branch] = true
+			}
 		}
 	}
 	s.store.mu.Lock()
@@ -324,10 +370,86 @@ func (s *Server) afterRefChanges(ctx context.Context, r *repo, changes []refChan
 	}
 	s.store.mu.Unlock()
 	for _, pr := range affected {
+		settled, err := s.settlePROutOfBand(ctx, pr, changed, deleted)
+		if err != nil {
+			s.log.Error("settle pull request after push", "repo", r.fullName(), "number", pr.number, "error", err)
+		}
+		if settled {
+			continue
+		}
 		if err := s.refreshPR(ctx, pr); err != nil {
 			s.log.Error("refresh pull request after push", "repo", r.fullName(), "number", pr.number, "error", err)
 		}
 	}
+}
+
+// settlePROutOfBand closes or merges an open pull request the way its provider does when a push, rather than the
+// pull request API, settles it: the source branch was deleted, or the head commit reached the target branch. It
+// returns true when the pull request is no longer open.
+func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed, deleted map[string]bool) (bool, error) {
+	s.store.mu.Lock()
+	r := pr.repo
+	state, source, target := pr.state, pr.source, pr.target
+	s.store.mu.Unlock()
+	if state != prOpen {
+		return true, nil
+	}
+	now := s.now()
+	if deleted[source] && closesOnSourceDeletion(r.provider) {
+		s.store.mu.Lock()
+		defer s.store.mu.Unlock()
+		if pr.state != prOpen {
+			return true, nil
+		}
+		pr.state = prClosed
+		pr.closedAt = now
+		pr.updatedAt = now
+		pr.completionQueued = false
+		pr.asyncMergePending = false
+		return true, nil
+	}
+	if !changed[target] || !marksMergedByPush(r.provider) {
+		return false, nil
+	}
+
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	head, err := s.git.branchSHA(ctx, r.dir, source)
+	if err != nil {
+		return false, nil //nolint:nilerr // a missing source branch is handled by refreshPR
+	}
+	tip, err := s.git.branchSHA(ctx, r.dir, target)
+	if err != nil {
+		return false, nil //nolint:nilerr // a missing target branch is handled by refreshPR
+	}
+	contained, err := s.git.isAncestor(ctx, r.dir, head, tip)
+	if err != nil || !contained {
+		return false, err
+	}
+	mergeSHA, err := s.git.mergeCommitOf(ctx, r.dir, head, tip)
+	if err != nil {
+		return false, err
+	}
+	_ = s.git.deleteRef(ctx, r.dir, pullRefPrefix(r.provider, pr.number)+"/merge")
+
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	if pr.state != prOpen {
+		return true, nil
+	}
+	pr.state = prMerged
+	pr.headSHA = head
+	pr.mergeCommitSHA = mergeSHA
+	pr.squashCommitSHA = ""
+	pr.squashed = false
+	pr.conflicts = false
+	pr.previewMergeSHA = ""
+	pr.mergedAt = now
+	pr.closedAt = now
+	pr.updatedAt = now
+	pr.completionQueued = false
+	pr.asyncMergePending = false
+	return true, nil
 }
 
 func isSuccessState(cs *commitStatus) bool {

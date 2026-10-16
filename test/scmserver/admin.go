@@ -127,6 +127,7 @@ type PullRequestInfo struct {
 	HeadSHA               string     `json:"headSHA"`
 	BaseSHA               string     `json:"baseSHA"`
 	MergeCommitSHA        string     `json:"mergeCommitSHA,omitempty"`
+	SquashCommitSHA       string     `json:"squashCommitSHA,omitempty"`
 	PreviewMergeSHA       string     `json:"previewMergeSHA,omitempty"`
 	CompletionFailure     string     `json:"completionFailure,omitempty"`
 	Labels                []string   `json:"labels"`
@@ -150,8 +151,9 @@ type PullRequestAction struct {
 	Message string `json:"message,omitempty"`
 	// Labels for set-labels.
 	Labels []string `json:"labels,omitempty"`
-	// Squash makes merge land the pull request as a single commit on the target branch, with the target branch as
-	// its only parent, instead of a merge commit.
+	// Squash makes merge squash the pull request into a single commit with the target branch as its only parent. On
+	// every provider but GitLab that commit becomes the target branch tip. GitLab's default merge method then merges
+	// the squash commit with a merge commit, which becomes the tip; the squash commit is reported as squashCommitSHA.
 	Squash bool `json:"squash,omitempty"`
 }
 
@@ -728,7 +730,8 @@ func (s *Server) pullInfoLocked(pr *pullRequest) PullRequestInfo {
 		Provider: pr.repo.provider, Repo: pr.repo.fullName(), RepoID: pr.repo.id, Number: pr.number,
 		ID: pr.globalID, State: string(pr.state), Title: pr.title, Body: pr.body, Source: pr.source,
 		Target: pr.target, Author: pr.author, HeadSHA: pr.headSHA, BaseSHA: pr.baseSHA,
-		MergeCommitSHA: pr.mergeCommitSHA, PreviewMergeSHA: pr.previewMergeSHA, Labels: slices.Clone(pr.labels),
+		MergeCommitSHA: pr.mergeCommitSHA, SquashCommitSHA: pr.squashCommitSHA, PreviewMergeSHA: pr.previewMergeSHA,
+		Labels:    slices.Clone(pr.labels),
 		CreatedAt: pr.createdAt, UpdatedAt: pr.updatedAt, ClosedAt: timePtr(pr.closedAt),
 		MergedAt: timePtr(pr.mergedAt), CompletionRequestedAt: timePtr(pr.completionRequestedAt),
 		CompletionFailure: pr.completionFailure, Conflicts: pr.conflicts, Squashed: pr.squashed,
@@ -820,12 +823,11 @@ func (s *Server) adminPullAction(w http.ResponseWriter, r *http.Request) {
 	switch req.Action {
 	case "merge":
 		s.store.mu.Lock()
-		message := defaultMergeMessage(pr, req.Message)
-		if req.Squash {
-			message = defaultSquashMessage(pr, req.Message)
+		merge := mergeRequest{
+			pr: pr, message: defaultMergeMessage(pr, req.Message), squashMessage: defaultSquashMessage(pr, req.Message),
+			author: actor(pr.repo.provider, "admin"), squash: req.Squash,
 		}
 		s.store.mu.Unlock()
-		merge := mergeRequest{pr: pr, message: message, author: actor(pr.repo.provider, "admin"), squash: req.Squash}
 		if _, err := s.landMerge(ctx, merge); err != nil {
 			adminError(w, http.StatusConflict, err)
 			return

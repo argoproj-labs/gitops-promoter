@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,6 +47,7 @@ func (s *Server) giteaRoutes(p Provider, mux *http.ServeMux) {
 	api("POST /repos/{owner}/{repo}/statuses/{sha}", s.giteaCreateStatus)
 	api("GET /repos/{owner}/{repo}/statuses/{sha}", s.giteaListStatuses)
 	api("GET /repos/{owner}/{repo}/commits/{ref}/statuses", s.giteaListStatuses)
+	api("GET /repos/{owner}/{repo}/commits/{ref}/status", s.giteaCombinedStatus)
 }
 
 func (s *Server) giteaRepo(w http.ResponseWriter, r *http.Request, p Provider) (*repo, bool) {
@@ -133,8 +135,8 @@ func (s *Server) giteaPullJSONLocked(pr *pullRequest, base string) map[string]an
 		mergeCommit = pr.mergeCommitSHA
 		mergedBy = giteaUserJSON(pr.author)
 	}
-	branch := func(name, sha string) map[string]any {
-		return map[string]any{"label": name, "ref": name, "sha": sha, "repo_id": r.id, "repo": s.giteaRepoJSON(r, base)}
+	branch := func(name, ref, sha string) map[string]any {
+		return map[string]any{"label": name, "ref": ref, "sha": sha, "repo_id": r.id, "repo": s.giteaRepoJSON(r, base)}
 	}
 	return map[string]any{
 		"id":               pr.globalID,
@@ -156,8 +158,8 @@ func (s *Server) giteaPullJSONLocked(pr *pullRequest, base string) map[string]an
 		"merged_at":        formatTime(pr.mergedAt, giteaTimeFormat),
 		"merge_commit_sha": mergeCommit,
 		"merged_by":        mergedBy,
-		"base":             branch(pr.target, pr.baseSHA),
-		"head":             branch(pr.source, pr.headSHA),
+		"base":             branch(pr.target, pr.target, pr.baseSHA),
+		"head":             branch(pr.source, fmt.Sprintf("refs/pull/%d/head", pr.number), pr.headSHA),
 		"merge_base":       pr.baseSHA,
 		"created_at":       formatTime(pr.createdAt, giteaTimeFormat),
 		"updated_at":       formatTime(pr.updatedAt, giteaTimeFormat),
@@ -170,10 +172,9 @@ func (s *Server) giteaListPulls(w http.ResponseWriter, r *http.Request, p Provid
 	if !ok {
 		return
 	}
+	// Only "open" and "closed" filter; anything else, the empty default included, lists every pull request
+	// (models/issues/pull_list.go listPullRequestStatement). The swagger's "default: open" is documentation only.
 	state := r.URL.Query().Get("state")
-	if state == "" {
-		state = "open"
-	}
 	now := s.now()
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
@@ -183,7 +184,7 @@ func (s *Server) giteaListPulls(w http.ResponseWriter, r *http.Request, p Provid
 		if !pr.visibleInLists(now) {
 			continue
 		}
-		if state != "all" && (state == "open") != (pr.state == prOpen) {
+		if (state == "open" || state == "closed") && (state == "open") != (pr.state == prOpen) {
 			continue
 		}
 		matches = append(matches, pr)
@@ -222,14 +223,13 @@ func (s *Server) giteaCreatePull(w http.ResponseWriter, r *http.Request, p Provi
 		writeProviderError(w, p, http.StatusNotFound, "The target couldn't be found.")
 		return
 	}
+	// Only identical branch names are rejected. A head already contained in the base is accepted and gets the
+	// Ancestor or Empty status (routers/api/v1/repo/pull.go CreatePullRequest).
 	if req.Head == req.Base {
 		writeProviderError(w, p, http.StatusUnprocessableEntity, "Invalid PullRequest: There are no changes between the head and the base")
 		return
 	}
-	if contained, err := s.git.isAncestor(ctx, rp.dir, headSHA, baseSHA); err == nil && contained {
-		writeProviderError(w, p, http.StatusUnprocessableEntity, "There are no changes between the head and the base")
-		return
-	}
+	_, _ = headSHA, baseSHA
 	s.store.mu.Lock()
 	if existing := s.store.openPRForBranchesLocked(rp, req.Head, req.Base); existing != nil {
 		s.store.mu.Unlock()
@@ -355,9 +355,11 @@ func (s *Server) giteaIsMerged(w http.ResponseWriter, r *http.Request, p Provide
 	writeNoContent(w, http.StatusNotFound)
 }
 
-// giteaMergePull implements POST /repos/:owner/:repo/pulls/:index/merge with Gitea's status codes: 405 when the pull
-// request is closed, still being checked, conflicting or blocked by required statuses, and 409 when head_commit_id is
-// stale. Both SDKs report these failures as not merged without an error, exactly as against a real server.
+// giteaMergePull implements POST /repos/:owner/:repo/pulls/:index/merge with Gitea's status codes
+// (routers/api/v1/repo/pull.go MergePullRequest, services/pull/check.go CheckPullMergeable): 404 when the pull request
+// is closed, 405 when it is merged, still being checked, conflicting or blocked by required statuses, and 409 when
+// head_commit_id is stale. Both SDKs report these failures as not merged without an error, exactly as against a real
+// server.
 func (s *Server) giteaMergePull(w http.ResponseWriter, r *http.Request, p Provider, who principal) {
 	pr, ok := s.giteaPull(w, r, p)
 	if !ok {
@@ -373,7 +375,16 @@ func (s *Server) giteaMergePull(w http.ResponseWriter, r *http.Request, p Provid
 	if !decodeJSON(w, r, p, &req) {
 		return
 	}
-	if req.Do != "" && req.Do != "merge" {
+	squash := false
+	switch req.Do {
+	case "", "merge":
+	case "squash":
+		squash = true
+	case "rebase", "rebase-merge", "fast-forward-only", "manually-merged":
+		// Allowed by Gitea, but the server only lands merge and squash commits.
+		writeProviderError(w, p, http.StatusMethodNotAllowed, "merge style "+req.Do+" is not supported by the test SCM server")
+		return
+	default:
 		writeProviderError(w, p, http.StatusMethodNotAllowed, "Invalid merge style: "+req.Do)
 		return
 	}
@@ -382,30 +393,36 @@ func (s *Server) giteaMergePull(w http.ResponseWriter, r *http.Request, p Provid
 	known := pr.mergeabilityKnown(s.now())
 	conflicts := pr.conflicts
 	missing := s.missingRequiredStatusesLocked(pr)
+	// force_merge bypasses branch protection only for repository administrators; the repository owner is one.
+	canBypass := req.ForceMerge && strings.EqualFold(who.name, pr.repo.owner)
 	message := defaultMergeMessage(pr, req.Message)
+	squashMessage := defaultSquashMessage(pr, req.Message)
 	if req.Title != "" {
-		message = req.Title
+		message, squashMessage = req.Title, req.Title
 		if req.Message != "" {
 			message += "\n\n" + req.Message
+			squashMessage += "\n\n" + req.Message
 		}
 	}
 	s.store.mu.Unlock()
 	switch {
 	case state == prMerged:
-		writeProviderError(w, p, http.StatusMethodNotAllowed, "The PR is already merged")
+		writeProviderError(w, p, http.StatusMethodNotAllowed, "Pull request has already been merged")
 		return
 	case state != prOpen:
-		writeProviderError(w, p, http.StatusMethodNotAllowed, "The PR is closed")
+		writeProviderError(w, p, http.StatusNotFound, "The target couldn't be found.")
 		return
 	case !known, conflicts:
 		writeProviderError(w, p, http.StatusMethodNotAllowed, "Please try again later")
 		return
-	case len(missing) > 0 && !req.ForceMerge:
+	case len(missing) > 0 && !canBypass:
 		writeProviderError(w, p, http.StatusMethodNotAllowed, "Not all required status checks successful")
 		return
 	default:
 	}
-	_, err := s.landMerge(r.Context(), mergeRequest{pr: pr, expectedHead: req.HeadCommitID, message: message, author: actor(p, who.name)})
+	_, err := s.landMerge(r.Context(), mergeRequest{
+		pr: pr, expectedHead: req.HeadCommitID, message: message, squashMessage: squashMessage, author: actor(p, who.name), squash: squash,
+	})
 	switch {
 	case errors.Is(err, errHeadMismatch):
 		writeProviderError(w, p, http.StatusConflict, "head out of date")
@@ -433,11 +450,15 @@ func (s *Server) giteaListLabels(w http.ResponseWriter, r *http.Request, p Provi
 	for _, l := range rp.labels[start:end] {
 		out = append(out, giteaLabelJSON(rp, l, requestBaseURL(r)))
 	}
+	// ListLabels sets only X-Total-Count, not a Link header (routers/api/v1/repo/label.go).
 	w.Header().Set("X-Total-Count", strconv.Itoa(len(rp.labels)))
-	setLinkHeader(w, r, page, lastPage(len(rp.labels), size))
 	writeJSON(w, http.StatusOK, out)
 }
 
+var giteaLabelColorRe = regexp.MustCompile(`^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$`)
+
+// giteaCreateLabel implements POST /repos/:owner/:repo/labels. Label names are not unique: creating a label whose
+// name exists creates a second label (models/issues/label.go NewLabel has no uniqueness check).
 func (s *Server) giteaCreateLabel(w http.ResponseWriter, r *http.Request, p Provider, _ principal) {
 	rp, ok := s.giteaRepo(w, r, p)
 	if !ok {
@@ -451,13 +472,13 @@ func (s *Server) giteaCreateLabel(w http.ResponseWriter, r *http.Request, p Prov
 	if !decodeJSON(w, r, p, &req) {
 		return
 	}
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-	if rp.labelLocked(req.Name) != nil {
-		writeProviderError(w, p, http.StatusUnprocessableEntity, "label already exists")
+	if !giteaLabelColorRe.MatchString(req.Color) {
+		writeProviderError(w, p, http.StatusUnprocessableEntity, "bad color code: "+req.Color)
 		return
 	}
-	l := s.store.ensureLabelLocked(rp, req.Name, strings.TrimPrefix(req.Color, "#"))
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	l := s.store.newLabelLocked(rp, req.Name, strings.TrimPrefix(req.Color, "#"))
 	l.description = req.Description
 	writeJSON(w, http.StatusCreated, giteaLabelJSON(rp, l, requestBaseURL(r)))
 }
@@ -495,6 +516,8 @@ func (s *Server) giteaAddIssueLabels(w http.ResponseWriter, r *http.Request, p P
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
+	// Labels that do not belong to the repository are ignored (routers/api/v1/repo/issue_label.go
+	// prepareForReplaceOrAdd keeps only the repository's labels).
 	for _, ref := range req.Labels {
 		var l *label
 		switch v := ref.(type) {
@@ -504,11 +527,9 @@ func (s *Server) giteaAddIssueLabels(w http.ResponseWriter, r *http.Request, p P
 			l = pr.repo.labelLocked(v)
 		default:
 		}
-		if l == nil {
-			writeProviderError(w, p, http.StatusUnprocessableEntity, fmt.Sprintf("label does not exist [id: %v]", ref))
-			return
+		if l != nil {
+			pr.labels = addLabel(pr.labels, l.name)
 		}
-		pr.labels = addLabel(pr.labels, l.name)
 	}
 	pr.updatedAt = s.now()
 	writeJSON(w, http.StatusOK, s.giteaIssueLabelsLocked(pr, requestBaseURL(r)))
@@ -566,7 +587,13 @@ func (s *Server) giteaCreateStatus(w http.ResponseWriter, r *http.Request, p Pro
 	}
 	sha, err := s.git.resolve(r.Context(), rp.dir, r.PathValue("sha"))
 	if err != nil {
-		writeProviderError(w, p, http.StatusNotFound, "The target couldn't be found.")
+		// Forgejo checks for a missing commit and answers 404; Gitea wraps the error and answers 500
+		// (routers/api/v1/repo/status.go).
+		if p == Forgejo {
+			writeProviderError(w, p, http.StatusNotFound, "The target couldn't be found.")
+		} else {
+			writeProviderError(w, p, http.StatusInternalServerError, "CreateCommitStatus: GetCommit: object does not exist [id: "+r.PathValue("sha")+", rel_path: ]")
+		}
 		return
 	}
 	now := s.now()
@@ -596,10 +623,67 @@ func (s *Server) giteaListStatuses(w http.ResponseWriter, r *http.Request, p Pro
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	statuses := s.store.statusesLocked(rp, sha)
-	out := make([]map[string]any, 0, len(statuses))
-	for i := len(statuses) - 1; i >= 0; i-- {
-		out = append(out, s.giteaStatusJSON(rp, statuses[i], requestBaseURL(r)))
+	// The default order is oldest first by index; "recentupdate" and "highestindex" reverse it.
+	if sort := r.URL.Query().Get("sort"); sort == "recentupdate" || sort == "highestindex" {
+		reversed := make([]*commitStatus, 0, len(statuses))
+		for i := len(statuses) - 1; i >= 0; i-- {
+			reversed = append(reversed, statuses[i])
+		}
+		statuses = reversed
 	}
-	w.Header().Set("X-Total-Count", strconv.Itoa(len(out)))
+	page, size := pageParams(r, "limit", 30, 50)
+	start, end := pageWindow(len(statuses), page, size)
+	out := make([]map[string]any, 0, end-start)
+	for _, cs := range statuses[start:end] {
+		out = append(out, s.giteaStatusJSON(rp, cs, requestBaseURL(r)))
+	}
+	w.Header().Set("X-Total-Count", strconv.Itoa(len(statuses)))
+	setLinkHeader(w, r, page, lastPage(len(statuses), size))
 	writeJSON(w, http.StatusOK, out)
+}
+
+// giteaStatusPriority orders states worst first, as modules/structs CommitStatusState does for the combined status.
+var giteaStatusPriority = map[string]int{"error": 0, "failure": 1, "warning": 2, "pending": 3, "success": 4}
+
+// giteaCombinedStatus implements GET /repos/:owner/:repo/commits/:ref/status: the latest status per context and the
+// worst of their states. Gitea answers an empty body when the commit has no statuses.
+func (s *Server) giteaCombinedStatus(w http.ResponseWriter, r *http.Request, p Provider, _ principal) {
+	rp, ok := s.giteaRepo(w, r, p)
+	if !ok {
+		return
+	}
+	sha, err := s.git.resolve(r.Context(), rp.dir, r.PathValue("ref"))
+	if err != nil {
+		writeProviderError(w, p, http.StatusNotFound, "The target couldn't be found.")
+		return
+	}
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	latest := []*commitStatus{}
+	for _, cs := range s.store.statusesLocked(rp, sha) {
+		if i := slices.IndexFunc(latest, func(l *commitStatus) bool { return l.context == cs.context }); i >= 0 {
+			latest[i] = cs
+		} else {
+			latest = append(latest, cs)
+		}
+	}
+	if len(latest) == 0 {
+		writeNoContent(w, http.StatusOK)
+		return
+	}
+	state := "success"
+	statuses := make([]map[string]any, 0, len(latest))
+	for _, cs := range latest {
+		if giteaStatusPriority[cs.state] < giteaStatusPriority[state] {
+			state = cs.state
+		}
+		statuses = append(statuses, s.giteaStatusJSON(rp, cs, requestBaseURL(r)))
+	}
+	base := requestBaseURL(r)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"state": state, "sha": sha, "total_count": len(statuses), "statuses": statuses,
+		"repository": s.giteaRepoJSON(rp, base),
+		"commit_url": fmt.Sprintf("%s%s/repos/%s/git/commits/%s", base, giteaAPI, rp.fullName(), sha),
+		"url":        fmt.Sprintf("%s%s/repos/%s/commits/%s/status", base, giteaAPI, rp.fullName(), sha),
+	})
 }

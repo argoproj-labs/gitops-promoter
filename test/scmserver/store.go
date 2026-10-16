@@ -76,20 +76,33 @@ type pullRequest struct {
 	headSHA               string
 	baseSHA               string
 	mergeCommitSHA        string
-	previewMergeSHA       string
-	completionMessage     string
-	completionSourceSHA   string
-	completionFailure     string
-	asyncMergeTaskID      string
-	asyncMergeMessage     string
-	labels                []string
-	globalID              int64
-	number                int
-	conflicts             bool
-	// squashed is true when the pull request was merged as a single squash commit.
+	// squashCommitSHA is the squash commit of a squashed merge. On providers that land a squash as a single commit
+	// it equals mergeCommitSHA; on GitLab's default merge method it is the squashed commit the merge commit merges.
+	squashCommitSHA     string
+	previewMergeSHA     string
+	completionMessage   string
+	completionSourceSHA string
+	completionFailure   string
+	asyncMergeTaskID    string
+	asyncMergeMessage   string
+	// asyncMergeSquashMessage is the squash commit message of a Bitbucket asynchronous squash merge.
+	asyncMergeSquashMessage string
+	// asyncMergeFailure is why the last Bitbucket asynchronous merge task failed; the task-status endpoint reports it.
+	asyncMergeFailure string
+	// asyncMergeBy is the principal that requested a Bitbucket asynchronous merge.
+	asyncMergeBy string
+	labels       []string
+	globalID     int64
+	number       int
+	conflicts    bool
+	// squashed is true when the pull request was merged with a squash commit.
 	squashed bool
+	// asyncMergeSquash is true when the pending Bitbucket asynchronous merge uses the squash strategy.
+	asyncMergeSquash bool
 	// completionQueued is true while an Azure DevOps completion request is waiting to be processed.
 	completionQueued bool
+	// completionSquash is true when the queued Azure DevOps completion uses the squash merge strategy.
+	completionSquash bool
 	// asyncMergePending is true while a Bitbucket asynchronous merge task is running.
 	asyncMergePending bool
 }
@@ -127,6 +140,8 @@ type commitStatus struct {
 
 // githubApp is a registered GitHub App whose JWTs are verified with publicKeyPEM.
 type githubApp struct {
+	// clientID is the App's client ID, which GitHub accepts as the JWT issuer alongside the numeric App ID.
+	clientID      string
 	publicKeyPEM  []byte
 	installations []githubInstallation
 	id            int64
@@ -310,6 +325,11 @@ func (s *store) ensureLabelLocked(r *repo, name, color string) *label {
 	if l := r.labelLocked(name); l != nil {
 		return l
 	}
+	return s.newLabelLocked(r, name, color)
+}
+
+// newLabelLocked creates a repository label, even when one with the same name exists.
+func (s *store) newLabelLocked(r *repo, name, color string) *label {
 	l := &label{id: s.allocIDLocked(), name: name, color: color}
 	r.labels = append(r.labels, l)
 	return l

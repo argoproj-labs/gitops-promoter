@@ -74,7 +74,7 @@ The admin API is plain HTTP. `scmserver.AdminClient` wraps it for Go tests.
 | `PUT /api/repos/{id}/branches/{branch}`                 | Point a branch at an existing commit                                            |
 | `PUT /api/repos/{id}/protection/{branch}`               | Require statuses before pull requests into the branch can merge                 |
 | `GET /api/pulls`, `GET /api/repos/{id}/pulls/{n}`       | Server-side pull request state, including merge commits and completion queues   |
-| `POST /api/repos/{id}/pulls/{n}/actions`                | `merge` (with `"squash": true` for a squash commit), `close`, `reopen`, `set-labels`, `hide`, `show`, `delete`, and for Azure DevOps `complete-now` and `fail-completion` |
+| `POST /api/repos/{id}/pulls/{n}/actions`                | `merge` (with `"squash": true` for a squash merge, which on GitLab squashes and then merges), `close`, `reopen`, `set-labels`, `hide`, `show`, `delete`, and for Azure DevOps `complete-now` and `fail-completion` |
 | `GET /api/statuses?repo=&sha=`                          | Commit statuses, build statuses and check runs                                  |
 | `GET/DELETE /api/requests`                              | The request log                                                                 |
 | `GET /api/behavior`, `PUT /api/behavior/{provider}`     | Read or change provider behavior (see below)                                    |
@@ -88,33 +88,45 @@ The admin API is plain HTTP. `scmserver.AdminClient` wraps it for Go tests.
 
 The server reproduces the provider behavior the controller has to cope with. Each item is pinned by a spec in `test/scmserver/quirks_test.go`.
 
+Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows its server code; otherwise it follows the official REST documentation and the SDK the promoter uses.
+
 - **Azure DevOps**
     - A completion request (`status=completed`) returns 200 while the pull request stays `active` with `mergeStatus: queued` and the *preview* merge commit. The real merge lands `completionDelay` later.
-    - Conflicts and failed policies leave the pull request active with a merge failure.
+    - A completion request for a conflicting pull request, or one whose required statuses have not passed, is refused with 400; a stale `lastMergeSourceCommit` gets 409. Azure DevOps does not document these responses. `azureAsyncCompletionFailures` switches to the other model: the request is accepted and fails later, leaving the pull request active with `mergeFailureMessage`.
     - The SDK's `OPTIONS /{org}/_apis` route discovery is served.
+    - A pull request whose head is pushed to the target branch stays active.
 - **GitLab**
-    - `detailed_merge_status` is `checking` for `mergeabilityDelay`, and merges during that window get 405.
+    - `detailed_merge_status` is `checking` for `mergeabilityDelay`. The merge API checks mergeability synchronously, so a merge during that window still succeeds.
+    - A `sha` that does not match the head, an empty one included, gets 409 before any other check; a closed, conflicting or pipeline-blocked merge request gets 405 (GitLab 16 to 18 answered a conflict with 422).
+    - A squashed merge request reports both `squash_commit_sha` and `merge_commit_sha`: the default merge method merges the squash commit with a merge commit, which is the target branch tip.
     - Commit statuses follow GitLab's state machine; re-sending the same state gets 400 "Cannot transition status…".
+    - A missing branch on create is a 400 validation error keyed by attribute.
 - **Gitea and Forgejo**
-    - A stale `head_commit_id` gets 409, and a conflict or ongoing check gets 405. Both SDKs report these as not merged with no error, which the providers turn into an error.
+    - A stale `head_commit_id` gets 409, a closed pull request 404, and a conflict, ongoing check or missing required status 405. Both SDKs report these as not merged with no error, which the providers turn into an error.
+    - Label lists carry `X-Total-Count` but no `Link` header, and label names are not unique.
+    - A pull request whose head is already in the base is created (status Ancestor), and `GET /pulls` without `state` lists every pull request.
     - Webhooks carry their GitHub compatibility headers, so the promoter's receiver classifies them as GitHub.
 - **Bitbucket Cloud**
     - Merge responses carry abbreviated hashes.
-    - With `asyncMergeDelay`, merges answer 202 with a task-status link.
+    - With `asyncMergeDelay` (or `?async=true`), merges answer 202 with the task-status link in the `Location` header and no body; merging a queued pull request again returns the same 202. Unknown tasks poll as `PENDING`, and a failed task answers 400.
 - **GitHub**
-    - App JWT and installation-token auth.
-    - `mergeable: null` while mergeability is computed.
+    - App JWT (App ID or client ID as issuer) and installation-token auth; JWT requests are rate limited too.
+    - `mergeable: null` while mergeability is computed; `merge_commit_sha` keeps the test merge commit on a pull request closed unmerged.
     - `X-RateLimit-*` headers, and a 403 once the limit is spent.
-    - Duplicate pull requests get 422, and a stale merge SHA gets 409.
+    - Duplicate pull requests get 422, and a stale merge SHA gets 409. Squash merges are allowed; rebase merges are not.
+    - Check runs are App-only (403 for a token), and reject an empty `details_url` or an `output` without `title` and `summary` with 422. Label colors must be hexadecimal without `#`.
+- **All providers but Azure DevOps**
+    - A pull request whose head commit is pushed to the target branch is marked merged, with the merge commit (or the head, after a fast-forward) as its merge commit.
+    - GitHub, GitLab, Gitea and Forgejo close a pull request whose source branch is deleted.
 - **All providers**
     - Native error bodies and pagination.
     - Branch protection with each provider's rejection.
-    - List lag: new pull requests are hidden from list endpoints for `listLag`.
+    - List lag: new pull requests are hidden from list endpoints for `listLag`. This is a synthetic fault; no provider's REST list endpoint documents such lag.
 
 `Behavior` holds the per-provider knobs:
 
 - `latency`, `latencyJitter`
-- `listLag`, `mergeabilityDelay`, `completionDelay`, `asyncMergeDelay`
+- `listLag`, `mergeabilityDelay`, `completionDelay`, `asyncMergeDelay`, `azureAsyncCompletionFailures`
 - `tokenTTL`, `rateLimit`, `rateLimitWindow`
 - `webhookDelay`, `webhookDropRate`
 
@@ -134,7 +146,7 @@ A `FaultRule` makes matching requests fail. It matches on provider, method and p
 6. runs a gated table entry per provider. A proposed commit status gates development, and the controller reports it on the provider. The entry checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
 7. runs another table entry per provider with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the entry checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
 8. runs a table entry per provider that closes the controller's pull request on the provider, and checks that the controller opens a new pull request for the same proposed commit, tracks only the new one, and promotes through it.
-9. runs a table entry for every provider but Azure DevOps whose development branch requires a status before pull requests can merge. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. The suite shortens the PullRequest work queue's retry delay for this: a refused merge is retried on that queue's rate limiter, which waits 5 minutes between retries by default.
+9. runs a table entry per provider whose development branch requires a status before pull requests can merge. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. The suite shortens the PullRequest work queue's retry delay for this: a refused merge is retried on that queue's rate limiter, which waits 5 minutes between retries by default.
 
 ## Adding a provider
 

@@ -13,17 +13,24 @@ type Behavior struct {
 	Latency Duration `json:"latency"`
 	// LatencyJitter adds a random extra delay in [0, LatencyJitter).
 	LatencyJitter Duration `json:"latencyJitter"`
-	// ListLag hides newly created pull requests from list and search endpoints for this long, as eventually
-	// consistent search indexes do. Fetching a pull request by number is not affected.
+	// ListLag hides newly created pull requests from list endpoints for this long. Fetching a pull request by number
+	// is not affected. This is a synthetic fault: no provider's REST list endpoint documents such lag (GitHub's and
+	// GitLab's lists are not search-index backed). It exists to exercise a controller that lists right after creating.
 	ListLag Duration `json:"listLag"`
 	// MergeabilityDelay is how long the provider takes to compute mergeability after a pull request is created or
 	// one of its branches moves. While it runs, GitHub reports mergeable=null, GitLab reports
-	// detailed_merge_status=checking and rejects merges with 405, Gitea and Forgejo reject merges with 405, and Azure
-	// DevOps reports mergeStatus=queued.
+	// detailed_merge_status=checking (its merge API checks synchronously and still merges), Gitea and Forgejo reject
+	// merges with 405, and Azure DevOps reports mergeStatus=queued.
 	MergeabilityDelay Duration `json:"mergeabilityDelay"`
 	// CompletionDelay is how long Azure DevOps takes to complete a pull request after completion is requested. Until
 	// then the pull request stays active.
 	CompletionDelay Duration `json:"completionDelay"`
+	// AzureAsyncCompletionFailures makes Azure DevOps accept a completion request for a conflicting or policy-blocked
+	// pull request and fail it CompletionDelay later, leaving the pull request active with mergeFailureMessage. By
+	// default such a request is rejected synchronously with 400, matching the documented completion semantics
+	// (policies are evaluated at completion unless completionOptions.bypassPolicy is set). Azure DevOps does not
+	// document the response, so the knob keeps the asynchronous model available.
+	AzureAsyncCompletionFailures bool `json:"azureAsyncCompletionFailures"`
 	// AsyncMergeDelay makes Bitbucket Cloud answer merges with 202 Accepted and a task-status link, completing the
 	// merge after this delay. Zero merges synchronously.
 	AsyncMergeDelay Duration `json:"asyncMergeDelay"`

@@ -119,7 +119,8 @@ func (s *Server) gitlabGetProject(w http.ResponseWriter, r *http.Request, _ prin
 	writeJSON(w, http.StatusOK, s.gitlabProjectJSON(rp, requestBaseURL(r)))
 }
 
-// gitlabMergeStatusLocked returns merge_status and detailed_merge_status of an open merge request.
+// gitlabMergeStatusLocked returns merge_status and detailed_merge_status of a merge request
+// (app/services/merge_requests/mergeability/detailed_merge_status_service.rb).
 func (s *Server) gitlabMergeStatusLocked(pr *pullRequest) (mergeStatus, detailed string) {
 	switch {
 	case pr.state != prOpen:
@@ -128,25 +129,33 @@ func (s *Server) gitlabMergeStatusLocked(pr *pullRequest) (mergeStatus, detailed
 		return "checking", "checking"
 	case pr.conflicts:
 		return "cannot_be_merged", "conflict"
-	case len(s.missingRequiredStatusesLocked(pr)) > 0:
-		return "can_be_merged", "ci_must_pass"
-	default:
+	}
+	missing := s.missingRequiredStatusesLocked(pr)
+	if len(missing) == 0 {
 		return "can_be_merged", "mergeable"
 	}
+	// A required status that is still pending or running is a pipeline that has not finished; a failed or absent one
+	// is a pipeline that must pass.
+	for _, name := range missing {
+		if cs := s.store.latestStatusLocked(pr.repo, pr.headSHA, name); cs != nil && (cs.state == "pending" || cs.state == "running") {
+			return "can_be_merged", "ci_still_running"
+		}
+	}
+	return "can_be_merged", "ci_must_pass"
 }
 
 func (s *Server) gitlabMRJSONLocked(pr *pullRequest, base string) map[string]any {
 	r := pr.repo
 	state := map[prState]string{prOpen: "opened", prClosed: "closed", prMerged: "merged"}[pr.state]
 	mergeStatus, detailed := s.gitlabMergeStatusLocked(pr)
-	// A squash merge reports its commit as squash_commit_sha and no merge commit, as GitLab does for projects that
-	// fast-forward squashed merge requests.
+	// merge_commit_sha is the commit that landed on the target branch. A squashed merge request additionally reports
+	// the squash commit as squash_commit_sha; with the default merge method that is the merge commit's second parent
+	// (app/services/merge_requests/merge_strategies/from_source_branch.rb).
 	var mergeCommit, squashCommit any
 	if pr.state == prMerged {
+		mergeCommit = pr.mergeCommitSHA
 		if pr.squashed {
-			squashCommit = pr.mergeCommitSHA
-		} else {
-			mergeCommit = pr.mergeCommitSHA
+			squashCommit = pr.squashCommitSHA
 		}
 	}
 	var mergedBy any
@@ -321,12 +330,14 @@ func (s *Server) gitlabCreateMR(w http.ResponseWriter, r *http.Request, who prin
 		return
 	}
 	ctx := r.Context()
+	// A missing branch is a model validation error, which the API renders as 400 with the errors keyed by attribute
+	// (lib/api/helpers/merge_requests_helpers.rb handle_merge_request_errors!).
 	if _, err := s.git.branchSHA(ctx, rp.dir, req.SourceBranch); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": []string{fmt.Sprintf("Source branch %q does not exist", req.SourceBranch)}})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": map[string][]string{"source_branch": {"does not exist"}}})
 		return
 	}
 	if _, err := s.git.branchSHA(ctx, rp.dir, req.TargetBranch); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": []string{fmt.Sprintf("Target branch %q does not exist", req.TargetBranch)}})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": map[string][]string{"target_branch": {"does not exist"}}})
 		return
 	}
 	s.store.mu.Lock()
@@ -436,50 +447,66 @@ func (s *Server) gitlabAcceptMR(w http.ResponseWriter, r *http.Request, who prin
 		return
 	}
 	var req struct {
-		MergeCommitMessage *string `json:"merge_commit_message"`
-		SHA                string  `json:"sha"`
-		Squash             bool    `json:"squash"`
-		AutoMerge          bool    `json:"auto_merge"`
-		MergeWhenPipeline  bool    `json:"merge_when_pipeline_succeeds"`
+		MergeCommitMessage  *string `json:"merge_commit_message"`
+		SquashCommitMessage *string `json:"squash_commit_message"`
+		SHA                 *string `json:"sha"`
+		Squash              bool    `json:"squash"`
+		AutoMerge           bool    `json:"auto_merge"`
+		MergeWhenPipeline   bool    `json:"merge_when_pipeline_succeeds"`
 	}
 	if r.ContentLength != 0 && !decodeJSON(w, r, GitLab, &req) {
 		return
 	}
 	s.store.mu.Lock()
 	state := pr.state
-	_, detailed := s.gitlabMergeStatusLocked(pr)
+	// The merge API runs the mergeability check itself, so the result does not wait for MergeabilityDelay.
+	conflicts := pr.conflicts
+	blocked := len(s.missingRequiredStatusesLocked(pr)) > 0
 	head := pr.headSHA
 	message := ""
 	if req.MergeCommitMessage != nil {
 		message = *req.MergeCommitMessage
 	}
 	message = defaultMergeMessage(pr, message)
+	squashMessage := ""
+	if req.SquashCommitMessage != nil {
+		squashMessage = *req.SquashCommitMessage
+	}
+	squashMessage = defaultSquashMessage(pr, squashMessage)
 	s.store.mu.Unlock()
 
+	// lib/api/merge_requests.rb (PUT :id/merge_requests/:merge_request_iid/merge): check_sha_param! compares any sha
+	// present in the request, an empty string included, and 409s before anything else. Then execute_merge answers
+	// not_allowed! (405) unless the merge request is mergeable: it must be open, not conflicting, and its pipeline
+	// must pass when required. Mergeability is checked synchronously there, so a merge during the background check
+	// succeeds. GitLab 16.0 to 18.x answered a conflict with 422 "Branch cannot be merged" instead of 405.
+	expectedHead := ""
+	if req.SHA != nil {
+		expectedHead = *req.SHA
+		if !strings.EqualFold(expectedHead, head) {
+			writeProviderError(w, GitLab, http.StatusConflict, "SHA does not match HEAD of source branch: "+head)
+			return
+		}
+	}
 	switch {
-	case state != prOpen, detailed == "checking", detailed == "ci_must_pass":
+	case state != prOpen, conflicts, blocked:
 		writeProviderError(w, GitLab, http.StatusMethodNotAllowed, "405 Method Not Allowed")
 		return
-	case detailed == "conflict":
-		writeProviderError(w, GitLab, http.StatusNotAcceptable, "Branch cannot be merged")
-		return
-	case req.SHA != "" && !strings.EqualFold(req.SHA, head):
-		writeProviderError(w, GitLab, http.StatusConflict, "SHA does not match HEAD of source branch: "+head)
-		return
 	case req.MergeCommitMessage != nil && strings.TrimSpace(*req.MergeCommitMessage) == "":
-		writeProviderError(w, GitLab, http.StatusUnprocessableEntity, "Failed to merge: merge commit message can't be blank")
+		// Gitaly refuses an empty commit message, which the API reports as a failed merge.
+		writeProviderError(w, GitLab, http.StatusUnprocessableEntity, "Branch cannot be merged")
 		return
 	default:
 	}
-	_, err := s.landMerge(r.Context(), mergeRequest{pr: pr, expectedHead: req.SHA, message: message, author: actor(GitLab, who.name)})
+	_, err := s.landMerge(r.Context(), mergeRequest{
+		pr: pr, expectedHead: expectedHead, message: message, squashMessage: squashMessage,
+		author: actor(GitLab, who.name), squash: req.Squash,
+	})
 	switch {
 	case errors.Is(err, errHeadMismatch):
-		writeProviderError(w, GitLab, http.StatusConflict, "SHA does not match HEAD of source branch")
+		writeProviderError(w, GitLab, http.StatusConflict, "SHA does not match HEAD of source branch: "+head)
 		return
-	case errors.Is(err, errMergeConflict), errors.Is(err, errBranchNotFound):
-		writeProviderError(w, GitLab, http.StatusNotAcceptable, "Branch cannot be merged")
-		return
-	case errors.Is(err, errNotOpen):
+	case errors.Is(err, errMergeConflict), errors.Is(err, errBranchNotFound), errors.Is(err, errNotOpen):
 		writeProviderError(w, GitLab, http.StatusMethodNotAllowed, "405 Method Not Allowed")
 		return
 	case err != nil:
@@ -547,7 +574,7 @@ var gitlabStatusEvents = map[string]struct {
 	event string
 	from  []string
 }{
-	"pending":  {"enqueue", []string{"created", "waiting_for_resource", "preparing", "skipped", "manual", "scheduled"}},
+	"pending":  {"enqueue", []string{"created", "skipped", "manual", "scheduled"}},
 	"running":  {"run", []string{"pending"}},
 	"success":  {"success", []string{"created", "waiting_for_resource", "preparing", "pending", "running"}},
 	"failed":   {"drop", []string{"created", "waiting_for_resource", "preparing", "pending", "running", "manual", "scheduled"}},

@@ -204,7 +204,9 @@ func azureCommitRef(sha, url string) any {
 	return map[string]any{"commitId": sha, "url": url}
 }
 
-func (s *Server) azurePRJSONLocked(pr *pullRequest, base string) map[string]any {
+// azurePRJSONLocked renders a pull request. withLabels adds the labels collection, which the single-pull-request
+// endpoints return and the list endpoint omits.
+func (s *Server) azurePRJSONLocked(pr *pullRequest, base string, withLabels bool) map[string]any {
 	r := pr.repo
 	status := map[prState]string{prOpen: "active", prClosed: "abandoned", prMerged: "completed"}[pr.state]
 	commitURL := func(sha string) string {
@@ -215,12 +217,6 @@ func (s *Server) azurePRJSONLocked(pr *pullRequest, base string) map[string]any 
 		lastMerge = pr.mergeCommitSHA
 	} else if !pr.mergeabilityKnown(s.now()) {
 		lastMerge = ""
-	}
-	labels := make([]map[string]any, 0, len(pr.labels))
-	for _, name := range pr.labels {
-		if l := r.labelLocked(name); l != nil {
-			labels = append(labels, map[string]any{"id": newStableGUID(l.id), "name": l.name, "active": true})
-		}
 	}
 	out := map[string]any{
 		"repository":            s.azureRepoJSON(r, base),
@@ -240,18 +236,30 @@ func (s *Server) azurePRJSONLocked(pr *pullRequest, base string) map[string]any 
 		"lastMergeTargetCommit": azureCommitRef(pr.baseSHA, commitURL(pr.baseSHA)),
 		"lastMergeCommit":       azureCommitRef(lastMerge, commitURL(lastMerge)),
 		"reviewers":             []any{},
-		"labels":                labels,
 		"url":                   fmt.Sprintf("%s/%s/%s/_apis/git/repositories/%s/pullRequests/%d", base, r.owner, r.projectUUID, r.uuid, pr.number),
 		"supportsIterations":    true,
 		"artifactId":            fmt.Sprintf("vstfs:///Git/PullRequestId/%s%%2f%s%%2f%d", r.projectUUID, r.uuid, pr.number),
+	}
+	if withLabels {
+		labels := make([]map[string]any, 0, len(pr.labels))
+		for _, name := range pr.labels {
+			if l := r.labelLocked(name); l != nil {
+				labels = append(labels, s.azureLabelJSON(l))
+			}
+		}
+		out["labels"] = labels
 	}
 	if !pr.closedAt.IsZero() {
 		out["closedDate"] = formatTime(pr.closedAt, azureTimeFormat)
 		out["closedBy"] = azureIdentity(pr.author)
 	}
 	if !pr.completionRequestedAt.IsZero() {
+		strategy := "noFastForward"
+		if pr.completionSquash {
+			strategy = "squash"
+		}
 		out["completionQueueTime"] = formatTime(pr.completionRequestedAt, azureTimeFormat)
-		out["completionOptions"] = map[string]any{"mergeCommitMessage": pr.completionMessage, "deleteSourceBranch": false, "mergeStrategy": "noFastForward"}
+		out["completionOptions"] = map[string]any{"mergeCommitMessage": pr.completionMessage, "deleteSourceBranch": false, "mergeStrategy": strategy}
 	}
 	if pr.completionFailure != "" {
 		out["mergeFailureType"] = "unknown"
@@ -301,7 +309,7 @@ func (s *Server) azureListPRs(w http.ResponseWriter, r *http.Request, _ principa
 		if target != "" && target != "refs/heads/"+pr.target {
 			continue
 		}
-		out = append(out, s.azurePRJSONLocked(pr, requestBaseURL(r)))
+		out = append(out, s.azurePRJSONLocked(pr, requestBaseURL(r), false))
 	}
 	start := min(max(skip, 0), len(out))
 	end := min(start+top, len(out))
@@ -357,7 +365,7 @@ func (s *Server) azureCreatePR(w http.ResponseWriter, r *http.Request, who princ
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	writeJSON(w, http.StatusCreated, s.azurePRJSONLocked(pr, requestBaseURL(r)))
+	writeJSON(w, http.StatusCreated, s.azurePRJSONLocked(pr, requestBaseURL(r), true))
 }
 
 func (s *Server) azureGetRepoPR(w http.ResponseWriter, r *http.Request, _ principal) {
@@ -367,7 +375,7 @@ func (s *Server) azureGetRepoPR(w http.ResponseWriter, r *http.Request, _ princi
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r)))
+	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r), true))
 }
 
 func (s *Server) azureGetPRByID(w http.ResponseWriter, r *http.Request, _ principal) {
@@ -383,7 +391,7 @@ func (s *Server) azureGetPRByID(w http.ResponseWriter, r *http.Request, _ princi
 		azurePRNotFound(w, r.PathValue("id"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r)))
+	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r), true))
 }
 
 type azureUpdatePRRequest struct {
@@ -413,9 +421,11 @@ type azureStatusContext struct {
 	Genre string `json:"genre"`
 }
 
-// azureUpdatePR implements PATCH .../pullRequests/{id}. Edits and abandonment apply immediately. Completion is
-// asynchronous: the response still shows the pull request active with mergeStatus "queued" and the preview merge
-// commit, and the merge lands CompletionDelay later.
+// azureUpdatePR implements PATCH .../pullRequests/{id}. Edits and abandonment apply immediately. A completion request
+// is refused with 400 when the pull request has conflicts or its required statuses have not passed (unless
+// Behavior.AzureAsyncCompletionFailures is set), and with 409 when lastMergeSourceCommit is stale. An accepted
+// completion is asynchronous: the response still shows the pull request active with mergeStatus "queued" and the
+// preview merge commit, and the merge lands CompletionDelay later.
 func (s *Server) azureUpdatePR(w http.ResponseWriter, r *http.Request, who principal) {
 	pr, ok := s.azurePR(w, r)
 	if !ok {
@@ -456,7 +466,7 @@ func (s *Server) azureUpdatePR(w http.ResponseWriter, r *http.Request, who princ
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r)))
+	writeJSON(w, http.StatusOK, s.azurePRJSONLocked(pr, requestBaseURL(r), true))
 }
 
 // azureApplyStatusLocked applies a status change. It returns an error message and HTTP status on failure.
@@ -465,7 +475,7 @@ func (s *Server) azureApplyStatusLocked(pr *pullRequest, req azureUpdatePRReques
 	case "abandoned":
 		switch pr.state {
 		case prMerged:
-			return "TF401181: The pull request cannot be abandoned because it is already completed.", http.StatusBadRequest
+			return "The pull request cannot be abandoned because it is already completed.", http.StatusBadRequest
 		case prOpen:
 			pr.state = prClosed
 			pr.closedAt = now
@@ -478,23 +488,46 @@ func (s *Server) azureApplyStatusLocked(pr *pullRequest, req azureUpdatePRReques
 			pr.closedAt = time.Time{}
 		}
 	case "completed":
+		// Azure DevOps does not document the error responses of a completion request. The messages below carry no
+		// TF error codes because the real codes are unknown; clients should branch on the HTTP status only.
 		if pr.state != prOpen {
-			return fmt.Sprintf("TF401181: The pull request %d is not active and cannot be completed.", pr.number), http.StatusBadRequest
+			return fmt.Sprintf("The pull request %d is not active and cannot be completed.", pr.number), http.StatusBadRequest
 		}
 		if req.LastMergeSourceCommit == nil || req.LastMergeSourceCommit.CommitID == "" {
-			return "TF401155: lastMergeSourceCommit is required to complete a pull request.", http.StatusBadRequest
+			return "lastMergeSourceCommit is required to complete a pull request.", http.StatusBadRequest
 		}
 		if !strings.EqualFold(req.LastMergeSourceCommit.CommitID, pr.headSHA) {
-			return fmt.Sprintf("TF401192: The pull request could not be completed because the source branch has been updated. The last merge source commit is %s.", pr.headSHA), http.StatusConflict
+			return fmt.Sprintf("The pull request could not be completed because the source branch has been updated. The last merge source commit is %s.", pr.headSHA), http.StatusConflict
 		}
-		if req.CompletionOptions != nil && req.CompletionOptions.MergeStrategy != "" && req.CompletionOptions.MergeStrategy != "noFastForward" {
-			return "TF402488: The merge strategy " + req.CompletionOptions.MergeStrategy + " is not allowed by policy.", http.StatusBadRequest
+		squash := false
+		if req.CompletionOptions != nil {
+			switch req.CompletionOptions.MergeStrategy {
+			case "", "noFastForward":
+			case "squash":
+				squash = true
+			case "rebase", "rebaseMerge":
+				// Allowed by Azure DevOps by default, but the server does not replay commits.
+				return "The merge strategy " + req.CompletionOptions.MergeStrategy + " is not supported by the test SCM server.", http.StatusBadRequest
+			default:
+				return "Invalid merge strategy: " + req.CompletionOptions.MergeStrategy, http.StatusBadRequest
+			}
+		}
+		if !behavior.AzureAsyncCompletionFailures {
+			// Policies are evaluated when completion is requested (completionOptions.bypassPolicy exists to skip
+			// them), and a pull request with conflicts cannot be completed. Refuse now rather than after queueing.
+			if pr.mergeabilityKnown(now) && pr.conflicts {
+				return "The pull request cannot be completed because it has merge conflicts.", http.StatusBadRequest
+			}
+			if missing := s.missingRequiredStatusesLocked(pr); len(missing) > 0 {
+				return "The pull request cannot be completed because the following required policies are not met: status " + strings.Join(missing, ", ") + ".", http.StatusBadRequest
+			}
 		}
 		pr.completionQueued = true
 		pr.completionRequestedAt = now
 		pr.completionDueAt = now.Add(behavior.CompletionDelay.Duration)
 		pr.completionSourceSHA = pr.headSHA
 		pr.completionFailure = ""
+		pr.completionSquash = squash
 		pr.author = who.name
 		pr.completionMessage = ""
 		if req.CompletionOptions != nil {
@@ -530,9 +563,13 @@ func (s *Server) processAzureCompletions(ctx context.Context) {
 func (s *Server) completeAzurePR(ctx context.Context, pr *pullRequest) {
 	s.store.mu.Lock()
 	missing := s.missingRequiredStatusesLocked(pr)
-	message := defaultMergeMessage(pr, pr.completionMessage)
-	expected, author := pr.completionSourceSHA, pr.author
+	merge := mergeRequest{
+		pr: pr, expectedHead: pr.completionSourceSHA, message: defaultMergeMessage(pr, pr.completionMessage),
+		squashMessage: defaultSquashMessage(pr, pr.completionMessage), author: actor(AzureDevOps, pr.author),
+		squash: pr.completionSquash,
+	}
 	if len(missing) > 0 {
+		// Only reachable with AzureAsyncCompletionFailures: the policy failed after the request was accepted.
 		pr.completionQueued = false
 		pr.completionFailure = "rejectedByPolicy: required statuses " + strings.Join(missing, ", ") + " have not succeeded"
 		s.store.mu.Unlock()
@@ -540,7 +577,7 @@ func (s *Server) completeAzurePR(ctx context.Context, pr *pullRequest) {
 	}
 	s.store.mu.Unlock()
 
-	_, err := s.landMerge(ctx, mergeRequest{pr: pr, expectedHead: expected, message: message, author: actor(AzureDevOps, author)})
+	_, err := s.landMerge(ctx, merge)
 	if err == nil {
 		return
 	}
@@ -550,9 +587,9 @@ func (s *Server) completeAzurePR(ctx context.Context, pr *pullRequest) {
 	switch {
 	case errors.Is(err, errMergeConflict):
 		pr.conflicts = true
-		pr.completionFailure = "TF401187: The pull request cannot be completed because it has merge conflicts."
+		pr.completionFailure = "The pull request cannot be completed because it has merge conflicts."
 	case errors.Is(err, errHeadMismatch):
-		pr.completionFailure = "TF401192: The source branch was updated after completion was requested."
+		pr.completionFailure = "The source branch was updated after completion was requested."
 	default:
 		pr.completionFailure = err.Error()
 	}
@@ -614,7 +651,7 @@ func (s *Server) azureRemoveLabel(w http.ResponseWriter, r *http.Request, _ prin
 	}
 	labels, removed := removeLabel(pr.labels, name)
 	if !removed {
-		azureErrorResponse(w, http.StatusNotFound, "TF401388: The label "+name+" was not found on the pull request.", "WebApiTagNotFoundException")
+		azureErrorResponse(w, http.StatusNotFound, "The label "+name+" was not found on the pull request.", "WebApiTagNotFoundException")
 		return
 	}
 	pr.labels = labels

@@ -201,6 +201,21 @@ func (g *gitCLI) isAncestor(ctx context.Context, dir, ancestor, descendant strin
 	return false, err
 }
 
+// mergeCommitOf returns the commit on the path from head to tip that merged head: the oldest merge commit that
+// descends from head, or head itself when it was fast-forwarded onto the branch. This is how GitLab and Gitea
+// attribute a merge commit to a pull request whose head was pushed to the target branch out of band.
+func (g *gitCLI) mergeCommitOf(ctx context.Context, dir, head, tip string) (string, error) {
+	out, err := g.run(ctx, dir, nil, nil, "rev-list", "--ancestry-path", "--merges", "--reverse", head+".."+tip)
+	if err != nil {
+		return "", err
+	}
+	first, _, _ := strings.Cut(out, "\n")
+	if first == "" {
+		return head, nil
+	}
+	return first, nil
+}
+
 // commitInfo describes a commit for webhook payloads and API responses.
 type commitInfo struct {
 	when        time.Time

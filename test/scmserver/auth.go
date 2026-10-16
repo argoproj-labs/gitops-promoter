@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,6 +30,13 @@ type principal struct {
 	key string
 	// installationID is set for GitHub App installation tokens.
 	installationID int64
+}
+
+// userID derives a stable numeric user ID from the credential, for messages that name one.
+func (p principal) userID() uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(p.key))
+	return h.Sum32()%1_000_000 + 1
 }
 
 // Credential registers an access token or username/password a provider accepts.
@@ -182,6 +190,8 @@ func writeUnauthorized(w http.ResponseWriter, p Provider) {
 type RegisterGitHubAppRequest struct {
 	// PublicKeyPEM verifies the App's JWTs (PKIX or PKCS#1 RSA public key, or the private key itself).
 	PublicKeyPEM string `json:"publicKeyPEM"`
+	// ClientID is the App's client ID, which GitHub accepts as the JWT issuer instead of the App ID. Optional.
+	ClientID string `json:"clientID,omitempty"`
 	// Installations of the App.
 	Installations []GitHubInstallation `json:"installations"`
 	// AppID is the GitHub App ID (the JWT issuer).
@@ -200,7 +210,7 @@ func (s *Server) registerGitHubApp(req RegisterGitHubAppRequest) error {
 	if _, err := parseRSAPublicKey([]byte(req.PublicKeyPEM)); err != nil {
 		return err
 	}
-	app := &githubApp{id: req.AppID, publicKeyPEM: []byte(req.PublicKeyPEM)}
+	app := &githubApp{id: req.AppID, clientID: req.ClientID, publicKeyPEM: []byte(req.PublicKeyPEM)}
 	for _, inst := range req.Installations {
 		app.installations = append(app.installations, githubInstallation{id: inst.ID, account: inst.Account})
 	}
@@ -281,8 +291,9 @@ func (s *Server) verifyGitHubJWT(token string) (*githubApp, string) {
 	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
 		return nil, "A JSON web token could not be decoded"
 	}
-	appID, err := strconv.ParseInt(strings.Trim(string(claims.Iss), `"`), 10, 64)
-	if err != nil {
+	// The issuer is the App ID (as a number or a string) or the App's client ID.
+	issuer := strings.Trim(string(claims.Iss), `"`)
+	if issuer == "" {
 		return nil, "'Issuer' claim ('iss') must be an Integer"
 	}
 	nowSec := s.now().Unix()
@@ -291,13 +302,23 @@ func (s *Server) verifyGitHubJWT(token string) (*githubApp, string) {
 		return nil, "'Expiration time' claim ('exp') must be a numeric value representing the future time at which the assertion expires"
 	case claims.Iat > nowSec+60:
 		return nil, "'Issued at' claim ('iat') must be an Integer representing the time that the assertion was issued"
-	case claims.Exp-claims.Iat > int64(maxGitHubJWTLifetime.Seconds()):
+	case claims.Exp > nowSec+int64(maxGitHubJWTLifetime.Seconds()):
+		// GitHub bounds the expiration relative to its clock, not to iat.
 		return nil, "'Expiration time' claim ('exp') is too far in the future"
 	default:
 	}
 
 	s.store.mu.Lock()
-	app := s.store.apps[appID]
+	var app *githubApp
+	if appID, err := strconv.ParseInt(issuer, 10, 64); err == nil {
+		app = s.store.apps[appID]
+	} else {
+		for _, candidate := range s.store.apps {
+			if candidate.clientID != "" && candidate.clientID == issuer {
+				app = candidate
+			}
+		}
+	}
 	s.store.mu.Unlock()
 	if app == nil {
 		return nil, "Integration not found"

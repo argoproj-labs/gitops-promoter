@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +24,16 @@ func (s *Server) githubRoutes(mux *http.ServeMux) {
 	app := func(pattern string, h func(http.ResponseWriter, *http.Request, *githubApp)) {
 		method, path, _ := strings.Cut(pattern, " ")
 		mux.HandleFunc(method+" "+githubAPI+path, s.githubAppHandler(h))
+	}
+	// The Checks API is only available to GitHub Apps: personal access tokens get 403.
+	checks := func(pattern string, h func(http.ResponseWriter, *http.Request, principal)) {
+		api(pattern, func(w http.ResponseWriter, r *http.Request, who principal) {
+			if who.installationID == 0 {
+				writeProviderError(w, GitHub, http.StatusForbidden, "You must authenticate via a GitHub App.")
+				return
+			}
+			h(w, r, who)
+		})
 	}
 
 	app("GET /app", s.githubGetApp)
@@ -41,15 +53,16 @@ func (s *Server) githubRoutes(mux *http.ServeMux) {
 	api("GET /repos/{owner}/{repo}/issues/{number}/labels", s.githubListIssueLabels)
 	api("POST /repos/{owner}/{repo}/issues/{number}/labels", s.githubAddIssueLabels)
 	api("DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}", s.githubRemoveIssueLabel)
-	api("POST /repos/{owner}/{repo}/check-runs", s.githubCreateCheckRun)
-	api("GET /repos/{owner}/{repo}/check-runs/{id}", s.githubGetCheckRun)
-	api("PATCH /repos/{owner}/{repo}/check-runs/{id}", s.githubUpdateCheckRun)
-	api("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", s.githubListCheckRuns)
+	checks("POST /repos/{owner}/{repo}/check-runs", s.githubCreateCheckRun)
+	checks("GET /repos/{owner}/{repo}/check-runs/{id}", s.githubGetCheckRun)
+	checks("PATCH /repos/{owner}/{repo}/check-runs/{id}", s.githubUpdateCheckRun)
+	checks("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", s.githubListCheckRuns)
 	api("POST /repos/{owner}/{repo}/statuses/{sha}", s.githubCreateStatus)
 	api("GET /repos/{owner}/{repo}/commits/{ref}/status", s.githubCombinedStatus)
 }
 
-// githubAppHandler authenticates GitHub App JWT requests.
+// githubAppHandler authenticates GitHub App JWT requests. JWT requests count against the App's own rate limit and
+// carry rate limit headers, as on GitHub.
 func (s *Server) githubAppHandler(h func(http.ResponseWriter, *http.Request, *githubApp)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		scheme, token, _ := strings.Cut(r.Header.Get("Authorization"), " ")
@@ -62,8 +75,12 @@ func (s *Server) githubAppHandler(h func(http.ResponseWriter, *http.Request, *gi
 			writeProviderError(w, GitHub, http.StatusUnauthorized, problem)
 			return
 		}
+		who := principal{name: "app:" + strconv.FormatInt(app.id, 10), key: "app:" + strconv.FormatInt(app.id, 10)}
 		if rec, ok := w.(*recorder); ok {
-			rec.principal = "app:" + strconv.FormatInt(app.id, 10)
+			rec.principal = who.name
+		}
+		if !s.rateLimit(w, GitHub, who) {
+			return
 		}
 		h(w, r, app)
 	}
@@ -270,7 +287,8 @@ func (s *Server) githubPullJSONLocked(pr *pullRequest, base string) map[string]a
 			mergeableState = "blocked"
 		}
 	}
-	if pr.state == prOpen && pr.previewMergeSHA != "" {
+	// Before merging, merge_commit_sha is the test merge commit; GitHub keeps it on a pull request closed unmerged.
+	if pr.state != prMerged && pr.previewMergeSHA != "" {
 		mergeCommit = pr.previewMergeSHA
 	}
 	labels := make([]map[string]any, 0, len(pr.labels))
@@ -556,11 +574,18 @@ func (s *Server) githubMergePull(w http.ResponseWriter, r *http.Request, who pri
 	if r.ContentLength != 0 && !decodeJSON(w, r, GitHub, &req) {
 		return
 	}
-	if req.MergeMethod != "" && req.MergeMethod != "merge" {
-		// Squash and rebase are disabled on the simulated repositories, as is common for GitOps repositories.
-		writeProviderError(w, GitHub, http.StatusMethodNotAllowed, req.MergeMethod+" merges are not allowed on this repository.")
+	switch req.MergeMethod {
+	case "", "merge", "squash":
+	case "rebase":
+		// Rebase merges replay the head commits, which the server does not do; the hosted repositories have them
+		// disabled, which GitHub reports with 405.
+		writeProviderError(w, GitHub, http.StatusMethodNotAllowed, "Rebase merges are not allowed on this repository.")
+		return
+	default:
+		githubValidationFailed(w, "PullRequest", "merge_method", "invalid", "")
 		return
 	}
+	squash := req.MergeMethod == "squash"
 	s.store.mu.Lock()
 	state := pr.state
 	message := defaultMergeMessage(pr, req.CommitMessage)
@@ -570,6 +595,14 @@ func (s *Server) githubMergePull(w http.ResponseWriter, r *http.Request, who pri
 			body = pr.title
 		}
 		message = req.CommitTitle + "\n\n" + body
+	}
+	// A squash commit's title defaults to "<title> (#N)" and its body to commit_message.
+	squashMessage := defaultSquashMessage(pr, "")
+	if req.CommitTitle != "" {
+		squashMessage = req.CommitTitle
+	}
+	if req.CommitMessage != "" {
+		squashMessage += "\n\n" + req.CommitMessage
 	}
 	missing := s.missingRequiredStatusesLocked(pr)
 	s.store.mu.Unlock()
@@ -585,7 +618,9 @@ func (s *Server) githubMergePull(w http.ResponseWriter, r *http.Request, who pri
 		writeProviderError(w, GitHub, http.StatusMethodNotAllowed, fmt.Sprintf("%d of %d required status checks are expected.", len(missing), len(missing)))
 		return
 	}
-	sha, err := s.landMerge(r.Context(), mergeRequest{pr: pr, expectedHead: req.SHA, message: message, author: actor(GitHub, who.name)})
+	sha, err := s.landMerge(r.Context(), mergeRequest{
+		pr: pr, expectedHead: req.SHA, message: message, squashMessage: squashMessage, author: actor(GitHub, who.name), squash: squash,
+	})
 	switch {
 	case errors.Is(err, errHeadMismatch):
 		writeProviderError(w, GitHub, http.StatusConflict, "Head branch was modified. Review and try the merge again.")
@@ -615,6 +650,8 @@ func (s *Server) githubListLabels(w http.ResponseWriter, r *http.Request, who pr
 	writeJSON(w, http.StatusOK, out)
 }
 
+var githubLabelColorRe = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
 func (s *Server) githubCreateLabel(w http.ResponseWriter, r *http.Request, who principal) {
 	rp, ok := s.githubRepo(w, r, who)
 	if !ok {
@@ -634,7 +671,12 @@ func (s *Server) githubCreateLabel(w http.ResponseWriter, r *http.Request, who p
 		githubValidationFailed(w, "Label", "name", "already_exists", "")
 		return
 	}
-	l := s.store.ensureLabelLocked(rp, req.Name, strings.TrimPrefix(req.Color, "#"))
+	// The color is a hexadecimal code without the leading "#".
+	if !githubLabelColorRe.MatchString(req.Color) {
+		githubValidationFailed(w, "Label", "color", "invalid", "")
+		return
+	}
+	l := s.store.ensureLabelLocked(rp, req.Name, req.Color)
 	l.description = req.Description
 	writeJSON(w, http.StatusCreated, s.githubLabelJSON(rp, l, requestBaseURL(r)))
 }
@@ -728,8 +770,8 @@ type githubCheckRunRequest struct {
 }
 
 type githubCheckRunOutput struct {
-	Title   string `json:"title"`
-	Summary string `json:"summary"`
+	Title   *string `json:"title"`
+	Summary *string `json:"summary"`
 }
 
 var (
@@ -743,12 +785,21 @@ func applyCheckRun(cs *commitStatus, req githubCheckRunRequest, now time.Time) s
 		cs.context = *req.Name
 	}
 	if req.DetailsURL != nil {
+		// details_url must be an HTTP or HTTPS URL; GitHub rejects an empty string.
+		u, err := url.Parse(*req.DetailsURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return "Invalid request.\n\nFor 'properties/details_url', " + strconv.Quote(*req.DetailsURL) + " is not a valid URL."
+		}
 		cs.targetURL = *req.DetailsURL
 	}
 	if req.Output != nil {
-		cs.title = req.Output.Title
-		cs.summary = req.Output.Summary
-		cs.description = req.Output.Title
+		// output.title and output.summary are required whenever output is given.
+		if req.Output.Title == nil || req.Output.Summary == nil {
+			return "Invalid request.\n\nNo subschema in \"anyOf\" matched.\nFor 'properties/output', nil is not an object.\nFor 'anyOf/1', \"title\" wasn't supplied.\nFor 'anyOf/1', \"summary\" wasn't supplied."
+		}
+		cs.title = *req.Output.Title
+		cs.summary = *req.Output.Summary
+		cs.description = *req.Output.Title
 	}
 	if req.Status != nil {
 		if !slices.Contains(githubCheckStatuses, *req.Status) {

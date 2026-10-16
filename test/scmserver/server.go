@@ -450,7 +450,7 @@ func (s *Server) rateLimit(w http.ResponseWriter, p Provider, who principal) boo
 		h.Set("X-Ratelimit-Used", strconv.Itoa(state.used))
 		h.Set("X-Ratelimit-Resource", "core")
 		if state.exceeded {
-			msg := "API rate limit exceeded for " + who.key + "."
+			msg := fmt.Sprintf("API rate limit exceeded for user ID %d.", who.userID())
 			if who.installationID != 0 {
 				msg = fmt.Sprintf("API rate limit exceeded for installation ID %d.", who.installationID)
 			}

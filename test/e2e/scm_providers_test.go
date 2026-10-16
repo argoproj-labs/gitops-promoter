@@ -266,10 +266,13 @@ func scmProviderSpecs() {
 				name, name+"-required", "--ignore-not-found")
 			newFlow(p).promoteThroughProtection(ctx, p, name)
 		},
-		// Azure DevOps is not covered yet: the provider treats an accepted completion request as merged, so when the
-		// completion is then rejected by policy the controller waits for it indefinitely.
+		// The test SCM server refuses an Azure DevOps completion request synchronously while the required status has
+		// not passed, so the provider's Merge returns an error and the controller retries, as for the other providers.
+		// Azure DevOps does not document that response; Behavior.AzureAsyncCompletionFailures models the alternative,
+		// an accepted completion that fails later, which the provider treats as merged and waits for indefinitely.
 		Entry("GitHub", scmserver.GitHub, NodeTimeout(12*time.Minute)),
 		Entry("GitLab", scmserver.GitLab, NodeTimeout(12*time.Minute)),
+		Entry("Azure DevOps", scmserver.AzureDevOps, NodeTimeout(12*time.Minute)),
 		Entry("Bitbucket Cloud", scmserver.BitbucketCloud, NodeTimeout(12*time.Minute)),
 		Entry("Gitea", scmserver.Gitea, NodeTimeout(12*time.Minute)),
 		Entry("Forgejo", scmserver.Forgejo, NodeTimeout(12*time.Minute)),

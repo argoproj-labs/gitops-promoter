@@ -465,7 +465,8 @@ func (s *Server) bitbucketTaskURL(r *http.Request, pr *pullRequest, task string)
 }
 
 // bitbucketMergePR merges a pull request. Bitbucket Cloud does not take an expected head SHA, so the merge lands
-// whatever the source branch points to. With AsyncMergeDelay set it answers 202 and completes in the background.
+// whatever the source branch points to. With AsyncMergeDelay set, or ?async=true, it answers 202 with the task-status
+// URL in the Location header and no body, and completes the merge in the background.
 func (s *Server) bitbucketMergePR(w http.ResponseWriter, r *http.Request, who principal) {
 	pr, ok := s.bitbucketPR(w, r)
 	if !ok {
@@ -478,17 +479,34 @@ func (s *Server) bitbucketMergePR(w http.ResponseWriter, r *http.Request, who pr
 	if r.ContentLength != 0 && !decodeJSON(w, r, BitbucketCloud, &req) {
 		return
 	}
-	if req.MergeStrategy != "" && req.MergeStrategy != "merge_commit" {
-		bitbucketError(w, http.StatusBadRequest, "merge_strategy: "+req.MergeStrategy+" is not allowed for this repository", nil)
+	squash := false
+	switch req.MergeStrategy {
+	case "", "merge_commit":
+	case "squash":
+		squash = true
+	case "fast_forward":
+		// Allowed by Bitbucket Cloud, but the server only lands merge and squash commits.
+		bitbucketError(w, http.StatusBadRequest, "merge_strategy: fast_forward is not supported by the test SCM server", nil)
+		return
+	default:
+		bitbucketError(w, http.StatusBadRequest, "merge_strategy: \""+req.MergeStrategy+"\" is not a valid choice.",
+			map[string][]string{"merge_strategy": {"\"" + req.MergeStrategy + "\" is not a valid choice."}})
 		return
 	}
 	behavior := s.behavior.get(BitbucketCloud)
 	s.store.mu.Lock()
 	state, conflicts, pending := pr.state, pr.conflicts, pr.asyncMergePending
+	pendingTask := pr.asyncMergeTaskID
 	missing := s.missingRequiredStatusesLocked(pr)
 	message := defaultMergeMessage(pr, req.Message)
+	squashMessage := defaultSquashMessage(pr, req.Message)
 	s.store.mu.Unlock()
 	switch {
+	case pending:
+		// "Calling it again on a queued pull request returns the same link."
+		w.Header().Set("Location", s.bitbucketTaskURL(r, pr, pendingTask))
+		writeNoContent(w, http.StatusAccepted)
+		return
 	case state == prMerged:
 		bitbucketError(w, http.StatusBadRequest, "This pull request is already merged.", nil)
 		return
@@ -501,31 +519,31 @@ func (s *Server) bitbucketMergePR(w http.ResponseWriter, r *http.Request, who pr
 	case len(missing) > 0:
 		bitbucketError(w, http.StatusBadRequest, fmt.Sprintf("You can't merge until you have %d successful builds.", len(missing)), nil)
 		return
-	case pending:
-		bitbucketError(w, http.StatusConflict, "A merge is already in progress for this pull request.", nil)
-		return
 	default:
 	}
 
-	if behavior.AsyncMergeDelay.Duration > 0 {
+	if behavior.AsyncMergeDelay.Duration > 0 || r.URL.Query().Get("async") == "true" {
 		task := newGUID()
 		s.store.mu.Lock()
 		pr.asyncMergePending = true
 		pr.asyncMergeTaskID = task
 		pr.asyncMergeMessage = message
+		pr.asyncMergeSquashMessage = squashMessage
+		pr.asyncMergeSquash = squash
+		pr.asyncMergeFailure = ""
 		pr.asyncMergeDueAt = s.now().Add(behavior.AsyncMergeDelay.Duration)
-		pr.author = who.name
+		pr.asyncMergeBy = who.name
 		s.store.mu.Unlock()
-		taskURL := s.bitbucketTaskURL(r, pr, task)
-		w.Header().Set("Location", taskURL)
-		writeJSON(w, http.StatusAccepted, map[string]any{
-			"task_status": "PENDING",
-			"links":       map[string]any{"self": map[string]any{"href": taskURL}},
-		})
+		// The 202 carries the task-status URL in the Location header and no body (the OpenAPI spec declares no
+		// content for it).
+		w.Header().Set("Location", s.bitbucketTaskURL(r, pr, task))
+		writeNoContent(w, http.StatusAccepted)
 		return
 	}
 
-	_, err := s.landMerge(r.Context(), mergeRequest{pr: pr, message: message, author: actor(BitbucketCloud, who.name)})
+	_, err := s.landMerge(r.Context(), mergeRequest{
+		pr: pr, message: message, squashMessage: squashMessage, author: actor(BitbucketCloud, who.name), squash: squash,
+	})
 	switch {
 	case errors.Is(err, errMergeConflict):
 		bitbucketError(w, http.StatusBadRequest, "You can't merge until you resolve all merge conflicts.", nil)
@@ -550,15 +568,16 @@ func (s *Server) bitbucketMergeTaskStatus(w http.ResponseWriter, r *http.Request
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	if pr.asyncMergeTaskID != r.PathValue("task") {
-		bitbucketError(w, http.StatusNotFound, "Task not found", nil)
-		return
-	}
-	if pr.asyncMergePending {
+	switch {
+	case pr.asyncMergeTaskID != r.PathValue("task"), pr.asyncMergePending:
+		// "Unknown or expired task IDs return a PENDING status."
 		writeJSON(w, http.StatusOK, map[string]any{"task_status": "PENDING"})
-		return
+	case pr.asyncMergeFailure != "":
+		// A merge task that failed answers 400 with the error.
+		bitbucketError(w, http.StatusBadRequest, pr.asyncMergeFailure, nil)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"task_status": "SUCCESS", "merge_result": s.bitbucketPRJSONLocked(pr, requestBaseURL(r))})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"task_status": "SUCCESS", "merge_result": s.bitbucketPRJSONLocked(pr, requestBaseURL(r))})
 }
 
 // processBitbucketAsyncMerges completes asynchronous merges whose delay elapsed.
@@ -579,12 +598,19 @@ func (s *Server) processBitbucketAsyncMerges(ctx context.Context) {
 	s.store.mu.Unlock()
 	for _, pr := range due {
 		s.store.mu.Lock()
-		message, author := pr.asyncMergeMessage, pr.author
+		merge := mergeRequest{
+			pr: pr, message: pr.asyncMergeMessage, squashMessage: pr.asyncMergeSquashMessage,
+			author: actor(BitbucketCloud, pr.asyncMergeBy), squash: pr.asyncMergeSquash,
+		}
 		s.store.mu.Unlock()
-		if _, err := s.landMerge(ctx, mergeRequest{pr: pr, message: message, author: actor(BitbucketCloud, author)}); err != nil {
+		if _, err := s.landMerge(ctx, merge); err != nil {
 			s.log.Error("complete Bitbucket asynchronous merge", "repo", pr.repo.fullName(), "id", pr.number, "error", err)
 			s.store.mu.Lock()
 			pr.asyncMergePending = false
+			pr.asyncMergeFailure = err.Error()
+			if errors.Is(err, errMergeConflict) {
+				pr.asyncMergeFailure = "You can't merge until you resolve all merge conflicts."
+			}
 			s.store.mu.Unlock()
 		}
 	}
@@ -652,9 +678,6 @@ func (s *Server) bitbucketCreateBuildStatus(w http.ResponseWriter, r *http.Reque
 		return
 	case len(req.Key) > 40:
 		bitbucketError(w, http.StatusBadRequest, "key: Ensure this value has at most 40 characters.", map[string][]string{"key": {"Ensure this value has at most 40 characters."}})
-		return
-	case req.URL == "":
-		bitbucketError(w, http.StatusBadRequest, "url: This field is required.", map[string][]string{"url": {"This field is required."}})
 		return
 	case !slices.Contains(bitbucketBuildStates, req.State):
 		bitbucketError(w, http.StatusBadRequest, "state: Invalid state", map[string][]string{"state": {"\"" + req.State + "\" is not a valid choice."}})

@@ -175,9 +175,19 @@ var _ = Describe("admin API", func() {
 			out, err = git(ctx, dir, "rev-list", "--parents", "-n", "1", info.MergeCommitSHA)
 			Expect(err).NotTo(HaveOccurred(), out)
 			parents := strings.Fields(out)[1:]
-			if squash {
+			switch {
+			case squash && p == scmserver.GitLab:
+				// GitLab's default merge method merges the squash commit with a merge commit.
+				Expect(info.SquashCommitSHA).NotTo(BeEmpty())
+				Expect(parents).To(Equal([]string{f.baseSHA, info.SquashCommitSHA}))
+				out, err = git(ctx, dir, "rev-list", "--parents", "-n", "1", info.SquashCommitSHA)
+				Expect(err).NotTo(HaveOccurred(), out)
+				Expect(strings.Fields(out)[1:]).To(Equal([]string{f.baseSHA}))
+			case squash:
+				Expect(info.SquashCommitSHA).To(Equal(info.MergeCommitSHA))
 				Expect(parents).To(Equal([]string{f.baseSHA}))
-			} else {
+			default:
+				Expect(info.SquashCommitSHA).To(BeEmpty())
 				Expect(parents).To(Equal([]string{f.baseSHA, f.headSHA}))
 			}
 			mergedTree, err := git(ctx, dir, "rev-parse", info.MergeCommitSHA+"^{tree}")
