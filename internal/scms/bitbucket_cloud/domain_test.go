@@ -3,6 +3,7 @@ package bitbucket_cloud
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -105,10 +106,11 @@ var _ = Describe("Bitbucket Cloud domain override", func() {
 		}))
 		DeferCleanup(srv.Close)
 
+		// Trust the test server's certificate, as the Bitbucket client uses http.DefaultTransport.
+		pool := x509.NewCertPool()
+		pool.AddCert(srv.Certificate())
 		previous := http.DefaultTransport
-		http.DefaultTransport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // httptest TLS only
-		}
+		http.DefaultTransport = &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
 		DeferCleanup(func() { http.DefaultTransport = previous })
 
 		srvURL, err := url.Parse(srv.URL)

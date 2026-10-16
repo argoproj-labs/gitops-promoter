@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -344,6 +345,13 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 	if req.Provider == AzureDevOps && req.Project == "" {
 		return RepoInfo{}, errors.New("project is required for Azure DevOps repositories")
 	}
+	// Names become directories under the data directory, so they must not traverse out of it.
+	if strings.Contains(req.Owner, "..") || strings.Contains(req.Project, "..") || strings.Contains(req.Name, "..") {
+		return RepoInfo{}, errors.New("owner, project and name must not contain \"..\"")
+	}
+	if err := validateRepoNames(req); err != nil {
+		return RepoInfo{}, err
+	}
 	if req.DefaultBranch == "" {
 		req.DefaultBranch = "main"
 	}
@@ -396,6 +404,27 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 		}
 	}
 	return s.repoInfo(ctx, r)
+}
+
+// validRepoSegment matches one segment of an owner, project or repository name.
+var validRepoSegment = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+
+// validateRepoNames checks that owner, project and name are made of safe path segments. Only GitLab namespaces may
+// contain "/", for subgroups.
+func validateRepoNames(req CreateRepoRequest) error {
+	values := []string{req.Owner, req.Name}
+	if req.Provider == GitLab {
+		values = append(strings.Split(req.Owner, "/"), req.Name)
+	}
+	if req.Project != "" {
+		values = append(values, req.Project)
+	}
+	for _, v := range values {
+		if !validRepoSegment.MatchString(v) {
+			return fmt.Errorf("invalid name %q: use letters, digits, '.', '-' and '_'", v)
+		}
+	}
+	return nil
 }
 
 // azureProjectUUIDLocked returns the ID of an Azure DevOps project, reusing the ID of existing repositories in it.

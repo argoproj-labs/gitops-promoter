@@ -66,6 +66,24 @@ var _ = Describe("admin API", func() {
 		Expect(out).To(Equal(`{"drySha": "n/a"}`))
 	})
 
+	DescribeTable("rejects repository names that are not safe path segments",
+		func(ctx SpecContext, req scmserver.CreateRepoRequest) {
+			_, err := admin.CreateRepo(ctx, req)
+			Expect(err).To(MatchError(ContainSubstring("400 Bad Request")))
+		},
+		Entry("a traversing owner", scmserver.CreateRepoRequest{Provider: scmserver.GitHub, Owner: "../escape", Name: "repo"}),
+		Entry("a traversing name", scmserver.CreateRepoRequest{Provider: scmserver.Gitea, Owner: "acme", Name: ".."}),
+		Entry("a nested name", scmserver.CreateRepoRequest{Provider: scmserver.GitHub, Owner: "acme", Name: "a/b"}),
+		Entry("a nested owner outside GitLab", scmserver.CreateRepoRequest{Provider: scmserver.Gitea, Owner: "acme/team", Name: "repo"}),
+		Entry("a traversing Azure DevOps project", scmserver.CreateRepoRequest{Provider: scmserver.AzureDevOps, Owner: "org", Project: "../p", Name: "repo"}),
+	)
+
+	It("accepts GitLab subgroups", func(ctx SpecContext) {
+		repo, err := admin.CreateRepo(ctx, scmserver.CreateRepoRequest{Provider: scmserver.GitLab, Owner: "group/subgroup", Name: "deploy"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repo.FullName).To(Equal("group/subgroup/deploy"))
+	})
+
 	It("changes pull requests out of band", func(ctx SpecContext) {
 		f := newFixture(ctx, scmserver.GitHub)
 		prObj := f.createPR(ctx, "out-of-band")
