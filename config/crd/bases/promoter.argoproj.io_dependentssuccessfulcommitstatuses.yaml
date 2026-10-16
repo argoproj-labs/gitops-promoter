@@ -67,6 +67,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for

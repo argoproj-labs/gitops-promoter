@@ -65,6 +65,11 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+
+	// SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the
+	// SCM provider. Promotion gates still use the phase.
+	// +kubebuilder:validation:Optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus

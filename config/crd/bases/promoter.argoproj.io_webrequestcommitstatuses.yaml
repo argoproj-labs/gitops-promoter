@@ -496,6 +496,11 @@ spec:
                 - proposed
                 - active
                 type: string
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               success:
                 description: Success defines when the commit status phase is success.
                   Evaluated every reconcile. See SuccessSpec.

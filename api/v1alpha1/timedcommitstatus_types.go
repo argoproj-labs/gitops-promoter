@@ -45,6 +45,11 @@ type TimedCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key,omitempty"`
 
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
+
 	// +required
 	Environments []TimedCommitStatusEnvironments `json:"environments"`
 }

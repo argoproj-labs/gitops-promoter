@@ -38,6 +38,9 @@ type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	SkipSCM *bool `json:"skipSCM,omitempty"`
 }
 
 // ArgoCDCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ArgoCDCommitStatusSpec type for use with
@@ -75,5 +78,13 @@ func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithApplicationSelector(value
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithSkipSCM sets the SkipSCM field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SkipSCM field is set to the value of the last call.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithSkipSCM(value bool) *ArgoCDCommitStatusSpecApplyConfiguration {
+	b.SkipSCM = &value
 	return b
 }

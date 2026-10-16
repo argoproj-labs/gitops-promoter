@@ -84,6 +84,11 @@ type WebRequestCommitStatusSpec struct {
 	// +optional
 	UrlTemplate string `json:"urlTemplate,omitempty"`
 
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
+
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
 	// - "proposed": Reports on the proposed hydrated commit SHA (default)
 	// - "active": Reports on the active hydrated commit SHA

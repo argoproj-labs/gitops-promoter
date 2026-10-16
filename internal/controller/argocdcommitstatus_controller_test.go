@@ -565,6 +565,100 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			})
 		})
 
+		It("should set skipSCM on the child CommitStatus", func() {
+			ctx := context.TODO()
+			const key = "argocd-skip-scm"
+
+			psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-skip-scm", "default")
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: key},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = os.RemoveAll(workTreePath) }()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			appLabelKey := "acdcs-skip-scm-test"
+			appLabelVal := psName
+			app := &argocd.Application{
+				Kind:       "Application",
+				APIVersion: "argoproj.io/v1alpha1",
+				Namespace:  "default",
+				Name:       "test-app-acdcs-skip-scm",
+				Labels: map[string]string{
+					appLabelKey: appLabelVal,
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        testGitRepoCloneURL(gitRepo),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{
+						Status:             argocd.HealthStatusHealthy,
+						LastTransitionTime: nil,
+					},
+					Sync: argocd.SyncStatus{
+						Status:   argocd.SyncStatusCodeSynced,
+						Revision: sha,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			acs := &promoterv1alpha1.ArgoCDCommitStatus{
+				Namespace: "default",
+				Name:      psName,
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					Key:                  key,
+					SkipSCM:              true,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{appLabelKey: appLabelVal},
+					},
+				},
+			}
+			resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var updated promoterv1alpha1.ArgoCDCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &updated)).To(Succeed())
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
 		It("should cleanup orphaned CommitStatus when a branch is no longer selected", func() {
 			ctx := context.TODO()
 

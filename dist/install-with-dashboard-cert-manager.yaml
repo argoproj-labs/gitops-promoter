@@ -134,6 +134,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               url:
                 description: URL generates the URL to use in the CommitStatus, for
                   example a link to the Argo CD UI.
@@ -2291,6 +2296,11 @@ spec:
                 minLength: 40
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the
+                  SCM provider. Promotion gates still use the phase.
+                type: boolean
               url:
                 description: Url is a URL that the user can follow to see more details
                   about the status
@@ -5185,6 +5195,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
@@ -5568,6 +5583,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               target:
                 default: active
                 description: |-
@@ -8009,6 +8029,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               timezone:
                 default: UTC
                 description: |-
@@ -8543,6 +8568,11 @@ spec:
                 required:
                 - name
                 type: object
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
             required:
             - environments
             - promotionStrategyRef
@@ -9187,6 +9217,11 @@ spec:
                 - proposed
                 - active
                 type: string
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+                  The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+                type: boolean
               success:
                 description: Success defines when the commit status phase is success.
                   Evaluated every reconcile. See SuccessSpec.

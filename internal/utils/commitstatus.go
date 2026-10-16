@@ -34,6 +34,7 @@ type UpsertCommitStatusParams struct {
 	Description string
 	Phase       promoterv1alpha1.CommitStatusPhase
 	FieldOwner  string
+	SkipSCM     bool
 }
 
 // UpsertCommitStatus creates or updates a CommitStatus resource using Server-Side Apply.
@@ -57,7 +58,8 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 			WithName(p.Key + "/" + p.Branch).
 			WithDescription(p.Description).
 			WithPhase(p.Phase).
-			WithSha(p.Sha))
+			WithSha(p.Sha).
+			WithSkipSCM(p.SkipSCM))
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName

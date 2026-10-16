@@ -145,6 +145,22 @@ the respective environments' live environment branches.
 Any tool wanting to gate a proposed commit status must create and update CommitStatuses with the appropriate SHAs for
 the respective environments' proposed (`-next`) environment branches.
 
+### Keep a status out of the SCM (`skipSCM`)
+
+By default, the CommitStatus controller posts each CommitStatus to the SCM. Set **`spec.skipSCM: true`** on a
+CommitStatus to keep it in Kubernetes only. Promotion gates still use its phase.
+
+Every built-in gate (`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
+`ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.skipSCM`**. The gate
+copies the value to every CommitStatus it creates.
+
+Use it when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
+waits for every external status. A gate that watches the pipeline then never finishes, because its own status is one
+of the statuses that the rule waits for.
+
+If you set `skipSCM: true` on a CommitStatus that the controller already posted, the SCM keeps the last posted state.
+The controller does not remove it.
+
 ### How Environment Ordering Works
 
 The PromotionStrategy controller creates a ChangeTransferPolicy for each environment, copies the PromotionStrategy's

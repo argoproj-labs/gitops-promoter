@@ -60,6 +60,9 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	UrlTemplate *string `json:"urlTemplate,omitempty"`
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	SkipSCM *bool `json:"skipSCM,omitempty"`
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
 	// - "proposed": Reports on the proposed hydrated commit SHA (default)
 	// - "active": Reports on the active hydrated commit SHA
@@ -114,6 +117,14 @@ func (b *WebRequestCommitStatusSpecApplyConfiguration) WithDescriptionTemplate(v
 // If called multiple times, the UrlTemplate field is set to the value of the last call.
 func (b *WebRequestCommitStatusSpecApplyConfiguration) WithUrlTemplate(value string) *WebRequestCommitStatusSpecApplyConfiguration {
 	b.UrlTemplate = &value
+	return b
+}
+
+// WithSkipSCM sets the SkipSCM field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SkipSCM field is set to the value of the last call.
+func (b *WebRequestCommitStatusSpecApplyConfiguration) WithSkipSCM(value bool) *WebRequestCommitStatusSpecApplyConfiguration {
+	b.SkipSCM = &value
 	return b
 }
 

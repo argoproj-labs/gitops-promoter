@@ -50,6 +50,11 @@ type GitCommitStatusSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
+
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted

@@ -189,6 +189,12 @@ Expression evaluated against commit data. Must return boolean.
 
 **Required**
 
+### spec.skipSCM
+
+When true, the controller keeps the generated CommitStatus in Kubernetes only. See [Keep a status out of the SCM](../index.md#keep-a-status-out-of-the-scm-skipscm).
+
+**Optional**
+
 ### Status Fields
 
 The GitCommitStatus resource maintains detailed status information:

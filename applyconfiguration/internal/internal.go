@@ -103,6 +103,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -506,6 +509,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: sha
       type:
         scalar: string
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: url
       type:
         scalar: string
@@ -695,6 +701,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -902,6 +911,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: target
       type:
         scalar: string
@@ -1605,6 +1617,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: timezone
       type:
         scalar: string
@@ -1842,6 +1857,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: skipSCM
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusStatus
   map:
     fields:
@@ -2080,6 +2098,9 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: proposed
+    - name: skipSCM
+      type:
+        scalar: boolean
     - name: success
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SuccessSpec

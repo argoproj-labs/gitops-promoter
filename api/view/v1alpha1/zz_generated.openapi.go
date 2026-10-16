@@ -744,6 +744,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
 					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -2071,6 +2078,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 							Format:      "",
 						},
 					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "sha", "name", "description", "phase"},
 			},
@@ -2727,6 +2741,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
+							Format:      "",
 						},
 					},
 				},
@@ -3409,6 +3430,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 						SchemaProps: spec.SchemaProps{
 							Description: "Description is a human-readable description of this validation that will be shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description. If not specified, defaults to empty string.",
 							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},
@@ -5588,6 +5616,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec
 							Format:      "",
 						},
 					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"timezone": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC.",
@@ -6373,6 +6408,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 							Format:      "",
 						},
 					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"environments": {
 						SchemaProps: spec.SchemaProps{
 							Type: []string{"array"},
@@ -6913,6 +6955,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 						SchemaProps: spec.SchemaProps{
 							Description: "UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables (including .TriggerVariables and .SuccessVariables), timing, and context rules as DescriptionTemplate. Typical uses: approval UI, dashboard, API, or runbook links. To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:\n  \"https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\nFor branch-only links: \"https://dashboard.example.com/{{ .Branch }}/status\".\n\nIf not specified, defaults to empty string (no URL shown).",
 							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"skipSCM": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
+							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},

@@ -17,6 +17,9 @@ spec:
   # URL for the commit status target link in the SCM (Go templates supported). Optional.
   urlTemplate: ""
 
+  # Optional. When true, the CommitStatus objects this gate creates are not posted to the SCM. Gates still use the phase.
+  skipSCM: false
+
   # Which SHA to report on: "proposed" (default) or "active". Optional.
   reportOn: proposed
 

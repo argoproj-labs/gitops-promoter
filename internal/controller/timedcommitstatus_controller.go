@@ -260,6 +260,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			Key:         key,
 			Description: message,
 			Phase:       phase,
+			SkipSCM:     tcs.Spec.SkipSCM,
 			FieldOwner:  constants.TimedCommitStatusControllerFieldOwner,
 		})
 		if err != nil {

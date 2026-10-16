@@ -39,6 +39,9 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// If not specified, defaults to empty string.
 	Description *string `json:"description,omitempty"`
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	SkipSCM *bool `json:"skipSCM,omitempty"`
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted
@@ -109,6 +112,14 @@ func (b *GitCommitStatusSpecApplyConfiguration) WithKey(value string) *GitCommit
 // If called multiple times, the Description field is set to the value of the last call.
 func (b *GitCommitStatusSpecApplyConfiguration) WithDescription(value string) *GitCommitStatusSpecApplyConfiguration {
 	b.Description = &value
+	return b
+}
+
+// WithSkipSCM sets the SkipSCM field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SkipSCM field is set to the value of the last call.
+func (b *GitCommitStatusSpecApplyConfiguration) WithSkipSCM(value bool) *GitCommitStatusSpecApplyConfiguration {
+	b.SkipSCM = &value
 	return b
 }
 

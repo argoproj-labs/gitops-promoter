@@ -27,6 +27,9 @@ type ScheduledCommitStatusSpecApplyConfiguration struct {
 	// Key is the gate name referenced in the PromotionStrategy's proposedCommitStatuses.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	SkipSCM *bool `json:"skipSCM,omitempty"`
 	// Timezone is the default IANA timezone name used for evaluating cron expressions across all windows.
 	// Individual windows may override this with their own timezone field.
 	// Defaults to UTC.
@@ -63,6 +66,14 @@ func (b *ScheduledCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(v
 // If called multiple times, the Key field is set to the value of the last call.
 func (b *ScheduledCommitStatusSpecApplyConfiguration) WithKey(value string) *ScheduledCommitStatusSpecApplyConfiguration {
 	b.Key = &value
+	return b
+}
+
+// WithSkipSCM sets the SkipSCM field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SkipSCM field is set to the value of the last call.
+func (b *ScheduledCommitStatusSpecApplyConfiguration) WithSkipSCM(value bool) *ScheduledCommitStatusSpecApplyConfiguration {
+	b.SkipSCM = &value
 	return b
 }
 

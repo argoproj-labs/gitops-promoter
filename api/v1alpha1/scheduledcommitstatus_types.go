@@ -36,6 +36,11 @@ type ScheduledCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
 
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
+
 	// Timezone is the default IANA timezone name used for evaluating cron expressions across all windows.
 	// Individual windows may override this with their own timezone field.
 	// Defaults to UTC.

@@ -38,6 +38,9 @@ type DependentsSuccessfulCommitStatusSpecApplyConfiguration struct {
 	// .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
 	// (see controller docs).
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	SkipSCM *bool `json:"skipSCM,omitempty"`
 }
 
 // DependentsSuccessfulCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusSpec type for use with
@@ -67,5 +70,13 @@ func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithKey(value s
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithSkipSCM sets the SkipSCM field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SkipSCM field is set to the value of the last call.
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithSkipSCM(value bool) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
+	b.SkipSCM = &value
 	return b
 }

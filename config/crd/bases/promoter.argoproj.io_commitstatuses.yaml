@@ -101,6 +101,11 @@ spec:
                 minLength: 40
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
+              skipSCM:
+                description: |-
+                  SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the
+                  SCM provider. Promotion gates still use the phase.
+                type: boolean
               url:
                 description: Url is a URL that the user can follow to see more details
                   about the status

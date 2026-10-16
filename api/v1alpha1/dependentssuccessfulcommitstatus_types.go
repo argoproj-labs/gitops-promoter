@@ -48,6 +48,11 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// (see controller docs).
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +kubebuilder:validation:Optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
 }
 
 // DependentEnvironment declares one environment branch and the other branches it depends on.

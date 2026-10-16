@@ -29,6 +29,8 @@ spec:
         - description: Sunday maintenance blackout
           cron: "0 0 * * 0"
           duration: 24h
+  # Optional. When true, the CommitStatus objects this gate creates are not posted to the SCM. Gates still use the phase.
+  skipSCM: false
 status:
   observedGeneration: 1
   environments:

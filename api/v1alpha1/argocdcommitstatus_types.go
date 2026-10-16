@@ -47,6 +47,11 @@ type ArgoCDCommitStatusSpec struct {
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+
+	// SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates.
+	// The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.
+	// +kubebuilder:validation:Optional
+	SkipSCM bool `json:"skipSCM,omitempty"`
 }
 
 // CommitStatusKey returns spec.key, or the default when Key is empty.

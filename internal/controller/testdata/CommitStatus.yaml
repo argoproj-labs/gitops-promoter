@@ -23,6 +23,10 @@ spec:
 
   # Optional URL to link to more information about the commit status.
   url: https://argocd.example.com/applications/example-app
+
+  # Optional. When true, the controller does not post this status to the SCM. Gates still use the phase.
+  # Default is false.
+  skipSCM: false
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

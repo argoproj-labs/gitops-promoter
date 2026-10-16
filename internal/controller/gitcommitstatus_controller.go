@@ -275,6 +275,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			Key:         gcs.Spec.Key,
 			Description: gcs.Spec.Description,
 			Phase:       phase,
+			SkipSCM:     gcs.Spec.SkipSCM,
 			FieldOwner:  constants.GitCommitStatusControllerFieldOwner,
 		})
 		if err != nil {

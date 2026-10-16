@@ -49,6 +49,10 @@ This configuration:
 
 `spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. When omitted, the CRD default is `timer`. We recommend setting `spec.key` explicitly (including `timer` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../../roadmap.md).
 
+### Keep the status out of the SCM (`skipSCM`)
+
+Set **`spec.skipSCM: true`** to keep the generated CommitStatus in Kubernetes only. See [Keep a status out of the SCM](../index.md#keep-a-status-out-of-the-scm-skipscm).
+
 ### Integrating with PromotionStrategy
 
 Reference the same key in `activeCommitStatuses` (must match `TimedCommitStatus.spec.key`):

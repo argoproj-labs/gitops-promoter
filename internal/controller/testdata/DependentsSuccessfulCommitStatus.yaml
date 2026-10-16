@@ -8,6 +8,8 @@ spec:
     name: example-promotion-strategy
   url:
     template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+  # Optional. When true, the CommitStatus objects this gate creates are not posted to the SCM. Gates still use the phase.
+  skipSCM: false
 status:
   observedGeneration: 1
   environments:

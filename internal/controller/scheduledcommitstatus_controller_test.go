@@ -145,6 +145,55 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		})
 	})
 
+	Describe("skipSCM", func() {
+		var scs *promoterv1alpha1.ScheduledCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a ScheduledCommitStatus with skipSCM")
+			scs = &promoterv1alpha1.ScheduledCommitStatus{
+				Name:      name + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
+					Key: "promotion-window",
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					SkipSCM: true,
+					Environments: []promoterv1alpha1.ScheduledEnvironment{
+						{
+							Branch: testBranchDevelopment,
+							Allow: []promoterv1alpha1.CronWindow{
+								{
+									Cron:     "* * * * *",
+									Duration: metav1.Duration{Duration: 24 * time.Hour},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, scs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			_ = k8sClient.Delete(ctx, scs)
+		})
+
+		It("should set skipSCM on the child CommitStatus", func() {
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.CommitStatusResourceName(ctx, scs, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("Exclusion-Only Mode", func() {
 		var scs *promoterv1alpha1.ScheduledCommitStatus
 

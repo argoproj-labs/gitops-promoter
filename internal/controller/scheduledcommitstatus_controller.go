@@ -250,6 +250,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 			Key:         scs.Spec.Key,
 			Description: message,
 			Phase:       phase,
+			SkipSCM:     scs.Spec.SkipSCM,
 			FieldOwner:  constants.ScheduledCommitStatusControllerFieldOwner,
 		})
 		if err != nil {
