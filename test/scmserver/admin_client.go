@@ -124,6 +124,12 @@ func (c *AdminClient) Commit(ctx context.Context, repoID int64, req CommitReques
 	return out, c.do(ctx, http.MethodPost, "/api/repos/"+strconv.FormatInt(repoID, 10)+"/commits", req, &out)
 }
 
+// SetBranch points a branch at an existing commit, creating it if needed, as if it had been pushed.
+func (c *AdminClient) SetBranch(ctx context.Context, repoID int64, branch string, req BranchRequest) (CommitResponse, error) {
+	var out CommitResponse
+	return out, c.do(ctx, http.MethodPut, "/api/repos/"+strconv.FormatInt(repoID, 10)+"/branches/"+branch, req, &out)
+}
+
 // SetProtection configures the required statuses of a branch.
 func (c *AdminClient) SetProtection(ctx context.Context, repoID int64, branch string, req ProtectionRequest) error {
 	return c.do(ctx, http.MethodPut, "/api/repos/"+strconv.FormatInt(repoID, 10)+"/protection/"+branch, req, nil)

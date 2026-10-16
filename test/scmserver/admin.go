@@ -100,6 +100,14 @@ type CommitResponse struct {
 	Before string `json:"before"`
 }
 
+// BranchRequest points a branch at an existing commit, creating the branch if needed, as if it had been pushed.
+type BranchRequest struct {
+	// SHA is the commit (or any revision) the branch points to.
+	SHA string `json:"sha"`
+	// Force allows moving the branch to a commit that does not descend from its current head.
+	Force bool `json:"force,omitempty"`
+}
+
 // PullRequestInfo describes a pull request, including server-side state providers do not expose directly.
 type PullRequestInfo struct {
 	CreatedAt             time.Time  `json:"createdAt"`
@@ -188,6 +196,7 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("GET /api/repos/{id}", s.adminGetRepo)
 	mux.HandleFunc("DELETE /api/repos/{id}", s.adminDeleteRepo)
 	mux.HandleFunc("POST /api/repos/{id}/commits", s.adminCommit)
+	mux.HandleFunc("PUT /api/repos/{id}/branches/{branch...}", s.adminSetBranch)
 	mux.HandleFunc("PUT /api/repos/{id}/protection/{branch...}", s.adminSetProtection)
 	mux.HandleFunc("GET /api/repos/{id}/pulls/{number}", s.adminGetPull)
 	mux.HandleFunc("POST /api/repos/{id}/pulls/{number}/actions", s.adminPullAction)
@@ -597,6 +606,61 @@ func (s *Server) adminCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// SetBranch points branch of repository repoID at req.SHA and notifies webhook subscribers as for a push.
+func (s *Server) SetBranch(ctx context.Context, repoID int64, branch string, req BranchRequest) (CommitResponse, error) {
+	s.store.mu.Lock()
+	r, ok := s.store.repos[repoID]
+	s.store.mu.Unlock()
+	if !ok {
+		return CommitResponse{}, errNotFound
+	}
+	r.gitMu.Lock()
+	sha, err := s.git.resolve(ctx, r.dir, req.SHA)
+	if err != nil {
+		r.gitMu.Unlock()
+		return CommitResponse{}, fmt.Errorf("resolve %q: %w", req.SHA, err)
+	}
+	before, err := s.git.branchSHA(ctx, r.dir, branch)
+	if err != nil && !errors.Is(err, errNotFound) {
+		r.gitMu.Unlock()
+		return CommitResponse{}, err
+	}
+	if before != "" && !req.Force {
+		ff, err := s.git.isAncestor(ctx, r.dir, before, sha)
+		if err != nil || !ff {
+			r.gitMu.Unlock()
+			return CommitResponse{}, fmt.Errorf("%s does not descend from %s (set force to rewrite the branch)", sha, before)
+		}
+	}
+	if err := s.git.updateRef(ctx, r.dir, "refs/heads/"+branch, sha, before); err != nil {
+		r.gitMu.Unlock()
+		return CommitResponse{}, err
+	}
+	r.gitMu.Unlock()
+	before = orZero(before)
+	if before != sha {
+		s.afterRefChanges(ctx, r, []refChange{{ref: "refs/heads/" + branch, before: before, after: sha}}, "scmserver")
+	}
+	return CommitResponse{SHA: sha, Before: before}, nil
+}
+
+func (s *Server) adminSetBranch(w http.ResponseWriter, r *http.Request) {
+	rp, ok := s.adminRepo(w, r)
+	if !ok {
+		return
+	}
+	var req BranchRequest
+	if !decodeAdmin(w, r, &req) {
+		return
+	}
+	resp, err := s.SetBranch(r.Context(), rp.id, r.PathValue("branch"), req)
+	if err != nil {
+		adminError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) adminSetProtection(w http.ResponseWriter, r *http.Request) {

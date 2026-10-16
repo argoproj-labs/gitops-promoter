@@ -124,6 +124,8 @@ var _ = Describe("controller", Ordered, func() {
 		})
 	})
 
+	Context("SCM providers", Ordered, scmProviderSpecs)
+
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
 		// APIService) using the cert-manager overlay (cert-manager is installed in

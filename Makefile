@@ -296,6 +296,11 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-scm-server
+run-scm-server: ## Run the test SCM server on localhost (admin API :9000, providers :9001-:9006). See docs/contributing/test-scm-server.md.
+	mkdir -p $(LOCALBIN)
+	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token
+
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 
 	cd ui/dashboard && npm install && npm run dev &
@@ -374,6 +379,12 @@ test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
+
+SCM_SERVER_IMG ?= scm-server:e2e
+
+.PHONY: docker-build-scm-server
+docker-build-scm-server: ## Build the test SCM server image used by the e2e tests.
+	$(CONTAINER_TOOL) build -f test/scmserver/Dockerfile -t ${SCM_SERVER_IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

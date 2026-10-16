@@ -1,0 +1,8 @@
+# Deploys the test SCM server for e2e tests. Create the scm-server-tls secret (tls.crt, tls.key, ca.crt) first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: scm-server
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
