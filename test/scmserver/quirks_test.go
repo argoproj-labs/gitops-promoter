@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -155,7 +156,7 @@ var _ = Describe("provider quirks", func() {
 		It("rejects a repeated pending status with 400, which the provider treats as already done", func(ctx SpecContext) {
 			f := newFixture(ctx, scmserver.GitLab)
 			status := f.commitStatus("promoter-pending-twice", v1alpha1.CommitPhasePending)
-			_, err := f.statuses.Set(ctx, status)
+			created, err := f.statuses.Set(ctx, status)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = f.statuses.Set(ctx, status)
 			Expect(err).NotTo(HaveOccurred())
@@ -165,6 +166,7 @@ var _ = Describe("provider quirks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(statuses).To(HaveLen(1))
 			Expect(statuses[0].State).To(Equal("pending"))
+			Expect(created.Status.Id).To(Equal(strconv.FormatInt(statuses[0].ID, 10)), "the 201 response carries the new status's ID")
 		})
 
 		It("is retried transparently by the GitLab client on server errors", func(ctx SpecContext) {

@@ -299,7 +299,10 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: run-scm-server
 run-scm-server: ## Run the test SCM server on localhost (admin API :9000, providers :9001-:9006). See docs/contributing/test-scm-server.md.
 	mkdir -p $(LOCALBIN)
-	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token
+	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token \
+		--admin-addr 127.0.0.1:9000 --github-addr 127.0.0.1:9001 --gitlab-addr 127.0.0.1:9002 \
+		--azuredevops-addr 127.0.0.1:9003 --bitbucket-addr 127.0.0.1:9004 --gitea-addr 127.0.0.1:9005 \
+		--forgejo-addr 127.0.0.1:9006
 
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 

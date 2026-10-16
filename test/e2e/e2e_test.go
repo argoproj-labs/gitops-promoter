@@ -36,6 +36,10 @@ const (
 )
 
 var _ = Describe("controller", Ordered, func() {
+	// installedApplicationCRD is true when the suite installed the Argo CD Application CRD, so teardown leaves a CRD
+	// that was already there, and its Applications, alone.
+	var installedApplicationCRD bool
+
 	BeforeAll(func() {
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
@@ -45,10 +49,14 @@ var _ = Describe("controller", Ordered, func() {
 
 		// The default ControllerConfiguration watches local Argo CD Applications, so the controller cannot
 		// start without the Application CRD.
-		By("installing the Argo CD Application CRD")
-		cmd := exec.Command("kubectl", "apply", "-f", argoCDApplicationCRD)
-		_, err := utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred())
+		By("installing the Argo CD Application CRD unless the cluster has it")
+		cmd := exec.Command("kubectl", "get", "crd", "applications.argoproj.io")
+		if _, err := utils.Run(cmd); err != nil {
+			cmd = exec.Command("kubectl", "apply", "-f", argoCDApplicationCRD)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			installedApplicationCRD = true
+		}
 
 		By("creating manager namespace")
 		cmd = exec.Command("kubectl", "create", "ns", namespace)
@@ -66,9 +74,11 @@ var _ = Describe("controller", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
 
-		By("removing the Argo CD Application CRD")
-		cmd = exec.Command("kubectl", "delete", "-f", argoCDApplicationCRD, "--ignore-not-found")
-		_, _ = utils.Run(cmd)
+		if installedApplicationCRD {
+			By("removing the Argo CD Application CRD")
+			cmd = exec.Command("kubectl", "delete", "-f", argoCDApplicationCRD, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		}
 	})
 
 	Context("Operator", func() {

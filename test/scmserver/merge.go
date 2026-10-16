@@ -229,6 +229,14 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	}
 
 	r.gitMu.Lock()
+	// Another merge of the same pull request may have landed while this one waited for the lock.
+	s.store.mu.Lock()
+	state = pr.state
+	s.store.mu.Unlock()
+	if state != prOpen {
+		r.gitMu.Unlock()
+		return "", errNotOpen
+	}
 	head, err := s.git.branchSHA(ctx, r.dir, source)
 	if err != nil {
 		r.gitMu.Unlock()
@@ -274,8 +282,8 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 		return "", err
 	}
 	_ = s.git.deleteRef(ctx, r.dir, pullRefPrefix(r.provider, pr.number)+"/merge")
-	r.gitMu.Unlock()
 
+	// Mark the pull request merged before releasing gitMu, so a concurrent merge sees it is no longer open.
 	s.store.mu.Lock()
 	pr.state = prMerged
 	pr.headSHA = head
@@ -288,6 +296,7 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	pr.completionQueued = false
 	pr.asyncMergePending = false
 	s.store.mu.Unlock()
+	r.gitMu.Unlock()
 
 	s.afterRefChanges(ctx, r, []refChange{{ref: "refs/heads/" + target, before: base, after: mergeSHA}}, author.name)
 	return mergeSHA, nil

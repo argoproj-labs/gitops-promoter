@@ -608,13 +608,9 @@ func (s *Server) gitlabSetStatus(w http.ResponseWriter, r *http.Request, _ princ
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	cs := s.store.latestStatusLocked(rp, sha, name)
-	if cs == nil || (cs.state != "pending" && cs.state != "running") {
+	isNew := cs == nil || (cs.state != "pending" && cs.state != "running")
+	if isNew {
 		cs = &commitStatus{sha: sha, context: name, state: "created", createdAt: now}
-		defer func() {
-			if cs.state != "created" {
-				s.store.addStatusLocked(rp, cs)
-			}
-		}()
 	}
 	if req.State == "running" && cs.state != "pending" && slices.Contains(gitlabStatusEvents["pending"].from, cs.state) {
 		cs.state = "pending" // the API enqueues before running
@@ -630,6 +626,10 @@ func (s *Server) gitlabSetStatus(w http.ResponseWriter, r *http.Request, _ princ
 	cs.updatedAt = now
 	if req.State == "running" {
 		cs.startedAt = now
+	}
+	if isNew {
+		// Stored only once the transition is accepted, and before the response so it carries the status ID.
+		s.store.addStatusLocked(rp, cs)
 	}
 	writeJSON(w, http.StatusCreated, s.gitlabStatusJSON(cs, req.Ref))
 }

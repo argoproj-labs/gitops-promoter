@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -122,6 +123,36 @@ var _ = Describe("admin API", func() {
 		prs, err := admin.PullRequests(ctx, f.repo.ID, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(prs).To(BeEmpty())
+	})
+
+	It("lands one merge commit when the same pull request is merged twice at once", func(ctx SpecContext) {
+		f := newFixture(ctx, scmserver.GitHub)
+		prObj := f.createPR(ctx, "merged-twice")
+		number, err := strconv.Atoi(prObj.Status.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		errs := make([]error, 2)
+		var wg sync.WaitGroup
+		for i := range errs {
+			wg.Add(1)
+			go func() {
+				defer GinkgoRecover()
+				defer wg.Done()
+				_, errs[i] = admin.PullRequestAction(ctx, f.repo.ID, number, scmserver.PullRequestAction{Action: "merge"})
+			}()
+		}
+		wg.Wait()
+		Expect(errs).To(ContainElement(BeNil()))
+		Expect(errs).To(ContainElement(MatchError(ContainSubstring("not open"))))
+
+		info := f.serverPR(ctx, prObj.Status.ID)
+		Expect(f.branchSHA(ctx, targetBranch)).To(Equal(info.MergeCommitSHA))
+		dir := filepath.Join(GinkgoT().TempDir(), "clone")
+		out, err := git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
+		Expect(err).NotTo(HaveOccurred(), out)
+		out, err = git(ctx, dir, "rev-list", "--parents", "-n", "1", info.MergeCommitSHA)
+		Expect(err).NotTo(HaveOccurred(), out)
+		Expect(strings.Fields(out)[1:]).To(Equal([]string{f.baseSHA, f.headSHA}))
 	})
 
 	DescribeTable("merges pull requests out of band with a merge or a squash commit",
