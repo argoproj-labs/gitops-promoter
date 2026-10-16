@@ -38,15 +38,20 @@ const (
 	scmGitHubAppID     = int64(424242)
 	webhookReceiverURL = "http://promoter-webhook-receiver.promoter-system.svc:3333/"
 	promotionTimeout   = 5 * time.Minute
-	// requeueInterval is the work queue requeue interval, and the rate limiter's slow delay, the suite configures on
-	// the deployed controller.
-	requeueInterval = 5 * time.Second
-	// webhookOnlyRequeue is the requeue interval of the webhook-driven spec: long enough that no requeue fires within
-	// its timeout, so only webhooks and watches can advance the promotion.
-	webhookOnlyRequeue = time.Hour
-	// holdTime is how long a spec watches a pull request it expects the controller to leave open. A pull request the
-	// controller wants to merge merges within one requeue interval of it noticing the pull request, so a hold longer
-	// than requeueInterval proves the controller declined.
+	// requeueInterval is the work queue requeue interval the suite configures on the deployed controller. It is
+	// longer than any spec, so no requeue fires during a scenario: the server's push webhooks and the controllers'
+	// watches have to carry every promotion on their own.
+	requeueInterval = time.Hour
+	// pollingRequeue is the requeue interval for the one scenario that needs the controller to poll the provider:
+	// a pull request closed on the provider sends no push, and the webhook receiver handles push events only, so the
+	// controller learns of it only by re-reading the pull request.
+	pollingRequeue = 5 * time.Second
+	// retryDelay is the PullRequest rate limiter's slow delay, which retries a merge the provider refused (branch
+	// protection). It defaults to 5 minutes.
+	retryDelay = 5 * time.Second
+	// holdTime is how long a spec watches a pull request it expects the controller to leave open. With requeues off,
+	// the controller acts on a pull request within seconds of the webhook that announces it, so this long a hold
+	// proves the controller declined to merge.
 	holdTime = 8 * time.Second
 )
 
@@ -111,10 +116,7 @@ func scmProviderSpecs() {
 		run(ctx, "", "kubectl", "wait", "deployment/scm-server", "-n", scmServerNamespace,
 			"--for=condition=Available", "--timeout=3m")
 
-		By("shortening requeue intervals so polling paths finish within the spec timeouts")
-		// Every wait in the suite is quantized by the controllers' requeue interval, so it is short. A merge the
-		// provider refuses (branch protection) is retried by the PullRequest work queue's rate limiter, whose default
-		// slow delay is 5 minutes; shorten it too. holdTime must exceed requeueInterval.
+		By("disabling requeues so only webhooks and watches drive the promotions, and shortening merge retries")
 		configureRequeue(ctx, requeueInterval)
 
 		By("making the controller trust the server's CA for API calls and git")
@@ -233,7 +235,11 @@ func scmProviderSpecs() {
 		})
 	}, NodeTimeout(12*time.Minute))
 
+	// Closing a pull request on the provider pushes nothing, so no webhook announces it; the controller only notices
+	// when it re-reads the pull request on a requeue. This scenario alone runs with a short requeue.
 	It("opens a new pull request when a person closes one on the provider", func(ctx SpecContext) {
+		configureRequeue(ctx, pollingRequeue)
+		DeferCleanup(func(ctx SpecContext) { configureRequeue(ctx, requeueInterval) })
 		name := func(p scmserver.Provider) string { return string(p) + "-reopened" }
 		cleanupPromotions("promotionstrategy", name)
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
@@ -252,35 +258,21 @@ func scmProviderSpecs() {
 			newFlow(p).promoteThroughProtection(ctx, p, name(p))
 		})
 	}, NodeTimeout(12*time.Minute))
-
-	// With requeues this long, nothing but the server's push webhooks (and the controllers' own watches) can move a
-	// promotion along within the timeout: the hydration push, the merge into development and the merge into staging
-	// each have to reach the webhook receiver, be attributed to the right ChangeTransferPolicy and trigger it.
-	It("promotes driven by the provider's push webhooks alone, with requeues disabled", func(ctx SpecContext) {
-		configureRequeue(ctx, webhookOnlyRequeue)
-		DeferCleanup(func(ctx SpecContext) { configureRequeue(ctx, requeueInterval) })
-		name := func(p scmserver.Provider) string { return string(p) + "-webhook" }
-		cleanupPromotions("promotionstrategy", name)
-		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
-			newFlow(p).promote(ctx, p, name(p))
-		})
-	}, NodeTimeout(12*time.Minute))
 }
 
-// configureRequeue sets every controller's work queue requeue interval, and the PullRequest rate limiter's slow
-// delay, on the deployed ControllerConfiguration. The ChangeTransferPolicyHistory controller is included: it rebuilds
-// an entry that lacks a pull request ID on its requeue, so when a hand-merged pull request's promotion-history note
-// lands after the rebuild the pull request ID appears within one interval instead of its default requeue.
+// configureRequeue sets every controller's work queue requeue interval to interval on the deployed
+// ControllerConfiguration, and the PullRequest rate limiter's slow delay to retryDelay.
 func configureRequeue(ctx context.Context, interval time.Duration) {
 	GinkgoHelper()
 	d := interval.String()
+	retry := retryDelay.String()
 	requeue := `{"spec":{` +
 		`"promotionStrategy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"changeTransferPolicyHistory":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"pullRequest":{"workQueue":{"requeueDuration":"` + d + `","rateLimiter":{"maxOf":[` +
 		`{"bucket":{"qps":10,"bucket":100}},` +
-		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + d + `","maxFastAttempts":3}}]}}},` +
+		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + retry + `","maxFastAttempts":3}}]}}},` +
 		`"commitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
 		`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}}}}`
 	run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
