@@ -93,6 +93,17 @@ spec:
                 - success
                 - failure
                 type: string
+              publishTo:
+                default: scm
+                description: |-
+                  PublishTo controls where the commit status is published.
+                  - "scm": the controller posts the status to the SCM provider (default)
+                  - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider
+                  Promotion gates use the phase in both modes.
+                enum:
+                - scm
+                - promoter
+                type: string
               sha:
                 description: |-
                   SHA is the commit SHA to set the status on.

@@ -62,6 +62,10 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: promoter`** to keep the generated CommitStatus in Kubernetes only. The default, `scm`, posts it to the SCM. See [Keep a status out of the SCM](../../index.md#keep-a-status-out-of-the-scm-publishto).
+
 ### Shared trigger and success expr (`when.variables`)
 
 Optional **`when.variables`** (same shape as `when.output`: an `expression` string) runs **once per evaluation** of that `when` block, **before** `when.expression` and optional `when.output.expression`. It must return a **JSON object** (expr map). The result is injected as top-level binding **`Variables`** for those two expressions only.

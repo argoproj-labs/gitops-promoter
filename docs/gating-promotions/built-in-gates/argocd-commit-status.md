@@ -64,6 +64,10 @@ spec:
     name: webservice-tier-1
 ```
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: promoter`** to keep the generated CommitStatus in Kubernetes only. The default, `scm`, posts it to the SCM. See [Keep a status out of the SCM](../index.md#keep-a-status-out-of-the-scm-publishto).
+
 ### Commit Status URL Template
 To configure setting the url of a commit status, for example, a link to an Argo CD instance, set the `url.template` field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [Sprig](https://masterminds.github.io/sprig/) functions (excluding `env`, `expandenv` and `getHostByName`) are supported as well as an additional [`urlQueryEscape`](https://pkg.go.dev/net/url#QueryEscape) function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
 

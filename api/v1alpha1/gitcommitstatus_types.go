@@ -50,6 +50,15 @@ type GitCommitStatusSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
+	// PublishTo sets spec.publishTo on the CommitStatus objects this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider (default)
+	// - "promoter": the CommitStatus controller keeps them in Kubernetes only
+	// Promotion gates use the phase in both modes.
+	// +optional
+	// +kubebuilder:default="scm"
+	// +kubebuilder:validation:Enum=scm;promoter
+	PublishTo CommitStatusPublishTo `json:"publishTo,omitempty"`
+
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted

@@ -43,6 +43,11 @@ type CommitStatusSpecApplyConfiguration struct {
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// Url is a URL that the user can follow to see more details about the status
 	Url *string `json:"url,omitempty"`
+	// PublishTo controls where the commit status is published.
+	// - "scm": the controller posts the status to the SCM provider (default)
+	// - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider
+	// Promotion gates use the phase in both modes.
+	PublishTo *apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusSpecApplyConfiguration constructs a declarative configuration of the CommitStatusSpec type for use with
@@ -96,5 +101,13 @@ func (b *CommitStatusSpecApplyConfiguration) WithPhase(value apiv1alpha1.CommitS
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *CommitStatusSpecApplyConfiguration) WithUrl(value string) *CommitStatusSpecApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PublishTo field is set to the value of the last call.
+func (b *CommitStatusSpecApplyConfiguration) WithPublishTo(value apiv1alpha1.CommitStatusPublishTo) *CommitStatusSpecApplyConfiguration {
+	b.PublishTo = &value
 	return b
 }

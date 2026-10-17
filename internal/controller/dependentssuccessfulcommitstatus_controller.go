@@ -550,7 +550,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 		WithSha(reportedSha).
 		WithName(key).
 		WithDescription(description).
-		WithPhase(phase)
+		WithPhase(phase).
+		WithPublishTo(dcs.Spec.PublishTo)
 
 	if renderedURL != "" {
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)

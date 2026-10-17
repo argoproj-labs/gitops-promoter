@@ -29,6 +29,8 @@ spec:
         - description: Sunday maintenance blackout
           cron: "0 0 * * 0"
           duration: 24h
+  # Optional. Where the CommitStatus objects this gate creates are published: "scm" (default) posts them to the SCM, "promoter" keeps them in Kubernetes only.
+  publishTo: scm
 status:
   observedGeneration: 1
   environments:

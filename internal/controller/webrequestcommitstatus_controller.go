@@ -438,7 +438,8 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		WithName(wrcs.Spec.Key + "/" + branch).
 		WithDescription(description).
 		WithPhase(phase).
-		WithSha(sha)
+		WithSha(sha).
+		WithPublishTo(wrcs.Spec.PublishTo)
 
 	// Render URL template if present
 	if wrcs.Spec.UrlTemplate != "" {

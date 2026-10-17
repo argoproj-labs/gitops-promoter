@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // DependentsSuccessfulCommitStatusSpecApplyConfiguration represents a declarative configuration of the DependentsSuccessfulCommitStatusSpec type for use
 // with apply.
 //
@@ -38,6 +42,11 @@ type DependentsSuccessfulCommitStatusSpecApplyConfiguration struct {
 	// .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
 	// (see controller docs).
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// PublishTo sets spec.publishTo on the CommitStatus objects this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider (default)
+	// - "promoter": the CommitStatus controller keeps them in Kubernetes only
+	// Promotion gates use the phase in both modes.
+	PublishTo *apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // DependentsSuccessfulCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusSpec type for use with
@@ -67,5 +76,13 @@ func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithKey(value s
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PublishTo field is set to the value of the last call.
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithPublishTo(value apiv1alpha1.CommitStatusPublishTo) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
+	b.PublishTo = &value
 	return b
 }

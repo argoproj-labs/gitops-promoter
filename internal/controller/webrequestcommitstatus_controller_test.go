@@ -291,6 +291,69 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
+	Describe("publishTo: promoter", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a test HTTP server that returns success")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			By("Creating a WebRequestCommitStatus resource with publishTo promoter")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				Name:      name + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:       "external-approval",
+					ReportOn:  constants.CommitRefProposed,
+					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up WebRequestCommitStatus")
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should set publishTo on the child CommitStatus", func() {
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.CommitStatusResourceName(ctx, webRequestCommitStatus, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
+				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("Polling Mode - Unreachable URL", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 

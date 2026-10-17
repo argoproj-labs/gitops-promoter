@@ -661,6 +661,62 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(keyCtx, scmSecret)
 		})
 	})
+
+	Describe("publishTo: promoter", func() {
+		It("should set publishTo on the child CommitStatus", func() {
+			skipCtx := context.Background()
+			skipName, scmSecret, scmProvider, gitRepo, _, _, skipPS := promotionStrategyResource(skipCtx, "timed-commit-status-skip-scm-test", "default")
+			skipPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timer"},
+			}
+
+			setupInitialTestGitRepoOnServer(skipCtx, gitRepo)
+
+			Expect(k8sClient.Create(skipCtx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(skipCtx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(skipCtx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(skipPS)
+			Expect(k8sClient.Create(skipCtx, skipPS)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(skipCtx, skipPS)
+
+			tcs := &promoterv1alpha1.TimedCommitStatus{
+				Name:      skipName + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					Key: "timer",
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: skipName,
+					},
+					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testBranchDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(skipCtx, tcs)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(skipCtx, tcs) }()
+
+			commitStatusName := utils.CommitStatusResourceName(skipCtx, tcs, testBranchDevelopment)
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(skipCtx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
+				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_ = k8sClient.Delete(skipCtx, skipPS)
+			_ = k8sClient.Delete(skipCtx, gitRepo)
+			_ = k8sClient.Delete(skipCtx, scmProvider)
+			_ = k8sClient.Delete(skipCtx, scmSecret)
+		})
+	})
 })
 
 // Separate Describe block for the test that doesn't need infrastructure

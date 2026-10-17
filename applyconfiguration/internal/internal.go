@@ -103,6 +103,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -481,6 +485,8 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
   scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusSelector
   map:
     fields:
@@ -503,6 +509,10 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
       default: pending
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: sha
       type:
         scalar: string
@@ -695,6 +705,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -902,6 +916,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: target
       type:
         scalar: string
@@ -1605,6 +1623,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: timezone
       type:
         scalar: string
@@ -1842,6 +1864,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusStatus
   map:
     fields:
@@ -2076,6 +2102,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: promotionStrategyRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+      default: scm
     - name: reportOn
       type:
         scalar: string
