@@ -662,8 +662,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("skipSCM", func() {
-		It("should set skipSCM on the child CommitStatus", func() {
+	Describe("publishTo: promoter", func() {
+		It("should set publishTo on the child CommitStatus", func() {
 			skipCtx := context.Background()
 			skipName, scmSecret, scmProvider, gitRepo, _, _, skipPS := promotionStrategyResource(skipCtx, "timed-commit-status-skip-scm-test", "default")
 			skipPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
@@ -687,7 +687,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: skipName,
 					},
-					SkipSCM: true,
+					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   testBranchDevelopment,
@@ -707,7 +707,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					Name:      commitStatusName,
 					Namespace: "default",
 				}, &cs)).To(Succeed())
-				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 			}, constants.EventuallyTimeout).Should(Succeed())
 

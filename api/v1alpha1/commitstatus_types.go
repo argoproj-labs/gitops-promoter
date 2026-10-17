@@ -66,10 +66,14 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 
-	// SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the
-	// SCM provider. Promotion gates still use the phase.
-	// +kubebuilder:validation:Optional
-	SkipSCM bool `json:"skipSCM,omitempty"`
+	// PublishTo controls where the commit status is published.
+	// - "scm": the controller posts the status to the SCM provider (default)
+	// - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider
+	// Promotion gates use the phase in both modes.
+	// +optional
+	// +kubebuilder:default="scm"
+	// +kubebuilder:validation:Enum=scm;promoter
+	PublishTo CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
@@ -201,4 +205,14 @@ const (
 	CommitPhaseSuccess CommitStatusPhase = "success"
 	// CommitPhasePending indicates that the commit status is still being processed or has not yet been set.
 	CommitPhasePending CommitStatusPhase = "pending"
+)
+
+// CommitStatusPublishTo controls where a commit status is published.
+type CommitStatusPublishTo string
+
+const (
+	// CommitStatusPublishToSCM posts the commit status to the SCM provider. This is the default.
+	CommitStatusPublishToSCM CommitStatusPublishTo = "scm"
+	// CommitStatusPublishToPromoter keeps the commit status in Kubernetes only. The controller does not post it to the SCM provider.
+	CommitStatusPublishToPromoter CommitStatusPublishTo = "promoter"
 )

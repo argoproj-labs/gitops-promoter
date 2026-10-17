@@ -189,9 +189,9 @@ Expression evaluated against commit data. Must return boolean.
 
 **Required**
 
-### spec.skipSCM
+### spec.publishTo
 
-When true, the controller keeps the generated CommitStatus in Kubernetes only. See [Keep a status out of the SCM](../index.md#keep-a-status-out-of-the-scm-skipscm).
+Where the generated CommitStatus is published. `scm` (default) posts it to the SCM. `promoter` keeps it in Kubernetes only. See [Keep a status out of the SCM](../index.md#keep-a-status-out-of-the-scm-publishto).
 
 **Optional**
 

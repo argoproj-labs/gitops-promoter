@@ -62,9 +62,9 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
-### Keep the status out of the SCM (`skipSCM`)
+### Keep the status out of the SCM (`publishTo`)
 
-Set **`spec.skipSCM: true`** to keep the generated CommitStatus in Kubernetes only. See [Keep a status out of the SCM](../../index.md#keep-a-status-out-of-the-scm-skipscm).
+Set **`spec.publishTo: promoter`** to keep the generated CommitStatus in Kubernetes only. The default, `scm`, posts it to the SCM. See [Keep a status out of the SCM](../../index.md#keep-a-status-out-of-the-scm-publishto).
 
 ### Shared trigger and success expr (`when.variables`)
 

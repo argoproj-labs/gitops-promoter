@@ -291,7 +291,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("skipSCM", func() {
+	Describe("publishTo: promoter", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 
 		BeforeEach(func() {
@@ -300,7 +300,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				w.WriteHeader(http.StatusOK)
 			}))
 
-			By("Creating a WebRequestCommitStatus resource with skipSCM")
+			By("Creating a WebRequestCommitStatus resource with publishTo promoter")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -308,9 +308,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:      "external-approval",
-					ReportOn: constants.CommitRefProposed,
-					SkipSCM:  true,
+					Key:       "external-approval",
+					ReportOn:  constants.CommitRefProposed,
+					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate:    testServer.URL + "/validate",
 						MethodTemplate: "GET",
@@ -339,7 +339,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
 		})
 
-		It("should set skipSCM on the child CommitStatus", func() {
+		It("should set publishTo on the child CommitStatus", func() {
 			Eventually(func(g Gomega) {
 				commitStatusName := utils.CommitStatusResourceName(ctx, webRequestCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
@@ -348,7 +348,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

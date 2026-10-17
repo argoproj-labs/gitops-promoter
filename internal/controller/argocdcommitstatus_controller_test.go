@@ -565,7 +565,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			})
 		})
 
-		It("should set skipSCM on the child CommitStatus", func() {
+		It("should set publishTo on the child CommitStatus", func() {
 			ctx := context.TODO()
 			const key = "argocd-skip-scm"
 
@@ -630,7 +630,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Name:      psName,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					Key:                  key,
-					SkipSCM:              true,
+					PublishTo:            promoterv1alpha1.CommitStatusPublishToPromoter,
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{appLabelKey: appLabelVal},
@@ -647,7 +647,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 				var cs promoterv1alpha1.CommitStatus
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, &cs)).To(Succeed())
-				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 			}, constants.EventuallyTimeout).Should(Succeed())
 

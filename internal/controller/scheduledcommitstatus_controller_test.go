@@ -145,11 +145,11 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("skipSCM", func() {
+	Describe("publishTo: promoter", func() {
 		var scs *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating a ScheduledCommitStatus with skipSCM")
+			By("Creating a ScheduledCommitStatus with publishTo promoter")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -158,7 +158,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					SkipSCM: true,
+					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
 					Environments: []promoterv1alpha1.ScheduledEnvironment{
 						{
 							Branch: testBranchDevelopment,
@@ -179,7 +179,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, scs)
 		})
 
-		It("should set skipSCM on the child CommitStatus", func() {
+		It("should set publishTo on the child CommitStatus", func() {
 			Eventually(func(g Gomega) {
 				commitStatusName := utils.CommitStatusResourceName(ctx, scs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
@@ -188,7 +188,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

@@ -309,7 +309,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			}
 		})
 
-		It("should set skipSCM on per-environment CommitStatuses", func() {
+		It("should set publishTo on per-environment CommitStatuses", func() {
 			By("Wiring explicit dependsOn on the PromotionStrategy")
 			Eventually(func(g Gomega) {
 				ps := &promoterv1alpha1.PromotionStrategy{}
@@ -318,14 +318,14 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Creating a DependentsSuccessfulCommitStatus with skipSCM")
+			By("Creating a DependentsSuccessfulCommitStatus with publishTo promoter")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				Name:      name,
 				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					SkipSCM:              true,
+					PublishTo:            promoterv1alpha1.CommitStatusPublishToPromoter,
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -336,13 +336,13 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "skip scm test change", "")
 
-			By("Checking that each environment CommitStatus has skipSCM and a phase")
+			By("Checking that each environment CommitStatus has publishTo promoter and a phase")
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
 					cs := &promoterv1alpha1.CommitStatus{}
 					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, branch)
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
-					g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+					g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 					g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}

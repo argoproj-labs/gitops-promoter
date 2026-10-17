@@ -539,11 +539,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("skipSCM", func() {
-		It("should set skipSCM on the child CommitStatus", func() {
+	Describe("publishTo: promoter", func() {
+		It("should set publishTo on the child CommitStatus", func() {
 			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-skip-scm")
 
-			By("Creating a GitCommitStatus with skipSCM")
+			By("Creating a GitCommitStatus with publishTo promoter")
 			gcs := &promoterv1alpha1.GitCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -553,7 +553,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:        "gcs-skip-scm",
 					Expression: `true`,
-					SkipSCM:    true,
+					PublishTo:  promoterv1alpha1.CommitStatusPublishToPromoter,
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
@@ -561,7 +561,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				_ = k8sClient.Delete(ctx, gcs)
 			}()
 
-			By("Verifying the CommitStatus has skipSCM and a phase")
+			By("Verifying the CommitStatus has publishTo promoter and a phase")
 			Eventually(func(g Gomega) {
 				commitStatusName := utils.CommitStatusResourceName(ctx, gcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
@@ -570,7 +570,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.SkipSCM).To(BeTrue())
+				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

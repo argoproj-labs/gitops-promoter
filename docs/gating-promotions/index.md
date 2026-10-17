@@ -145,21 +145,25 @@ the respective environments' live environment branches.
 Any tool wanting to gate a proposed commit status must create and update CommitStatuses with the appropriate SHAs for
 the respective environments' proposed (`-next`) environment branches.
 
-### Keep a status out of the SCM (`skipSCM`)
+### Keep a status out of the SCM (`publishTo`)
 
-By default, the CommitStatus controller posts each CommitStatus to the SCM. Set **`spec.skipSCM: true`** on a
-CommitStatus to keep it in Kubernetes only. Promotion gates still use its phase.
+`spec.publishTo` controls where a CommitStatus is published:
+
+- `scm` (default): the CommitStatus controller posts the status to the SCM.
+- `promoter`: the controller keeps the status in Kubernetes only. It does not post it to the SCM.
+
+Promotion gates use the phase in both modes.
 
 Every built-in gate (`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
-`ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.skipSCM`**. The gate
+`ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
 copies the value to every CommitStatus it creates.
 
-Use it when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
+Use `promoter` when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
 waits for every external status. A gate that watches the pipeline then never finishes, because its own status is one
 of the statuses that the rule waits for.
 
-If you set `skipSCM: true` on a CommitStatus that the controller already posted, the SCM keeps the last posted state.
-The controller does not remove it.
+If you change `publishTo` to `promoter` on a CommitStatus that the controller already posted, the SCM keeps the last posted
+state. The controller does not remove it.
 
 ### How Environment Ordering Works
 

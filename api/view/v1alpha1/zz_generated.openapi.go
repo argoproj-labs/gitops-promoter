@@ -744,10 +744,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -2078,10 +2078,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 							Format:      "",
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, keeps the commit status in Kubernetes only. The controller does not post it to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo controls where the commit status is published. - \"scm\": the controller posts the status to the SCM provider (default) - \"promoter\": the controller keeps the status in Kubernetes only and does not post it to the SCM provider Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -2743,10 +2743,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -3433,10 +3433,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 							Format:      "",
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -5616,10 +5616,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec
 							Format:      "",
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -6408,10 +6408,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 							Format:      "",
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
@@ -6958,10 +6958,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 							Format:      "",
 						},
 					},
-					"skipSCM": {
+					"publishTo": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SkipSCM, when true, sets skipSCM on the CommitStatus objects this controller creates. The CommitStatus controller does not post them to the SCM provider. Promotion gates still use the phase.",
-							Type:        []string{"boolean"},
+							Description: "PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider (default) - \"promoter\": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
