@@ -188,18 +188,18 @@ test: manifests generate fmt vet envtest ## Run tests.
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	go test ./test/e2e/ -v
+	go test ./test/e2e/ -v -timeout 30m -ginkgo.v
 
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/ test/scmserver/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/ test/scmserver/
 
 ##@ Fuzzing
 
@@ -296,6 +296,14 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-scm-server
+run-scm-server: ## Run the test SCM server on localhost (admin API :9000, providers :9001-:9006). See docs/contributing/test-scm-server.md.
+	mkdir -p $(LOCALBIN)
+	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token \
+		--admin-addr 127.0.0.1:9000 --github-addr 127.0.0.1:9001 --gitlab-addr 127.0.0.1:9002 \
+		--azuredevops-addr 127.0.0.1:9003 --bitbucket-addr 127.0.0.1:9004 --gitea-addr 127.0.0.1:9005 \
+		--forgejo-addr 127.0.0.1:9006
+
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 
 	cd ui/dashboard && npm install && npm run dev &
@@ -375,6 +383,12 @@ test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
+SCM_SERVER_IMG ?= scm-server:e2e
+
+.PHONY: docker-build-scm-server
+docker-build-scm-server: ## Build the test SCM server image used by the e2e tests.
+	$(CONTAINER_TOOL) build -f test/scmserver/Dockerfile -t ${SCM_SERVER_IMG} .
+
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
@@ -428,7 +442,8 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+# Set the image where the auth proxy patch has already been applied, so the patch's :latest does not win.
+	cd config/default && $(KUSTOMIZE) edit set image quay.io/argoprojlabs/gitops-promoter=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy

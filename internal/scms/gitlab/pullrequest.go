@@ -282,16 +282,19 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
-// mergedTargetSHA returns the commit the merge produced on the target branch. A squashed merge
-// reports its commit under squash_commit_sha and leaves merge_commit_sha empty.
+// mergedTargetSHA returns the commit the merge produced on the target branch. With GitLab's default
+// merge method, a squashed merge request reports both squash_commit_sha (the squashed source commit)
+// and merge_commit_sha (the merge commit that became the target branch tip), so merge_commit_sha
+// wins. Only a fast-forward-only project leaves merge_commit_sha empty, and then the squash commit
+// is the tip.
 func mergedTargetSHA(mr *gitlab.MergeRequest) string {
 	if mr == nil {
 		return ""
 	}
-	if mr.SquashCommitSHA != "" {
-		return mr.SquashCommitSHA
+	if mr.MergeCommitSHA != "" {
+		return mr.MergeCommitSHA
 	}
-	return mr.MergeCommitSHA
+	return mr.SquashCommitSHA
 }
 
 // Get fetches a pull request by status.id.

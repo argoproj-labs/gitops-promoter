@@ -82,6 +82,7 @@ linters:
           exclude:
             - "**/*_types.go" # For CRD types.
             - "**/webrequestsimulator/simulatortypes/*.go" # Simulate Input/Result and related value types.
+            - "**/test/scmserver/*.go" # Admin API request/response types of the test SCM server.
         - name: redundant-import-alias
           disabled: true
         - name: struct-tag
@@ -154,6 +155,11 @@ linters:
       - linters:
           - lll
         path: internal/.*
+      # The test SCM server renders provider wire formats; repeated JSON keys read better inline than as constants.
+      - linters:
+          - goconst
+          - lll
+        path: test/scmserver/.*
       - linters:
           - dupl
         path: .*_test.go

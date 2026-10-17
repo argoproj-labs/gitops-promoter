@@ -21,7 +21,8 @@ spec:
   forgejo:
     domain: forgejo.example.com
 
-  bitbucketCloud: {}
+  bitbucketCloud:
+    domain: bitbucket.example.com # Optional, leave empty for default bitbucket.org
 
   azureDevOps:
     organization: example-org

@@ -29,9 +29,17 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/test/utils"
 )
 
-const namespace = "promoter-system"
+const (
+	namespace = "promoter-system"
+	// argoCDApplicationCRD is the Argo CD Application CRD the integration suites also load.
+	argoCDApplicationCRD = "test/external_crds/argoproj.io_applications.yaml"
+)
 
 var _ = Describe("controller", Ordered, func() {
+	// installedApplicationCRD is true when the suite installed the Argo CD Application CRD, so teardown leaves a CRD
+	// that was already there, and its Applications, alone.
+	var installedApplicationCRD bool
+
 	BeforeAll(func() {
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
@@ -39,8 +47,19 @@ var _ = Describe("controller", Ordered, func() {
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
 
+		// The default ControllerConfiguration watches local Argo CD Applications, so the controller cannot
+		// start without the Application CRD.
+		By("installing the Argo CD Application CRD unless the cluster has it")
+		cmd := exec.Command("kubectl", "get", "crd", "applications.argoproj.io")
+		if _, err := utils.Run(cmd); err != nil {
+			cmd = exec.Command("kubectl", "apply", "-f", argoCDApplicationCRD)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			installedApplicationCRD = true
+		}
+
 		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		cmd = exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
 	})
 
@@ -54,6 +73,12 @@ var _ = Describe("controller", Ordered, func() {
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
+
+		if installedApplicationCRD {
+			By("removing the Argo CD Application CRD")
+			cmd = exec.Command("kubectl", "delete", "-f", argoCDApplicationCRD, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		}
 	})
 
 	Context("Operator", func() {
@@ -85,6 +110,13 @@ var _ = Describe("controller", Ordered, func() {
 			cmd = exec.Command("make", "deploy", "IMAGE_TAG="+imageTag)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("validating that the controller-manager runs the image built from this checkout")
+			cmd = exec.Command("kubectl", "get", "deployment", "promoter-controller-manager", "-n", namespace,
+				"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="manager")].image}`)
+			deployedImage, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			ExpectWithOffset(1, string(deployedImage)).To(Equal(projectimage))
 
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func() error {
@@ -123,6 +155,8 @@ var _ = Describe("controller", Ordered, func() {
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
 		})
 	})
+
+	Context("SCM providers", Ordered, scmProviderSpecs)
 
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +

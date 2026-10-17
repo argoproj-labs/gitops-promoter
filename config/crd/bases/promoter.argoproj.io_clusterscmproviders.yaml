@@ -71,6 +71,18 @@ spec:
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+                      Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+                      and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+                    maxLength: 253
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to bitbucket.org, leave
+                        the field blank
+                      rule: self != "bitbucket.org"
                 type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider

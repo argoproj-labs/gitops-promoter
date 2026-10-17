@@ -15,6 +15,27 @@ import (
 // BitbucketBaseURL is the base URL for Bitbucket Cloud
 const BitbucketBaseURL = "https://bitbucket.org"
 
+// webBaseURL returns the base URL for git and web links, honoring an optional domain override.
+func webBaseURL(domain string) string {
+	if domain == "" {
+		return BitbucketBaseURL
+	}
+	return "https://" + domain
+}
+
+// apiBaseURL returns the REST API base URL for an overridden domain.
+func apiBaseURL(domain string) string {
+	return "https://" + domain + "/2.0"
+}
+
+// domainFromScmProvider returns the optional Bitbucket Cloud domain override of the ScmProvider.
+func domainFromScmProvider(scmProvider v1alpha1.GenericScmProvider) string {
+	if scmProvider == nil || scmProvider.GetSpec().BitbucketCloud == nil {
+		return ""
+	}
+	return scmProvider.GetSpec().BitbucketCloud.Domain
+}
+
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
 // The Bitbucket client doesn't return HTTP response metadata, so we parse
 // the error message to determine status codes (e.g., "400 Bad Request").
@@ -88,9 +109,9 @@ func isFullGitCommitHash(s string) bool {
 	return true
 }
 
-func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
+func createCommitURL(domain string, repo *v1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/%s/%s/commits/%s",
-		BitbucketBaseURL,
+		webBaseURL(domain),
 		repo.Spec.BitbucketCloud.Owner,
 		repo.Spec.BitbucketCloud.Name,
 		sha,

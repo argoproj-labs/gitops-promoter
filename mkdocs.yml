@@ -80,6 +80,7 @@ nav:
       - Developing a CommitStatus: contributing/developing-a-commitstatus.md
       - Developing the Argo CD Extension: contributing/developing-the-argocd-extension.md
       - Adding an SCM Provider: contributing/adding-an-scm-provider.md
+      - Test SCM Server: contributing/test-scm-server.md
       - Writing CEL Validation Rules: contributing/writing-cel-rules.md
       - Continuous Integration: contributing/ci.md
       - UI TypeScript types: contributing/ui-types.md
