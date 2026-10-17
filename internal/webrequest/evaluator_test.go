@@ -256,6 +256,68 @@ var _ = Describe("ExpressionEvaluator", func() {
 		})
 	})
 
+	Describe("EvaluateHTTPRequestVariables", func() {
+		It("returns nil when spec is nil", func() {
+			result, err := e.EvaluateHTTPRequestVariables(ctx, nil, TemplateData{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(BeNil())
+		})
+
+		It("returns nil when expression is blank", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{Expression: "   "}
+			result, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(BeNil())
+		})
+
+		It("evaluates a simple expression and returns the map", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{Expression: `{"pathSuffix": "/api/v1"}`}
+			result, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{Branch: "env/dev"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(HaveKeyWithValue("pathSuffix", "/api/v1"))
+		})
+
+		It("exposes Branch from TemplateData", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{Expression: `{"b": Branch}`}
+			result, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{Branch: "env/prod"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(HaveKeyWithValue("b", "env/prod"))
+		})
+
+		It("exposes TriggerVariables from TemplateData", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{"mode": TriggerVariables["inCloseMode"]}`,
+			}
+			td := TemplateData{TriggerVariables: map[string]any{"inCloseMode": true}}
+			result, err := e.EvaluateHTTPRequestVariables(ctx, spec, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(HaveKeyWithValue("mode", true))
+		})
+
+		It("makes urlValuesEncode available and encodes query parameters", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{"qs": urlValuesEncode({"limit": "25", "q": "hello world"})}`,
+			}
+			result, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{})
+			Expect(err).ToNot(HaveOccurred())
+			// url.Values.Encode sorts keys alphabetically.
+			Expect(result).To(HaveKeyWithValue("qs", "limit=25&q=hello+world"))
+		})
+
+		It("errors when the expression returns a non-map", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{Expression: `"not a map"`}
+			_, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("must return a map/object"))
+		})
+
+		It("errors when the expression does not compile", func() {
+			spec := &promoterv1alpha1.HTTPRequestVariablesSpec{Expression: "this is not expr syntax !!!"}
+			_, err := e.EvaluateHTTPRequestVariables(ctx, spec, TemplateData{})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Describe("compile cache", func() {
 		It("only compiles the same (prefix, expression) once", func() {
 			// Both calls on the same expression should hit the cache on the second invocation.
@@ -294,6 +356,34 @@ var _ = Describe("ExpressionEvaluator", func() {
 })
 
 var _ = Describe("Pure helpers", func() {
+	Describe("urlValuesEncode", func() {
+		It("returns an empty string for an empty map", func() {
+			Expect(urlValuesEncode(map[string]any{})).To(Equal(""))
+		})
+
+		It("percent-encodes special characters in values", func() {
+			result := urlValuesEncode(map[string]any{"q": "hello world"})
+			Expect(result).To(Equal("q=hello+world"))
+		})
+
+		It("converts numeric values to strings", func() {
+			result := urlValuesEncode(map[string]any{"limit": 25})
+			Expect(result).To(Equal("limit=25"))
+		})
+
+		It("sorts keys alphabetically (url.Values.Encode behaviour)", func() {
+			result := urlValuesEncode(map[string]any{"z": "last", "a": "first"})
+			Expect(result).To(Equal("a=first&z=last"))
+		})
+
+		It("encodes a realistic RHACS-style filter", func() {
+			result := urlValuesEncode(map[string]any{
+				"query": "Namespace:petclinic-dev+Violation State:ACTIVE",
+			})
+			Expect(result).To(Equal("query=Namespace%3Apetclinic-dev%2BViolation+State%3AACTIVE"))
+		})
+	})
+
 	Describe("TemplateData.triggerExprData", func() {
 		It("exposes expected keys", func() {
 			td := TemplateData{

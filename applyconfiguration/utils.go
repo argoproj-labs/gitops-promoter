@@ -167,6 +167,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPAuthenticationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestSpec"):
 		return &apiv1alpha1.HTTPRequestSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestVariablesSpec"):
+		return &apiv1alpha1.HTTPRequestVariablesSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):
