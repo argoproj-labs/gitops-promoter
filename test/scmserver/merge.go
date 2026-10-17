@@ -158,6 +158,14 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
+	// A merge or close may have settled the pull request while this call waited for the lock; its preview merge
+	// commit and base must then stay as the merge left them.
+	s.store.mu.Lock()
+	state = pr.state
+	s.store.mu.Unlock()
+	if state != prOpen {
+		return nil
+	}
 
 	head, headErr := s.git.branchSHA(ctx, r.dir, source)
 	base, baseErr := s.git.branchSHA(ctx, r.dir, target)
@@ -196,6 +204,10 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 	behavior := s.behavior.get(r.provider)
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
+	if pr.state != prOpen {
+		// Closed without the git lock (source branch deleted, admin close) while the preview was computed.
+		return nil
+	}
 	if pr.headSHA != head || pr.baseSHA != base || pr.mergeableAt.IsZero() {
 		pr.mergeableAt = s.now().Add(behavior.MergeabilityDelay.Duration)
 		// Azure DevOps re-runs the merge when either branch moves, clearing a previous completion failure.

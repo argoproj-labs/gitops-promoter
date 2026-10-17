@@ -118,6 +118,20 @@ func scmProviderSpecs() {
 			"--for=condition=Available", "--timeout=3m")
 
 		By("disabling requeues so only webhooks and watches drive the promotions, and shortening merge retries")
+		// The Dashboard specs run after these in the same Ordered suite, so the controller configuration goes back to
+		// what it was once this context is done. The CA trust patched into the Deployment below is inert for the
+		// other specs and stays, since reverting it would cost another controller rollout.
+		var configuration struct {
+			Spec json.RawMessage `json:"spec"`
+		}
+		configurationJSON, err := utils.Run(exec.CommandContext(ctx, "kubectl", "get", "controllerconfiguration",
+			"promoter-controller-configuration", "-n", namespace, "-o", "json"))
+		Expect(err).NotTo(HaveOccurred(), string(configurationJSON))
+		Expect(json.Unmarshal(configurationJSON, &configuration)).To(Succeed())
+		DeferCleanup(func(ctx SpecContext) {
+			run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
+				"-n", namespace, "--type=json", "-p", `[{"op":"replace","path":"/spec","value":`+string(configuration.Spec)+`}]`)
+		})
 		configureRequeue(ctx, requeueInterval)
 
 		By("making the controller trust the server's CA for API calls and git")
