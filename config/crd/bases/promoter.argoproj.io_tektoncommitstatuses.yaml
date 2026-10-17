@@ -104,6 +104,33 @@ spec:
                 description: PruneRun determines if the run of the Tekton Resource
                   will be deleted after running. Defaults to false.
                 type: boolean
+              target:
+                default: proposed
+                description: |-
+                  Target specifies which commit SHA to run the Tekton Pipeline/Task on.
+                  - "proposed": runs the pipeline on the proposed commit (default)
+                  - "active": runs the pipeline on the currently active/deployed commit
+
+                  The commit SHA to report the validation on is determined by where the key is configured in the referenced PromotionStrategy:
+                    - Case key is in proposedCommitStatuses - Will report on the proposed commit (gate an incoming promotion)
+                    - Case key is in activeCommitStatuses - Will report on the active commit (gate downstream promotions)
+                  If configuration for CommitStatuses is done via individual environments that will also be respected.
+
+                  Examples:
+                    Target = "proposed", Report On = "proposed" - Run the pipeline on the proposed commit and don't promote if it fails.
+                                                                  An example pipeline that would be good here is a security scan.
+                    Target = "active", Report On = "proposed" - Run the pipeline on the current commit in the environment and block promotion if it fails.
+                                                                An example pipeline to use in this setup would be running a health check on the active environment
+                                                                and block if it is not healthy.
+                                                                If there is no active environment then this would be skipped.
+                   Target = "active", Report On = "active" - Run a pipeline on the active commit and then block future promotions if it fails
+                                                             A pipeline that would be useful here is running tests on an active environment and blocking further
+                                                             promotions if any of them fail.
+                   Target = "proposed", Report on = "active" - This case is not supported as it does not make logical sense. If used will give an error.
+                enum:
+                - active
+                - proposed
+                type: string
               tektonResourceRef:
                 description: TektonResource is a reference to the TektonResource to
                   run for the checks
@@ -115,24 +142,27 @@ spec:
                     - Task
                     type: string
                   name:
-                    description: Name is the name of the Tekton resource to target
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace is the namespace of the Tekton resource to target.
-                      If left blank resource must be in the same namespace as the commit status.
-                    maxLength: 63
-                    minLength: 1
+                    description: Name is the name of the Tekton resource to target.
+                      It must be in the same namespace as the commit status.
                     type: string
                   parameters:
                     additionalProperties:
                       type: string
-                    description: Parameters represents parameters to be passed as
-                      args to a the run object
+                    description: |-
+                      Parameters are the parameters that get passed to the Tekton resource run that is created.
+                      A paramter's value can use the following Go template values to inject information into a paramter.
+
+                      .TargetedSha - The SHA that the pipeline is being run on
+                      .Branch - The name of the branch for the environment
+
+                      So for example you could have parameters like:
+                      params:
+                        - githubUrl: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
+                        - shortSha: "{{ .TargetedSha | trunc 8 }}"
                     type: object
                   serviceAccount:
                     description: |-
-                      ServiceAccount is a ServiceAccount in the same namespace as the commit status to use for CRUD operations
+                      ServiceAccount is a ServiceAccount in the same namespace as the Tekton resource and is passed to the resource to be used by it.
                       on the targeted Tekton resource
                     maxLength: 253
                     minLength: 1
@@ -249,6 +279,7 @@ spec:
                   properties:
                     activeHydratedSha:
                       description: |-
+                        FIXME: MAKE BETTER
                         ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that the Tekton resource was run on.
                         This comes from the PromotionStrategy's environment status.
                         The expression is evaluated against THIS commit's data, not the proposed commit.
@@ -300,6 +331,7 @@ spec:
                       type: string
                     proposedHydratedSha:
                       description: |-
+                        FIXME: MAKE BETTER
                         ProposedHydratedSha is the proposed hydrated commit SHA where the Tekton resource was run on.
                         This comes from the PromotionStrategy's environment status.
                         The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
@@ -311,7 +343,7 @@ spec:
                       type: string
                     targetedSha:
                       description: |-
-                        TargetedSha is the commit SHA that was actually validated by the expression.
+                        TargetedSha is the commit SHA that the Tekton resource was last run on.
                         This will match either ProposedHydratedSha or ActiveHydratedSha depending on
                         the Target setting ("proposed" or "active").
                         This field clarifies which commit's data was used in the expression evaluation.
