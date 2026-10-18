@@ -19,27 +19,30 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // PullRequest implements the scms.PullRequestProvider interface for Azure DevOps.
 type PullRequest struct {
-	client    *azuredevops.Connection
-	k8sClient client.Client
+	client      *azuredevops.Connection
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewAzdoPullRequestProvider creates a new instance of PullRequest for Azure DevOps.
-func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
+func NewAzdoPullRequestProvider(k8sClient client.Client, settingsMgr *settings.Manager, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
 	prClient, _, err := GetClient(context.Background(), scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PullRequest{
-		client:    prClient,
-		k8sClient: k8sClient,
+		client:      prClient,
+		k8sClient:   k8sClient,
+		settingsMgr: settingsMgr,
 	}, nil
 }
 
@@ -401,7 +404,7 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, pr.k8sClient, "", prObj.Spec.RepositoryReference, &prObj)
+	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, pr.k8sClient, pr.settingsMgr, prObj.Spec.RepositoryReference, &prObj)
 	if err != nil {
 		return "", fmt.Errorf("failed to get SCM provider: %w", err)
 	}

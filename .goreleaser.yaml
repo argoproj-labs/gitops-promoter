@@ -80,6 +80,9 @@ checksum:
     - glob: ./install-without-ui.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
+    - glob: ./install-without-ui-namespaced.yaml
+    - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
+    - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
 
 sboms:
   - artifacts: archive
@@ -136,6 +139,9 @@ release:
     - glob: ./install-without-ui.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
+    - glob: ./install-without-ui-namespaced.yaml
+    - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
+    - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
   header: |
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/secondary.svg">

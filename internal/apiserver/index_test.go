@@ -25,6 +25,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -167,5 +168,23 @@ var _ = Describe("BundleProvider processNext", func() {
 			provider.processNext(context.Background())
 			Expect(provider.queue.Len()).To(BeZero())
 		})
+	})
+})
+
+var _ = Describe("BundleProvider namespace scope", func() {
+	It("returns nothing for namespaces outside the cached namespace", func() {
+		provider := newProviderWithReader(newFakeReader(seedObjects()...))
+		provider.namespace = testNamespace
+
+		_, err := provider.Get(context.Background(), "other-ns", testPSName)
+		Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+		list, err := provider.List(context.Background(), "other-ns", "", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+
+		list, err = provider.List(context.Background(), testNamespace, "", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
 	})
 })

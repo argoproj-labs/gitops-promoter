@@ -51,7 +51,7 @@ func detailsUID(psUID types.UID) types.UID {
 // resource) when the PromotionStrategy does not exist. Secrets are never read.
 //
 // The returned bundle has its ResourceVersion set to the provided value.
-func buildBundle(ctx context.Context, reader client.Reader, namespace, name, resourceVersion string) (*viewv1alpha1.PromotionStrategyDetails, error) {
+func buildBundle(ctx context.Context, reader client.Reader, namespace, name, resourceVersion string, clusterScmProviderEnabled bool) (*viewv1alpha1.PromotionStrategyDetails, error) {
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ps); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -160,7 +160,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
-	if err := attachGitConfig(ctx, reader, namespace, ps, bundle); err != nil {
+	if err := attachGitConfig(ctx, reader, namespace, ps, bundle, clusterScmProviderEnabled); err != nil {
 		return nil, err
 	}
 
@@ -170,7 +170,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 // attachGitConfig resolves the PromotionStrategy's GitRepository and its
 // (Cluster)ScmProvider and attaches them to the bundle. Missing resources are not
 // an error (the bundle simply omits them). Secrets are never read.
-func attachGitConfig(ctx context.Context, reader client.Reader, namespace string, ps *promoterv1alpha1.PromotionStrategy, bundle *viewv1alpha1.PromotionStrategyDetails) error {
+func attachGitConfig(ctx context.Context, reader client.Reader, namespace string, ps *promoterv1alpha1.PromotionStrategy, bundle *viewv1alpha1.PromotionStrategyDetails, clusterScmProviderEnabled bool) error {
 	repoName := ps.Spec.RepositoryReference.Name
 	if repoName == "" {
 		return nil
@@ -185,15 +185,18 @@ func attachGitConfig(ctx context.Context, reader client.Reader, namespace string
 	}
 
 	bundle.GitRepository = gitRepo
-	return attachScmProvider(ctx, reader, namespace, gitRepo, bundle)
+	return attachScmProvider(ctx, reader, namespace, gitRepo, bundle, clusterScmProviderEnabled)
 }
 
 // attachScmProvider resolves the GitRepository's ScmProviderRef and attaches the
 // referenced (Cluster)ScmProvider to the bundle. Secrets are never resolved.
-func attachScmProvider(ctx context.Context, reader client.Reader, namespace string, gitRepo *promoterv1alpha1.GitRepository, bundle *viewv1alpha1.PromotionStrategyDetails) error {
+func attachScmProvider(ctx context.Context, reader client.Reader, namespace string, gitRepo *promoterv1alpha1.GitRepository, bundle *viewv1alpha1.PromotionStrategyDetails, clusterScmProviderEnabled bool) error {
 	ref := gitRepo.Spec.ScmProviderRef
 	switch ref.Kind {
 	case "ClusterScmProvider":
+		if !clusterScmProviderEnabled {
+			return nil
+		}
 		provider := &promoterv1alpha1.ClusterScmProvider{}
 		if err := reader.Get(ctx, client.ObjectKey{Name: ref.Name}, provider); err != nil {
 			if apierrors.IsNotFound(err) {

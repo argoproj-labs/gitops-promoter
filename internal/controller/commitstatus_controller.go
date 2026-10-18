@@ -144,7 +144,7 @@ func (r *CommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), commitStatus.Spec.RepositoryReference, &commitStatus)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr, commitStatus.Spec.RepositoryReference, &commitStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 	}
@@ -192,7 +192,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		return p, nil
 	case scmProvider.GetSpec().AzureDevOps != nil:
 		var p *azuredevops.CommitStatus
-		p, err = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
+		p, err = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, r.Client, r.SettingsMgr, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Azure DevOps provider for organization %q with secret %q: %w", scmProvider.GetSpec().AzureDevOps.Organization, secret.Name, err)
 		}

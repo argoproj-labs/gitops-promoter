@@ -146,6 +146,11 @@ func (in ClusterScmProvider) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterScmProviderConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProviderList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderList"
 }
