@@ -70,16 +70,13 @@ type CommitStatusSpec struct {
 
 	// PublishTo is the set of destinations for this commit status.
 	// - "scm": post the status to the SCM provider
-	// - "promoter": keep the status in Kubernetes and do not post it to the SCM
-	// The default is ["scm"]. scm and promoter cannot be combined.
-	// The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case.
+	// The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM.
+	// Omitting the field uses the default. The controller posts to the SCM when "scm" is present.
+	// Promotion gates use the phase in every case.
 	// +optional
 	// +kubebuilder:default={scm}
 	// +listType=set
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=2
-	// +kubebuilder:validation:items:Enum=scm;promoter
-	// +kubebuilder:validation:XValidation:rule="!(('scm' in self) && ('promoter' in self))",message="scm and promoter cannot be combined"
+	// +kubebuilder:validation:items:Enum=scm
 	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
@@ -220,16 +217,10 @@ type CommitStatusPublishTo string
 const (
 	// CommitStatusPublishToSCM posts the commit status to the SCM provider. This is the default destination.
 	CommitStatusPublishToSCM CommitStatusPublishTo = "scm"
-	// CommitStatusPublishToPromoter keeps the commit status in Kubernetes. The controller does not post it to the SCM provider
-	// unless "scm" is also listed.
-	CommitStatusPublishToPromoter CommitStatusPublishTo = "promoter"
 )
 
 // PublishesToSCM reports whether targets includes the SCM destination.
-// An empty list matches the CRD default of ["scm"].
+// An empty list is local-only. The API server defaults an omitted field to ["scm"] before reconcile.
 func PublishesToSCM(targets []CommitStatusPublishTo) bool {
-	if len(targets) == 0 {
-		return true
-	}
 	return slices.Contains(targets, CommitStatusPublishToSCM)
 }

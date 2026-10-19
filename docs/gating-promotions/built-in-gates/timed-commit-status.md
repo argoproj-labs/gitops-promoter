@@ -51,7 +51,7 @@ This configuration:
 
 ### Keep the status out of the SCM (`publishTo`)
 
-Set **`spec.publishTo: [promoter]`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. `scm` and `promoter` cannot be combined. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
 
 ### Integrating with PromotionStrategy
 

@@ -8,7 +8,7 @@ spec:
     name: example-promotion-strategy
   url:
     template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
-  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
   publishTo:
     - scm
 status:

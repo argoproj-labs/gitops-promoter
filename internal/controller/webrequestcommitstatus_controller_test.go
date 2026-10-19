@@ -291,7 +291,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("publishTo: promoter", func() {
+	Describe("publishTo: empty", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 
 		BeforeEach(func() {
@@ -300,7 +300,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				w.WriteHeader(http.StatusOK)
 			}))
 
-			By("Creating a WebRequestCommitStatus resource with publishTo promoter")
+			By("Creating a WebRequestCommitStatus resource with an empty publishTo")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -308,9 +308,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:       "external-approval",
-					ReportOn:  constants.CommitRefProposed,
-					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate:    testServer.URL + "/validate",
 						MethodTemplate: "GET",
@@ -328,7 +327,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+			Expect(createWithPublishTo(ctx, webRequestCommitStatus, []any{})).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -348,7 +347,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
+				g.Expect(cs.Spec.PublishTo).To(BeEmpty())
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

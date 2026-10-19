@@ -318,17 +318,16 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Creating a DependentsSuccessfulCommitStatus with publishTo promoter")
+			By("Creating a DependentsSuccessfulCommitStatus with an empty publishTo")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				Name:      name,
 				Namespace: "default",
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					PublishTo:            []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 				},
 			}
-			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+			Expect(createWithPublishTo(ctx, dependentsSuccessfulCommitStatus, []any{})).To(Succeed())
 
 			By("Creating a proposed change so the DAG writes CommitStatuses")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -336,13 +335,13 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "skip scm test change", "")
 
-			By("Checking that each environment CommitStatus has publishTo promoter and a phase")
+			By("Checking that each environment CommitStatus has an empty publishTo and a phase")
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
 					cs := &promoterv1alpha1.CommitStatus{}
 					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, branch)
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
-					g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
+					g.Expect(cs.Spec.PublishTo).To(BeEmpty())
 					g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}

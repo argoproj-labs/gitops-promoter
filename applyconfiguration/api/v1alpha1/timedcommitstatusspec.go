@@ -36,9 +36,8 @@ type TimedCommitStatusSpecApplyConfiguration struct {
 	Key *string `json:"key,omitempty"`
 	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
 	// - "scm": the CommitStatus controller posts them to the SCM provider
-	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-	// The default is ["scm"]. scm and promoter cannot be combined.
-	// Promotion gates use the phase in every case.
+	// The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+	// Omitting the field uses the default. Promotion gates use the phase in every case.
 	PublishTo    []apiv1alpha1.CommitStatusPublishTo               `json:"publishTo,omitempty"`
 	Environments []TimedCommitStatusEnvironmentsApplyConfiguration `json:"environments,omitempty"`
 }

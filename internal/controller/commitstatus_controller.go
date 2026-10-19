@@ -113,7 +113,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	oldSha := cs.Status.Sha
 
 	if !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo) {
-		// No "scm" destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
+		// No scm destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
 		cs.Status.Sha = cs.Spec.Sha
 		cs.Status.Phase = cs.Spec.Phase
 		cs.Status.Id = ""

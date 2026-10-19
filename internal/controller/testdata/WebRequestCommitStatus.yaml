@@ -17,7 +17,7 @@ spec:
   # URL for the commit status target link in the SCM (Go templates supported). Optional.
   urlTemplate: ""
 
-  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
   publishTo:
     - scm
 

@@ -191,7 +191,7 @@ Expression evaluated against commit data. Must return boolean.
 
 ### spec.publishTo
 
-Destinations for the generated CommitStatus. `[scm]` (default) posts it to the SCM. `[promoter]` keeps it in Kubernetes only. `scm` and `promoter` cannot be combined. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+Destinations for the generated CommitStatus. `[scm]` (default) posts it to the SCM. `[]` keeps it in Kubernetes only. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
 
 **Optional**
 

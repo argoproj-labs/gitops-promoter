@@ -27,7 +27,7 @@ spec:
       {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) -}}
     options:
       - missingkey=zero
-  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
   publishTo:
     - scm
 status:

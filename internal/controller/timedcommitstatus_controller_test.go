@@ -662,7 +662,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("publishTo: promoter", func() {
+	Describe("publishTo: empty", func() {
 		It("should set publishTo on the child CommitStatus", func() {
 			skipCtx := context.Background()
 			skipName, scmSecret, scmProvider, gitRepo, _, _, skipPS := promotionStrategyResource(skipCtx, "timed-commit-status-skip-scm-test", "default")
@@ -687,7 +687,6 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: skipName,
 					},
-					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   testBranchDevelopment,
@@ -696,7 +695,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(skipCtx, tcs)).To(Succeed())
+			Expect(createWithPublishTo(skipCtx, tcs, []any{})).To(Succeed())
 			defer func() { _ = k8sClient.Delete(skipCtx, tcs) }()
 
 			commitStatusName := utils.CommitStatusResourceName(skipCtx, tcs, testBranchDevelopment)
@@ -707,7 +706,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					Name:      commitStatusName,
 					Namespace: "default",
 				}, &cs)).To(Succeed())
-				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
+				g.Expect(cs.Spec.PublishTo).To(BeEmpty())
 				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 			}, constants.EventuallyTimeout).Should(Succeed())
 

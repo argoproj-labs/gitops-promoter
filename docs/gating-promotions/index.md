@@ -147,25 +147,21 @@ the respective environments' proposed (`-next`) environment branches.
 
 ### Where a status is published (`publishTo`)
 
-`spec.publishTo` is the set of destinations for a CommitStatus:
+`spec.publishTo` is the set of destinations for a CommitStatus. `scm` posts the status to the SCM. The default is `[scm]`.
 
-- `scm`: the CommitStatus controller posts the status to the SCM.
-- `promoter`: the controller keeps the status in Kubernetes and does not post it to the SCM.
-
-The default is `[scm]`. Choose one destination. `scm` and `promoter` cannot be combined: `promoter` keeps the status in Kubernetes, and `scm` posts it to the SCM. The list can grow when more destinations are added.
+Set an empty list to keep the status in Kubernetes and not post it to the SCM:
 
 ```yaml
-publishTo:
-  - promoter
+publishTo: []
 ```
 
-The controller posts to the SCM when `scm` is in the list. Promotion gates use the phase in every case.
+Omitting the field is not an empty list. The default fills in `[scm]`. The controller posts to the SCM when `scm` is in the list. Promotion gates use the phase in every case.
 
 Every built-in gate (`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
 `ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
 copies the list to every CommitStatus it creates.
 
-Use `[promoter]` when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
+Use `publishTo: []` when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
 waits for every external status. A gate that watches the pipeline then never finishes, because its own status is one
 of the statuses that the rule waits for.
 

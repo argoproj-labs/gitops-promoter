@@ -234,55 +234,38 @@ var _ = Describe("CommitStatus Controller", func() {
 		})
 	})
 
-	Context("When publishTo is promoter", func() {
+	Context("When publishTo is empty", func() {
 		It("should record status without needing an SCM provider", func() {
 			ctx := context.Background()
+			// A typed empty slice is omitted by json omitempty, so send the empty array explicitly.
 			// The GitRepository does not exist. A reconcile that called the SCM provider would fail.
-			cs := &promoterv1alpha1.CommitStatus{
-				Name:      "skip-scm-commit-status",
-				Namespace: "default",
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					Phase:               promoterv1alpha1.CommitPhaseSuccess,
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
-					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
-					Name:                "test-commit-status",
-					Description:         "Test commit status",
-					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
+			cs := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "promoter.argoproj.io/v1alpha1",
+				"kind":       "CommitStatus",
+				"metadata": map[string]any{
+					"name":      "skip-scm-commit-status",
+					"namespace": "default",
 				},
-			}
+				"spec": map[string]any{
+					"phase":            "success",
+					"gitRepositoryRef": map[string]any{"name": "does-not-exist"},
+					"sha":              "abcdef1234567890abcdef1234567890abcdef12",
+					"name":             "test-commit-status",
+					"description":      "Test commit status",
+					"publishTo":        []any{},
+				},
+			}}
 			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
 
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cs), cs)).To(Succeed())
-				g.Expect(cs.Status.Sha).To(Equal(cs.Spec.Sha))
-				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				g.Expect(cs.Status.Id).To(BeEmpty())
+				got := &promoterv1alpha1.CommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "skip-scm-commit-status"}, got)).To(Succeed())
+				g.Expect(got.Spec.PublishTo).To(BeEmpty())
+				g.Expect(got.Status.Sha).To(Equal(got.Spec.Sha))
+				g.Expect(got.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(got.Status.Id).To(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
-		})
-	})
-
-	Context("When publishTo lists scm and promoter", func() {
-		It("should reject the combination", func() {
-			ctx := context.Background()
-			cs := &promoterv1alpha1.CommitStatus{
-				Name:      "both-publishto-commit-status",
-				Namespace: "default",
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					Phase:               promoterv1alpha1.CommitPhaseSuccess,
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
-					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
-					Name:                "test-commit-status",
-					Description:         "Test commit status",
-					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{
-						promoterv1alpha1.CommitStatusPublishToSCM,
-						promoterv1alpha1.CommitStatusPublishToPromoter,
-					},
-				},
-			}
-			err := k8sClient.Create(ctx, cs)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("scm and promoter cannot be combined"))
 		})
 	})
 
@@ -298,34 +281,9 @@ var _ = Describe("CommitStatus Controller", func() {
 					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
 					Name:                "test-commit-status",
 					Description:         "Test commit status",
-					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{"elsewhere"},
+					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{"promoter"},
 				},
 			}
-			err := k8sClient.Create(ctx, cs)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))
-		})
-
-		It("should reject an empty list", func() {
-			ctx := context.Background()
-			// A typed empty slice is omitted by json omitempty, so the apiserver would apply the
-			// default. Send the empty array explicitly to exercise minItems.
-			cs := &unstructured.Unstructured{Object: map[string]any{
-				"apiVersion": "promoter.argoproj.io/v1alpha1",
-				"kind":       "CommitStatus",
-				"metadata": map[string]any{
-					"name":      "empty-publishto-commit-status",
-					"namespace": "default",
-				},
-				"spec": map[string]any{
-					"phase":            "pending",
-					"gitRepositoryRef": map[string]any{"name": "does-not-exist"},
-					"sha":              "abcdef1234567890abcdef1234567890abcdef12",
-					"name":             "test-commit-status",
-					"description":      "Test commit status",
-					"publishTo":        []any{},
-				},
-			}}
 			err := k8sClient.Create(ctx, cs)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))

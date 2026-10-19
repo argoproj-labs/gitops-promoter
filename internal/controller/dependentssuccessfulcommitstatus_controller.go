@@ -581,7 +581,11 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = dcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, dcs.Spec.PublishTo)
+	if err != nil {
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, err
+	}
+	if err := r.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
 	}
 

@@ -539,11 +539,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("publishTo: promoter", func() {
+	Describe("publishTo: empty", func() {
 		It("should set publishTo on the child CommitStatus", func() {
 			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-skip-scm")
 
-			By("Creating a GitCommitStatus with publishTo promoter")
+			By("Creating a GitCommitStatus with an empty publishTo")
 			gcs := &promoterv1alpha1.GitCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -553,15 +553,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:        "gcs-skip-scm",
 					Expression: `true`,
-					PublishTo:  []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 				},
 			}
-			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
+			Expect(createWithPublishTo(ctx, gcs, []any{})).To(Succeed())
 			defer func() {
 				_ = k8sClient.Delete(ctx, gcs)
 			}()
 
-			By("Verifying the CommitStatus has publishTo promoter and a phase")
+			By("Verifying the CommitStatus has an empty publishTo and a phase")
 			Eventually(func(g Gomega) {
 				commitStatusName := utils.CommitStatusResourceName(ctx, gcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
@@ -570,7 +569,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
+				g.Expect(cs.Spec.PublishTo).To(BeEmpty())
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

@@ -751,7 +751,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -2097,7 +2097,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is the set of destinations for this commit status. - \"scm\": post the status to the SCM provider - \"promoter\": keep the status in Kubernetes and do not post it to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. The controller posts to the SCM when \"scm\" is present. Promotion gates use the phase in every case.",
+							Description: "PublishTo is the set of destinations for this commit status. - \"scm\": post the status to the SCM provider The default is [\"scm\"]. An empty list keeps the status in Kubernetes and does not post it to the SCM. Omitting the field uses the default. The controller posts to the SCM when \"scm\" is present. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -2774,7 +2774,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -3476,7 +3476,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -5671,7 +5671,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -6475,7 +6475,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -7037,7 +7037,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider - \"promoter\": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is [\"scm\"]. scm and promoter cannot be combined. Promotion gates use the phase in every case.",
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{

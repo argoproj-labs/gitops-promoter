@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -9,6 +10,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -64,11 +66,57 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = p.Parent.GetNamespace()
-	if err := c.Patch(ctx, commitStatus, ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(p.FieldOwner), client.ForceOwnership); err != nil {
+	patch, err := CommitStatusApplyPatch(commitStatusApply, p.PublishTo)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Patch(ctx, commitStatus, patch, client.FieldOwner(p.FieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
 	return commitStatus, nil
+}
+
+// CommitStatusApplyPatch returns a server-side apply patch for a CommitStatus.
+// An empty publishTo is written as [] so the API server does not apply the [scm] default.
+func CommitStatusApplyPatch(applyConfig any, publishTo []promoterv1alpha1.CommitStatusPublishTo) (client.Patch, error) {
+	data, err := json.Marshal(applyConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal CommitStatus apply configuration: %w", err)
+	}
+	if len(publishTo) == 0 {
+		data, err = withEmptyPublishTo(data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return client.RawPatch(types.ApplyPatchType, data), nil
+}
+
+func withEmptyPublishTo(data []byte) ([]byte, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CommitStatus apply configuration: %w", err)
+	}
+	specRaw, ok := obj["spec"]
+	if !ok {
+		return nil, fmt.Errorf("CommitStatus apply configuration has no spec")
+	}
+	var spec map[string]json.RawMessage
+	if err := json.Unmarshal(specRaw, &spec); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CommitStatus spec: %w", err)
+	}
+	spec["publishTo"] = []byte("[]")
+	specBytes, err := json.Marshal(spec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal CommitStatus spec: %w", err)
+	}
+	obj["spec"] = specBytes
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal CommitStatus apply configuration: %w", err)
+	}
+	return out, nil
 }
 
 // CleanupOrphanedCommitStatuses deletes CommitStatus resources labeled for the parent gate

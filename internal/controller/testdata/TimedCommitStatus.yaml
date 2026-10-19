@@ -31,7 +31,7 @@ spec:
     - branch: environment/production
       duration: 24h
 
-  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
   publishTo:
     - scm
 

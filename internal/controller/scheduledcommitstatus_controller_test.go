@@ -145,11 +145,11 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("publishTo: promoter", func() {
+	Describe("publishTo: empty", func() {
 		var scs *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating a ScheduledCommitStatus with publishTo promoter")
+			By("Creating a ScheduledCommitStatus with an empty publishTo")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
 				Name:      name + "-skip-scm",
 				Namespace: "default",
@@ -158,7 +158,6 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 					Environments: []promoterv1alpha1.ScheduledEnvironment{
 						{
 							Branch: testBranchDevelopment,
@@ -172,7 +171,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, scs)).To(Succeed())
+			Expect(createWithPublishTo(ctx, scs, []any{})).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -188,7 +187,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
+				g.Expect(cs.Spec.PublishTo).To(BeEmpty())
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
