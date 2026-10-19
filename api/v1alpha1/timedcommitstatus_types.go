@@ -53,7 +53,7 @@ type TimedCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
+	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
 
 	// +required
 	Environments []TimedCommitStatusEnvironments `json:"environments"`

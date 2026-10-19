@@ -755,7 +755,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	commitStatus.Namespace = argoCDCommitStatus.Namespace
 	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, argoCDCommitStatus.Spec.PublishTo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build CommitStatus patch: %w", err)
 	}
 	if err := r.localClient.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)

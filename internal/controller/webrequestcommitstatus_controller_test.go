@@ -308,8 +308,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:      "external-approval",
-					ReportOn: constants.CommitRefProposed,
+					Key:       "external-approval",
+					ReportOn:  constants.CommitRefProposed,
+					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate:    testServer.URL + "/validate",
 						MethodTemplate: "GET",
@@ -327,7 +328,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(createWithPublishTo(ctx, webRequestCommitStatus, []any{})).To(Succeed())
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 		})
 
 		AfterEach(func() {

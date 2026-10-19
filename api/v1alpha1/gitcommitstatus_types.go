@@ -58,7 +58,7 @@ type GitCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
+	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
 
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)

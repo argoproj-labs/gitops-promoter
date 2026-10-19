@@ -687,6 +687,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: skipName,
 					},
+					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   testBranchDevelopment,
@@ -695,7 +696,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(createWithPublishTo(skipCtx, tcs, []any{})).To(Succeed())
+			Expect(k8sClient.Create(skipCtx, tcs)).To(Succeed())
 			defer func() { _ = k8sClient.Delete(skipCtx, tcs) }()
 
 			commitStatusName := utils.CommitStatusResourceName(skipCtx, tcs, testBranchDevelopment)

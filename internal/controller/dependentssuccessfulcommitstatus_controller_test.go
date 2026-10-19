@@ -325,9 +325,10 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					PublishTo:            []promoterv1alpha1.CommitStatusPublishTo{},
 				},
 			}
-			Expect(createWithPublishTo(ctx, dependentsSuccessfulCommitStatus, []any{})).To(Succeed())
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 
 			By("Creating a proposed change so the DAG writes CommitStatuses")
 			gitPath, err := os.MkdirTemp("", "*")

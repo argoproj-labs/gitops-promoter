@@ -469,7 +469,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	commitStatus.Namespace = wrcs.Namespace
 	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, wrcs.Spec.PublishTo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build CommitStatus patch: %w", err)
 	}
 	if err := r.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.WebRequestCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)

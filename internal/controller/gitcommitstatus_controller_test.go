@@ -553,9 +553,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:        "gcs-skip-scm",
 					Expression: `true`,
+					PublishTo:  []promoterv1alpha1.CommitStatusPublishTo{},
 				},
 			}
-			Expect(createWithPublishTo(ctx, gcs, []any{})).To(Succeed())
+			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
 			defer func() {
 				_ = k8sClient.Delete(ctx, gcs)
 			}()

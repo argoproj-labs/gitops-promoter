@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -237,24 +236,19 @@ var _ = Describe("CommitStatus Controller", func() {
 	Context("When publishTo is empty", func() {
 		It("should record status without needing an SCM provider", func() {
 			ctx := context.Background()
-			// A typed empty slice is omitted by json omitempty, so send the empty array explicitly.
 			// The GitRepository does not exist. A reconcile that called the SCM provider would fail.
-			cs := &unstructured.Unstructured{Object: map[string]any{
-				"apiVersion": "promoter.argoproj.io/v1alpha1",
-				"kind":       "CommitStatus",
-				"metadata": map[string]any{
-					"name":      "skip-scm-commit-status",
-					"namespace": "default",
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "skip-scm-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{},
 				},
-				"spec": map[string]any{
-					"phase":            "success",
-					"gitRepositoryRef": map[string]any{"name": "does-not-exist"},
-					"sha":              "abcdef1234567890abcdef1234567890abcdef12",
-					"name":             "test-commit-status",
-					"description":      "Test commit status",
-					"publishTo":        []any{},
-				},
-			}}
+			}
 			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
 

@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -78,7 +79,8 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 }
 
 // CommitStatusApplyPatch returns a server-side apply patch for a CommitStatus.
-// An empty publishTo is written as [] so the API server does not apply the [scm] default.
+// applyconfiguration-gen always tags publishTo with omitempty, so an empty list is
+// written into the patch as [] and the API server does not apply the [scm] default.
 func CommitStatusApplyPatch(applyConfig any, publishTo []promoterv1alpha1.CommitStatusPublishTo) (client.Patch, error) {
 	data, err := json.Marshal(applyConfig)
 	if err != nil {
@@ -100,7 +102,7 @@ func withEmptyPublishTo(data []byte) ([]byte, error) {
 	}
 	specRaw, ok := obj["spec"]
 	if !ok {
-		return nil, fmt.Errorf("CommitStatus apply configuration has no spec")
+		return nil, errors.New("CommitStatus apply configuration has no spec")
 	}
 	var spec map[string]json.RawMessage
 	if err := json.Unmarshal(specRaw, &spec); err != nil {

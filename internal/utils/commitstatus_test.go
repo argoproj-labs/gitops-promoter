@@ -2,8 +2,11 @@ package utils_test
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -14,6 +17,63 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+var _ = Describe("publishTo JSON", func() {
+	It("omits a nil list and encodes an empty list", func() {
+		nilList, err := json.Marshal(promoterv1alpha1.CommitStatusSpec{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(nilList)).NotTo(ContainSubstring(`"publishTo"`))
+
+		empty, err := json.Marshal(promoterv1alpha1.CommitStatusSpec{
+			PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(empty)).To(ContainSubstring(`"publishTo":[]`))
+
+		gate, err := json.Marshal(promoterv1alpha1.WebRequestCommitStatusSpec{
+			PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(gate)).To(ContainSubstring(`"publishTo":[]`))
+	})
+})
+
+var _ = Describe("generated publishTo JSON", func() {
+	DescribeTable("apply configurations use omitempty and drop an empty list",
+		func(obj any) {
+			field, ok := reflect.TypeOf(obj).Elem().FieldByName("PublishTo")
+			Expect(ok).To(BeTrue())
+			Expect(field.Tag.Get("json")).To(Equal("publishTo,omitempty"))
+
+			fieldValue := reflect.ValueOf(obj).Elem().FieldByName("PublishTo")
+			fieldValue.Set(reflect.MakeSlice(fieldValue.Type(), 0, 0))
+			raw, err := json.Marshal(obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(raw)).NotTo(ContainSubstring(`"publishTo"`))
+		},
+		Entry("CommitStatus", acv1alpha1.CommitStatusSpec()),
+		Entry("ArgoCDCommitStatus", acv1alpha1.ArgoCDCommitStatusSpec()),
+		Entry("DependentsSuccessfulCommitStatus", acv1alpha1.DependentsSuccessfulCommitStatusSpec()),
+		Entry("GitCommitStatus", acv1alpha1.GitCommitStatusSpec()),
+		Entry("ScheduledCommitStatus", acv1alpha1.ScheduledCommitStatusSpec()),
+		Entry("TimedCommitStatus", acv1alpha1.TimedCommitStatusSpec()),
+		Entry("WebRequestCommitStatus", acv1alpha1.WebRequestCommitStatusSpec()),
+	)
+})
+
+var _ = Describe("CommitStatusApplyPatch", func() {
+	It("writes an empty publishTo as an empty array", func() {
+		patch, err := utils.CommitStatusApplyPatch(
+			acv1alpha1.CommitStatus("name", "default").
+				WithSpec(acv1alpha1.CommitStatusSpec().WithPublishTo()),
+			nil,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		data, err := patch.Data(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(ContainSubstring(`"publishTo":[]`))
+	})
+})
 
 var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 	DescribeTable("derives parent gate label keys from parent Kind",

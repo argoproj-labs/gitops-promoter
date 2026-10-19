@@ -158,6 +158,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
+					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
 					Environments: []promoterv1alpha1.ScheduledEnvironment{
 						{
 							Branch: testBranchDevelopment,
@@ -171,7 +172,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 					},
 				},
 			}
-			Expect(createWithPublishTo(ctx, scs, []any{})).To(Succeed())
+			Expect(k8sClient.Create(ctx, scs)).To(Succeed())
 		})
 
 		AfterEach(func() {

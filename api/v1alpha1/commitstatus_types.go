@@ -77,7 +77,7 @@ type CommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
+	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus

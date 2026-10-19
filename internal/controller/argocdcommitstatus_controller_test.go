@@ -630,6 +630,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Name:      psName,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					Key:                  key,
+					PublishTo:            []promoterv1alpha1.CommitStatusPublishTo{},
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{appLabelKey: appLabelVal},
@@ -637,7 +638,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 			}
 			resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
-			Expect(createWithPublishTo(ctx, acs, []any{})).To(Succeed())
+			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				var updated promoterv1alpha1.ArgoCDCommitStatus
