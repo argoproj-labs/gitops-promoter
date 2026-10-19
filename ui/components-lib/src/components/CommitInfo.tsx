@@ -40,7 +40,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     const sha = commit.sha?.substring(0, 8) || 'N/A';
     if (commitUrl && commit.sha) {
       return (
-        <Tooltip content={`Open commit ${sha} on GitHub`}>
+        <Tooltip content={`Open commit ${sha}`}>
           <a href={commitUrl} target="_blank" rel="noopener noreferrer" className="commit-sha-link">
             {sha}
           </a>
