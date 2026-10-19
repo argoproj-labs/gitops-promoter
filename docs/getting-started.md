@@ -51,6 +51,11 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
+The install bundles include `view`, `edit`, and `admin` ClusterRoles for the
+Promoter custom resources. These roles aggregate into Kubernetes' built-in
+`view`, `edit`, and `admin` roles, so granting users one of those standard roles
+also grants the corresponding Promoter custom-resource permissions.
+
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
 
 ## SCM provider configuration
