@@ -687,7 +687,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: skipName,
 					},
-					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{},
+					PublishTo: &[]promoterv1alpha1.CommitStatusPublishTo{},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   testBranchDevelopment,
@@ -707,7 +707,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					Name:      commitStatusName,
 					Namespace: "default",
 				}, &cs)).To(Succeed())
-				g.Expect(cs.Spec.PublishTo).To(BeEmpty())
+				g.Expect(cs.Spec.PublishTo).To(HaveValue(BeEmpty()))
 				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 			}, constants.EventuallyTimeout).Should(Succeed())
 

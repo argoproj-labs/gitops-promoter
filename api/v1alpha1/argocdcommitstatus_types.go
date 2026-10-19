@@ -56,7 +56,7 @@ type ArgoCDCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusKey returns spec.key, or the default when Key is empty.

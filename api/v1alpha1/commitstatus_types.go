@@ -77,7 +77,7 @@ type CommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
@@ -220,7 +220,7 @@ const (
 )
 
 // PublishesToSCM reports whether targets includes the SCM destination.
-// An empty list is local-only. The API server defaults an omitted field to ["scm"] before reconcile.
-func PublishesToSCM(targets []CommitStatusPublishTo) bool {
-	return slices.Contains(targets, CommitStatusPublishToSCM)
+// A nil pointer and an empty list are local-only. The API server defaults an omitted field to ["scm"] before reconcile.
+func PublishesToSCM(targets *[]CommitStatusPublishTo) bool {
+	return targets != nil && slices.Contains(*targets, CommitStatusPublishToSCM)
 }

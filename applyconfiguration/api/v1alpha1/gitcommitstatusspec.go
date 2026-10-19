@@ -47,7 +47,7 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// - "scm": the CommitStatus controller posts them to the SCM provider
 	// The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
 	// Omitting the field uses the default. Promotion gates use the phase in every case.
-	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
+	PublishTo *[]apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted
@@ -121,13 +121,11 @@ func (b *GitCommitStatusSpecApplyConfiguration) WithDescription(value string) *G
 	return b
 }
 
-// WithPublishTo adds the given value to the PublishTo field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the PublishTo field.
-func (b *GitCommitStatusSpecApplyConfiguration) WithPublishTo(values ...apiv1alpha1.CommitStatusPublishTo) *GitCommitStatusSpecApplyConfiguration {
-	for i := range values {
-		b.PublishTo = append(b.PublishTo, values[i])
-	}
+// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PublishTo field is set to the value of the last call.
+func (b *GitCommitStatusSpecApplyConfiguration) WithPublishTo(value []apiv1alpha1.CommitStatusPublishTo) *GitCommitStatusSpecApplyConfiguration {
+	b.PublishTo = &value
 	return b
 }
 

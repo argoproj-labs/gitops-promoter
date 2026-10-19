@@ -133,8 +133,12 @@ func (in *ArgoCDCommitStatusSpec) DeepCopyInto(out *ArgoCDCommitStatusSpec) {
 	in.URL.DeepCopyInto(&out.URL)
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 }
 
@@ -842,8 +846,12 @@ func (in *CommitStatusSpec) DeepCopyInto(out *CommitStatusSpec) {
 	out.RepositoryReference = in.RepositoryReference
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 }
 
@@ -1146,8 +1154,12 @@ func (in *DependentsSuccessfulCommitStatusSpec) DeepCopyInto(out *DependentsSucc
 	in.URL.DeepCopyInto(&out.URL)
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 }
 
@@ -1484,8 +1496,12 @@ func (in *GitCommitStatusSpec) DeepCopyInto(out *GitCommitStatusSpec) {
 	out.PromotionStrategyRef = in.PromotionStrategyRef
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 }
 
@@ -2638,8 +2654,12 @@ func (in *ScheduledCommitStatusSpec) DeepCopyInto(out *ScheduledCommitStatusSpec
 	out.PromotionStrategyRef = in.PromotionStrategyRef
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 	if in.Allow != nil {
 		in, out := &in.Allow, &out.Allow
@@ -3091,8 +3111,12 @@ func (in *TimedCommitStatusSpec) DeepCopyInto(out *TimedCommitStatusSpec) {
 	out.PromotionStrategyRef = in.PromotionStrategyRef
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 	if in.Environments != nil {
 		in, out := &in.Environments, &out.Environments
@@ -3386,8 +3410,12 @@ func (in *WebRequestCommitStatusSpec) DeepCopyInto(out *WebRequestCommitStatusSp
 	out.PromotionStrategyRef = in.PromotionStrategyRef
 	if in.PublishTo != nil {
 		in, out := &in.PublishTo, &out.PublishTo
-		*out = make([]CommitStatusPublishTo, len(*in))
-		copy(*out, *in)
+		*out = new([]CommitStatusPublishTo)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]CommitStatusPublishTo, len(*in))
+			copy(*out, *in)
+		}
 	}
 	in.HTTPRequest.DeepCopyInto(&out.HTTPRequest)
 	in.Success.DeepCopyInto(&out.Success)

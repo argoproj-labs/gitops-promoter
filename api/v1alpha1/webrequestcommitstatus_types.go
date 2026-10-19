@@ -92,7 +92,7 @@ type WebRequestCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
 	// - "proposed": Reports on the proposed hydrated commit SHA (default)

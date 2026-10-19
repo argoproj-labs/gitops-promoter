@@ -57,7 +57,7 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // DependentEnvironment declares one environment branch and the other branches it depends on.

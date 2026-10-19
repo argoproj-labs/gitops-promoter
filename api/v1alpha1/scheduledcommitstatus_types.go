@@ -44,7 +44,7 @@ type ScheduledCommitStatusSpec struct {
 	// +kubebuilder:default={scm}
 	// +listType=set
 	// +kubebuilder:validation:items:Enum=scm
-	PublishTo []CommitStatusPublishTo `json:"publishTo,omitzero"`
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 
 	// Timezone is the default IANA timezone name used for evaluating cron expressions across all windows.
 	// Individual windows may override this with their own timezone field.

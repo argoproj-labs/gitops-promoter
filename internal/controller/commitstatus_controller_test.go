@@ -229,7 +229,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
 
 			// The CRD default fills spec.publishTo on create.
-			Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM}))
+			Expect(cs.Spec.PublishTo).To(HaveValue(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM})))
 		})
 	})
 
@@ -246,7 +246,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
 					Name:                "test-commit-status",
 					Description:         "Test commit status",
-					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{},
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{},
 				},
 			}
 			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
@@ -255,7 +255,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				got := &promoterv1alpha1.CommitStatus{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "skip-scm-commit-status"}, got)).To(Succeed())
-				g.Expect(got.Spec.PublishTo).To(BeEmpty())
+				g.Expect(got.Spec.PublishTo).To(HaveValue(BeEmpty()))
 				g.Expect(got.Status.Sha).To(Equal(got.Spec.Sha))
 				g.Expect(got.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(got.Status.Id).To(BeEmpty())
@@ -275,7 +275,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
 					Name:                "test-commit-status",
 					Description:         "Test commit status",
-					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{"promoter"},
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{"promoter"},
 				},
 			}
 			err := k8sClient.Create(ctx, cs)

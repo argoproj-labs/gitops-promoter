@@ -692,8 +692,10 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		WithSha(sha).
 		WithName(commitStatusName).
 		WithDescription(desc).
-		WithPhase(phase).
-		WithPublishTo(argoCDCommitStatus.Spec.PublishTo...)
+		WithPhase(phase)
+	if argoCDCommitStatus.Spec.PublishTo != nil {
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*argoCDCommitStatus.Spec.PublishTo)
+	}
 
 	// Render URL from template if it exists
 	if argoCDCommitStatus.Spec.URL.Template != "" {
@@ -753,11 +755,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = resourceName
 	commitStatus.Namespace = argoCDCommitStatus.Namespace
-	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, argoCDCommitStatus.Spec.PublishTo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build CommitStatus patch: %w", err)
-	}
-	if err := r.localClient.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
 	}
 

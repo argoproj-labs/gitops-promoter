@@ -550,8 +550,10 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 		WithSha(reportedSha).
 		WithName(key).
 		WithDescription(description).
-		WithPhase(phase).
-		WithPublishTo(dcs.Spec.PublishTo...)
+		WithPhase(phase)
+	if dcs.Spec.PublishTo != nil {
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*dcs.Spec.PublishTo)
+	}
 
 	if renderedURL != "" {
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
@@ -581,11 +583,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = dcs.Namespace
-	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, dcs.Spec.PublishTo)
-	if err != nil {
-		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to build CommitStatus patch: %w", err)
-	}
-	if err := r.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
 	}
 

@@ -438,8 +438,10 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		WithName(wrcs.Spec.Key + "/" + branch).
 		WithDescription(description).
 		WithPhase(phase).
-		WithSha(sha).
-		WithPublishTo(wrcs.Spec.PublishTo...)
+		WithSha(sha)
+	if wrcs.Spec.PublishTo != nil {
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*wrcs.Spec.PublishTo)
+	}
 
 	// Render URL template if present
 	if wrcs.Spec.UrlTemplate != "" {
@@ -467,11 +469,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = wrcs.Namespace
-	patch, err := utils.CommitStatusApplyPatch(commitStatusApply, wrcs.Spec.PublishTo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build CommitStatus patch: %w", err)
-	}
-	if err := r.Patch(ctx, commitStatus, patch, client.FieldOwner(constants.WebRequestCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.WebRequestCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 

@@ -2,8 +2,6 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -11,7 +9,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +27,7 @@ func CommitStatusResourceName(ctx context.Context, parent client.Object, branch 
 // UpsertCommitStatusParams holds the parameters for creating or updating a CommitStatus via Server-Side Apply.
 type UpsertCommitStatusParams struct {
 	Parent      client.Object
+	PublishTo   *[]promoterv1alpha1.CommitStatusPublishTo
 	RepoRefName string
 	Branch      string
 	Sha         string
@@ -37,7 +35,6 @@ type UpsertCommitStatusParams struct {
 	Description string
 	Phase       promoterv1alpha1.CommitStatusPhase
 	FieldOwner  string
-	PublishTo   []promoterv1alpha1.CommitStatusPublishTo
 }
 
 // UpsertCommitStatus creates or updates a CommitStatus resource using Server-Side Apply.
@@ -47,6 +44,17 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 	kind := commitStatusGateKind(p.Parent)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	commitStatusSpec := acv1alpha1.CommitStatusSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
+		WithName(p.Key + "/" + p.Branch).
+		WithDescription(p.Description).
+		WithPhase(p.Phase).
+		WithSha(p.Sha)
+	if p.PublishTo != nil {
+		// A non-nil list, including an empty one, is explicit. Omitting the call leaves the field unset
+		// so the API server applies the [scm] default.
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*p.PublishTo)
+	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, p.Parent.GetNamespace()).
 		WithLabels(CommitStatusStandardLabels(p.Parent, p.Branch, p.Key)).
 		WithOwnerReferences(acmetav1.OwnerReference().
@@ -56,69 +64,16 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 			WithUID(p.Parent.GetUID()).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
-			WithName(p.Key + "/" + p.Branch).
-			WithDescription(p.Description).
-			WithPhase(p.Phase).
-			WithSha(p.Sha).
-			WithPublishTo(p.PublishTo...))
+		WithSpec(commitStatusSpec)
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = p.Parent.GetNamespace()
-	patch, err := CommitStatusApplyPatch(commitStatusApply, p.PublishTo)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.Patch(ctx, commitStatus, patch, client.FieldOwner(p.FieldOwner), client.ForceOwnership); err != nil {
+	if err := c.Patch(ctx, commitStatus, ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(p.FieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
 	return commitStatus, nil
-}
-
-// CommitStatusApplyPatch returns a server-side apply patch for a CommitStatus.
-// applyconfiguration-gen always tags publishTo with omitempty, so an empty list is
-// written into the patch as [] and the API server does not apply the [scm] default.
-func CommitStatusApplyPatch(applyConfig any, publishTo []promoterv1alpha1.CommitStatusPublishTo) (client.Patch, error) {
-	data, err := json.Marshal(applyConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal CommitStatus apply configuration: %w", err)
-	}
-	if len(publishTo) == 0 {
-		data, err = withEmptyPublishTo(data)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return client.RawPatch(types.ApplyPatchType, data), nil
-}
-
-func withEmptyPublishTo(data []byte) ([]byte, error) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal CommitStatus apply configuration: %w", err)
-	}
-	specRaw, ok := obj["spec"]
-	if !ok {
-		return nil, errors.New("CommitStatus apply configuration has no spec")
-	}
-	var spec map[string]json.RawMessage
-	if err := json.Unmarshal(specRaw, &spec); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal CommitStatus spec: %w", err)
-	}
-	spec["publishTo"] = []byte("[]")
-	specBytes, err := json.Marshal(spec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal CommitStatus spec: %w", err)
-	}
-	obj["spec"] = specBytes
-	out, err := json.Marshal(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal CommitStatus apply configuration: %w", err)
-	}
-	return out, nil
 }
 
 // CleanupOrphanedCommitStatuses deletes CommitStatus resources labeled for the parent gate
