@@ -325,7 +325,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					PublishTo:            promoterv1alpha1.CommitStatusPublishToPromoter,
+					PublishTo:            []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -342,7 +342,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 					cs := &promoterv1alpha1.CommitStatus{}
 					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, branch)
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
-					g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
+					g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
 					g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}

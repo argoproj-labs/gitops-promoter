@@ -105,8 +105,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -511,8 +515,12 @@ var schemaYAML = typed.YAMLObject(`types:
       default: pending
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: sha
       type:
         scalar: string
@@ -707,8 +715,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
@@ -918,8 +930,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: target
       type:
         scalar: string
@@ -1625,8 +1641,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: timezone
       type:
         scalar: string
@@ -1866,8 +1886,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusStatus
   map:
     fields:
@@ -2104,8 +2128,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
     - name: publishTo
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
-      default: scm
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
     - name: reportOn
       type:
         scalar: string

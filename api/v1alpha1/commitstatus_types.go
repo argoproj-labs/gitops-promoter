@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"slices"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -66,14 +68,18 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 
-	// PublishTo controls where the commit status is published.
-	// - "scm": the controller posts the status to the SCM provider (default)
-	// - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider
-	// Promotion gates use the phase in both modes.
+	// PublishTo is the set of destinations for this commit status.
+	// - "scm": post the status to the SCM provider
+	// - "promoter": keep the status in Kubernetes and do not post it to the SCM
+	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case.
 	// +optional
-	// +kubebuilder:default="scm"
-	// +kubebuilder:validation:Enum=scm;promoter
-	PublishTo CommitStatusPublishTo `json:"publishTo,omitempty"`
+	// +kubebuilder:default={scm}
+	// +listType=set
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:items:Enum=scm;promoter
+	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
@@ -207,12 +213,22 @@ const (
 	CommitPhasePending CommitStatusPhase = "pending"
 )
 
-// CommitStatusPublishTo controls where a commit status is published.
+// CommitStatusPublishTo is one destination a commit status can be published to.
 type CommitStatusPublishTo string
 
 const (
-	// CommitStatusPublishToSCM posts the commit status to the SCM provider. This is the default.
+	// CommitStatusPublishToSCM posts the commit status to the SCM provider. This is the default destination.
 	CommitStatusPublishToSCM CommitStatusPublishTo = "scm"
-	// CommitStatusPublishToPromoter keeps the commit status in Kubernetes only. The controller does not post it to the SCM provider.
+	// CommitStatusPublishToPromoter keeps the commit status in Kubernetes. The controller does not post it to the SCM provider
+	// unless "scm" is also listed.
 	CommitStatusPublishToPromoter CommitStatusPublishTo = "promoter"
 )
+
+// PublishesToSCM reports whether targets includes the SCM destination.
+// An empty list matches the CRD default of ["scm"].
+func PublishesToSCM(targets []CommitStatusPublishTo) bool {
+	if len(targets) == 0 {
+		return true
+	}
+	return slices.Contains(targets, CommitStatusPublishToSCM)
+}

@@ -39,11 +39,12 @@ type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
-	// PublishTo sets spec.publishTo on the CommitStatus objects this controller creates.
-	// - "scm": the CommitStatus controller posts them to the SCM provider (default)
-	// - "promoter": the CommitStatus controller keeps them in Kubernetes only
-	// Promotion gates use the phase in both modes.
-	PublishTo *apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
+	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider
+	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
+	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// Promotion gates use the phase in every case.
+	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // ArgoCDCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ArgoCDCommitStatusSpec type for use with
@@ -84,10 +85,12 @@ func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApply
 	return b
 }
 
-// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the PublishTo field is set to the value of the last call.
-func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithPublishTo(value apiv1alpha1.CommitStatusPublishTo) *ArgoCDCommitStatusSpecApplyConfiguration {
-	b.PublishTo = &value
+// WithPublishTo adds the given value to the PublishTo field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the PublishTo field.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithPublishTo(values ...apiv1alpha1.CommitStatusPublishTo) *ArgoCDCommitStatusSpecApplyConfiguration {
+	for i := range values {
+		b.PublishTo = append(b.PublishTo, values[i])
+	}
 	return b
 }

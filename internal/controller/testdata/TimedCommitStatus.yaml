@@ -31,8 +31,9 @@ spec:
     - branch: environment/production
       duration: 24h
 
-  # Optional. Where the CommitStatus objects this gate creates are published: "scm" (default) posts them to the SCM, "promoter" keeps them in Kubernetes only.
-  publishTo: scm
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  publishTo:
+    - scm
 
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status

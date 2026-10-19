@@ -49,14 +49,18 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
 
-	// PublishTo sets spec.publishTo on the CommitStatus objects this controller creates.
-	// - "scm": the CommitStatus controller posts them to the SCM provider (default)
-	// - "promoter": the CommitStatus controller keeps them in Kubernetes only
-	// Promotion gates use the phase in both modes.
+	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider
+	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
+	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// Promotion gates use the phase in every case.
 	// +optional
-	// +kubebuilder:default="scm"
-	// +kubebuilder:validation:Enum=scm;promoter
-	PublishTo CommitStatusPublishTo `json:"publishTo,omitempty"`
+	// +kubebuilder:default={scm}
+	// +listType=set
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:items:Enum=scm;promoter
+	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // DependentEnvironment declares one environment branch and the other branches it depends on.

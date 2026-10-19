@@ -43,11 +43,12 @@ type CommitStatusSpecApplyConfiguration struct {
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// Url is a URL that the user can follow to see more details about the status
 	Url *string `json:"url,omitempty"`
-	// PublishTo controls where the commit status is published.
-	// - "scm": the controller posts the status to the SCM provider (default)
-	// - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider
-	// Promotion gates use the phase in both modes.
-	PublishTo *apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
+	// PublishTo is the set of destinations for this commit status.
+	// - "scm": post the status to the SCM provider
+	// - "promoter": keep the status in Kubernetes and do not post it to the SCM
+	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case.
+	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusSpecApplyConfiguration constructs a declarative configuration of the CommitStatusSpec type for use with
@@ -104,10 +105,12 @@ func (b *CommitStatusSpecApplyConfiguration) WithUrl(value string) *CommitStatus
 	return b
 }
 
-// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the PublishTo field is set to the value of the last call.
-func (b *CommitStatusSpecApplyConfiguration) WithPublishTo(value apiv1alpha1.CommitStatusPublishTo) *CommitStatusSpecApplyConfiguration {
-	b.PublishTo = &value
+// WithPublishTo adds the given value to the PublishTo field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the PublishTo field.
+func (b *CommitStatusSpecApplyConfiguration) WithPublishTo(values ...apiv1alpha1.CommitStatusPublishTo) *CommitStatusSpecApplyConfiguration {
+	for i := range values {
+		b.PublishTo = append(b.PublishTo, values[i])
+	}
 	return b
 }

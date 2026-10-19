@@ -17,8 +17,9 @@ spec:
   # URL for the commit status target link in the SCM (Go templates supported). Optional.
   urlTemplate: ""
 
-  # Optional. Where the CommitStatus objects this gate creates are published: "scm" (default) posts them to the SCM, "promoter" keeps them in Kubernetes only.
-  publishTo: scm
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. "promoter" keeps them in Kubernetes only.
+  publishTo:
+    - scm
 
   # Which SHA to report on: "proposed" (default) or "active". Optional.
   reportOn: proposed

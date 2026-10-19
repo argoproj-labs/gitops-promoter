@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -229,7 +230,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
 
 			// The CRD default fills spec.publishTo on create.
-			Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToSCM))
+			Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM}))
 		})
 	})
 
@@ -246,7 +247,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
 					Name:                "test-commit-status",
 					Description:         "Test commit status",
-					PublishTo:           promoterv1alpha1.CommitStatusPublishToPromoter,
+					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 				},
 			}
 			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
@@ -258,6 +259,82 @@ var _ = Describe("CommitStatus Controller", func() {
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(cs.Status.Id).To(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When publishTo lists scm and promoter", func() {
+		It("should post to the SCM", func() {
+			ctx := context.Background()
+			// The GitRepository does not exist. Listing promoter alongside scm must not skip the SCM,
+			// so reconcile fails and leaves status.sha empty.
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "both-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{
+						promoterv1alpha1.CommitStatusPublishToSCM,
+						promoterv1alpha1.CommitStatusPublishToPromoter,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
+
+			Consistently(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cs), cs)).To(Succeed())
+				g.Expect(cs.Status.Sha).To(BeEmpty())
+			}, "3s", "250ms").Should(Succeed())
+		})
+	})
+
+	Context("When publishTo is invalid", func() {
+		It("should reject an unknown destination", func() {
+			ctx := context.Background()
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "invalid-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           []promoterv1alpha1.CommitStatusPublishTo{"elsewhere"},
+				},
+			}
+			err := k8sClient.Create(ctx, cs)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))
+		})
+
+		It("should reject an empty list", func() {
+			ctx := context.Background()
+			// A typed empty slice is omitted by json omitempty, so the apiserver would apply the
+			// default. Send the empty array explicitly to exercise minItems.
+			cs := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "promoter.argoproj.io/v1alpha1",
+				"kind":       "CommitStatus",
+				"metadata": map[string]any{
+					"name":      "empty-publishto-commit-status",
+					"namespace": "default",
+				},
+				"spec": map[string]any{
+					"phase":            "pending",
+					"gitRepositoryRef": map[string]any{"name": "does-not-exist"},
+					"sha":              "abcdef1234567890abcdef1234567890abcdef12",
+					"name":             "test-commit-status",
+					"description":      "Test commit status",
+					"publishTo":        []any{},
+				},
+			}}
+			err := k8sClient.Create(ctx, cs)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))
 		})
 	})
 

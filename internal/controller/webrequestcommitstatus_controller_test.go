@@ -310,7 +310,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Key:       "external-approval",
 					ReportOn:  constants.CommitRefProposed,
-					PublishTo: promoterv1alpha1.CommitStatusPublishToPromoter,
+					PublishTo: []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate:    testServer.URL + "/validate",
 						MethodTemplate: "GET",
@@ -348,7 +348,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
+				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

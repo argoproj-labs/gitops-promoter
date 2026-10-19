@@ -112,8 +112,8 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	if cs.Spec.PublishTo == promoterv1alpha1.CommitStatusPublishToPromoter {
-		// Promoter mode: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
+	if !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo) {
+		// No "scm" destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
 		cs.Status.Sha = cs.Spec.Sha
 		cs.Status.Phase = cs.Spec.Phase
 		cs.Status.Id = ""

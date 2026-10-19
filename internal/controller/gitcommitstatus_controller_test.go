@@ -553,7 +553,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:        "gcs-skip-scm",
 					Expression: `true`,
-					PublishTo:  promoterv1alpha1.CommitStatusPublishToPromoter,
+					PublishTo:  []promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter},
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
@@ -570,7 +570,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.PublishTo).To(Equal(promoterv1alpha1.CommitStatusPublishToPromoter))
+				g.Expect(cs.Spec.PublishTo).To(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToPromoter}))
 				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

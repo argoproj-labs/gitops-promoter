@@ -43,11 +43,12 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// If not specified, defaults to empty string.
 	Description *string `json:"description,omitempty"`
-	// PublishTo sets spec.publishTo on the CommitStatus objects this controller creates.
-	// - "scm": the CommitStatus controller posts them to the SCM provider (default)
-	// - "promoter": the CommitStatus controller keeps them in Kubernetes only
-	// Promotion gates use the phase in both modes.
-	PublishTo *apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
+	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider
+	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
+	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// Promotion gates use the phase in every case.
+	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted
@@ -121,11 +122,13 @@ func (b *GitCommitStatusSpecApplyConfiguration) WithDescription(value string) *G
 	return b
 }
 
-// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the PublishTo field is set to the value of the last call.
-func (b *GitCommitStatusSpecApplyConfiguration) WithPublishTo(value apiv1alpha1.CommitStatusPublishTo) *GitCommitStatusSpecApplyConfiguration {
-	b.PublishTo = &value
+// WithPublishTo adds the given value to the PublishTo field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the PublishTo field.
+func (b *GitCommitStatusSpecApplyConfiguration) WithPublishTo(values ...apiv1alpha1.CommitStatusPublishTo) *GitCommitStatusSpecApplyConfiguration {
+	for i := range values {
+		b.PublishTo = append(b.PublishTo, values[i])
+	}
 	return b
 }
 

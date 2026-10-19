@@ -68,8 +68,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef?: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
              * @default {}
@@ -409,8 +409,8 @@ export type components = {
              * @default
              */
             phase: string;
-            /** @description PublishTo controls where the commit status is published. - "scm": the controller posts the status to the SCM provider (default) - "promoter": the controller keeps the status in Kubernetes only and does not post it to the SCM provider Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is the set of destinations for this commit status. - "scm": post the status to the SCM provider - "promoter": keep the status in Kubernetes and do not post it to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description SHA is the commit SHA to set the status on. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
              * @default
@@ -535,8 +535,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
              * @default {}
@@ -777,8 +777,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description Target specifies which commit SHA to validate with the expression. - "active": Validates the currently active/deployed commit (default behavior) - "proposed": Validates the proposed commit that will be promoted
              *
@@ -1662,8 +1662,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /** @description Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC. */
             timezone?: string;
         };
@@ -1923,8 +1923,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
         };
         /** @description TimedCommitStatusStatus defines the observed state of TimedCommitStatus. */
         TimedCommitStatusStatus: {
@@ -2125,8 +2125,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /** @description PublishTo sets spec.publishTo on the CommitStatus objects this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider (default) - "promoter": the CommitStatus controller keeps them in Kubernetes only Promotion gates use the phase in both modes. */
-            publishTo?: string;
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description ReportOn specifies which commit SHA to report the CommitStatus on. - "proposed": Reports on the proposed hydrated commit SHA (default) - "active": Reports on the active hydrated commit SHA
              *
