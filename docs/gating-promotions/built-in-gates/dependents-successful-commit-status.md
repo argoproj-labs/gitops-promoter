@@ -104,7 +104,7 @@ are rejected.
 
 ### Keep the status out of the SCM (`publishTo`)
 
-Set **`spec.publishTo: [promoter]`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. List both `scm` and `promoter` to post to the SCM and keep the status for promotion gates. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+Set **`spec.publishTo: [promoter]`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. `scm` and `promoter` cannot be combined. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
 
 ### Commit Status URL Template
 

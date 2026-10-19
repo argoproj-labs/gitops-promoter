@@ -52,7 +52,7 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
 	// - "scm": the CommitStatus controller posts them to the SCM provider
 	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// The default is ["scm"]. scm and promoter cannot be combined.
 	// Promotion gates use the phase in every case.
 	// +optional
 	// +kubebuilder:default={scm}
@@ -60,6 +60,7 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:items:Enum=scm;promoter
+	// +kubebuilder:validation:XValidation:rule="!(('scm' in self) && ('promoter' in self))",message="scm and promoter cannot be combined"
 	PublishTo []CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 

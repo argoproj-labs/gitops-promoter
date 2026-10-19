@@ -152,11 +152,10 @@ the respective environments' proposed (`-next`) environment branches.
 - `scm`: the CommitStatus controller posts the status to the SCM.
 - `promoter`: the controller keeps the status in Kubernetes and does not post it to the SCM.
 
-The default is `[scm]`. List both to post to the SCM and keep the status for promotion gates:
+The default is `[scm]`. Choose one destination. `scm` and `promoter` cannot be combined: `promoter` keeps the status in Kubernetes, and `scm` posts it to the SCM. The list can grow when more destinations are added.
 
 ```yaml
 publishTo:
-  - scm
   - promoter
 ```
 

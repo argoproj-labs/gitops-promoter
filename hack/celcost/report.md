@@ -9,22 +9,22 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 
 | Resource | Version | Total cost | % of schema limit |
 |---|---|---:|---:|
-| ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
+| ArgoCDCommitStatus | v1alpha1 | 7 | 0.00% |
 | ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
 | ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
-| CommitStatus | v1alpha1 | 3 | 0.00% |
+| CommitStatus | v1alpha1 | 10 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 384 | 0.00% |
-| DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
-| GitCommitStatus | v1alpha1 | 0 | 0.00% |
+| DependentsSuccessfulCommitStatus | v1alpha1 | 151,507 | 0.15% |
+| GitCommitStatus | v1alpha1 | 7 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RestoreActiveCommit | v1alpha1 | 165 | 0.00% |
-| ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
+| ScheduledCommitStatus | v1alpha1 | 106,010 | 0.11% |
 | ScmProvider | v1alpha1 | 21 | 0.00% |
-| TimedCommitStatus | v1alpha1 | 0 | 0.00% |
-| WebRequestCommitStatus | v1alpha1 | 25 | 0.00% |
+| TimedCommitStatus | v1alpha1 | 7 | 0.00% |
+| WebRequestCommitStatus | v1alpha1 | 32 | 0.00% |
 
 ### Per-resource detail
 
@@ -34,7 +34,10 @@ Source: `promoter.argoproj.io_argocdcommitstatuses.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
+| **Total** | **7** | **0.00%** | |
 
 #### ChangeTransferPolicy
 
@@ -110,8 +113,9 @@ Source: `promoter.argoproj.io_commitstatuses.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
 | `.spec.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **3** | **0.00%** | |
+| **Total** | **10** | **0.00%** | |
 
 #### ControllerConfiguration
 
@@ -169,7 +173,8 @@ Source: `promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml`
 |---|---:|---:|---|
 | `.status.environments[].activeCommitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| **Total** | **151,500** | **0.15%** | |
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
+| **Total** | **151,507** | **0.15%** | |
 
 #### GitCommitStatus
 
@@ -177,7 +182,10 @@ Source: `promoter.argoproj.io_gitcommitstatuses.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
+| **Total** | **7** | **0.00%** | |
 
 #### GitRepository
 
@@ -272,7 +280,8 @@ Source: `promoter.argoproj.io_scheduledcommitstatuses.yaml`
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
 | `.spec` | 19,003 | 0.19% | `self.environments.all(e, size(e.allow) > 0 \|\| size(e.exclude) > 0 \|\| size(self.allow) > 0 \|\| size(self.exclude)...` |
 | `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **106,003** | **0.11%** | |
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
+| **Total** | **106,010** | **0.11%** | |
 
 #### ScmProvider
 
@@ -294,7 +303,10 @@ Source: `promoter.argoproj.io_timedcommitstatuses.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
+| **Total** | **7** | **0.00%** | |
 
 #### WebRequestCommitStatus
 
@@ -306,6 +318,7 @@ Source: `promoter.argoproj.io_webrequestcommitstatuses.yaml`
 |---|---:|---:|---|
 | `.spec.httpRequest` | 11 | 0.00% | `(has(self.method) && self.method.size() > 0) != (has(self.methodTemplate) && self.methodTemplate.size() > 0)` |
 | `.spec.httpRequest.authentication` | 10 | 0.00% | `(has(self.basic)?1:0)+(has(self.bearer)?1:0)+(has(self.oauth2)?1:0)+(has(self.tls)?1:0)+(has(self.scm)?1:0) <= 1` |
+| `.spec.publishTo` | 7 | 0.00% | `!(('scm' in self) && ('promoter' in self))` |
 | `.spec.mode` | 4 | 0.00% | `(has(self.polling)?1:0)+(has(self.trigger)?1:0) == 1` |
-| **Total** | **25** | **0.00%** | |
+| **Total** | **32** | **0.00%** | |
 

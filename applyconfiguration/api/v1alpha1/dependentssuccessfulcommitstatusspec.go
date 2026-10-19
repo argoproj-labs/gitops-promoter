@@ -45,7 +45,7 @@ type DependentsSuccessfulCommitStatusSpecApplyConfiguration struct {
 	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
 	// - "scm": the CommitStatus controller posts them to the SCM provider
 	// - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// The default is ["scm"]. scm and promoter cannot be combined.
 	// Promotion gates use the phase in every case.
 	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }

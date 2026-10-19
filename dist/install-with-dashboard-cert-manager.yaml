@@ -141,7 +141,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -154,6 +154,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               url:
                 description: URL generates the URL to use in the CommitStatus, for
                   example a link to the Argo CD UI.
@@ -2310,7 +2313,7 @@ spec:
                   PublishTo is the set of destinations for this commit status.
                   - "scm": post the status to the SCM provider
                   - "promoter": keep the status in Kubernetes and do not post it to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -2323,6 +2326,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               sha:
                 description: |-
                   SHA is the commit SHA to set the status on.
@@ -5232,7 +5238,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -5245,6 +5251,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
@@ -5635,7 +5644,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -5648,6 +5657,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               target:
                 default: active
                 description: |-
@@ -8096,7 +8108,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -8109,6 +8121,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               timezone:
                 default: UTC
                 description: |-
@@ -8650,7 +8665,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -8663,6 +8678,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
             required:
             - environments
             - promotionStrategyRef
@@ -9298,7 +9316,7 @@ spec:
                   PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
                   - "scm": the CommitStatus controller posts them to the SCM provider
                   - "promoter": the CommitStatus controller keeps them in Kubernetes and does not post them to the SCM
-                  The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+                  The default is ["scm"]. scm and promoter cannot be combined.
                   Promotion gates use the phase in every case.
                 items:
                   description: CommitStatusPublishTo is one destination a commit status
@@ -9311,6 +9329,9 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: scm and promoter cannot be combined
+                  rule: '!((''scm'' in self) && (''promoter'' in self))'
               reportOn:
                 default: proposed
                 description: |-

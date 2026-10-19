@@ -263,10 +263,8 @@ var _ = Describe("CommitStatus Controller", func() {
 	})
 
 	Context("When publishTo lists scm and promoter", func() {
-		It("should post to the SCM", func() {
+		It("should reject the combination", func() {
 			ctx := context.Background()
-			// The GitRepository does not exist. Listing promoter alongside scm must not skip the SCM,
-			// so reconcile fails and leaves status.sha empty.
 			cs := &promoterv1alpha1.CommitStatus{
 				Name:      "both-publishto-commit-status",
 				Namespace: "default",
@@ -282,13 +280,9 @@ var _ = Describe("CommitStatus Controller", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
-
-			Consistently(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cs), cs)).To(Succeed())
-				g.Expect(cs.Status.Sha).To(BeEmpty())
-			}, "3s", "250ms").Should(Succeed())
+			err := k8sClient.Create(ctx, cs)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("scm and promoter cannot be combined"))
 		})
 	})
 

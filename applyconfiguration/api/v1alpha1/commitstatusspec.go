@@ -46,7 +46,7 @@ type CommitStatusSpecApplyConfiguration struct {
 	// PublishTo is the set of destinations for this commit status.
 	// - "scm": post the status to the SCM provider
 	// - "promoter": keep the status in Kubernetes and do not post it to the SCM
-	// The default is ["scm"]. List both to post to the SCM and keep the status for promotion gates.
+	// The default is ["scm"]. scm and promoter cannot be combined.
 	// The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case.
 	PublishTo []apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }

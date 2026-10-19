@@ -25,7 +25,7 @@ spec:
   url: https://argocd.example.com/applications/example-app
 
   # Optional. Destinations for this status. Default is [scm], which posts it to the SCM.
-  # "promoter" keeps it in Kubernetes only. List both to post to the SCM and keep it for gates.
+  # "promoter" keeps it in Kubernetes only. scm and promoter cannot be combined.
   publishTo:
     - scm
 status:
