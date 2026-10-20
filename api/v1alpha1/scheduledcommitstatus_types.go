@@ -36,6 +36,16 @@ type ScheduledCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
 
+	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider
+	// The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+	// Omitting the field uses the default. Promotion gates use the phase in every case.
+	// +optional
+	// +kubebuilder:default={scm}
+	// +listType=set
+	// +kubebuilder:validation:items:Enum=scm
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
+
 	// Timezone is the default IANA timezone name used for evaluating cron expressions across all windows.
 	// Individual windows may override this with their own timezone field.
 	// Defaults to UTC.

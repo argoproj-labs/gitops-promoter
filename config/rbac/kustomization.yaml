@@ -22,6 +22,20 @@ resources:
 # if you do not want those helpers be installed with your Project.
 - argocdcommitstatus_editor_role.yaml
 - argocdcommitstatus_viewer_role.yaml
+- changetransferpolicy_editor_role.yaml
+- changetransferpolicy_viewer_role.yaml
+- commitstatus_editor_role.yaml
+- commitstatus_viewer_role.yaml
+- gitrepository_editor_role.yaml
+- gitrepository_viewer_role.yaml
+- promotionstrategy_editor_role.yaml
+- promotionstrategy_viewer_role.yaml
+- pullrequest_editor_role.yaml
+- pullrequest_viewer_role.yaml
+- restoreactivecommit_editor_role.yaml
+- restoreactivecommit_viewer_role.yaml
+- scmprovider_editor_role.yaml
+- scmprovider_viewer_role.yaml
 
 # For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
 # default, aiding admins in cluster management. Those roles are

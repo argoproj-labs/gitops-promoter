@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/go-github/v92/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -78,8 +78,8 @@ func NewDemoCommand() *cobra.Command {
 
 			// 3. Create the repository
 			color.Green("Creating repository %s/%s...\n", username, repoName)
-			repo, _, err := client.Repositories.Create(ctx, "", &github.Repository{
-				Name:        new(repoName),
+			repo, _, err := client.Repositories.Create(ctx, "", github.CreateRepositoryRequest{
+				Name:        repoName,
 				Description: new("GitOps Promoter demo repository"),
 				Private:     new(true),
 				AutoInit:    new(true), // Creates with README

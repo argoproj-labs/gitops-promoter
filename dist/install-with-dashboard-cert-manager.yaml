@@ -16,7 +16,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -134,6 +134,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               url:
                 description: URL generates the URL to use in the CommitStatus, for
                   example a link to the Argo CD UI.
@@ -322,7 +338,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1223,7 +1239,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: changetransferpolicyhistories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1934,7 +1950,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2205,7 +2221,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2295,6 +2311,23 @@ spec:
                 - success
                 - failure
                 type: string
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is the set of destinations for this commit status.
+                  - "scm": post the status to the SCM provider
+                  The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM.
+                  Omitting the field uses the default. The controller posts to the SCM when "scm" is present.
+                  Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               sha:
                 description: |-
                   SHA is the commit SHA to set the status on.
@@ -2431,7 +2464,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5133,7 +5166,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: dependentssuccessfulcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5197,6 +5230,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
@@ -5443,7 +5492,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: gitcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5580,6 +5629,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               target:
                 default: active
                 description: |-
@@ -5773,7 +5838,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6070,7 +6135,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7152,7 +7217,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7497,7 +7562,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: restoreactivecommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7756,7 +7821,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: scheduledcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8021,6 +8086,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               timezone:
                 default: UTC
                 description: |-
@@ -8208,7 +8289,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8478,7 +8559,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8567,6 +8648,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
             required:
             - environments
             - promotionStrategyRef
@@ -8718,7 +8815,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -9195,6 +9292,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               reportOn:
                 default: proposed
                 description: |-
@@ -9684,6 +9797,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-argocdcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9711,6 +9825,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-argocdcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9732,8 +9847,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: changetransferpolicy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-changetransferpolicy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: changetransferpolicy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-changetransferpolicy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-changetransferpolicyhistory-admin-role
 rules:
 - apiGroups:
@@ -9755,6 +9931,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-changetransferpolicyhistory-editor-role
 rules:
 - apiGroups:
@@ -9782,6 +9959,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-changetransferpolicyhistory-viewer-role
 rules:
 - apiGroups:
@@ -9805,6 +9983,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-clusterscmprovider-admin-role
 rules:
 - apiGroups:
@@ -9826,6 +10005,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-clusterscmprovider-editor-role
 rules:
 - apiGroups:
@@ -9853,6 +10033,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-clusterscmprovider-viewer-role
 rules:
 - apiGroups:
@@ -9874,8 +10055,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: commitstatus-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-commitstatus-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: commitstatus-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-commitstatus-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-controllerconfiguration-admin-role
 rules:
 - apiGroups:
@@ -9897,6 +10139,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-controllerconfiguration-editor-role
 rules:
 - apiGroups:
@@ -9924,6 +10167,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-controllerconfiguration-viewer-role
 rules:
 - apiGroups:
@@ -9947,6 +10191,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-dependentssuccessfulcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9968,6 +10213,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-dependentssuccessfulcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9995,6 +10241,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-dependentssuccessfulcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10018,6 +10265,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-gitcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10039,6 +10287,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-gitcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10066,6 +10315,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-gitcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10080,6 +10330,66 @@ rules:
   - promoter.argoproj.io
   resources:
   - gitcommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: gitrepository-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-gitrepository-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: gitrepository-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-gitrepository-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories/status
   verbs:
   - get
 ---
@@ -10254,6 +10564,66 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-promotionstrategy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-promotionstrategy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/component: dashboard-apiserver
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/part-of: promoter
@@ -10297,8 +10667,129 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-pullrequest-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-pullrequest-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-restoreactivecommit-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-restoreactivecommit-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-scheduledcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10320,6 +10811,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-scheduledcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10347,6 +10839,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-scheduledcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10368,8 +10861,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: scmprovider-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-scmprovider-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: scmprovider-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-scmprovider-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-timedcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10391,6 +10945,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-timedcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10418,6 +10973,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-timedcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10441,6 +10997,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-webrequestcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10462,6 +11019,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-webrequestcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10489,6 +11047,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-webrequestcommitstatus-viewer-role
 rules:
 - apiGroups:
