@@ -19,9 +19,10 @@
     "baseUrl": ".",
     "rootDir": "..",
     "paths": {
-      "@shared/*": ["../shared/src/*"]
+      "@shared/*": ["../shared/src/*"],
+      "@lib/*": ["./src/*"]
     }
   },
-  "include": ["src", "../shared/src"],
+  "include": ["src", "test", "vitest.config.mts", "../shared/src"],
   "exclude": ["node_modules", "dist", "../shared/src/**/*.stories.tsx"]
 }
