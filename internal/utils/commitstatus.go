@@ -27,6 +27,7 @@ func CommitStatusResourceName(ctx context.Context, parent client.Object, branch 
 // UpsertCommitStatusParams holds the parameters for creating or updating a CommitStatus via Server-Side Apply.
 type UpsertCommitStatusParams struct {
 	Parent      client.Object
+	PublishTo   *[]promoterv1alpha1.CommitStatusPublishTo
 	RepoRefName string
 	Branch      string
 	Sha         string
@@ -43,6 +44,17 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 	kind := commitStatusGateKind(p.Parent)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	commitStatusSpec := acv1alpha1.CommitStatusSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
+		WithName(p.Key + "/" + p.Branch).
+		WithDescription(p.Description).
+		WithPhase(p.Phase).
+		WithSha(p.Sha)
+	if p.PublishTo != nil {
+		// A non-nil list, including an empty one, is explicit. Omitting the call leaves the field unset
+		// so the API server applies the [scm] default.
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*p.PublishTo)
+	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, p.Parent.GetNamespace()).
 		WithLabels(CommitStatusStandardLabels(p.Parent, p.Branch, p.Key)).
 		WithOwnerReferences(acmetav1.OwnerReference().
@@ -52,12 +64,7 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 			WithUID(p.Parent.GetUID()).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
-			WithName(p.Key + "/" + p.Branch).
-			WithDescription(p.Description).
-			WithPhase(p.Phase).
-			WithSha(p.Sha))
+		WithSpec(commitStatusSpec)
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName

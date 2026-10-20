@@ -102,6 +102,10 @@ are rejected.
 `spec.key` is the gate name the PromotionStrategy controller injects onto every `ChangeTransferPolicy`'s
 `proposedCommitStatuses`. A common value is `dependents-successful`.
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+
 ### Commit Status URL Template
 
 To set the SCM details URL on each per-environment gate `CommitStatus` (for example a link into the Promoter UI),

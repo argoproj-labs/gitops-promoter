@@ -309,6 +309,45 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			}
 		})
 
+		It("should set publishTo on per-environment CommitStatuses", func() {
+			By("Wiring explicit dependsOn on the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a DependentsSuccessfulCommitStatus with an empty publishTo")
+			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				Name:      name,
+				Namespace: "default",
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					PublishTo:            &[]promoterv1alpha1.CommitStatusPublishTo{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+			By("Creating a proposed change so the DAG writes CommitStatuses")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "skip scm test change", "")
+
+			By("Checking that each environment CommitStatus has an empty publishTo and a phase")
+			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, branch)
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
+					g.Expect(cs.Spec.PublishTo).To(HaveValue(BeEmpty()))
+					g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+		})
+
 		It("should infer a linear dependency chain when spec.environments is empty", func() {
 			By("Creating a DependentsSuccessfulCommitStatus with no PromotionStrategy dependsOn")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{

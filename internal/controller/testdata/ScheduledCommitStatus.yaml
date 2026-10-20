@@ -29,6 +29,9 @@ spec:
         - description: Sunday maintenance blackout
           cron: "0 0 * * 0"
           duration: 24h
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
 status:
   observedGeneration: 1
   environments:
