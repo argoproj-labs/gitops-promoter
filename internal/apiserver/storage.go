@@ -152,9 +152,10 @@ func nameFromFieldSelector(options *metainternalversion.ListOptions) (string, er
 			name = req.Value
 			continue
 		}
-		return "", fmt.Errorf("%w", apierrors.NewBadRequest(fmt.Sprintf(
+		//nolint:wrapcheck // StatusError must be returned unwrapped for apiserver recognition
+		return "", apierrors.NewBadRequest(fmt.Sprintf(
 			"field selector %q is not supported on promotionstrategydetails; only an exact metadata.name match is allowed",
-			req.Field)))
+			req.Field))
 	}
 	return name, nil
 }
