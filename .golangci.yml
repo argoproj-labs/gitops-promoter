@@ -46,6 +46,12 @@ linters:
     - whitespace
     - wrapcheck
   settings:
+    wrapcheck:
+      # wrapcheck 2.13 reports any external function whose result implements
+      # error. These construct the StatusError; they do not forward a failure.
+      extra-ignore-sigs:
+        - k8s.io/apimachinery/pkg/api/errors.NewNotFound(
+        - k8s.io/apimachinery/pkg/api/errors.NewBadRequest(
     copyloopvar:
       check-alias: true
     goconst:
