@@ -38,7 +38,7 @@ auto-merge block still applies while the restore note is blocked (or while the r
 
 ## Rolling back
 
-In the dashboard's history view, select an earlier version in the environment's column. The detail drawer shows a
+In the dashboard's promotion explorer, select an earlier version in the environment's column. The detail drawer shows a
 **Restore this version** command you can copy. Or write the resource yourself:
 
 ```yaml
