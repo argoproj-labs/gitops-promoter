@@ -371,6 +371,32 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
     expect(check?.manager).toBe(argoCDCommitStatus);
   });
 
+  it('matches a DependentsSuccessfulCommitStatus by spec.key and status.environments[].branch', () => {
+    const dependentsCommitStatus = {
+      kind: 'DependentsSuccessfulCommitStatus',
+      spec: { key: 'timer', promotionStrategyRef: { name: 'my-strategy' } },
+      status: {
+        environments: [
+          {
+            branch: 'environments/qal',
+            phase: 'pending',
+            upstreams: [{ branch: 'environments/dev', satisfied: false, reason: 'not promoted' }],
+          },
+        ],
+      },
+    };
+    const managers: CommitStatusManagerBundle = {
+      dependentsSuccessfulCommitStatuses: [dependentsCommitStatus],
+    };
+
+    const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
+    const [env] = enrichFromEnvironments([mergedEnv], 0);
+    const check = env.proposedChecks.find((c) => c.name === 'timer');
+
+    expect(check?.kind).toBe('DependentsSuccessfulCommitStatus');
+    expect(check?.manager).toBe(dependentsCommitStatus);
+  });
+
   it('leaves kind/manager undefined when no manager matches the check key', () => {
     const managers: CommitStatusManagerBundle = {
       timedCommitStatuses: [
