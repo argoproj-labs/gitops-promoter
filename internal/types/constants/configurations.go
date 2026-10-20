@@ -69,6 +69,10 @@ const (
 	// performed by the ScheduledCommitStatus controller.
 	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
 
+	// TektonCommitStatusControllerFieldOwner is a field owner for Server-Side Apply operations
+	// performed by the TektonCommitStatus controller.
+	TektonCommitStatusControllerFieldOwner = "promoter.argoproj.io/tektoncommitstatus-controller"
+
 	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the CommitStatus controller.
 	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
