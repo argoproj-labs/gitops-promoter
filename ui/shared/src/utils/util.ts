@@ -161,7 +161,7 @@ export function getLastCommitTime(ps: PromotionStrategy): Date | null {
  * Sort every `commitStatuses` list on a parsed PromotionStrategy by key, in
  * place. The CRD emits these in a non-deterministic order (aggregated from
  * multiple CommitStatus resources), so normalizing once at ingestion gives every
- * consumer (overview, history matrix, drawer) the same stable ordering. Mutates
+ * consumer (explorer matrix, promotion map, drawer) the same stable ordering. Mutates
  * and returns the same object for call-site convenience.
  */
 export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {

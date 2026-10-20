@@ -1,33 +1,35 @@
-.strategy-page-header {
+.strategy-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 48px);
+  min-height: 0;
+}
+
+.strategy-page-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   background: white;
-  padding: 5px 0;
-  position: relative;
+  padding: 6px 16px;
   flex: 0 0 auto;
 }
 
-.strategy-page-cards {
-  margin-top: 8px;
+.strategy-page-body {
   flex: 1 1 auto;
   min-height: 0;
+  overflow: auto;
+}
+
+.strategy-page-back {
   display: flex;
-  flex-direction: column;
-}
-
-.strategy-page-header-left {
-  width: 60px;
-}
-
-.strategy-page-header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.strategy-page-header-right {
-  margin-left: auto;
-  margin-right: 16px;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .strategy-page-tabs {

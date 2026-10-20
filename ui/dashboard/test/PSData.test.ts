@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enrichFromEnvironments, mergeCommitStatusManagers } from '@shared/utils/PSData';
+import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
 import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
 import { timeAgo } from '@shared/utils/util';
 import type { Environment, PromotionStrategy } from '@shared/types/promotion';
@@ -15,6 +15,13 @@ function mergeEnvManagers(
   } as unknown as PromotionStrategy;
   const merged = mergeCommitStatusManagers(ps, managers);
   return merged.status!.environments![0];
+}
+
+function enrichEnvironments(environments: Environment[], historyIndex: number = 0) {
+  const ps = {
+    status: { environments },
+  } as unknown as PromotionStrategy;
+  return enrichFromCRD(ps, historyIndex);
 }
 
 const environmentWithReferenceCommit: Environment = {
@@ -190,9 +197,9 @@ const environmentWithExternallyClosedPr: Environment = {
   lastHealthyDryShas: [],
 };
 
-describe('enrichFromEnvironments', () => {
+describe('enrichFromCRD', () => {
   it('preserves RFC 3339 commit timestamps so TimeAgo does not render "NaN days ago"', () => {
-    const [env] = enrichFromEnvironments([environmentWithReferenceCommit], 0);
+    const [env] = enrichEnvironments([environmentWithReferenceCommit], 0);
 
     expect(env.proposedReferenceCommit?.date).toBe('2026-05-22T15:00:36Z');
     expect(env.proposedDryCommitDate).toBe('2026-05-22T15:05:15Z');
@@ -208,7 +215,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('surfaces active PR creation time, merge time, and state (RFC 3339 passthrough)', () => {
-    const [env] = enrichFromEnvironments([environmentWithMergedPr], 0);
+    const [env] = enrichEnvironments([environmentWithMergedPr], 0);
 
     expect(env.activePrCreationTime).toBe('2026-05-22T14:00:00Z');
     expect(env.activePrMergeTime).toBe('2026-05-22T14:52:00Z');
@@ -216,7 +223,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('derives a merged tooltip from state === "merged" using the merge time', () => {
-    const [env] = enrichFromEnvironments([environmentWithMergedPr], 0);
+    const [env] = enrichEnvironments([environmentWithMergedPr], 0);
 
     expect(env.activePrTooltip).toEqual({
       status: 'merged',
@@ -226,7 +233,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('derives an opened tooltip from an open PR using the creation time', () => {
-    const [env] = enrichFromEnvironments([environmentWithOpenPr], 0);
+    const [env] = enrichEnvironments([environmentWithOpenPr], 0);
 
     expect(env.activePrState).toBe('open');
     expect(env.activePrTooltip).toEqual({
@@ -237,7 +244,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('derives a closed tooltip (not "opened") for a closed-but-unmerged PR', () => {
-    const [env] = enrichFromEnvironments([environmentWithClosedPr], 0);
+    const [env] = enrichEnvironments([environmentWithClosedPr], 0);
 
     expect(env.activePrState).toBe('closed');
     expect(env.activePrTooltip).toEqual({
@@ -248,7 +255,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('labels an externally merged PR (empty state + merge time) as merged externally', () => {
-    const [env] = enrichFromEnvironments([environmentWithExternallyMergedPr], 0);
+    const [env] = enrichEnvironments([environmentWithExternallyMergedPr], 0);
 
     expect(env.activePrState).toBe('');
     expect(env.activePrTooltip).toEqual({
@@ -259,7 +266,7 @@ describe('enrichFromEnvironments', () => {
   });
 
   it('shows merged externally in the live slot for an ambiguous externally merged-or-closed PR', () => {
-    const [env] = enrichFromEnvironments([environmentWithExternallyClosedPr], 0);
+    const [env] = enrichEnvironments([environmentWithExternallyClosedPr], 0);
 
     // A PR occupying the active/live slot is what made the commit live, so it merged;
     // activePrState stays untouched ('') while the tooltip resolves the ambiguity to
@@ -297,9 +304,9 @@ const environmentWithChecks: Environment = {
   lastHealthyDryShas: [],
 };
 
-describe('enrichFromEnvironments - branch/kind/manager', () => {
+describe('enrichFromCRD - branch/kind/manager', () => {
   it('populates branch on every check regardless of manager match', () => {
-    const [env] = enrichFromEnvironments([environmentWithChecks], 0);
+    const [env] = enrichEnvironments([environmentWithChecks], 0);
 
     expect(env.activeChecks[0].branch).toBe('environments/qal');
     expect(env.proposedChecks[0].branch).toBe('environments/qal');
@@ -307,7 +314,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
   });
 
   it('leaves kind and manager undefined when no manager bundle is provided', () => {
-    const [env] = enrichFromEnvironments([environmentWithChecks], 0);
+    const [env] = enrichEnvironments([environmentWithChecks], 0);
 
     expect(env.activeChecks[0].kind).toBeUndefined();
     expect(env.activeChecks[0].manager).toBeUndefined();
@@ -337,7 +344,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
     const managers: CommitStatusManagerBundle = { timedCommitStatuses: [timedCommitStatus] };
 
     const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
-    const [env] = enrichFromEnvironments([mergedEnv], 0);
+    const [env] = enrichEnvironments([mergedEnv], 0);
     const check = env.proposedChecks.find((c) => c.name === 'timer');
 
     expect(check?.kind).toBe('TimedCommitStatus');
@@ -364,7 +371,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
     const managers: CommitStatusManagerBundle = { argoCDCommitStatuses: [argoCDCommitStatus] };
 
     const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
-    const [env] = enrichFromEnvironments([mergedEnv], 0);
+    const [env] = enrichEnvironments([mergedEnv], 0);
     const check = env.activeChecks.find((c) => c.name === 'argocd-health');
 
     expect(check?.kind).toBe('ArgoCDCommitStatus');
@@ -390,7 +397,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
     };
 
     const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
-    const [env] = enrichFromEnvironments([mergedEnv], 0);
+    const [env] = enrichEnvironments([mergedEnv], 0);
     const check = env.proposedChecks.find((c) => c.name === 'timer');
 
     expect(check?.kind).toBe('DependentsSuccessfulCommitStatus');
@@ -409,7 +416,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
     };
 
     const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
-    const [env] = enrichFromEnvironments([mergedEnv], 0);
+    const [env] = enrichEnvironments([mergedEnv], 0);
     const check = env.proposedChecks.find((c) => c.name === 'no-manager');
 
     expect(check?.kind).toBeUndefined();
