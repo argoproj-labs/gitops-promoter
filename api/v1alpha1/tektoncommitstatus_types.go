@@ -19,8 +19,6 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/types/tekton"
 )
 
 // TektonCommitStatusSpec defines the desired state of TektonCommitStatus
@@ -48,7 +46,7 @@ type TektonCommitStatusSpec struct {
 	ExpectedResults []ExpectedResult `json:"expectedResults,omitempty"`
 
 	// Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean.
-	// The results values can be accessed through the map variable Results.
+	// The results values can be accessed through the map variable Result.
 	// If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of
 	// the Tekton run.
 	// +optional
@@ -130,6 +128,15 @@ type ExpectedResult struct {
 
 	// Expression is an expr expression to be used with the result. Must return a boolean.
 	// The result can be accessed through the string variable Result.
+	// For example:
+	// expectedResult:
+	//   - key: testCoverage
+	//     expression: "Result >= 80"
+	//
+	// Would check to see if the Tekton run resource has the result testCoverage and if it does
+	// then it will evaluate whether the value is 80 or greater.
+	//
+	// Tekton results are either a string, array, or object so casting will need to be done accordingly.
 	// +kubebuilder:validation:Required
 	Expression string `json:"expression"`
 }
@@ -169,29 +176,6 @@ type TektonCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 
-	// FIXME: MAKE BETTER
-	// ProposedHydratedSha is the proposed hydrated commit SHA where the Tekton resource was run on.
-	// This comes from the PromotionStrategy's environment status.
-	// The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
-	// promotions based on the validation of the ACTIVE commit.
-	// May be empty if the PromotionStrategy hasn't reconciled yet.
-	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-	// +optional
-	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
-	ProposedHydratedSha string `json:"proposedHydratedSha"`
-
-	// FIXME: MAKE BETTER
-	// ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that the Tekton resource was run on.
-	// This comes from the PromotionStrategy's environment status.
-	// The expression is evaluated against THIS commit's data, not the proposed commit.
-	// May be empty if the PromotionStrategy hasn't reconciled yet.
-	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-	// +optional
-	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
-	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
-
 	// TargetedSha is the commit SHA that the Tekton resource was last run on.
 	// This will match either ProposedHydratedSha or ActiveHydratedSha depending on
 	// the Target setting ("proposed" or "active").
@@ -213,13 +197,9 @@ type TektonCommitStatusEnvironmentStatus struct {
 	// +optional
 	TektonRunName string `json:"tektonRunName,omitempty"`
 
-	// LastRunTime is when the Tekton run was started/created
-	// +optional
-	LastRunTime *metav1.Time `json:"lastRunTime,omitempty"`
-
 	// TektonRunPhase is the phase that the Tekton run is in
 	// +optional
-	// +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;Cancelled
+	// +kubebuilder:validation:Enum=Running;Succeeded;Failed
 	TektonRunPhase string `json:"tektonRunPhase,omitempty"`
 
 	// ExpressionResult holds the result of the general expression used on all results.
@@ -283,10 +263,6 @@ func (tcs *TektonCommitStatus) SetStatusInstanceID(v *string) {
 // succeeded or failed. This happens when there is no expression to check and no expected results.
 func (tcs *TektonCommitStatus) UseRunStatusEvaluation() bool {
 	return tcs.Spec.Expression == "" && len(tcs.Spec.ExpectedResults) == 0
-}
-
-func (env *TektonCommitStatusEnvironmentStatus) IsTektonResourceFinished() bool {
-	return env.TektonRunPhase == tekton.TektonRunPhaseSucceeded || env.TektonRunPhase == tekton.TektonRunPhaseFailed || env.TektonRunPhase == tekton.TektonRunPhaseCancelled
 }
 
 func init() {
