@@ -55,7 +55,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ps); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
+			return nil, fmt.Errorf("%w", apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name))
 		}
 		return nil, fmt.Errorf("failed to get PromotionStrategy %s/%s: %w", namespace, name, err)
 	}
