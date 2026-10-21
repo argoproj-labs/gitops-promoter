@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import React from 'react';
-import FlowCell from '@lib/components/HistoryView/FlowCell/FlowCell';
-import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
-import { DRAWER_DEFAULT_WIDTH } from '@lib/components/HistoryView/presentation';
-import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
+import FlowCell from '@lib/components/PromotionExplorer/FlowCell/FlowCell';
+import DetailDrawer from '@lib/components/PromotionExplorer/DetailDrawer/DetailDrawer';
+import { DRAWER_DEFAULT_WIDTH } from '@lib/components/PromotionExplorer/presentation';
+import type { CellState, CommitRow, EnvColumn } from '@lib/components/PromotionExplorer/types';
 import type { Commit, EnrichedBranchCommitStatus, PullRequest } from '@shared/types/promotion';
-import '@lib/components/HistoryView/index.scss';
+import '@lib/components/PromotionExplorer/index.scss';
 
 const REPO_URL = 'https://github.com/argoproj-labs/gitops-promoter';
 const DEV = 'environment/dev';
@@ -209,7 +209,7 @@ interface SelectionArgs {
 }
 
 const meta: Meta<SelectionArgs> = {
-  title: 'HistoryView/FlowCell Selection',
+  title: 'Promotion Explorer/FlowCell Selection',
   argTypes: {
     width: { control: { type: 'number', min: 180, max: 260, step: 10 } },
     focusedVariant: { control: 'select', options: VARIANTS },

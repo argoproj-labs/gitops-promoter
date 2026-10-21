@@ -11,7 +11,7 @@ import {
   ReferenceCommit,
 } from '@shared/types/promotion';
 import { GoBlocked } from 'react-icons/go';
-import Tooltip from './HistoryView/Tooltip/Tooltip';
+import Tooltip from './PromotionExplorer/Tooltip/Tooltip';
 import { restoreBlockTooltip } from '@shared/utils/environments';
 import './ProposedChangesCard.scss';
 

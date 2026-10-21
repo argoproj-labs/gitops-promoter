@@ -2,11 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { within } from 'storybook/test';
 import React, { useEffect, useState } from 'react';
 import Card from '@lib/components/Card';
-import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
-import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
-import { DRAWER_DEFAULT_WIDTH } from '@lib/components/HistoryView/presentation';
+import DetailDrawer from '@lib/components/PromotionExplorer/DetailDrawer/DetailDrawer';
+import type { CellState, CommitRow, EnvColumn } from '@lib/components/PromotionExplorer/types';
+import { DRAWER_DEFAULT_WIDTH } from '@lib/components/PromotionExplorer/presentation';
 import type { Environment, EnrichedBranchCommitStatus } from '@shared/types/promotion';
-import '@lib/components/HistoryView/index.scss';
+import '@lib/components/PromotionExplorer/index.scss';
 
 interface TimedCommitStatusArgs {
   elapsedSeconds: number;
