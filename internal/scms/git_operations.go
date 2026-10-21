@@ -15,3 +15,10 @@ type GitOperationsProvider interface {
 	// GetUser returns the user name for authentication.
 	GetUser(ctx context.Context) (string, error)
 }
+
+// GitHTTPHeaderProvider is optionally implemented by a GitOperationsProvider whose SCM authenticates git over HTTPS
+// with a request header instead of basic auth.
+type GitHTTPHeaderProvider interface {
+	// GetGitHTTPHeader returns the URL prefix the header is scoped to and the header itself. An empty header means none.
+	GetGitHTTPHeader(ctx context.Context) (urlPrefix, header string, err error)
+}
