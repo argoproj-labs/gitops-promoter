@@ -430,6 +430,68 @@ describe('selecting environments on the map', () => {
   });
 
   describe('Escape scoping', () => {
+    const mountWithHost = (host: React.ReactNode) => {
+      const user = userEvent.setup();
+      const view = render(
+        <>
+          {host}
+          <PromotionExplorer
+            strategy={dagStrategy()}
+            name="demo"
+            namespace="default"
+            defaultMapExpanded
+          />
+        </>,
+      );
+      return Object.assign(view, { user });
+    };
+
+    it('ignores Escape typed in an input outside the explorer', async () => {
+      const view = mountWithHost(<input aria-label="host search" />);
+      await view.user.click(nodeEl(view, 'prod-us'));
+      await view.user.click(screen.getByLabelText('host search'));
+      await view.user.keyboard('{Escape}');
+      expect(selectedBranches(view)).toEqual([B('prod-us')]);
+    });
+
+    it('ignores Escape typed in an editable element inside the explorer', async () => {
+      const view = mount();
+      await view.user.click(nodeEl(view, 'prod-us'));
+      const input = document.createElement('input');
+      view.container.querySelector('.hp')!.appendChild(input);
+      input.focus();
+      await view.user.keyboard('{Escape}');
+      expect(selectedBranches(view)).toEqual([B('prod-us')]);
+    });
+
+    it('ignores Escape while focus is inside another dialog outside the explorer', async () => {
+      const view = mountWithHost(
+        <div role="dialog" aria-label="host dialog">
+          <button type="button">dialog action</button>
+        </div>,
+      );
+      await view.user.click(nodeEl(view, 'prod-us'));
+      screen.getByRole('button', { name: 'dialog action' }).focus();
+      await view.user.keyboard('{Escape}');
+      expect(selectedBranches(view)).toEqual([B('prod-us')]);
+    });
+
+    it('ignores Escape while a modal outside the explorer is open', async () => {
+      const view = mountWithHost(<div aria-modal="true" />);
+      await view.user.click(nodeEl(view, 'prod-us'));
+      (document.activeElement as HTMLElement | null)?.blur();
+      await view.user.keyboard('{Escape}');
+      expect(selectedBranches(view)).toEqual([B('prod-us')]);
+    });
+
+    it('ignores Escape when focus is elsewhere in the host page', async () => {
+      const view = mountWithHost(<button type="button">host button</button>);
+      await view.user.click(nodeEl(view, 'prod-us'));
+      screen.getByRole('button', { name: 'host button' }).focus();
+      await view.user.keyboard('{Escape}');
+      expect(selectedBranches(view)).toEqual([B('prod-us')]);
+    });
+
     it('ignores Escape events that were already handled', async () => {
       const view = mount();
       await view.user.click(nodeEl(view, 'prod-us'));
@@ -1057,5 +1119,63 @@ describe('dry commit column app commits', () => {
   it('shows the app subject placeholder when the reference has no subject', () => {
     const view = mount({ strategy: strategyWithRefs([ref({ subject: undefined })]) });
     expect(within(appGroup(view, '4')!).getByTitle('(no subject)')).toBeVisible();
+  });
+});
+
+describe('rehydrating from changed props', () => {
+  const rerenderWith = (view: Rendered, props: Partial<PromotionExplorerProps>) =>
+    view.rerender(
+      <PromotionExplorer
+        strategy={dagStrategy()}
+        name="demo"
+        namespace="default"
+        defaultMapExpanded
+        {...props}
+      />,
+    );
+  const pinned = (view: Rendered) =>
+    Array.from(view.container.querySelectorAll('.hp-node--pinned')).map((el) =>
+      el.getAttribute('data-node-id'),
+    );
+
+  it('follows a changed initialSelection without reporting it back', () => {
+    const onSelectionChange = vi.fn();
+    const view = mount({
+      onSelectionChange,
+      initialSelection: { rowId: rowId('2'), branch: B('prod-us') },
+    });
+    expect(nodeEl(view, 'prod-apac')).toHaveClass('hp-node--dimmed');
+    rerenderWith(view, {
+      onSelectionChange,
+      initialSelection: { rowId: rowId('4'), branch: B('dev') },
+    });
+    expect(nodeEl(view, 'prod-us')).toHaveClass('hp-node--dimmed');
+    expect(nodeEl(view, 'e2e-us')).toHaveClass('hp-node--path');
+    rerenderWith(view, { onSelectionChange, initialSelection: null });
+    expect(view.container.querySelectorAll('.hp-node--path')).toHaveLength(0);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('follows a changed initialSelectedEnvs without reporting it back', () => {
+    const onSelectedEnvsChange = vi.fn();
+    const view = mount({ onSelectedEnvsChange, initialSelectedEnvs: [B('dev')] });
+    expect(pinned(view)).toEqual([B('dev')]);
+    rerenderWith(view, { onSelectedEnvsChange, initialSelectedEnvs: [B('prod-us')] });
+    expect(pinned(view)).toEqual([B('prod-us')]);
+    rerenderWith(view, { onSelectedEnvsChange, initialSelectedEnvs: [] });
+    expect(pinned(view)).toEqual([]);
+    expect(onSelectedEnvsChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the user filter when equal-content arrays arrive on rerender', async () => {
+    const onSelectedEnvsChange = vi.fn();
+    const view = mount({ onSelectedEnvsChange, initialSelectedEnvs: [B('dev')] });
+    await view.user.click(nodeEl(view, 'prod-us'));
+    expect(pinned(view)).toEqual([B('prod-us')]);
+    onSelectedEnvsChange.mockClear();
+    rerenderWith(view, { onSelectedEnvsChange, initialSelectedEnvs: [B('dev')] });
+    rerenderWith(view, { onSelectedEnvsChange, initialSelectedEnvs: [B('dev')] });
+    expect(pinned(view)).toEqual([B('prod-us')]);
+    expect(onSelectedEnvsChange).not.toHaveBeenCalled();
   });
 });
