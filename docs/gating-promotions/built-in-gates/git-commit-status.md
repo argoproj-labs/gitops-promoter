@@ -189,6 +189,12 @@ Expression evaluated against commit data. Must return boolean.
 
 **Required**
 
+### spec.publishTo
+
+Destinations for the generated CommitStatus. `[scm]` (default) posts it to the SCM. `[]` keeps it in Kubernetes only. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+
+**Optional**
+
 ### Status Fields
 
 The GitCommitStatus resource maintains detailed status information:

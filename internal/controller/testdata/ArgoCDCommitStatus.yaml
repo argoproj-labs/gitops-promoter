@@ -27,6 +27,9 @@ spec:
       {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) -}}
     options:
       - missingkey=zero
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

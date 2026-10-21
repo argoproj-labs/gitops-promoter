@@ -121,6 +121,10 @@ This configuration:
 
 `spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. This field is required -- set it to match the key referenced in your PromotionStrategy.
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+
 ### Integrating with PromotionStrategy
 
 Reference the same key in `proposedCommitStatuses` (must match `ScheduledCommitStatus.spec.key`):

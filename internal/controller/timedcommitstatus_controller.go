@@ -260,6 +260,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			Key:         key,
 			Description: message,
 			Phase:       phase,
+			PublishTo:   tcs.Spec.PublishTo,
 			FieldOwner:  constants.TimedCommitStatusControllerFieldOwner,
 		})
 		if err != nil {

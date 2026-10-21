@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // TimedCommitStatusSpecApplyConfiguration represents a declarative configuration of the TimedCommitStatusSpec type for use
 // with apply.
 //
@@ -29,7 +33,12 @@ type TimedCommitStatusSpecApplyConfiguration struct {
 	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
 	// proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
-	Key          *string                                           `json:"key,omitempty"`
+	Key *string `json:"key,omitempty"`
+	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+	// - "scm": the CommitStatus controller posts them to the SCM provider
+	// The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+	// Omitting the field uses the default. Promotion gates use the phase in every case.
+	PublishTo    *[]apiv1alpha1.CommitStatusPublishTo              `json:"publishTo,omitempty"`
 	Environments []TimedCommitStatusEnvironmentsApplyConfiguration `json:"environments,omitempty"`
 }
 
@@ -52,6 +61,14 @@ func (b *TimedCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value
 // If called multiple times, the Key field is set to the value of the last call.
 func (b *TimedCommitStatusSpecApplyConfiguration) WithKey(value string) *TimedCommitStatusSpecApplyConfiguration {
 	b.Key = &value
+	return b
+}
+
+// WithPublishTo sets the PublishTo field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PublishTo field is set to the value of the last call.
+func (b *TimedCommitStatusSpecApplyConfiguration) WithPublishTo(value []apiv1alpha1.CommitStatusPublishTo) *TimedCommitStatusSpecApplyConfiguration {
+	b.PublishTo = &value
 	return b
 }
 

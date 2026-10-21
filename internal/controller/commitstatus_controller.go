@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	bitbucket_datacenter "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
@@ -109,17 +110,24 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-	if err != nil || commitStatusProvider == nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
-	}
-
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	_, err = commitStatusProvider.Set(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
+	if !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo) {
+		// No scm destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
+		cs.Status.Sha = cs.Spec.Sha
+		cs.Status.Phase = cs.Spec.Phase
+		cs.Status.Id = ""
+	} else {
+		commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
+		if err != nil || commitStatusProvider == nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
+		}
+
+		_, err = commitStatusProvider.Set(ctx, &cs)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
+		}
 	}
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
@@ -174,6 +182,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Bitbucket Cloud provider with secret %q: %w", secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().BitbucketDataCenter != nil:
+		var p *bitbucket_datacenter.CommitStatus
+		p, err = bitbucket_datacenter.NewBitbucketDataCenterCommitStatusProvider(r.Client, scmProvider, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Bitbucket DataCenter provider for domain %q with secret %q: %w", scmProvider.GetSpec().BitbucketDataCenter.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Forgejo != nil:

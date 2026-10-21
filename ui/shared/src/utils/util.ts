@@ -93,6 +93,12 @@ export function parseGoDuration(duration: string): number | null {
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
   const cleanRepoUrl = repoUrl.replace(/\/$/, '');
+  const bitbucketDataCenter = cleanRepoUrl.match(/^(.*)\/scm\/(~?[^/]+)\/([^/]+?)(\.git)?$/);
+  if (bitbucketDataCenter) {
+    const [, base, owner, repo] = bitbucketDataCenter;
+    const ownerPath = owner.startsWith('~') ? `users/${owner.slice(1)}` : `projects/${owner}`;
+    return `${base}/${ownerPath}/repos/${repo}/commits/${sha}`;
+  }
   return `${cleanRepoUrl}/commit/${sha}`;
 }
 

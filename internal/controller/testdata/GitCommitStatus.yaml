@@ -11,6 +11,9 @@ spec:
   # active (default) validates the deployed commit; proposed validates the incoming commit
   target: active
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

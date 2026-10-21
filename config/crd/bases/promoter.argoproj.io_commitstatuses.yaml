@@ -93,6 +93,23 @@ spec:
                 - success
                 - failure
                 type: string
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is the set of destinations for this commit status.
+                  - "scm": post the status to the SCM provider
+                  The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM.
+                  Omitting the field uses the default. The controller posts to the SCM when "scm" is present.
+                  Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               sha:
                 description: |-
                   SHA is the commit SHA to set the status on.
