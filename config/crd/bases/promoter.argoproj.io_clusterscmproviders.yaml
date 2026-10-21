@@ -59,6 +59,10 @@ spec:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be empty or a host or host:port, with no
+                        userinfo, path, query, or fragment
+                      rule: self == '' || (isURL('https://' + self) && url('https://'
+                        + self).getHost() == self)
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -81,6 +85,11 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be empty or a host or host:port, with no
+                        userinfo, path, query, or fragment
+                      rule: self == '' || (isURL('https://' + self) && url('https://'
+                        + self).getHost() == self)
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -93,6 +102,11 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
                 required:
                 - domain
                 type: object
@@ -105,6 +119,11 @@ spec:
                       There is no default domain since Gitea is self-hosted.
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
                 required:
                 - domain
                 type: object
@@ -125,6 +144,10 @@ spec:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be empty or a host or host:port, with no
+                        userinfo, path, query, or fragment
+                      rule: self == '' || (isURL('https://' + self) && url('https://'
+                        + self).getHost() == self)
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -148,6 +171,10 @@ spec:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be empty or a host or host:port, with no
+                        userinfo, path, query, or fragment
+                      rule: self == '' || (isURL('https://' + self) && url('https://'
+                        + self).getHost() == self)
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to

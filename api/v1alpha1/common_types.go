@@ -9,6 +9,7 @@ type GitHub struct {
 	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
 	// empty.
 	// +kubebuilder:validation:XValidation:rule=`self != "github.com"`, message="Instead of setting the domain to github.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isURL('https://' + self) && url('https://' + self).getHost() == self)",message="domain must be empty or a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain,omitempty"`
 	// AppID is the GitHub App ID.
 	// +kubebuilder:validation:Required
@@ -27,6 +28,7 @@ type GitLab struct {
 	// Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
 	// empty.
 	// +kubebuilder:validation:XValidation:rule=`self != "gitlab.com"`, message="Instead of setting the domain to gitlab.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isURL('https://' + self) && url('https://' + self).getHost() == self)",message="domain must be empty or a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -40,6 +42,7 @@ type Forgejo struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain"`
 }
 
@@ -49,6 +52,7 @@ type Gitea struct {
 	// There is no default domain since Gitea is self-hosted.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain"`
 }
 
@@ -62,6 +66,7 @@ type AzureDevOps struct {
 	Organization string `json:"organization"`
 	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty.
 	// +kubebuilder:validation:XValidation:rule=`self != "dev.azure.com"`, message="Instead of setting the domain to dev.azure.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isURL('https://' + self) && url('https://' + self).getHost() == self)",message="domain must be empty or a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -70,6 +75,7 @@ type Fake struct {
 	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isURL('https://' + self) && url('https://' + self).getHost() == self)",message="domain must be empty or a host or host:port, with no userinfo, path, query, or fragment"
 	Domain string `json:"domain,omitempty"`
 }
 
