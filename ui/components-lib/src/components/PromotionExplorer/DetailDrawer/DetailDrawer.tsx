@@ -201,6 +201,12 @@ const DetailDrawer: React.FC<{
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
 
+  const safePrUrl = safeHttpUrl(prUrl);
+  const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull));
+  const hydratedCommitUrl = hydrated?.sha
+    ? safeHttpUrl(getCommitUrl(hydratedRepoURL, hydrated.sha))
+    : undefined;
+
   const env = envs.find((e) => e.branch === branch);
   const showRestore = canShowRestoreCommand(cell);
   const restoreCommand =
@@ -291,10 +297,10 @@ const DetailDrawer: React.FC<{
           <div className="hp-drawer__meta">
             <span className="hp-drawer__author">{row.author}</span>
             <span className="hp-drawer__sep">·</span>
-            {row.repoUrl && row.dryShaFull ? (
+            {dryCommitUrl ? (
               <Tooltip label="Dry commit">
                 <a
-                  href={getCommitUrl(row.repoUrl, row.dryShaFull)}
+                  href={dryCommitUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="hp-drawer__sha"
@@ -313,15 +319,21 @@ const DetailDrawer: React.FC<{
                 <span className="hp-drawer__sep" aria-hidden="true">
                   ·
                 </span>
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hp-drawer__pr"
-                  aria-label={`Pull request #${prId}, opens in new tab`}
-                >
-                  <GoGitPullRequest aria-hidden="true" /> #{prId}
-                </a>
+                {safePrUrl ? (
+                  <a
+                    href={safePrUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hp-drawer__pr"
+                    aria-label={`Pull request #${prId}, opens in new tab`}
+                  >
+                    <GoGitPullRequest aria-hidden="true" /> #{prId}
+                  </a>
+                ) : (
+                  <span className="hp-drawer__pr">
+                    <GoGitPullRequest aria-hidden="true" /> #{prId}
+                  </span>
+                )}
               </>
             )}
             {ago && (
@@ -349,10 +361,10 @@ const DetailDrawer: React.FC<{
           {hydrated?.sha && (
             <div className="hp-drawer__deployed">
               Deployed as{' '}
-              {hydratedRepoURL ? (
+              {hydratedCommitUrl ? (
                 <Tooltip label="Hydrated commit">
                   <a
-                    href={getCommitUrl(hydratedRepoURL, hydrated.sha)}
+                    href={hydratedCommitUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="hp-drawer__deployed-sha"
@@ -375,10 +387,11 @@ const DetailDrawer: React.FC<{
 
         {refs.length > 0 && (
           <div className="hp-drawer__section">
-            <h3>referenced commits ({refs.length})</h3>
+            <h3>{refs.length === 1 ? 'App commit' : `App commits (${refs.length})`}</h3>
             <ul className="hp-drawer__refs">
               {refs.map((ref, i) => {
                 const body = ref.body ? extractBodyPreTrailer(ref.body) : '';
+                const refUrl = safeHttpUrl(ref.url);
                 return (
                   <li key={ref.sha ?? i} className="hp-drawer__ref">
                     <div className="hp-drawer__ref-subject">
@@ -393,13 +406,13 @@ const DetailDrawer: React.FC<{
                           <span className="hp-drawer__sep" aria-hidden="true">
                             ·
                           </span>
-                          {ref.url ? (
+                          {refUrl ? (
                             <a
-                              href={ref.url}
+                              href={refUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="hp-drawer__ref-sha"
-                              aria-label={`Source commit ${ref.sha.slice(0, 7)}, opens in new tab`}
+                              aria-label={`App commit ${ref.sha.slice(0, 7)}, opens in new tab`}
                             >
                               <GoGitCommit aria-hidden="true" /> {ref.sha.slice(0, 7)}
                             </a>

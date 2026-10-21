@@ -95,6 +95,13 @@ describe('promotion map for a linear strategy', () => {
     const view = mount({ strategy: linearStrategy() });
     expect(screen.queryByRole('group', { name: 'Status legend' })).not.toBeInTheDocument();
     expect(view.container.querySelector('.hp-map__legend')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.hp-matrix__head svg')).not.toBeInTheDocument();
+  });
+
+  it('labels the commit column headers', () => {
+    mount({ strategy: linearStrategy() });
+    expect(screen.getByText('Dry commit')).toBeInTheDocument();
+    expect(screen.getByText('Promotes to')).toBeInTheDocument();
   });
 });
 
@@ -702,12 +709,18 @@ describe('filters and sort', () => {
     return screen.getByRole('listbox');
   };
 
+  it('labels the default filter All dry commits', () => {
+    mount();
+    expect(screen.getByRole('button', { name: 'Filter' })).toHaveTextContent('All dry commits');
+    expect(screen.queryByText('All commits')).not.toBeInTheDocument();
+  });
+
   it('shows counts for every status filter', async () => {
     const { user } = mount();
     const list = await open(user, 'Filter');
     const count = (label: RegExp) =>
       within(within(list).getByRole('option', { name: label })).getByText(/^\d+$/).textContent;
-    expect(count(/All commits/)).toBe('4');
+    expect(count(/All dry commits/)).toBe('4');
     expect(count(/^Live/)).toBe('3');
     expect(count(/In flight/)).toBe('1');
     expect(count(/Failed/)).toBe('1');
@@ -824,4 +837,225 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+describe('dry commit column app commits', () => {
+  const refSha = 'abcdef0123456789abcdef0123456789abcdef01';
+  const ref = (extra: Record<string, unknown> = {}) => ({
+    commit: {
+      sha: refSha,
+      repoURL: 'https://github.com/example/ledger-service',
+      subject: 'fix(ledger): prevent double-posting (#1234)',
+      author: 'Priya Raman <priya.raman@example.com>',
+      date: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      ...extra,
+    },
+  });
+
+  function strategyWithRefs(refsFor4: unknown[], refsFor3: unknown[] = []) {
+    const strategy = linearStrategy();
+    for (const env of strategy.status!.environments! as Environment[]) {
+      const dries = [
+        env.active?.dry,
+        env.proposed?.dry,
+        ...(env.history ?? []).map((h) => h.active?.dry),
+      ];
+      for (const d of dries) {
+        if (d?.sha === '4'.repeat(40)) d.references = refsFor4 as never;
+        if (d?.sha === '3'.repeat(40)) d.references = refsFor3 as never;
+      }
+    }
+    return strategy;
+  }
+
+  const appGroup = (view: Rendered, c: string) =>
+    within(rowEl(view, c)).queryByRole('group', { name: 'App commit' });
+
+  const dryBlock = (view: Rendered, c: string) =>
+    within(rowEl(view, c)).getByRole('group', { name: 'Dry commit' });
+
+  const structure = (block: Element) => {
+    const line = block.querySelector(':scope > .hp-commit__line');
+    const meta = block.querySelector(':scope > .hp-commit__meta');
+    return {
+      line,
+      meta,
+      lineChildren: Array.from(line?.children ?? []).map((el) =>
+        el.classList.contains('hp-commit__icon-wrap')
+          ? 'icon'
+          : el.classList.contains('hp-commit__sha')
+            ? 'chip'
+            : el.classList.contains('hp-commit__title')
+              ? 'title'
+              : el.tagName.toLowerCase(),
+      ),
+      metaChildren: Array.from(meta?.children ?? []).map((el) =>
+        Array.from(el.classList)
+          .find((c) => c.startsWith('hp-commit__'))
+          ?.replace('hp-commit__', ''),
+      ),
+    };
+  };
+
+  it('lays out the dry and app commits as identical two-line blocks', () => {
+    const view = mount({ strategy: strategyWithRefs([ref()]) });
+    const dry = dryBlock(view, '4');
+    const app = appGroup(view, '4')!.querySelector('.hp-commit')!;
+    expect(dry).toHaveClass('hp-commit');
+    expect(app).toHaveClass('hp-commit');
+    expect(dry.className).toBe(app.className);
+    expect(dry.querySelector('.hp-commit__icon')).toBeInTheDocument();
+    expect(app.querySelector('.hp-commit__icon')).toBeInTheDocument();
+    expect(dry.querySelector('.hp-commit__icon')!.getAttribute('class')).toBe(
+      app.querySelector('.hp-commit__icon')!.getAttribute('class'),
+    );
+    expect(dry.querySelector('.hp-commit__sha')!.className).toBe(
+      app.querySelector('.hp-commit__sha')!.className,
+    );
+    expect(dry.querySelector('svg')!.innerHTML).not.toBe(app.querySelector('svg')!.innerHTML);
+    const d = structure(dry);
+    const a = structure(app);
+    expect(d.lineChildren).toEqual(['icon', 'chip', 'title']);
+    expect(a.lineChildren).toEqual(['icon', 'chip', 'title']);
+    expect(d.metaChildren).toEqual(['author', 'sep', 'time']);
+    expect(a.metaChildren).toEqual(d.metaChildren);
+    expect(dry.querySelector('.hp-row__subject')).toBeNull();
+    expect(within(d.line as HTMLElement).getByTitle('Dry commit')).toBeInTheDocument();
+    expect(within(a.line as HTMLElement).getByTitle('App commit')).toBeInTheDocument();
+    expect(d.line!.querySelector('.hp-commit__title')).toHaveTextContent(/\S/);
+    expect(a.line!.querySelector('.hp-commit__title')).toHaveAttribute(
+      'title',
+      'fix(ledger): prevent double-posting (#1234)',
+    );
+    expect(a.meta).toHaveTextContent('Priya Raman');
+    expect(a.meta).toHaveTextContent(/2 hours ago/);
+    expect(a.line).not.toHaveTextContent('Priya');
+  });
+
+  it('puts the dry subject on line 1 and author and time on line 2', () => {
+    const view = mount({ strategy: strategyWithRefs([]) });
+    const dry = dryBlock(view, '4');
+    const { line, meta } = structure(dry);
+    const title = line!.querySelector('.hp-commit__title') as HTMLElement;
+    expect(title.textContent).toBeTruthy();
+    expect(title).toHaveAttribute('title', title.textContent!);
+    expect(within(line as HTMLElement).getByRole('link')).toHaveAttribute('target', '_blank');
+    expect(meta!.querySelector('.hp-commit__author')).toBeInTheDocument();
+    expect(meta!.querySelector('.hp-commit__time')).toBeInTheDocument();
+    expect(meta!.querySelector('.hp-commit__sep')).toBeInTheDocument();
+    expect(line).not.toContainElement(meta as HTMLElement);
+  });
+
+  it('labels the dry commit line and shows the app commit line with its details', () => {
+    const view = mount({ strategy: strategyWithRefs([ref()]) });
+    expect(dryBlock(view, '4')).toBeInTheDocument();
+    const line = appGroup(view, '4')!;
+    const link = within(line).getByRole('link', {
+      name: 'App commit abcdef0 in ledger-service, opens in new tab',
+    });
+    expect(link).toHaveAttribute(
+      'href',
+      `https://github.com/example/ledger-service/commit/${refSha}`,
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link).toHaveTextContent('abcdef0');
+    expect(line).not.toHaveTextContent('ledger-service');
+    expect(link).toHaveAttribute(
+      'title',
+      `Repository: ledger-service\nCommit: ${refSha.slice(0, 7)}`,
+    );
+    expect(within(line).getByTitle('fix(ledger): prevent double-posting (#1234)')).toBeVisible();
+    expect(line).toHaveTextContent('Priya Raman');
+    expect(line).toHaveTextContent(/2 hours ago/);
+    expect(within(line).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('does not select the row when the app commit link is clicked', () => {
+    const onSelectionChange = vi.fn();
+    const view = mount({ strategy: strategyWithRefs([ref()]), onSelectionChange });
+    const link = within(appGroup(view, '4')!).getByRole('link');
+    link.addEventListener('click', (e) => e.preventDefault());
+    fireEvent.click(link);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('reveals the additional app commits behind a +N more toggle without selecting the row', () => {
+    const second = ref({
+      sha: '1234567890abcdef1234567890abcdef12345678',
+      subject: 'second change',
+    });
+    const third = ref({ sha: 'fedcba0987654321fedcba0987654321fedcba09', subject: 'third change' });
+    const onSelectionChange = vi.fn();
+    const view = mount({
+      strategy: strategyWithRefs([ref(), second, third]),
+      onSelectionChange,
+    });
+    const line = appGroup(view, '4')!;
+    const toggle = within(line).getByRole('button', { name: '+2 more' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(line).not.toHaveTextContent('second change');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(line).toHaveTextContent('second change');
+    expect(line).toHaveTextContent('third change');
+    expect(within(line).getAllByRole('link')).toHaveLength(3);
+    const blocks = Array.from(line.querySelectorAll(':scope > .hp-commit'));
+    expect(blocks).toHaveLength(3);
+    blocks.forEach((b, i) => {
+      expect(structure(b).lineChildren).toEqual(
+        i === 0 ? ['icon', 'chip', 'title', 'button'] : ['icon', 'chip', 'title'],
+      );
+      expect(structure(b).metaChildren).toEqual(['author', 'sep', 'time']);
+    });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(line).not.toHaveTextContent('second change');
+  });
+
+  it('renders no app commit line for a dry commit without references', () => {
+    const view = mount({ strategy: strategyWithRefs([ref()]) });
+    expect(appGroup(view, '3')).not.toBeInTheDocument();
+    expect(within(rowEl(view, '3')).getByRole('group', { name: 'Dry commit' })).toBeInTheDocument();
+  });
+
+  it('renders the sha as plain text when the commit url is not http(s)', () => {
+    const view = mount({
+      strategy: strategyWithRefs([ref({ repoURL: 'javascript:alert(1)//' })]),
+    });
+    const line = appGroup(view, '4')!;
+    expect(within(line).queryByRole('link')).not.toBeInTheDocument();
+    expect(line).toHaveTextContent('abcdef0');
+  });
+
+  it('omits author and age when the app commit lacks them', () => {
+    const view = mount({
+      strategy: strategyWithRefs([ref({ author: undefined, date: undefined })]),
+    });
+    const line = appGroup(view, '4')!;
+    expect(line).toHaveTextContent('abcdef0');
+    expect(line).not.toHaveTextContent('ledger-service');
+    expect(line).not.toHaveTextContent('Priya');
+    expect(line).not.toHaveTextContent('ago');
+    expect(line).not.toHaveTextContent('·');
+    const { lineChildren, meta } = structure(line.querySelector('.hp-commit')!);
+    expect(lineChildren).toEqual(['icon', 'chip', 'title']);
+    expect(meta).toBeNull();
+  });
+
+  it('omits only the missing half and its separator on line 2', () => {
+    const noDate = mount({ strategy: strategyWithRefs([ref({ date: undefined })]) });
+    const authorOnly = structure(appGroup(noDate, '4')!.querySelector('.hp-commit')!);
+    expect(authorOnly.metaChildren).toEqual(['author']);
+    noDate.unmount();
+    const noAuthor = mount({ strategy: strategyWithRefs([ref({ author: undefined })]) });
+    const timeOnly = structure(appGroup(noAuthor, '4')!.querySelector('.hp-commit')!);
+    expect(timeOnly.metaChildren).toEqual(['time']);
+  });
+
+  it('shows the app subject placeholder when the reference has no subject', () => {
+    const view = mount({ strategy: strategyWithRefs([ref({ subject: undefined })]) });
+    expect(within(appGroup(view, '4')!).getByTitle('(no subject)')).toBeVisible();
+  });
 });
