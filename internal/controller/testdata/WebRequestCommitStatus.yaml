@@ -17,6 +17,10 @@ spec:
   # URL for the commit status target link in the SCM (Go templates supported). Optional.
   urlTemplate: ""
 
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
+
   # Which SHA to report on: "proposed" (default) or "active". Optional.
   reportOn: proposed
 

@@ -145,6 +145,29 @@ the respective environments' live environment branches.
 Any tool wanting to gate a proposed commit status must create and update CommitStatuses with the appropriate SHAs for
 the respective environments' proposed (`-next`) environment branches.
 
+### Where a status is published (`publishTo`)
+
+`spec.publishTo` is the set of destinations for a CommitStatus. `scm` posts the status to the SCM. The default is `[scm]`.
+
+Set an empty list to keep the status in Kubernetes and not post it to the SCM:
+
+```yaml
+publishTo: []
+```
+
+Omitting the field is not an empty list. The default fills in `[scm]`. The controller posts to the SCM when `scm` is in the list. Promotion gates use the phase in every case.
+
+Every built-in gate (`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
+`ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
+copies the list to every CommitStatus it creates.
+
+Use `publishTo: []` when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
+waits for every external status. A gate that watches the pipeline then never finishes, because its own status is one
+of the statuses that the rule waits for.
+
+If you remove `scm` from `publishTo` on a CommitStatus that the controller already posted, the SCM keeps the last posted
+state. The controller does not remove it.
+
 ### How Environment Ordering Works
 
 The PromotionStrategy controller creates a ChangeTransferPolicy for each environment, copies the PromotionStrategy's

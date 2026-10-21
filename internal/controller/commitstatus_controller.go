@@ -109,17 +109,24 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-	if err != nil || commitStatusProvider == nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
-	}
-
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	_, err = commitStatusProvider.Set(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
+	if !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo) {
+		// No scm destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
+		cs.Status.Sha = cs.Spec.Sha
+		cs.Status.Phase = cs.Spec.Phase
+		cs.Status.Id = ""
+	} else {
+		commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
+		if err != nil || commitStatusProvider == nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
+		}
+
+		_, err = commitStatusProvider.Set(ctx, &cs)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
+		}
 	}
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)

@@ -7,7 +7,7 @@ This repository uses **self-hosted Renovate via GitHub Workflows** to automatica
 Renovate has been configured to:
 1. **Automatically detect and update the Go *build* toolchain** across:
    - GitHub Actions workflows (`.github/workflows/*.yaml`)
-   - Dockerfiles (`Dockerfile`)
+   - Dockerfiles (`Dockerfile` and `.oss-scanner/Dockerfile`)
    - `install-tool golang …` pins in `renovate.json5`
 
    The `go` directive in `go.mod` is the **minimum language version**, not the build pin. Toolchain **patches** apply immediately. **Minor/major** Go toolchain bumps wait **30 days** after the release so contributors can upgrade before `go-fix-maybe-bump` (often) raises the floor. A new language version is kept only when `go fix` on that version rewrites source, or when `go mod tidy` sees a dependency that requires it.

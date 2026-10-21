@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v92/github"
+	"github.com/google/go-github/v93/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -427,10 +428,8 @@ func (pr *PullRequest) eachRepositoryLabel(ctx context.Context, gitRepo *v1alpha
 		if err != nil {
 			return fmt.Errorf("failed to list repository labels: %w", err)
 		}
-		for _, label := range labels {
-			if visit(label) {
-				return nil
-			}
+		if slices.ContainsFunc(labels, visit) {
+			return nil
 		}
 		if response == nil || response.NextPage == 0 {
 			return nil

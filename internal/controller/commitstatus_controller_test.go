@@ -26,8 +26,10 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -206,6 +208,79 @@ var _ = Describe("CommitStatus Controller", func() {
 
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When publishTo is not set", func() {
+		It("should default to scm", func() {
+			ctx := context.Background()
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "default-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+				},
+			}
+			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
+
+			// The CRD default fills spec.publishTo on create.
+			Expect(cs.Spec.PublishTo).To(HaveValue(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM})))
+		})
+	})
+
+	Context("When publishTo is empty", func() {
+		It("should record status without needing an SCM provider", func() {
+			ctx := context.Background()
+			// The GitRepository does not exist. A reconcile that called the SCM provider would fail.
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "skip-scm-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
+
+			Eventually(func(g Gomega) {
+				got := &promoterv1alpha1.CommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "skip-scm-commit-status"}, got)).To(Succeed())
+				g.Expect(got.Spec.PublishTo).To(HaveValue(BeEmpty()))
+				g.Expect(got.Status.Sha).To(Equal(got.Spec.Sha))
+				g.Expect(got.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(got.Status.Id).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When publishTo is invalid", func() {
+		It("should reject an unknown destination", func() {
+			ctx := context.Background()
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "invalid-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{"promoter"},
+				},
+			}
+			err := k8sClient.Create(ctx, cs)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))
 		})
 	})
 

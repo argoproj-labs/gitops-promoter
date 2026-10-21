@@ -223,7 +223,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
+					Name: name + "-revert", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -286,7 +286,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(noteOut).NotTo(BeEmpty())
 				// Find a note that carries Promoter-restore-unblocked-at.
 				foundUnblock := false
-				for _, line := range strings.Split(strings.TrimSpace(noteOut), "\n") {
+				for line := range strings.SplitSeq(strings.TrimSpace(noteOut), "\n") {
 					parts := strings.Fields(line)
 					if len(parts) < 2 {
 						continue
@@ -565,7 +565,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
+					Name: name + "-revert-open", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -666,7 +666,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				older := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-old", Namespace: "default"},
+					Name: name + "-revert-old", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -686,7 +686,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("Restoring further back, which supersedes the first RestoreActiveCommit")
 				newer := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-new", Namespace: "default"},
+					Name: name + "-revert-new", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -3847,13 +3847,17 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 
 	It("writes the note as soon as the PR reports the merge, without releasing the finalizer", func() {
 		By("Confirming the controller's clone has not fetched the merge yet")
-		// The clone predates the external merge; origin/<active> only advances when FetchBranch runs.
-		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).NotTo(Equal(squashSha))
+		// The clone predates the external merge. The tracking ref is either absent or still the
+		// pre-merge tip; it only advances when FetchBranch runs.
+		activeTip, err := runGitCmd(ctx, gitOps.ClonePath(), "rev-parse", "--verify", "--quiet", "origin/"+activeBranch)
+		if err == nil {
+			Expect(strings.TrimSpace(activeTip)).NotTo(Equal(squashSha))
+		}
 
 		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
 		r := newReconciler(pr)
 
-		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Verifying the active branch was fetched so the merge commit could be read")
@@ -4184,18 +4188,16 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 	It("blocks without touching git while a RestoreActiveCommit's restore is still pending", func() {
 		ctx := context.Background()
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", "environment/dev"),
-				Namespace: "default",
-			},
-			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+			Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", "environment/dev"),
+			Namespace: "default",
+			Spec:      promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		}
 		ctp.Status.Proposed.Dry.Sha = proposedDry
 		// Never cloned. Reaching CommitIsAncestor or RestoreBlockState would fail this call.
-		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
+		gitRepo := &promoterv1alpha1.GitRepository{Name: "repo", Namespace: "default"}
 		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
 		rc := &promoterv1alpha1.RestoreActiveCommit{
-			ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+			Name: "restore-dev", Namespace: "default",
 			Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 				Branch:               "environment/dev",
@@ -4282,7 +4284,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			mustRunGit(workDir, "push", "origin", "side")
 
 			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{Name: "skip-revert-repo", Namespace: "default"},
+				Name: "skip-revert-repo", Namespace: "default",
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "skip-revert-repo"},
 				},
@@ -4294,11 +4296,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
 			ctp = &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", branch),
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
+				Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", branch),
+				Namespace: "default",
+				Spec:      promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
 			}
 			ctp.Status.Active.Hydrated.Sha = activeSha
 			ctp.Status.Proposed.Hydrated.Sha = parentSha
@@ -4379,7 +4379,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 		It("does not block from a RestoreActiveCommit that already has status when the tip is not a restore", func() {
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+				Name: "restore-dev", Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               ctp.Spec.ActiveBranch,
@@ -4450,7 +4450,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 		supersededRevert := func(name, activeSha string) *promoterv1alpha1.RestoreActiveCommit {
 			return &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Name: name, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               branch,

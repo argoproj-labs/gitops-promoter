@@ -2,8 +2,10 @@ package utils_test
 
 import (
 	"context"
+	"encoding/json"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -14,6 +16,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+var _ = Describe("publishTo JSON", func() {
+	It("omits a nil pointer and encodes an empty list", func() {
+		nilList, err := json.Marshal(promoterv1alpha1.CommitStatusSpec{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(nilList)).NotTo(ContainSubstring(`"publishTo"`))
+
+		empty := []promoterv1alpha1.CommitStatusPublishTo{}
+		encoded, err := json.Marshal(promoterv1alpha1.CommitStatusSpec{PublishTo: &empty})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(encoded)).To(ContainSubstring(`"publishTo":[]`))
+
+		gate, err := json.Marshal(promoterv1alpha1.WebRequestCommitStatusSpec{PublishTo: &empty})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(gate)).To(ContainSubstring(`"publishTo":[]`))
+	})
+})
+
+var _ = Describe("generated publishTo JSON", func() {
+	It("encodes an explicit empty list and omits an unset field", func() {
+		raw, err := json.Marshal(acv1alpha1.CommitStatusSpec().WithPublishTo([]promoterv1alpha1.CommitStatusPublishTo{}))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(raw)).To(ContainSubstring(`"publishTo":[]`))
+
+		omitted, err := json.Marshal(acv1alpha1.CommitStatusSpec())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(omitted)).NotTo(ContainSubstring(`"publishTo"`))
+	})
+})
 
 var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 	DescribeTable("derives parent gate label keys from parent Kind",
