@@ -424,3 +424,150 @@ describe('buildMatrix live and proposed pull requests', () => {
     expect(live.pullRequest?.id).toBe('3101');
   });
 });
+
+describe('buildMatrix cell commit statuses', () => {
+  const proposedDry = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+  function withStatuses() {
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.active!.commitStatuses = [
+      { key: 'active-check', phase: 'success' },
+    ] as Environment['active']['commitStatuses'];
+    env.history![0]!.active!.commitStatuses = [
+      { key: 'live-then', phase: 'success' },
+    ] as Environment['active']['commitStatuses'];
+    env.history![1]!.active!.commitStatuses = [
+      { key: 'older-check', phase: 'success' },
+      { key: 'older-slow', phase: 'failure', description: 'timed out' },
+    ] as Environment['active']['commitStatuses'];
+    env.proposed = {
+      dry: dryCommit(proposedDry, 'chore: bump version to v1.0.2006', '2026-09-25T16:00:00Z'),
+      hydrated: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      commitStatuses: [
+        { key: 'proposed-check', phase: 'pending' },
+      ] as Environment['active']['commitStatuses'],
+    };
+    return buildMatrix(strategy);
+  }
+
+  const keys = (cell: { commitStatuses: { key: string }[] }) =>
+    cell.commitStatuses.map((s) => s.key);
+
+  it('gives the live cell the active commit statuses', () => {
+    const { rows } = withStatuses();
+    const live = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
+    expect(live.kind).toBe('live');
+    expect(keys(live)).toEqual(['active-check']);
+  });
+
+  it('gives the proposed cell the proposed commit statuses', () => {
+    const { rows } = withStatuses();
+    const proposed = rows.find((r) => r.dryShaFull === proposedDry)!.cells[BRANCH]!;
+    expect(proposed.isProposed).toBe(true);
+    expect(keys(proposed)).toEqual(['proposed-check']);
+    expect(proposed.commitStatuses[0]!.phase).toBe('pending');
+  });
+
+  it('gives a historical cell the statuses its history entry carries', () => {
+    const { rows } = withStatuses();
+    const previous = rows.find((r) => r.dryShaFull === OLD_DRY)!.cells[BRANCH]!;
+    expect(previous.kind).toBe('failed');
+    expect(keys(previous)).toEqual(['older-check', 'older-slow']);
+  });
+
+  it('leaves empty cells without statuses', () => {
+    const strategy = strategyWithHistory(false);
+    strategy.spec.environments!.push({ branch: 'environments/staging' } as never);
+    (strategy.status!.environments as Environment[]).push({
+      branch: 'environments/staging',
+      active: {
+        dry: dryCommit('9999999999999999999999999999999999999999', 'other', '2026-09-26T10:00:00Z'),
+        hydrated: {},
+        commitStatuses: [],
+      },
+      history: [],
+    } as unknown as Environment);
+    const { rows } = buildMatrix(strategy);
+    const row = rows.find((r) => r.dryShaFull === NEW_DRY)!;
+    expect(row.cells['environments/staging']!.kind).toBe('no-changes');
+    expect(row.cells['environments/staging']!.commitStatuses).toEqual([]);
+  });
+});
+
+describe('buildMatrix cell header data', () => {
+  it('carries hydrated sha and merge time on the live and replaced cells', () => {
+    const { rows } = buildMatrix(strategyWithHistory(false));
+    const live = rows.find((r) => r.dryShaFull === NEW_DRY)!.cells[BRANCH]!;
+    expect(live.kind).toBe('live');
+    expect(live.hydrated?.sha).toBe(NEW_HYDRATED);
+    expect(live.pullRequest?.id).toBe('2972');
+    expect(live.pullRequest?.prMergeTime).toBe('2026-09-24T21:33:41Z');
+
+    const replaced = rows.find((r) => r.dryShaFull === OLD_DRY)!.cells[BRANCH]!;
+    expect(replaced.kind).toBe('was-here');
+    expect(replaced.hydrated?.sha).toBe(OLD_HYDRATED);
+    expect(replaced.pullRequest?.id).toBe('2957');
+  });
+
+  it('carries proposed hydrated sha and PR creation time on a proposed cell', () => {
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    const proposedDry = 'cccccccccccccccccccccccccccccccccccccccc';
+    const proposedHydrated = 'dddddddddddddddddddddddddddddddddddddddd';
+    env.proposed = {
+      dry: dryCommit(proposedDry, 'feat: next', '2026-09-26T08:00:00Z'),
+      hydrated: { sha: proposedHydrated },
+      commitStatuses: [],
+    };
+    env.pullRequest = {
+      id: '3100',
+      url: 'https://github.com/org/repo/pull/3100',
+      state: 'open',
+      prCreationTime: '2026-09-26T08:05:00Z',
+    };
+
+    const { rows } = buildMatrix(strategy);
+    const cell = rows.find((r) => r.dryShaFull === proposedDry)!.cells[BRANCH]!;
+    expect(cell.kind).toBe('in-flight');
+    expect(cell.hydrated?.sha).toBe(proposedHydrated);
+    expect(cell.pullRequest?.id).toBe('3100');
+    expect(cell.pullRequest?.prCreationTime).toBe('2026-09-26T08:05:00Z');
+  });
+
+  it('carries the restore commit as hydrated sha and no pull request on a restore cell', () => {
+    const { rows } = buildMatrix(strategyWithHistory(true));
+    const cell = rows.find((r) => r.restoredFrom)!.cells[BRANCH]!;
+    expect(cell.hydrated?.sha).toBe(RESTORE_HYDRATED);
+    expect(cell.pullRequest).toBeUndefined();
+    expect(cell.at).toBe('2026-09-25T12:53:44Z');
+  });
+});
+
+describe('buildMatrix check urls', () => {
+  const checks = [
+    { key: 'ci', phase: 'success', url: 'https://ci.example.com/1' },
+    { key: 'e2e', phase: 'pending', url: 'https://ci.example.com/2' },
+  ] as Environment['active']['commitStatuses'];
+
+  it('carries status urls onto live, proposed and history cells', () => {
+    const proposedDry = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.active.commitStatuses = checks;
+    env.history![1]!.active!.commitStatuses = checks;
+    env.proposed = {
+      dry: dryCommit(proposedDry, 'chore: bump version to v1.0.2006', '2026-09-25T16:00:00Z'),
+      hydrated: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      commitStatuses: checks,
+    } as unknown as Environment['proposed'];
+
+    const { rows } = buildMatrix(strategy);
+    const urls = (dry: string) =>
+      rows.find((r) => r.dryShaFull === dry)!.cells[BRANCH]!.commitStatuses.map((s) => s.url);
+    const expected = ['https://ci.example.com/1', 'https://ci.example.com/2'];
+    expect(urls(NEW_DRY)).toEqual(expected);
+    expect(urls(proposedDry)).toEqual(expected);
+    expect(urls(OLD_DRY)).toEqual(expected);
+  });
+});

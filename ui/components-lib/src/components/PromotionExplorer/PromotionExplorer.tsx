@@ -245,9 +245,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
-  // Trailing 1fr spacer track (no cell placed in it) soaks up leftover width as
-  // empty gap; when columns overflow it collapses to 0 and the matrix scrolls.
-  const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(180px, 260px)) 1fr`;
+  const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(286px, 1fr))`;
 
   return (
     <div className={`hp ${rootClass}`}>

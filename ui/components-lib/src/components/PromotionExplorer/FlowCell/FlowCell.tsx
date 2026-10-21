@@ -1,11 +1,18 @@
 import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoBlocked, GoGitCommit, GoGitPullRequest } from 'react-icons/go';
+import { GoBlocked, GoGitMerge } from 'react-icons/go';
 import { timeAgo, formatDate, formatDuration, getCommitUrl } from '@shared/utils/util';
 import type { CellState, CommitRow } from '../types';
-import { commitKey, shortSha } from '../helpers';
-import { CELL_KIND_LABELS, cellKindLabel, cellPillTooltip, displayKind } from '../presentation';
+import { commitKey, safeHttpUrl, shortSha } from '../helpers';
+import {
+  CELL_KIND_LABELS,
+  cellHeaderTime,
+  cellKindLabel,
+  cellPillTooltip,
+  displayKind,
+} from '../presentation';
 import Tooltip from '../Tooltip/Tooltip';
+import CellChecks from './CellChecks';
 import { restoreBlockTooltip } from '@shared/utils/environments';
 
 const FlowCell: React.FC<{
@@ -39,12 +46,7 @@ const FlowCell: React.FC<{
     );
   }
 
-  const failingChecks = cell.commitStatuses
-    .filter((s) => s.phase === 'failure')
-    .map((s) => (s.description ? `${s.key}: ${s.description}` : s.key));
-
-  const time = cell.at ? timeAgo(cell.at) : '';
-  const exact = cell.at ? formatDate(cell.at) : '';
+  const headerTime = cellHeaderTime(cell);
   const visualKind = displayKind(cell.kind);
 
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
@@ -61,13 +63,79 @@ const FlowCell: React.FC<{
     blockedEnv || blocked || isRestore
       ? cell.pullRequest?.url
       : (cell.pullRequest?.url ?? rowForCell?.prUrl);
-  const restoreSha = isRestore ? cell.hydrated?.sha : undefined;
-  const restoreRepoUrl =
+  const hydratedSha = cell.hydrated?.sha;
+  const hydratedRepoUrl =
     cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
-  const restoreUrl = restoreSha ? getCommitUrl(restoreRepoUrl, restoreSha) : '';
+  const hydratedUrl = hydratedSha
+    ? safeHttpUrl(getCommitUrl(hydratedRepoUrl, hydratedSha))
+    : undefined;
+  const safePrUrl = safeHttpUrl(prUrl);
   const pillTooltip = blockedEnv
     ? restoreBlockTooltip(blockedEnv, blocked)
     : cellPillTooltip(cell, branch);
+
+  const isWasHere = visualKind === 'was-here';
+  const replacement = cell.supersededById ? rowsById.get(cell.supersededById) : undefined;
+  const showChecks =
+    !blockedEnv &&
+    !blocked &&
+    (visualKind === 'live' || visualKind === 'in-flight' || visualKind === 'failed') &&
+    cell.commitStatuses.length > 0;
+  const wasHereTooltip = `${cellPillTooltip(cell, branch)}${
+    cell.liveDurationMs != null ? ` · live for ${formatDuration(cell.liveDurationMs)}` : ''
+  }`;
+
+  const hydratedGroup = (hydratedSha || (prId && prUrl) || headerTime) && (
+    <div className="cell__hydrated">
+      {hydratedSha &&
+        (hydratedUrl ? (
+          <a
+            className="cell__sha"
+            href={hydratedUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={`Hydrated commit ${hydratedSha} on ${branch}, opens in new tab`}
+            aria-label={`Hydrated commit ${shortSha(hydratedSha)} in ${branch}, opens in new tab`}
+          >
+            {shortSha(hydratedSha)}
+          </a>
+        ) : (
+          <span className="cell__sha" title={`Hydrated commit ${hydratedSha}`}>
+            {shortSha(hydratedSha)}
+          </span>
+        ))}
+      {prId &&
+        (safePrUrl ? (
+          <a
+            className="cell__pr"
+            href={safePrUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={`Promotion PR into ${branch}: #${prId}`}
+            aria-label={`Promotion pull request #${prId} into ${branch}, opens in new tab`}
+          >
+            <GoGitMerge aria-hidden="true" />#{prId}
+          </a>
+        ) : (
+          <span className="cell__pr" title={`Pull request #${prId}`}>
+            <GoGitMerge aria-hidden="true" />
+            <span className="hp-sr-only">Pull request </span>#{prId}
+          </span>
+        ))}
+      {headerTime && (
+        <time
+          className="cell__time"
+          dateTime={headerTime.at}
+          title={`${headerTime.label} ${formatDate(headerTime.at)}`}
+        >
+          <span className="hp-sr-only">{headerTime.label} </span>
+          {timeAgo(headerTime.at)}
+        </time>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -99,12 +167,15 @@ const FlowCell: React.FC<{
           : CELL_KIND_LABELS[visualKind]
       } in ${branch}`}
     >
-      <div className="cell__top">
-        {visualKind === 'was-here' && cell.liveDurationMs != null ? (
-          <Tooltip label={cellPillTooltip(cell, branch)}>
-            <span className="cell__live-for">live for {formatDuration(cell.liveDurationMs)}</span>
+      {isWasHere ? (
+        <div className="cell__head cell__head--was-here">
+          <Tooltip label={wasHereTooltip}>
+            <span className="cell__was-label">Previously live</span>
           </Tooltip>
-        ) : (
+          {hydratedGroup}
+        </div>
+      ) : (
+        <div className="cell__head">
           <Tooltip label={pillTooltip}>
             <span
               className={`cell__pill cell__pill--${visualKind}${
@@ -122,95 +193,29 @@ const FlowCell: React.FC<{
               {cellKindLabel(cell)}
             </span>
           </Tooltip>
-        )}
-        {time && (
-          <Tooltip label={exact}>
-            <span className="cell__time">{time}</span>
-          </Tooltip>
-        )}
-      </div>
-
-      {prId && prUrl ? (
-        <div className="cell__commit">
-          <div className="cell__commit-meta">
-            <Tooltip
-              label={
-                <>
-                  Promotion PR into {branch}: #{prId}
-                  <br />
-                  Open on remote
-                </>
-              }
-            >
-              <a
-                className="cell__pr"
-                href={prUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Promotion pull request #${prId} into ${branch}, opens in new tab`}
-              >
-                <GoGitPullRequest aria-hidden="true" /> #{prId}
-              </a>
-            </Tooltip>
-          </div>
+          {hydratedGroup}
         </div>
-      ) : (
-        restoreSha &&
-        restoreUrl && (
-          <div className="cell__commit">
-            <div className="cell__commit-meta">
-              <Tooltip
-                label={
-                  <>
-                    Restore commit <code>{shortSha(restoreSha)}</code>
-                    <br />
-                    Open on remote
-                  </>
-                }
-              >
-                <a
-                  className="cell__pr"
-                  href={restoreUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Restore commit ${shortSha(restoreSha)} in ${branch}, opens in new tab`}
-                >
-                  <GoGitCommit aria-hidden="true" /> {shortSha(restoreSha)}
-                </a>
-              </Tooltip>
-            </div>
-          </div>
-        )
       )}
 
-      <div className="cell__bottom">
-        {cell.kind === 'failed' && failingChecks.length > 0 && (
-          <span className="cell__reason">{failingChecks[0]}</span>
-        )}
-        {cell.kind === 'no-op' && (
-          <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>
-        )}
-        {visualKind === 'was-here' &&
-          cell.supersededById &&
-          onJumpToRow &&
-          rowsById.get(cell.supersededById) && (
-            <div className="cell__bottom-row">
-              <button
-                type="button"
-                className="cell__superseded"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onJumpToRow(cell.supersededById!);
-                }}
-                title={`Replaced by ${rowsById.get(cell.supersededById)!.subject}`}
-              >
-                <FaArrowRight aria-hidden="true" /> Replaced
-              </button>
-            </div>
-          )}
-      </div>
+      {showChecks && (
+        <div className="cell__body">
+          <CellChecks statuses={cell.commitStatuses} branch={branch} />
+        </div>
+      )}
+
+      {isWasHere && replacement && onJumpToRow && cell.supersededById && (
+        <button
+          type="button"
+          className="cell__superseded"
+          onClick={(e) => {
+            e.stopPropagation();
+            onJumpToRow(cell.supersededById!);
+          }}
+          title={`Replaced by ${replacement.subject}`}
+        >
+          <FaArrowRight aria-hidden="true" /> Replaced
+        </button>
+      )}
     </div>
   );
 };

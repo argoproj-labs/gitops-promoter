@@ -1,4 +1,3 @@
-import type { CommitStatus } from '@shared/types/promotion';
 import { formatDate } from '@shared/utils/util';
 import type { CellKind, CellState, HealthKey } from './types';
 
@@ -59,6 +58,19 @@ export const CELL_KIND_LABELS: Record<DisplayCellKind, string> = {
   'unknown-history': 'History unavailable',
 };
 
+export type CellTimeLabel = 'merged' | 'opened' | 'restored' | 'committed';
+
+export function cellHeaderTime(cell: CellState): { label: CellTimeLabel; at: string } | null {
+  const pr = cell.pullRequest;
+  if (cell.restoredFrom) return cell.at ? { label: 'restored', at: cell.at } : null;
+  if (cell.kind === 'in-flight' || cell.isProposed) {
+    if (pr?.prCreationTime) return { label: 'opened', at: pr.prCreationTime };
+  } else if (pr?.prMergeTime) {
+    return { label: 'merged', at: pr.prMergeTime };
+  }
+  return cell.at ? { label: 'committed', at: cell.at } : null;
+}
+
 export const DRAWER_MIN_WIDTH = 320;
 export const DRAWER_MAX_WIDTH = 760;
 export const DRAWER_DEFAULT_WIDTH = 420;
@@ -99,21 +111,4 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
     default:
       return '';
   }
-}
-
-export function healthSummary(health: HealthKey, statuses: CommitStatus[]): string {
-  const label = HEALTH_LABELS[health];
-  if (statuses.length === 0) return label;
-  let pass = 0,
-    fail = 0,
-    pend = 0;
-  for (const s of statuses) {
-    if (s.phase === 'success') pass++;
-    else if (s.phase === 'failure') fail++;
-    else if (s.phase === 'pending') pend++;
-  }
-  if (fail > 0) return `${label} · ${fail} failing`;
-  if (pend > 0) return `${label} · ${pend} running`;
-  if (pass > 0) return `${label} · ${pass} passing`;
-  return label;
 }
