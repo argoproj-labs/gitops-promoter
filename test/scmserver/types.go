@@ -23,10 +23,12 @@ const (
 	Gitea Provider = "gitea"
 	// Forgejo impersonates Forgejo (REST API under /api/v1).
 	Forgejo Provider = "forgejo"
+	// BitbucketDataCenter impersonates Bitbucket Data Center/Server (REST API under /rest, git under /scm).
+	BitbucketDataCenter Provider = "bitbucketdatacenter"
 )
 
 // AllProviders lists every provider the server impersonates, in a stable order.
-var AllProviders = []Provider{GitHub, GitLab, AzureDevOps, BitbucketCloud, Gitea, Forgejo}
+var AllProviders = []Provider{GitHub, GitLab, AzureDevOps, BitbucketCloud, Gitea, Forgejo, BitbucketDataCenter}
 
 // Valid reports whether p is a provider the server impersonates.
 func (p Provider) Valid() bool {
@@ -92,6 +94,8 @@ func (p Provider) dirName() string {
 		return "gitea"
 	case Forgejo:
 		return "forgejo"
+	case BitbucketDataCenter:
+		return "bitbucketdatacenter"
 	default:
 		return "unknown"
 	}

@@ -1,5 +1,6 @@
 // Package scmserver implements a test SCM server that impersonates the HTTP APIs of every SCM provider supported by
-// GitOps Promoter: GitHub (Enterprise), GitLab, Azure DevOps, Bitbucket Cloud, Gitea and Forgejo.
+// GitOps Promoter: GitHub (Enterprise), GitLab, Azure DevOps, Bitbucket Cloud, Gitea, Forgejo and Bitbucket Data
+// Center.
 //
 // Each provider is served over HTTPS on its own listener so that the unmodified provider implementations in
 // internal/scms can be pointed at it through the ScmProvider "domain" field. Repositories are real bare git

@@ -14,6 +14,9 @@ const (
 	azureTimeFormat     = "2006-01-02T15:04:05.0000000Z"
 	bitbucketTimeFormat = "2006-01-02T15:04:05.000000+00:00"
 	giteaTimeFormat     = time.RFC3339
+	// bitbucketDCTimeFormat is the "date" of Bitbucket Data Center webhook payloads; its REST API uses epoch
+	// milliseconds instead.
+	bitbucketDCTimeFormat = "2006-01-02T15:04:05-0700"
 )
 
 // writeJSON writes v as a JSON response with the given status code.
@@ -57,6 +60,8 @@ func writeProviderError(w http.ResponseWriter, p Provider, status int, message s
 		writeJSON(w, status, map[string]any{"type": "error", "error": map[string]any{"message": message}})
 	case Gitea, Forgejo:
 		writeJSON(w, status, map[string]any{"message": message, "url": "/api/swagger"})
+	case BitbucketDataCenter:
+		writeBitbucketDCError(w, status, bitbucketDCError{Message: message})
 	default:
 		http.Error(w, message, status)
 	}

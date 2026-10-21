@@ -114,6 +114,8 @@ func (t *scmTestTarget) repoOwnerName(gitRepo *promoterv1alpha1.GitRepository) (
 		return gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name
 	case gitRepo.Spec.BitbucketCloud != nil:
 		return gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name
+	case gitRepo.Spec.BitbucketDataCenter != nil:
+		return gitRepo.Spec.BitbucketDataCenter.Project, gitRepo.Spec.BitbucketDataCenter.Name
 	case gitRepo.Spec.AzureDevOps != nil:
 		return gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name
 	default:
@@ -139,6 +141,10 @@ func (t *scmTestTarget) newRepo(ctx context.Context, stem string) testRepo {
 	seq := t.repoSeq.Add(1)
 	// Keep owner/name short: GitHub owners are capped at 39 chars and Azure orgs at 50.
 	owner := fmt.Sprintf("o%s-%d-%d", t.runID, GinkgoParallelProcess(), seq)
+	if t.provider == scmserver.BitbucketDataCenter {
+		// Bitbucket Data Center project keys allow only letters, digits and underscores.
+		owner = fmt.Sprintf("O%s_%d_%d", t.runID, GinkgoParallelProcess(), seq)
+	}
 	name := fmt.Sprintf("r%s-%d-%d", t.runID, GinkgoParallelProcess(), seq)
 	req := scmserver.CreateRepoRequest{
 		Provider: t.provider,
@@ -212,6 +218,8 @@ func (t *scmTestTarget) scmProviderSpec(repo testRepo, secretName string) promot
 		spec.Gitea = &promoterv1alpha1.Gitea{Domain: t.domain}
 	case scmserver.Forgejo:
 		spec.Forgejo = &promoterv1alpha1.Forgejo{Domain: t.domain}
+	case scmserver.BitbucketDataCenter:
+		spec.BitbucketDataCenter = &promoterv1alpha1.BitbucketDataCenter{Domain: t.domain}
 	default:
 		Fail("unknown scmserver provider " + string(t.provider))
 	}
@@ -239,6 +247,8 @@ func (t *scmTestTarget) gitRepositorySpec(repo testRepo, scmProviderRef promoter
 		spec.Gitea = &promoterv1alpha1.GiteaRepo{Owner: repo.Owner, Name: repo.Name}
 	case scmserver.Forgejo:
 		spec.Forgejo = &promoterv1alpha1.ForgejoRepo{Owner: repo.Owner, Name: repo.Name}
+	case scmserver.BitbucketDataCenter:
+		spec.BitbucketDataCenter = &promoterv1alpha1.BitbucketDataCenterRepo{Project: repo.Owner, Name: repo.Name}
 	default:
 		Fail("unknown scmserver provider " + string(t.provider))
 	}
@@ -283,6 +293,9 @@ func (t *scmTestTarget) unauthenticatedCloneURL(gitRepo *promoterv1alpha1.GitRep
 		Expect(ok).To(BeTrue(), "missing Azure DevOps org for %s (was newRepo called?)", key)
 		org, _ := orgVal.(string)
 		return fmt.Sprintf("https://%s/%s/%s/_git/%s", t.domain, org, gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name)
+	case scmserver.BitbucketDataCenter:
+		owner, name := t.repoOwnerName(gitRepo)
+		return fmt.Sprintf("https://%s/scm/%s/%s.git", t.domain, owner, name)
 	default:
 		owner, name := t.repoOwnerName(gitRepo)
 		return fmt.Sprintf("https://%s/%s/%s.git", t.domain, owner, name)
@@ -299,6 +312,9 @@ func (t *scmTestTarget) gitUser() string {
 		return "git"
 	case scmserver.BitbucketCloud:
 		return "x-token-auth"
+	case scmserver.BitbucketDataCenter:
+		// Bitbucket Data Center accepts a token over basic auth only with its owner's user name.
+		return scmserver.TokenUser(scmserver.BitbucketDataCenter)
 	default:
 		return "oauth2"
 	}
@@ -325,7 +341,7 @@ func (t *scmTestTarget) expectPromotionMergeCommit(g Gomega, hydrated promoterv1
 // commit. Gitea, Forgejo and Azure DevOps do not, and the controller recovers it with a Get-by-ID lookup.
 func (t *scmTestTarget) mergeReportsTargetSha() bool {
 	switch t.provider {
-	case "", scmserver.GitHub, scmserver.GitLab, scmserver.BitbucketCloud:
+	case "", scmserver.GitHub, scmserver.GitLab, scmserver.BitbucketCloud, scmserver.BitbucketDataCenter:
 		return true
 	default:
 		return false

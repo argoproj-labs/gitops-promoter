@@ -27,3 +27,6 @@ spec:
     - name: forgejo
       port: 9006
       targetPort: forgejo
+    - name: bitbucketdc
+      port: 9007
+      targetPort: bitbucketdc

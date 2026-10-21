@@ -78,6 +78,7 @@ var _ = Describe("admin API", func() {
 		Entry("a nested name", scmserver.CreateRepoRequest{Provider: scmserver.GitHub, Owner: "acme", Name: "a/b"}),
 		Entry("a nested owner outside GitLab", scmserver.CreateRepoRequest{Provider: scmserver.Gitea, Owner: "acme/team", Name: "repo"}),
 		Entry("a traversing Azure DevOps project", scmserver.CreateRepoRequest{Provider: scmserver.AzureDevOps, Owner: "org", Project: "../p", Name: "repo"}),
+		Entry("a Bitbucket Data Center project key with a dash", scmserver.CreateRepoRequest{Provider: scmserver.BitbucketDataCenter, Owner: "my-project", Name: "repo"}),
 	)
 
 	It("accepts GitLab subgroups", func(ctx SpecContext) {
@@ -170,7 +171,7 @@ var _ = Describe("admin API", func() {
 
 			By("landing a commit with the pull request's tree and the expected parents")
 			dir := filepath.Join(GinkgoT().TempDir(), "clone")
-			out, err := git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
+			out, err := f.git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
 			Expect(err).NotTo(HaveOccurred(), out)
 			out, err = git(ctx, dir, "rev-list", "--parents", "-n", "1", info.MergeCommitSHA)
 			Expect(err).NotTo(HaveOccurred(), out)

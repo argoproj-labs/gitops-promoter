@@ -241,7 +241,7 @@ func (s *Server) notifyPullRequestTransition(ctx context.Context, pr *pullReques
 
 // notifyPullRequest delivers a pull request event for pr to every matching subscription, asynchronously, in the
 // provider's own format: GitHub's and Gitea's "pull_request", GitLab's "Merge Request Hook", Azure DevOps'
-// git.pullrequest.* service hook and Bitbucket Cloud's pullrequest:* events.
+// git.pullrequest.* service hook, Bitbucket Cloud's pullrequest:* and Bitbucket Data Center's pr:* events.
 func (d *webhookDispatcher) notifyPullRequest(ctx context.Context, s *Server, pr *pullRequest, action prAction) {
 	s.store.mu.Lock()
 	r := pr.repo
@@ -392,6 +392,12 @@ func buildPushPayload(ev pushEvent, secret string) ([]byte, http.Header, error) 
 		if secret != "" {
 			headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("scmserver:"+secret)))
 		}
+	case BitbucketDataCenter:
+		// https://confluence.atlassian.com/bitbucketserver/event-payload-938025882.html: one request per changed ref.
+		body = bitbucketDCPushPayload(ev)
+		headers.Set("Content-Type", "application/json; charset=utf-8")
+		headers.Set("X-Event-Key", "repo:refs_changed")
+		headers.Set("X-Request-ID", ev.deliver)
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q", ev.repo.provider)
 	}
@@ -407,7 +413,7 @@ func buildPushPayload(ev pushEvent, secret string) ([]byte, http.Header, error) 
 			headers.Set("X-Hub-Signature-256", "sha256="+hmacHex(secret, payload, true))
 			headers.Set("X-Hub-Signature", "sha1="+hmacHex(secret, payload, false))
 		}
-	case BitbucketCloud:
+	case BitbucketCloud, BitbucketDataCenter:
 		if secret != "" {
 			headers.Set("X-Hub-Signature", "sha256="+hmacHex(secret, payload, true))
 		}
@@ -560,6 +566,22 @@ func (s *Server) buildPullRequestPayload(pr *pullRequest, action prAction, deliv
 		if secret != "" {
 			headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("scmserver:"+secret)))
 		}
+	case BitbucketDataCenter:
+		// https://confluence.atlassian.com/bitbucketserver/event-payload-938025882.html#Pullrequest: there is no
+		// event for a reopened pull request.
+		eventKey := map[prAction]string{prActionOpened: "pr:opened", prActionClosed: "pr:declined", prActionMerged: "pr:merged"}[action]
+		if eventKey == "" {
+			return nil, nil, nil
+		}
+		body = map[string]any{
+			"eventKey":    eventKey,
+			"date":        s.now().Format(bitbucketDCTimeFormat),
+			"actor":       bitbucketDCUserJSON(pr.author),
+			"pullRequest": s.bitbucketDCPRJSONLocked(pr, base),
+		}
+		headers.Set("Content-Type", "application/json; charset=utf-8")
+		headers.Set("X-Event-Key", eventKey)
+		headers.Set("X-Request-ID", deliveryID)
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q", p)
 	}
@@ -574,7 +596,7 @@ func (s *Server) buildPullRequestPayload(pr *pullRequest, action prAction, deliv
 			headers.Set("X-Hub-Signature-256", "sha256="+hmacHex(secret, payload, true))
 			headers.Set("X-Hub-Signature", "sha1="+hmacHex(secret, payload, false))
 		}
-	case BitbucketCloud:
+	case BitbucketCloud, BitbucketDataCenter:
 		if secret != "" {
 			headers.Set("X-Hub-Signature", "sha256="+hmacHex(secret, payload, true))
 		}
@@ -773,6 +795,51 @@ func bitbucketPushPayload(ev pushEvent) map[string]any {
 		},
 		"actor": map[string]any{"type": "user", "display_name": ev.pusher, "nickname": ev.pusher, "uuid": "{" + newGUID() + "}"},
 	}
+}
+
+func bitbucketDCPushPayload(ev pushEvent) map[string]any {
+	changeType := "UPDATE"
+	switch {
+	case ev.before == zeroSHA:
+		changeType = "ADD"
+	case ev.after == zeroSHA:
+		changeType = "DELETE"
+	default:
+	}
+	refType := "BRANCH"
+	if strings.HasPrefix(ev.ref, "refs/tags/") {
+		refType = "TAG"
+	}
+	commitJSON := func(c commitInfo) map[string]any {
+		who := map[string]any{"name": c.authorName, "emailAddress": c.authorEmail}
+		return map[string]any{
+			"id": c.sha, "displayId": displayID(c.sha), "message": c.message,
+			"author": who, "authorTimestamp": c.when.UnixMilli(), "committer": who, "committerTimestamp": c.when.UnixMilli(),
+		}
+	}
+	// The newest commits are listed, up to a limit.
+	commits := make([]map[string]any, 0, min(len(ev.commits), bitbucketDCPushCommits))
+	for _, c := range ev.commits[:min(len(ev.commits), bitbucketDCPushCommits)] {
+		commits = append(commits, commitJSON(c))
+	}
+	body := map[string]any{
+		"eventKey":   "repo:refs_changed",
+		"date":       ev.occurred.Format(bitbucketDCTimeFormat),
+		"actor":      bitbucketDCUserJSON(ev.pusher),
+		"repository": bitbucketDCRepoJSON(ev.repo.owner, ev.repo.name, ev.repo.id, ev.baseURL),
+		"changes": []map[string]any{{
+			"ref":      map[string]any{"id": ev.ref, "displayId": refShortName(ev.ref), "type": refType},
+			"refId":    ev.ref,
+			"fromHash": ev.before,
+			"toHash":   ev.after,
+			"type":     changeType,
+		}},
+		"commits": commits,
+	}
+	if c := headCommit(ev); c != nil {
+		body["toCommit"] = commitJSON(*c)
+	}
+	return body
 }
 
 func azurePushPayload(ev pushEvent) map[string]any {

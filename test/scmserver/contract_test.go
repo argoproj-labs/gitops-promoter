@@ -21,12 +21,13 @@ const (
 
 // nativeSuccess is the state each provider stores for a successful promoter commit status.
 var nativeSuccess = map[scmserver.Provider]string{
-	scmserver.GitHub:         "completed",
-	scmserver.GitLab:         "success",
-	scmserver.AzureDevOps:    "succeeded",
-	scmserver.BitbucketCloud: "SUCCESSFUL",
-	scmserver.Gitea:          "success",
-	scmserver.Forgejo:        "success",
+	scmserver.GitHub:              "completed",
+	scmserver.GitLab:              "success",
+	scmserver.AzureDevOps:         "succeeded",
+	scmserver.BitbucketCloud:      "SUCCESSFUL",
+	scmserver.Gitea:               "success",
+	scmserver.Forgejo:             "success",
+	scmserver.BitbucketDataCenter: "SUCCESSFUL",
 }
 
 func (f *fixture) commitStatus(name string, phase v1alpha1.CommitStatusPhase) *v1alpha1.CommitStatus {
@@ -68,6 +69,7 @@ var allProviderEntries = []TableEntry{
 	Entry("Bitbucket Cloud", scmserver.BitbucketCloud),
 	Entry("Gitea", scmserver.Gitea),
 	Entry("Forgejo", scmserver.Forgejo),
+	Entry("Bitbucket Data Center", scmserver.BitbucketDataCenter),
 }
 
 var _ = Describe("provider contract", func() {
@@ -200,11 +202,15 @@ var _ = Describe("provider contract", func() {
 		Entry("Forgejo", scmserver.Forgejo),
 	)
 
-	It("rejects labels on Bitbucket Cloud, which has no pull request labels", func(ctx SpecContext) {
-		f := newFixture(ctx, scmserver.BitbucketCloud)
-		prObj := f.createPR(ctx, "labels")
-		Expect(f.prs.AddLabels(ctx, prObj, []string{"promoter"})).To(MatchError(ContainSubstring("does not support")))
-	})
+	DescribeTable("rejecting labels on providers without pull request labels",
+		func(ctx SpecContext, p scmserver.Provider) {
+			f := newFixture(ctx, p)
+			prObj := f.createPR(ctx, "labels")
+			Expect(f.prs.AddLabels(ctx, prObj, []string{"promoter"})).To(MatchError(ContainSubstring("does not support")))
+		},
+		Entry("Bitbucket Cloud", scmserver.BitbucketCloud),
+		Entry("Bitbucket Data Center", scmserver.BitbucketDataCenter),
+	)
 
 	DescribeTable("git over smart HTTP with the provider's credentials",
 		func(ctx SpecContext, p scmserver.Provider) {
@@ -212,8 +218,8 @@ var _ = Describe("provider contract", func() {
 			prObj := f.createPR(ctx, "git")
 			dir := filepath.Join(GinkgoT().TempDir(), "clone")
 
-			By("cloning with the URL, user and token the promoter uses")
-			out, err := git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
+			By("cloning with the URL, user, token and HTTP header the promoter uses")
+			out, err := f.git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
 			Expect(err).NotTo(HaveOccurred(), out)
 			out, err = git(ctx, dir, "rev-parse", "origin/"+sourceBranch)
 			Expect(err).NotTo(HaveOccurred(), out)
@@ -224,7 +230,7 @@ var _ = Describe("provider contract", func() {
 			Expect(err).NotTo(HaveOccurred(), out)
 			out, err = git(ctx, dir, "commit", "--quiet", "--allow-empty", "-m", "re-hydrate")
 			Expect(err).NotTo(HaveOccurred(), out)
-			out, err = git(ctx, dir, "push", "--quiet", "origin", sourceBranch)
+			out, err = f.git(ctx, dir, "push", "--quiet", "origin", sourceBranch)
 			Expect(err).NotTo(HaveOccurred(), out)
 			pushed, err := git(ctx, dir, "rev-parse", "HEAD")
 			Expect(err).NotTo(HaveOccurred())
@@ -237,8 +243,8 @@ var _ = Describe("provider contract", func() {
 
 			By("rejecting the stale merge SHA")
 			_, err = f.prs.Merge(ctx, prObj)
-			if p == scmserver.BitbucketCloud {
-				// Bitbucket Cloud has no SHA guard.
+			if p == scmserver.BitbucketCloud || p == scmserver.BitbucketDataCenter {
+				// Neither Bitbucket has a SHA guard; Data Center's version guard is read just before the merge.
 				return
 			}
 			Expect(err).To(HaveOccurred())

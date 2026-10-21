@@ -94,7 +94,10 @@ type pullRequest struct {
 	labels       []string
 	globalID     int64
 	number       int
-	conflicts    bool
+	// version counts the changes to the pull request: edits, retargets, rescopes (its source branch moved), declines,
+	// reopens and merges. Bitbucket Data Center rejects an update, decline, reopen or merge that names another version.
+	version   int
+	conflicts bool
 	// squashed is true when the pull request was merged with a squash commit.
 	squashed bool
 	// asyncMergeSquash is true when the pending Bitbucket asynchronous merge uses the squash strategy.
@@ -136,6 +139,9 @@ type commitStatus struct {
 	name        string
 	id          int64
 	repoID      int64
+	// legacyBuild marks a Bitbucket Data Center build status posted to the deprecated /rest/build-status endpoint,
+	// which the Required Builds merge check does not read.
+	legacyBuild bool
 }
 
 // githubApp is a registered GitHub App whose JWTs are verified with publicKeyPEM.

@@ -205,12 +205,12 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 # Requires `make run-scm-server` in another terminal. Not used by CI.
 # Example: make test-scm-provider SCM_PROVIDER=gitea
 SCM_PROVIDER ?=
-# Admin API listens on this port; the six providers use the next six. Override if 9000 is taken (e.g. by Zscaler).
+# Admin API listens on this port; the seven providers use the next seven. Override if 9000 is taken (e.g. by Zscaler).
 SCM_SERVER_PORT_BASE ?= 9000
 # debug logs every provider API request (not git traffic); info logs only startup and errors.
 SCM_SERVER_LOG_LEVEL ?= debug
 .PHONY: test-scm-provider
-test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo.
+test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
 	@if [ -z "$(SCM_PROVIDER)" ]; then echo "SCM_PROVIDER is required (e.g. SCM_PROVIDER=gitea)"; exit 1; fi
 	PROMOTER_TEST_SCM_PROVIDER="$(SCM_PROVIDER)" \
 	PROMOTER_TEST_SCM_ADMIN_URL="$${PROMOTER_TEST_SCM_ADMIN_URL:-http://127.0.0.1:$(SCM_SERVER_PORT_BASE)}" \
@@ -315,13 +315,14 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
 .PHONY: run-scm-server
-run-scm-server: ## Run the test SCM server on localhost (admin API :SCM_SERVER_PORT_BASE, providers on the next 6 ports). See docs/contributing/test-scm-server.md.
+run-scm-server: ## Run the test SCM server on localhost (admin API :SCM_SERVER_PORT_BASE, providers on the next 7 ports). See docs/contributing/test-scm-server.md.
 	mkdir -p $(LOCALBIN)
 	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token --log-level $(SCM_SERVER_LOG_LEVEL) \
 		--admin-addr 127.0.0.1:$(SCM_SERVER_PORT_BASE) --github-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+1))) \
 		--gitlab-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+2))) --azuredevops-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+3))) \
 		--bitbucket-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+4))) --gitea-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+5))) \
-		--forgejo-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+6)))
+		--forgejo-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+6))) \
+		--bitbucketdatacenter-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+7)))
 
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 

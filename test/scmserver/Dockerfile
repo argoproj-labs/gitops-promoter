@@ -18,5 +18,5 @@ RUN apk add --no-cache git git-daemon tini && mkdir /data && chown 65532:65532 /
 COPY --from=builder /workspace/scm-server /scm-server
 USER 65532:65532
 VOLUME /data
-EXPOSE 9000 9001 9002 9003 9004 9005 9006
+EXPOSE 9000 9001 9002 9003 9004 9005 9006 9007
 ENTRYPOINT ["/sbin/tini", "--", "/scm-server", "--data-dir=/data"]

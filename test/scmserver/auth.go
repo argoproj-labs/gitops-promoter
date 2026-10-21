@@ -43,9 +43,10 @@ func (p principal) userID() uint32 {
 type Credential struct {
 	// Provider accepting the credential.
 	Provider Provider `json:"provider"`
-	// Token is a personal access token (GitLab, Azure DevOps, Bitbucket Cloud, Gitea, Forgejo, or a GitHub PAT).
+	// Token is a personal access token (GitLab, Azure DevOps, Bitbucket Cloud, Bitbucket Data Center, Gitea, Forgejo,
+	// or a GitHub PAT). It belongs to the user TokenUser(Provider).
 	Token string `json:"token,omitempty"`
-	// Username and Password register basic-auth credentials (Gitea and Forgejo).
+	// Username and Password register basic-auth credentials (Gitea, Forgejo and Bitbucket Data Center).
 	Username string `json:"username,omitempty"`
 	// Password is the basic-auth password for Username.
 	Password string `json:"password,omitempty"`
@@ -95,19 +96,23 @@ func (s *Server) tokenPrincipal(p Provider, token string) (principal, error) {
 		}
 	}
 	if s.store.tokens[p][token] {
-		return principal{name: tokenUser(p), key: "token:" + token}, nil
+		return principal{name: TokenUser(p), key: "token:" + token}, nil
 	}
 	return principal{}, errUnauthorized
 }
 
-// tokenUser is the user name a provider associates with an access token in this server.
-func tokenUser(p Provider) string {
+// TokenUser is the user name a provider associates with an access token in this server: the token's owner.
+func TokenUser(p Provider) string {
 	return string(p) + "-user"
 }
 
 func (s *Server) basicPrincipal(p Provider, user, password string) (principal, error) {
-	if pr, err := s.tokenPrincipal(p, password); err == nil {
-		return pr, nil
+	// Bitbucket Data Center accepts a personal access token as the basic auth password only together with the user
+	// name of the token's owner; every other provider ignores the user name.
+	if p != BitbucketDataCenter || strings.EqualFold(user, TokenUser(p)) {
+		if pr, err := s.tokenPrincipal(p, password); err == nil {
+			return pr, nil
+		}
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
@@ -154,13 +159,26 @@ func (s *Server) authenticateAPI(p Provider, r *http.Request) (principal, error)
 		if token := r.URL.Query().Get("access_token"); token != "" {
 			return s.tokenPrincipal(p, token)
 		}
+	case BitbucketDataCenter:
+		if strings.EqualFold(scheme, "bearer") {
+			return s.tokenPrincipal(p, value)
+		}
+		if user, password, ok := r.BasicAuth(); ok {
+			return s.basicPrincipal(p, user, password)
+		}
 	default:
 	}
 	return principal{}, errUnauthorized
 }
 
-// authenticateGit validates git smart HTTP basic auth credentials.
+// authenticateGit validates git smart HTTP credentials: basic auth, and for Bitbucket Data Center also a bearer
+// token, which git sends from an http.extraHeader.
 func (s *Server) authenticateGit(p Provider, r *http.Request) (principal, error) {
+	if p == BitbucketDataCenter {
+		if scheme, value, _ := strings.Cut(r.Header.Get("Authorization"), " "); strings.EqualFold(scheme, "bearer") {
+			return s.tokenPrincipal(p, value)
+		}
+	}
 	user, password, ok := r.BasicAuth()
 	if !ok {
 		return principal{}, errUnauthorized
@@ -181,6 +199,11 @@ func writeUnauthorized(w http.ResponseWriter, p Provider) {
 		writeNoContent(w, http.StatusUnauthorized)
 	case BitbucketCloud:
 		writeProviderError(w, p, http.StatusUnauthorized, "Token is invalid or not supported for this endpoint.")
+	case BitbucketDataCenter:
+		writeBitbucketDCError(w, http.StatusUnauthorized, bitbucketDCError{
+			Message:       "Authentication failed. Please check your credentials and try again.",
+			ExceptionName: "com.atlassian.bitbucket.auth.IncorrectPasswordAuthenticationException",
+		})
 	default:
 		writeProviderError(w, p, http.StatusUnauthorized, "token is required")
 	}

@@ -31,6 +31,8 @@ func providerBot(p Provider) signature {
 		return signature{name: "Gitea", email: "noreply@gitea.io"}
 	case Forgejo:
 		return signature{name: "Forgejo", email: "noreply@forgejo.org"}
+	case BitbucketDataCenter:
+		return signature{name: "Bitbucket", email: "noreply@bitbucket.example.com"}
 	default:
 		return signature{name: "SCM", email: "noreply@example.com"}
 	}
@@ -73,10 +75,23 @@ func (g *gitCLI) deleteRef(ctx context.Context, dir, ref string) error {
 
 // pullRefPrefix is where a provider exposes pull request heads and test merges.
 func pullRefPrefix(p Provider, number int) string {
-	if p == GitLab {
+	switch p {
+	case GitLab:
 		return "refs/merge-requests/" + strconv.Itoa(number)
+	case BitbucketDataCenter:
+		return "refs/pull-requests/" + strconv.Itoa(number)
+	default:
+		return "refs/pull/" + strconv.Itoa(number)
 	}
-	return "refs/pull/" + strconv.Itoa(number)
+}
+
+// pullHeadRef is the ref under pullRefPrefix that points at a pull request's head: Bitbucket Data Center calls it
+// "from", every other provider "head".
+func pullHeadRef(p Provider, number int) string {
+	if p == BitbucketDataCenter {
+		return pullRefPrefix(p, number) + "/from"
+	}
+	return pullRefPrefix(p, number) + "/head"
 }
 
 // previewMergeMessage is the message of the test-merge commit a provider computes for an open pull request.
@@ -121,6 +136,13 @@ func defaultMergeMessage(pr *pullRequest, requested string) string {
 			return title + "\n\n" + requested
 		}
 		return title
+	case BitbucketDataCenter:
+		// The auto-generated subject is prepended to the requested message unless the merge sets autoSubject false.
+		subject := bitbucketDCMergeSubject(pr)
+		if requested != "" {
+			return subject + "\n\n" + requested
+		}
+		return subject
 	default:
 		return requested
 	}
@@ -139,6 +161,8 @@ func defaultSquashMessage(pr *pullRequest, requested string) string {
 		return fmt.Sprintf("Merged PR %d: %s", pr.number, pr.title)
 	case BitbucketCloud:
 		return fmt.Sprintf("%s (pull request #%d)", pr.title, pr.number)
+	case BitbucketDataCenter:
+		return bitbucketDCMergeSubject(pr)
 	default:
 		// GitLab's default squash commit template is the merge request title.
 		return pr.title
@@ -178,7 +202,7 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 		return err
 	}
 	prefix := pullRefPrefix(r.provider, number)
-	if err := s.git.setRef(ctx, r.dir, prefix+"/head", head); err != nil {
+	if err := s.git.setRef(ctx, r.dir, pullHeadRef(r.provider, number), head); err != nil {
 		return err
 	}
 	preview := ""
@@ -207,6 +231,10 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 	if pr.state != prOpen {
 		// Closed without the git lock (source branch deleted, admin close) while the preview was computed.
 		return nil
+	}
+	if pr.headSHA != "" && pr.headSHA != head {
+		// A rescope: new commits on the source branch change the pull request.
+		pr.version++
 	}
 	if pr.headSHA != head || pr.baseSHA != base || pr.mergeableAt.IsZero() {
 		pr.mergeableAt = s.now().Add(behavior.MergeabilityDelay.Duration)
@@ -240,17 +268,18 @@ type mergeRequest struct {
 
 // marksMergedByPush reports whether provider p marks an open pull request merged when its head commit reaches the
 // target branch by a push (GitHub; GitLab's RefreshService#post_merge_manually_merged; Gitea's
-// manuallyMergedByPushedCommit; Bitbucket Cloud). Azure DevOps leaves such a pull request active.
+// manuallyMergedByPushedCommit; Bitbucket Cloud; Bitbucket Data Center's remote merge detection). Azure DevOps leaves
+// such a pull request active.
 func marksMergedByPush(p Provider) bool {
 	return p != AzureDevOps
 }
 
 // closesOnSourceDeletion reports whether provider p closes an open pull request when its source branch is deleted
-// (GitHub; GitLab's RefreshService#close_upon_missing_source_branch_ref; Gitea's CloseBranchPulls). Azure DevOps
-// keeps the pull request active, and Bitbucket Cloud's behavior is not reproduced.
+// (GitHub; GitLab's RefreshService#close_upon_missing_source_branch_ref; Gitea's CloseBranchPulls; Bitbucket Data
+// Center declines it). Azure DevOps keeps the pull request active, and Bitbucket Cloud's behavior is not reproduced.
 func closesOnSourceDeletion(p Provider) bool {
 	switch p {
-	case GitHub, GitLab, Gitea, Forgejo:
+	case GitHub, GitLab, Gitea, Forgejo, BitbucketDataCenter:
 		return true
 	default:
 		return false
@@ -308,6 +337,10 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	author := req.author
 	author.when = now
 	committer := providerBot(r.provider)
+	if r.provider == BitbucketDataCenter {
+		// Bitbucket Data Center commits merges as the user who merges.
+		committer = author
+	}
 	committer.when = now
 	squashMessage := req.squashMessage
 	if squashMessage == "" {
@@ -347,6 +380,7 @@ func (s *Server) landMerge(ctx context.Context, req mergeRequest) (string, error
 	pr.mergedAt = now
 	pr.closedAt = now
 	pr.updatedAt = now
+	pr.version++
 	pr.completionQueued = false
 	pr.asyncMergePending = false
 	s.store.mu.Unlock()
@@ -420,6 +454,7 @@ func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed
 		pr.state = prClosed
 		pr.closedAt = now
 		pr.updatedAt = now
+		pr.version++
 		pr.completionQueued = false
 		pr.asyncMergePending = false
 		return true, prActionClosed, nil
@@ -463,6 +498,7 @@ func (s *Server) settlePROutOfBand(ctx context.Context, pr *pullRequest, changed
 	pr.mergedAt = now
 	pr.closedAt = now
 	pr.updatedAt = now
+	pr.version++
 	pr.completionQueued = false
 	pr.asyncMergePending = false
 	return true, prActionMerged, nil

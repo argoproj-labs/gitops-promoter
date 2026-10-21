@@ -270,6 +270,8 @@ func (s *Server) providerHandler(p Provider) http.Handler {
 		s.bitbucketRoutes(mux)
 	case Gitea, Forgejo:
 		s.giteaRoutes(p, mux)
+	case BitbucketDataCenter:
+		s.bitbucketDCRoutes(mux)
 	default:
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -369,6 +371,13 @@ func (s *Server) gitRepoFromPath(p Provider, repoPath string) (*repo, error) {
 			return nil, errNotFound
 		}
 		return s.store.findAzureRepoLocked(parts[0], parts[1], parts[3])
+	}
+	if p == BitbucketDataCenter {
+		parts := strings.Split(repoPath, "/")
+		if len(parts) != 3 || parts[0] != "scm" {
+			return nil, errNotFound
+		}
+		return s.store.findRepoLocked(p, parts[1], "", parts[2])
 	}
 	idx := strings.LastIndex(repoPath, "/")
 	if idx <= 0 {

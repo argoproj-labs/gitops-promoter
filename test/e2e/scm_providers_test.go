@@ -58,12 +58,13 @@ const (
 
 // scmServerPorts are the Service ports of each provider listener of the test SCM server.
 var scmServerPorts = map[scmserver.Provider]int{
-	scmserver.GitHub:         9001,
-	scmserver.GitLab:         9002,
-	scmserver.AzureDevOps:    9003,
-	scmserver.BitbucketCloud: 9004,
-	scmserver.Gitea:          9005,
-	scmserver.Forgejo:        9006,
+	scmserver.GitHub:              9001,
+	scmserver.GitLab:              9002,
+	scmserver.AzureDevOps:         9003,
+	scmserver.BitbucketCloud:      9004,
+	scmserver.Gitea:               9005,
+	scmserver.Forgejo:             9006,
+	scmserver.BitbucketDataCenter: 9007,
 }
 
 // run runs a command from the repository root and fails the spec on error.
@@ -224,7 +225,7 @@ func scmProviderSpecs() {
 		}
 	}
 
-	// Each scenario runs for all six providers at once. Every provider has its own repositories on the server and its
+	// Each scenario runs for every provider at once. Every provider has its own repositories on the server and its
 	// own promotion resources, and the controller reconciles them independently, so the scenario takes as long as its
 	// slowest provider rather than the sum.
 	It("promotes through the provider's API with the real provider implementation", func(ctx SpecContext) {
@@ -271,6 +272,11 @@ func scmProviderSpecs() {
 		name := func(p scmserver.Provider) string { return string(p) + "-protected" }
 		cleanupPromotions("promotionstrategy,commitstatus", name, "-required")
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			if p == scmserver.BitbucketDataCenter {
+				// The provider reports commit statuses through the deprecated /rest/build-status resource, which
+				// Bitbucket Data Center's Required Builds merge check does not read, so the merge is never allowed.
+				return
+			}
 			newFlow(p).promoteThroughProtection(ctx, p, name(p))
 		})
 	}, NodeTimeout(12*time.Minute))
@@ -977,8 +983,12 @@ func printSCMDiagnostics(ctx context.Context, admin *scmserver.AdminClient) {
 	}
 }
 
-// scmOwner is the owner (organization, namespace or workspace) of the provider's e2e repository.
+// scmOwner is the owner (organization, namespace, workspace or project key) of the provider's e2e repository.
 func scmOwner(p scmserver.Provider) string {
+	if p == scmserver.BitbucketDataCenter {
+		// Project keys allow only letters, digits and underscores.
+		return "E2E_BITBUCKET_DC"
+	}
 	return "e2e-" + string(p)
 }
 
@@ -1075,6 +1085,9 @@ func promotionManifests(p scmserver.Provider, name string, repo scmserver.RepoIn
 	case scmserver.Forgejo:
 		providerSpec = "forgejo:\n    domain: " + domain
 		repoSpec = fmt.Sprintf("forgejo:\n    owner: %s\n    name: %s", repo.Owner, repo.Name)
+	case scmserver.BitbucketDataCenter:
+		providerSpec = "bitbucketDataCenter:\n    domain: " + domain
+		repoSpec = fmt.Sprintf("bitbucketDataCenter:\n    project: %s\n    name: %s", repo.Owner, repo.Name)
 	default:
 		Fail("unknown provider " + name)
 	}

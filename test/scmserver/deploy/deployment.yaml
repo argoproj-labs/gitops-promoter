@@ -42,6 +42,8 @@ spec:
               containerPort: 9005
             - name: forgejo
               containerPort: 9006
+            - name: bitbucketdc
+              containerPort: 9007
           readinessProbe:
             httpGet:
               path: /healthz

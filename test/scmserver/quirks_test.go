@@ -74,6 +74,23 @@ func countRepoLabels(ctx context.Context, p scmserver.Provider, fullName string)
 	return total
 }
 
+// bitbucketDC sends an authenticated request to the fixture repository's Bitbucket Data Center REST resource at
+// path (relative to /rest/api/1.0/projects/{key}/repos/{slug}) and returns the status code and body.
+func (f *fixture) bitbucketDC(ctx context.Context, method, path, body string) (int, string) {
+	GinkgoHelper()
+	url := fmt.Sprintf("https://%s/rest/api/1.0/projects/%s/repos/%s%s", srv.Domain(scmserver.BitbucketDataCenter), f.repo.Owner, f.repo.Name, path)
+	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(body))
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp.StatusCode, string(respBody)
+}
+
 func statusCodes(records []scmserver.RequestRecord) []int {
 	codes := make([]int, 0, len(records))
 	for _, rec := range records {
@@ -365,6 +382,109 @@ var _ = Describe("provider quirks", func() {
 		})
 	})
 
+	Context("Bitbucket Data Center", func() {
+		It("accepts a token over git basic auth only with its owner's user name, so the provider sends a bearer header", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			tmp := GinkgoT().TempDir()
+
+			out, err := git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), filepath.Join(tmp, "basic"))
+			Expect(err).To(HaveOccurred(), "x-token-auth is not the token's owner")
+			Expect(out).To(ContainSubstring("Authentication failed"))
+
+			out, err = f.git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), filepath.Join(tmp, "bearer"))
+			Expect(err).NotTo(HaveOccurred(), out)
+
+			cloneURL := f.gitAuth.GetGitHttpsRepoUrl(*f.gitRepo)
+			ownerURL := strings.Replace(cloneURL, "https://", "https://"+scmserver.TokenUser(scmserver.BitbucketDataCenter)+":"+testToken+"@", 1)
+			out, err = git(ctx, "", "clone", "--quiet", ownerURL, filepath.Join(tmp, "owner"))
+			Expect(err).NotTo(HaveOccurred(), out)
+		})
+
+		It("bumps the pull request version on a rescope and refuses a merge that names the old version", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			prObj := f.createPR(ctx, "stale-version")
+			path := "/pull-requests/" + prObj.Status.ID
+			_, body := f.bitbucketDC(ctx, http.MethodGet, path, "")
+			version := gjson.Get(body, "version").Int()
+
+			moved := f.pushToSource(ctx, "replicas: 4\n")
+			Eventually(func(g Gomega) {
+				_, body := f.bitbucketDC(ctx, http.MethodGet, path, "")
+				g.Expect(gjson.Get(body, "fromRef.latestCommit").String()).To(Equal(moved))
+				g.Expect(gjson.Get(body, "version").Int()).To(Equal(version + 1))
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+
+			status, body := f.bitbucketDC(ctx, http.MethodPost, fmt.Sprintf("%s/merge?version=%d", path, version), "")
+			Expect(status).To(Equal(http.StatusConflict))
+			Expect(gjson.Get(body, "errors.0.exceptionName").String()).To(HaveSuffix("PullRequestOutOfDateException"))
+			Expect(gjson.Get(body, "errors.0.currentVersion").Int()).To(Equal(version + 1))
+
+			By("merging through the provider, which reads the current version first")
+			result, err := f.prs.Merge(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CommitSHA).To(Equal(f.branchSHA(ctx, targetBranch)))
+		})
+
+		It("refuses a second open pull request for the same branches with 409", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			prObj := f.createPR(ctx, "duplicate")
+			_, err := f.prs.Create(ctx, prObj.Spec.Title, sourceBranch, targetBranch, prObj.Spec.Description, prObj)
+			Expect(err).To(MatchError(And(ContainSubstring("409"), ContainSubstring("DuplicatePullRequestException"))))
+		})
+
+		It("vetoes merging a conflicting pull request with 409", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			prObj := f.createPR(ctx, "conflict")
+			_, err := srv.Commit(ctx, f.repo.ID, scmserver.CommitRequest{
+				Branch: targetBranch, Files: map[string]string{"manifest.yaml": "replicas: 3\n"}, Message: "conflicting change",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(And(ContainSubstring("409"), ContainSubstring(`"conflicted":true`))))
+			Expect(f.serverPR(ctx, prObj.Status.ID).State).To(Equal("open"))
+		})
+
+		It("ignores build statuses posted to the deprecated build-status resource in the Required Builds merge check", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			Expect(admin.SetProtection(ctx, f.repo.ID, targetBranch, scmserver.ProtectionRequest{RequiredStatuses: []string{"promoter-gate"}})).To(Succeed())
+			prObj := f.createPR(ctx, "required-builds")
+
+			By("vetoing the merge after the provider reports the build through /rest/build-status")
+			_, err := f.statuses.Set(ctx, f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requestsMatching(scmserver.BitbucketDataCenter, http.MethodPost, "/rest/build-status/1.0/commits/"+f.headSHA)).NotTo(BeEmpty())
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(And(ContainSubstring("409"), ContainSubstring("Not all required builds are successful yet"))))
+
+			By("merging once the build is reported through the repository builds resource")
+			status, body := f.bitbucketDC(ctx, http.MethodPost, "/commits/"+f.headSHA+"/builds",
+				`{"key":"promoter-gate","state":"SUCCESSFUL","url":"https://ci.example.com/promoter-gate"}`)
+			Expect(status).To(Equal(http.StatusNoContent), body)
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("leaves mergeCommit out of a squash-merged pull request, which the provider reads from the MERGED activity", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketDataCenter)
+			prObj := f.createPR(ctx, "squashed")
+			number, err := strconv.Atoi(prObj.Status.ID)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = admin.PullRequestAction(ctx, f.repo.ID, number, scmserver.PullRequestAction{Action: "merge", Squash: true})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, body := f.bitbucketDC(ctx, http.MethodGet, "/pull-requests/"+prObj.Status.ID, "")
+			Expect(gjson.Get(body, "state").String()).To(Equal("MERGED"))
+			Expect(gjson.Get(body, "properties.mergeCommit").Exists()).To(BeFalse())
+
+			got, err := f.prs.Get(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.State).To(Equal(v1alpha1.PullRequestMerged))
+			Expect(got.MergedTargetSHA).To(Equal(f.branchSHA(ctx, targetBranch)))
+			Expect(requestsMatching(scmserver.BitbucketDataCenter, http.MethodGet, "/pull-requests/"+prObj.Status.ID+"/activities")).NotTo(BeEmpty())
+		})
+	})
+
 	Context("GitHub", func() {
 		It("reports an exhausted rate limit, after which go-github stops calling until the reset", func(ctx SpecContext) {
 			f := newFixture(ctx, scmserver.GitHub)
@@ -602,6 +722,7 @@ var _ = Describe("push webhooks", func() {
 		// Gitea and Forgejo also send X-GitHub-Event, which the receiver checks first.
 		Entry("Gitea", scmserver.Gitea, webhookreceiver.ProviderGitHub, "before", "ref"),
 		Entry("Forgejo", scmserver.Forgejo, webhookreceiver.ProviderGitHub, "before", "ref"),
+		Entry("Bitbucket Data Center", scmserver.BitbucketDataCenter, webhookreceiver.ProviderBitbucketDataCenter, "changes.0.fromHash", "changes.0.refId"),
 	)
 
 	It("notifies subscribers when a merge moves the target branch", func(ctx SpecContext) {
@@ -802,6 +923,16 @@ var _ = Describe("pull request webhooks", func() {
 				idPath: "pull_request.number", repoPath: "repository.full_name",
 				opened: "opened", closed: "closed", reopened: "reopened", merged: "closed",
 				mergedPath: "pull_request.merged", mergedValue: "true",
+			}),
+		// https://confluence.atlassian.com/bitbucketserver/event-payload-938025882.html: no event exists for a
+		// reopened pull request.
+		Entry("Bitbucket Data Center", scmserver.BitbucketDataCenter, webhookreceiver.ProviderBitbucketDataCenter,
+			prEventSpec{
+				isEvent: func(d sinkDelivery) bool { return strings.HasPrefix(d.header.Get("X-Event-Key"), "pr:") },
+				action:  func(d sinkDelivery) string { return d.header.Get("X-Event-Key") },
+				idPath:  "pullRequest.id", repoPath: "pullRequest.toRef.repository.slug", repo: func(f *fixture) string { return f.repo.Name },
+				opened: "pr:opened", closed: "pr:declined", merged: "pr:merged",
+				mergedPath: "pullRequest.state", mergedValue: "MERGED",
 			}),
 	)
 

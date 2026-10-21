@@ -27,6 +27,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -102,6 +103,10 @@ func newFixture(ctx context.Context, p scmserver.Provider) *fixture {
 	seq := fixtureSeq.Add(1)
 	name := fmt.Sprintf("repo-%d", seq)
 	owner := fmt.Sprintf("org-%d", seq)
+	if p == scmserver.BitbucketDataCenter {
+		// Project keys allow only letters, digits and underscores.
+		owner = fmt.Sprintf("ORG_%d", seq)
+	}
 	req := scmserver.CreateRepoRequest{Provider: p, Owner: owner, Name: name, Init: true}
 	if p == scmserver.AzureDevOps {
 		req.Project = "project-" + strconv.FormatInt(seq, 10)
@@ -170,6 +175,9 @@ func (f *fixture) buildObjects(ctx context.Context) {
 	case scmserver.Forgejo:
 		f.scmProvider.Spec.Forgejo = &v1alpha1.Forgejo{Domain: domain}
 		f.gitRepo.Spec.Forgejo = &v1alpha1.ForgejoRepo{Owner: repo.Owner, Name: repo.Name}
+	case scmserver.BitbucketDataCenter:
+		f.scmProvider.Spec.BitbucketDataCenter = &v1alpha1.BitbucketDataCenter{Domain: domain}
+		f.gitRepo.Spec.BitbucketDataCenter = &v1alpha1.BitbucketDataCenterRepo{Project: repo.Owner, Name: repo.Name}
 	default:
 		Fail("unknown provider " + string(p))
 	}
@@ -212,6 +220,9 @@ func providersFor(ctx context.Context, k8s client.Client, scmProvider *v1alpha1.
 	case spec.Forgejo != nil:
 		prs, prErr = forgejo.NewForgejoPullRequestProvider(k8s, secret, spec.Forgejo.Domain)
 		statuses, csErr = forgejo.NewForgejoCommitStatusProvider(k8s, scmProvider, secret)
+	case spec.BitbucketDataCenter != nil:
+		prs, prErr = bitbucket_datacenter.NewBitbucketDataCenterPullRequestProvider(k8s, scmProvider, secret)
+		statuses, csErr = bitbucket_datacenter.NewBitbucketDataCenterCommitStatusProvider(k8s, scmProvider, secret)
 	default:
 		Fail("unsupported provider " + scmProvider.Name)
 	}
@@ -268,6 +279,20 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
+}
+
+// git runs git like the package-level git, adding the http.extraHeader the promoter configures for providers that
+// authenticate git with a header (Bitbucket Data Center's bearer token).
+func (f *fixture) git(ctx context.Context, dir string, args ...string) (string, error) {
+	GinkgoHelper()
+	if headerProvider, ok := f.gitAuth.(scms.GitHTTPHeaderProvider); ok {
+		urlPrefix, header, err := headerProvider.GetGitHTTPHeader(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		if header != "" {
+			args = append([]string{"-c", "http." + urlPrefix + ".extraHeader=" + header}, args...)
+		}
+	}
+	return git(ctx, dir, args...)
 }
 
 // authenticatedCloneURL returns the provider's clone URL with the credentials the promoter would send.

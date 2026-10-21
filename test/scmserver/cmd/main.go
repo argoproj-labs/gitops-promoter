@@ -1,5 +1,5 @@
 // Command scmserver runs the test SCM server, which impersonates GitHub, GitLab, Azure DevOps, Bitbucket Cloud,
-// Gitea and Forgejo for e2e tests and local development. It is not hardened and must never be exposed outside a
+// Gitea, Forgejo and Bitbucket Data Center for e2e tests and local development. It is not hardened and must never be exposed outside a
 // test environment.
 package main
 
@@ -41,12 +41,13 @@ func main() {
 }
 
 var defaultPorts = map[scmserver.Provider]string{
-	scmserver.GitHub:         ":9001",
-	scmserver.GitLab:         ":9002",
-	scmserver.AzureDevOps:    ":9003",
-	scmserver.BitbucketCloud: ":9004",
-	scmserver.Gitea:          ":9005",
-	scmserver.Forgejo:        ":9006",
+	scmserver.GitHub:              ":9001",
+	scmserver.GitLab:              ":9002",
+	scmserver.AzureDevOps:         ":9003",
+	scmserver.BitbucketCloud:      ":9004",
+	scmserver.Gitea:               ":9005",
+	scmserver.Forgejo:             ":9006",
+	scmserver.BitbucketDataCenter: ":9007",
 }
 
 func newCommand() *cobra.Command {
@@ -54,8 +55,8 @@ func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scmserver",
 		Short: "Test SCM server impersonating every SCM provider supported by GitOps Promoter",
-		Long: `scmserver serves the REST APIs of GitHub Enterprise, GitLab, Azure DevOps, Bitbucket Cloud, Gitea and
-Forgejo over HTTPS, one listener per provider, backed by real git repositories. Point an ScmProvider's "domain"
+		Long: `scmserver serves the REST APIs of GitHub Enterprise, GitLab, Azure DevOps, Bitbucket Cloud, Gitea,
+Forgejo and Bitbucket Data Center over HTTPS, one listener per provider, backed by real git repositories. Point an ScmProvider's "domain"
 field at a listener and trust the CA to run the real provider implementations against it.
 
 Not hardened: for tests and local development only.`,

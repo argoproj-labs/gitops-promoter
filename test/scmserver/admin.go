@@ -35,8 +35,8 @@ type ServerInfo struct {
 type CreateRepoRequest struct {
 	// Provider hosting the repository.
 	Provider Provider `json:"provider"`
-	// Owner is the GitHub/Gitea/Forgejo owner, GitLab namespace (may contain "/"), Bitbucket workspace, or Azure
-	// DevOps organization.
+	// Owner is the GitHub/Gitea/Forgejo owner, GitLab namespace (may contain "/"), Bitbucket Cloud workspace,
+	// Bitbucket Data Center project key, or Azure DevOps organization.
 	Owner string `json:"owner"`
 	// Project is the Azure DevOps project. Ignored for other providers.
 	Project string `json:"project,omitempty"`
@@ -430,8 +430,15 @@ func validateRepoNames(req CreateRepoRequest) error {
 			return fmt.Errorf("invalid name %q: use letters, digits, '.', '-' and '_'", v)
 		}
 	}
+	if req.Provider == BitbucketDataCenter && !validBitbucketDCProjectKey.MatchString(req.Owner) {
+		return fmt.Errorf("invalid Bitbucket Data Center project key %q: it must start with a letter and contain only "+
+			"letters, digits and '_'", req.Owner)
+	}
 	return nil
 }
+
+// validBitbucketDCProjectKey matches the project keys Bitbucket Data Center accepts.
+var validBitbucketDCProjectKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,127}$`)
 
 // azureProjectUUIDLocked returns the ID of an Azure DevOps project, reusing the ID of existing repositories in it.
 func (s *Server) azureProjectUUIDLocked(org, project string) string {
@@ -448,6 +455,8 @@ func (s *Server) cloneURL(r *repo) string {
 	switch r.provider {
 	case AzureDevOps:
 		return fmt.Sprintf("%s/%s/%s/_git/%s", base, r.owner, r.project, r.name)
+	case BitbucketDataCenter:
+		return fmt.Sprintf("%s/scm/%s/%s.git", base, r.owner, r.name)
 	default:
 		return fmt.Sprintf("%s/%s/%s.git", base, r.owner, r.name)
 	}
@@ -875,12 +884,14 @@ func applySimplePRAction(pr *pullRequest, req PullRequestAction, now time.Time) 
 		pr.state = prClosed
 		pr.closedAt = now
 		pr.completionQueued = false
+		pr.version++
 	case "reopen":
 		if pr.state != prClosed {
 			return errors.New("only closed pull requests can be reopened")
 		}
 		pr.state = prOpen
 		pr.closedAt = time.Time{}
+		pr.version++
 	case "set-labels":
 		pr.labels = slices.Clone(req.Labels)
 	case "hide":

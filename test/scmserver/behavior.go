@@ -32,7 +32,7 @@ type Behavior struct {
 	// document the response, so the knob keeps the asynchronous model available.
 	AzureAsyncCompletionFailures bool `json:"azureAsyncCompletionFailures"`
 	// AsyncMergeDelay makes Bitbucket Cloud answer merges with 202 Accepted and a task-status link, completing the
-	// merge after this delay. Zero merges synchronously.
+	// merge after this delay. Zero merges synchronously. Bitbucket Data Center always merges synchronously.
 	AsyncMergeDelay Duration `json:"asyncMergeDelay"`
 	// TokenTTL is the lifetime of GitHub App installation tokens.
 	TokenTTL Duration `json:"tokenTTL"`
@@ -70,7 +70,8 @@ func DefaultBehavior(p Provider) Behavior {
 	default:
 		// Gitea and Forgejo answer merges attempted during their mergeability check with 405, which their Go SDKs
 		// report as not merged without an error. Keep the check instantaneous by default so promotions are not slowed
-		// by merge retries; raise MergeabilityDelay to reproduce it.
+		// by merge retries; raise MergeabilityDelay to reproduce it. Bitbucket Data Center's rate limiting is off by
+		// default and its merge API checks mergeability synchronously.
 	}
 	return b
 }

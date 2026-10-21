@@ -8,6 +8,7 @@
 - Bitbucket Cloud
 - Gitea
 - Forgejo
+- Bitbucket Data Center
 
 It serves each provider's REST API over HTTPS, hosts real git repositories over smart HTTP, merges pull requests with real merge commits, and sends provider-shaped push and pull request webhooks. Point an `ScmProvider`'s `domain` at it and trust its CA, and the **unmodified** provider implementations in `internal/scms` run against it.
 
@@ -29,7 +30,7 @@ make run-scm-server
 This starts:
 
 - the admin API on `http://localhost:9000`;
-- the provider APIs on `https://localhost:9001` (GitHub) through `:9006` (override with `SCM_SERVER_PORT_BASE`, see below);
+- the provider APIs on `https://localhost:9001` (GitHub) through `:9007` (override with `SCM_SERVER_PORT_BASE`, see below);
 - a generated CA, written to `bin/scm-server-ca.pem`;
 - a token, `dev-token`, accepted by every provider.
 
@@ -43,6 +44,7 @@ This starts:
 | Bitbucket Cloud | 9004 | `https://<domain>/2.0`          | `https://<domain>/<workspace>/<repo>.git`        | `token`                                         |
 | Gitea           | 9005 | `https://<domain>/api/v1`       | `https://<domain>/<owner>/<repo>.git`            | `token`, or `username` and `password`           |
 | Forgejo         | 9006 | `https://<domain>/api/v1`       | `https://<domain>/<owner>/<repo>.git`            | `token`, or `username` and `password`           |
+| Bitbucket Data Center | 9007 | `https://<domain>/rest/api/1.0` | `https://<domain>/scm/<projectKey>/<repo>.git` | `token`, or `username` and `password`      |
 
 To run a local controller against it:
 
@@ -57,7 +59,7 @@ To run a local controller against it:
 2. Point an `ScmProvider` at the listener with `domain: localhost:9002`.
 3. Start the controller with `SSL_CERT_FILE` and `GIT_SSL_CAINFO` set to the CA file.
 
-For GitHub, register an App and its installations with `POST /api/github/apps`; the server verifies the App's JWTs with the registered key. Bitbucket Cloud uses the optional `spec.bitbucketCloud.domain` field.
+For GitHub, register an App and its installations with `POST /api/github/apps`; the server verifies the App's JWTs with the registered key. Bitbucket Cloud uses the optional `spec.bitbucketCloud.domain` field. A Bitbucket Data Center repository's `owner` is its project key, which may contain only letters, digits and `_`.
 
 ## Admin API
 
@@ -87,10 +89,10 @@ The admin API is plain HTTP. `scmserver.AdminClient` wraps it for Go tests.
 
 The server reproduces the provider behavior the controller has to cope with. Each item is pinned by a spec in `test/scmserver/quirks_test.go`.
 
-Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows its server code; otherwise it follows the official REST documentation and the SDK the promoter uses.
+Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows its server code; otherwise it follows the official REST documentation and the SDK the promoter uses. Bitbucket Data Center follows Atlassian's REST API (OpenAPI spec for 10.0), event payload and webhook documentation; its error messages follow the documented exception names, but their wording is not verified against a real server.
 
 - **Webhooks**
-    - Every branch update sends the provider's push event, and every pull request transition sends its pull request event: GitHub's and Gitea's `pull_request` (a merge is `closed` with `merged: true`), GitLab's `Merge Request Hook` (`open`, `close`, `reopen`, `merge`), Azure DevOps' `git.pullrequest.created` and `git.pullrequest.updated`, and Bitbucket Cloud's `pullrequest:created`, `pullrequest:rejected` and `pullrequest:fulfilled` (Bitbucket Cloud has no reopen). A pull request a push settles (its head reaches the target branch, or its source branch is deleted) sends the same event the provider would.
+    - Every branch update sends the provider's push event, and every pull request transition sends its pull request event: GitHub's and Gitea's `pull_request` (a merge is `closed` with `merged: true`), GitLab's `Merge Request Hook` (`open`, `close`, `reopen`, `merge`), Azure DevOps' `git.pullrequest.created` and `git.pullrequest.updated`, Bitbucket Cloud's `pullrequest:created`, `pullrequest:rejected` and `pullrequest:fulfilled` (Bitbucket Cloud has no reopen), and Bitbucket Data Center's `repo:refs_changed` (one request per changed ref), `pr:opened`, `pr:declined` and `pr:merged` (Data Center has no reopen event). A pull request a push settles (its head reaches the target branch, or its source branch is deleted) sends the same event the provider would.
     - Deliveries carry the provider's headers and signatures, and the promoter's webhook receiver classifies each one the way it does the real provider's. The receiver acts on push events only; it accepts pull request events with 204 and ignores them for now.
 - **Azure DevOps**
     - A completion request (`status=completed`) returns 200 while the pull request stays `active` with `mergeStatus: queued` and the *preview* merge commit. The real merge lands `completionDelay` later.
@@ -111,6 +113,13 @@ Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows it
 - **Bitbucket Cloud**
     - Merge responses carry abbreviated hashes.
     - With `asyncMergeDelay` (or `?async=true`), merges answer 202 with the task-status link in the `Location` header and no body; merging a queued pull request again returns the same 202. Unknown tasks poll as `PENDING`, and a failed task answers 400.
+- **Bitbucket Data Center**
+    - A bearer token is accepted by the REST API and by git. A token sent as a basic auth password is accepted only with its owner's user name (`scmserver.TokenUser`), so `x-token-auth:<token>` is refused; this is why the provider sends `Authorization: Bearer` to git through `http.extraHeader`.
+    - Every update, decline, reopen and merge must name the pull request's current `version`, and gets 409 `PullRequestOutOfDateException` otherwise. Edits, rescopes (pushes to the source branch), declines, reopens and merges increase the version. There is no head SHA guard.
+    - A second open pull request for the same branches gets 409 `DuplicatePullRequestException`, and one with nothing to merge 409 `EmptyPullRequestException`.
+    - Conflicting merges and failed merge checks get 409 `PullRequestMergeVetoedException`. Only the `no-ff` and `squash` merge strategies are enabled.
+    - Branch protection is the Required Builds merge check, which reads only statuses posted to `/rest/api/1.0/projects/{key}/repos/{slug}/commits/{sha}/builds`. Statuses posted to the deprecated `/rest/build-status/1.0/commits/{sha}`, which the provider uses, are stored and listed but never satisfy it.
+    - A merged pull request reports `properties.mergeCommit`, except after a squash merge; its `MERGED` activity always names the commit. Deleting a pull request's source branch declines it.
 - **GitHub**
     - App JWT (App ID or client ID as issuer) and installation-token auth; JWT requests are rate limited too.
     - `mergeable: null` while mergeability is computed; `merge_commit_sha` keeps the test merge commit on a pull request closed unmerged.
@@ -119,7 +128,7 @@ Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows it
     - Check runs are App-only (403 for a token), and reject an empty `details_url` or an `output` without `title` and `summary` with 422. Label colors must be hexadecimal without `#`.
 - **All providers but Azure DevOps**
     - A pull request whose head commit is pushed to the target branch is marked merged, with the merge commit (or the head, after a fast-forward) as its merge commit.
-    - GitHub, GitLab, Gitea and Forgejo close a pull request whose source branch is deleted.
+    - GitHub, GitLab, Gitea, Forgejo and Bitbucket Data Center close a pull request whose source branch is deleted.
 - **All providers**
     - Native error bodies and pagination.
     - Branch protection with each provider's rejection.
@@ -152,7 +161,7 @@ CI and `make test-parallel` always use the fake provider. To exercise the real p
     make test-scm-provider SCM_PROVIDER=gitea
     ```
 
-`SCM_PROVIDER` may be any of `github`, `gitlab`, `azuredevops`, `bitbucket`, `gitea`, or `forgejo`. Specs that call the in-process fake package directly are labeled `fake-scm-only` and are skipped automatically (the Makefile also passes `--label-filter='!fake-scm-only'`).
+`SCM_PROVIDER` may be any of `github`, `gitlab`, `azuredevops`, `bitbucket`, `gitea`, `forgejo`, or `bitbucketdatacenter`. Specs that call the in-process fake package directly are labeled `fake-scm-only` and are skipped automatically (the Makefile also passes `--label-filter='!fake-scm-only'`).
 
 | Environment variable | Default | Purpose |
 |----------------------|---------|---------|
@@ -163,7 +172,7 @@ CI and `make test-parallel` always use the fake provider. To exercise the real p
 
 The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`.
 
-If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the six providers on the next six, in the order of the table above. Pass the same value to both targets:
+If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the seven providers on the next seven, in the order of the table above. Pass the same value to both targets:
 
 ```shell
 make run-scm-server SCM_SERVER_PORT_BASE=9100
@@ -180,15 +189,15 @@ make test-scm-provider SCM_PROVIDER=gitea SCM_SERVER_PORT_BASE=9100
 2. issues a TLS certificate for `scm-server.scm-server.svc` and deploys `test/scmserver/deploy`;
 3. mounts the CA into the controller and sets `SSL_CERT_FILE` and `GIT_SSL_CAINFO`;
 4. port-forwards the admin API;
-5. runs the plain promotion for all six providers at once. Each provider gets a repository with a webhook to the promoter's receiver, seeded environment branches, and an `ScmProvider`, `GitRepository` and `PromotionStrategy`; the spec hydrates a change and waits for it to merge into development and staging.
-6. runs the gated promotion for all six providers at once. A proposed commit status gates development, and the controller reports it on the provider. The spec checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
-7. runs the hand-merged promotion for all six providers at once, with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the spec checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
+5. runs the plain promotion for every provider at once. Each provider gets a repository with a webhook to the promoter's receiver, seeded environment branches, and an `ScmProvider`, `GitRepository` and `PromotionStrategy`; the spec hydrates a change and waits for it to merge into development and staging.
+6. runs the gated promotion for every provider at once. A proposed commit status gates development, and the controller reports it on the provider. The spec checks that the controller holds the pull request while the gate is pending, keeps the same pull request when a newer hydrated commit moves the proposed branch, keeps holding when the gate passes only on the stale commit, and merges the newer commit once the gate passes on it.
+7. runs the hand-merged promotion for every provider at once, with auto-merge off. A person merges each pull request on the provider through the admin API: first with a merge commit, then with a squash commit, then with a merge commit again. After each merge the spec checks that the controller finalizes the `PullRequest`, records the merge in the environment's `ChangeTransferPolicyHistory`, and reports the dry commit as active. The last round follows a squash, so its pull request conflicts until the controller merges the environment branch back into the proposed branch.
 8. closes the controller's pull request on every provider at once, and checks that the provider's pull request webhook reaches the receiver, and that the controller opens a new pull request for the same proposed commit, tracks only the new one, and promotes through it.
-9. requires a status on the development branch of every provider at once. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. A refused merge is retried on the PullRequest work queue's rate limiter, which waits 5 minutes between retries by default.
+9. requires a status on the development branch of every provider at once. It checks that the controller keeps the pull request open while the provider refuses the merge, and merges it once the required status passes. A refused merge is retried on the PullRequest work queue's rate limiter, which waits 5 minutes between retries by default. Bitbucket Data Center is left out: the provider reports statuses through the deprecated build-status resource, which the Required Builds merge check does not read, so the merge would never be allowed.
 
 The suite runs the controller with every requeue interval set to an hour, longer than any scenario, so nothing but the server's push webhooks and the controllers' own watches can carry a promotion through. Every repository the suite creates is subscribed to the deployed controller's webhook receiver, and the specs check the server's delivery log: each hydration push, each merge and the closed pull request's event must have reached the receiver and been answered with 204. The one exception is the closed pull request scenario: closing a pull request on the provider pushes nothing, and the receiver does not act on pull request events yet, so the controller only notices on a requeue, and that scenario runs with a 5-second requeue. The rate limiter's slow delay is 5 seconds throughout.
 
-Each scenario runs its six providers concurrently, since every provider has its own repositories and promotion resources, so a scenario takes as long as its slowest provider.
+Each scenario runs its providers concurrently, since every provider has its own repositories and promotion resources, so a scenario takes as long as its slowest provider.
 
 ## Adding a provider
 
