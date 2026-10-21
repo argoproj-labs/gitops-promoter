@@ -2001,11 +2001,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -2029,6 +2038,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2041,6 +2058,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -2053,6 +2078,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2063,8 +2096,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2080,11 +2122,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -2103,11 +2154,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -8359,11 +8419,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -8387,6 +8456,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8399,6 +8476,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -8411,6 +8496,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8421,8 +8514,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8438,11 +8540,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -8461,11 +8572,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
