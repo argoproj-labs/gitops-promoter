@@ -49,7 +49,7 @@ Generated `view.gen.ts` mirrors the view APIService OpenAPI. The UI also uses **
 
 Aliases in `promotion.ts` avoid name clashes:
 
-- `Environment` — per-environment status assembled for Card/PSData (`EnvironmentStatus`)
+- `Environment` — per-environment status assembled for PSData (`EnvironmentStatus`)
 - `BranchCommitStatus` — inline branch status (not the `CommitStatus` CRD)
 - `EnvironmentPullRequest` — embedded PR state (not the `PullRequest` CRD)
 
