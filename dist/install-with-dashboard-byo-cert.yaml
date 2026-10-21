@@ -1996,6 +1996,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -2023,6 +2026,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -2040,6 +2046,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2058,6 +2067,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2084,6 +2096,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -2113,6 +2128,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -8291,6 +8309,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -8318,6 +8339,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -8335,6 +8359,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8353,6 +8380,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8379,6 +8409,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -8408,6 +8441,9 @@ spec:
                         path, query, or fragment
                       rule: isURL('https://' + self) && url('https://' + self).getHost()
                         == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
