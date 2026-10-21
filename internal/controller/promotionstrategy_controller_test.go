@@ -173,7 +173,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -181,7 +181,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -189,7 +189,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -310,7 +310,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Checking that the pull request for the development, staging, and production environments are closed")
 				Eventually(func(g Gomega) {
 					// The PRs should eventually close because of no commit status checks configured
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -318,7 +318,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -326,7 +326,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -411,18 +411,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			BeforeEach(func() {
 				By("Creating the resources")
 				var scmSecret *v1.Secret
-				name, scmSecret, _, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+				var scmProvider *promoterv1alpha1.ScmProvider
+				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
 				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
+				// Reuse the provider-specific Spec the factory built for ScmProvider so ClusterScmProvider
+				// points at the same SCM target (fake or scmserver).
 				clusterScmProvider = &promoterv1alpha1.ClusterScmProvider{
 					TypeMeta:  metav1.TypeMeta{},
 					Name:      name,
 					Namespace: "default",
-					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: scmSecret.Name},
-						Fake:      &promoterv1alpha1.Fake{},
-					},
-					Status: promoterv1alpha1.ScmProviderStatus{},
+					Spec:      scmProvider.Spec,
+					Status:    promoterv1alpha1.ScmProviderStatus{},
 				}
 				gitRepo.Spec.ScmProviderRef = promoterv1alpha1.ScmProviderObjectReference{
 					Kind: promoterv1alpha1.ClusterScmProviderKind,
@@ -477,7 +477,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -485,7 +485,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -493,7 +493,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -597,7 +597,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Checking that the pull request for the development, staging, and production environments are closed")
 				Eventually(func(g Gomega) {
 					// The PRs should eventually close because of no commit status checks configured
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -605,7 +605,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -613,7 +613,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -688,7 +688,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -696,7 +696,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -704,7 +704,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -811,7 +811,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// With automatic webhooks, PRs may be created and auto-merged too fast to observe in open state
 				Eventually(func(g Gomega) {
 					// The PRs should eventually close because of no commit status checks configured
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -819,7 +819,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -827,7 +827,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -927,7 +927,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -935,7 +935,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -943,7 +943,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1115,7 +1115,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					// Now check PR states based on CTP reconciliation state
 					// Dev PR should exist (auto-merge is disabled)
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1123,7 +1123,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed(), "Dev PR should exist before auto-merge is re-enabled")
 
 					// Staging PR should exist (yaml changes require PR)
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1131,7 +1131,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed(), "Staging PR should exist")
 
 					// Production PR should exist (yaml changes require PR)
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1157,7 +1157,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Checking that the pull request for the development, staging, and production environments are closed")
 				Eventually(func(g Gomega) {
 					// The PRs should eventually close because of no commit status checks configured
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1165,7 +1165,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1173,7 +1173,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -1891,9 +1891,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying app-one sits at steady state: no promotion, no new proposed change, no open PR, content untouched")
-			appOnePRName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
-				gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
-				path.Join(testBranchDevelopmentNext, activePathOne), testBranchDevelopment))
+			appOnePRName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, path.Join(testBranchDevelopmentNext, activePathOne), testBranchDevelopment))
 			Consistently(func(g Gomega) {
 				// Keep app-one reconciling; a well-behaved unchanged app must stay put even when nudged.
 				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
@@ -2008,7 +2006,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2016,14 +2014,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2069,7 +2067,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the staging pull request has been merged and the production pull request is still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2077,7 +2075,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2128,7 +2126,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the production pull request has been merged")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2199,7 +2197,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					)).To(Succeed())
 
 					Eventually(func(g Gomega) {
-						prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+						prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2207,14 +2205,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						g.Expect(err).To(HaveOccurred())
 						g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-						prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
 						}, &pullRequestStaging)
 						g.Expect(err).To(Succeed())
 
-						prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2237,14 +2235,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					By("Verifying staging and production stay open and unpromoted while dev's commit status is not yet success " + iterLabel)
 					Consistently(func(g Gomega) {
-						stagingPRName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						stagingPRName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      stagingPRName,
 							Namespace: typeNamespacedName.Namespace,
 						}, &pullRequestStaging)
 						g.Expect(err).To(Succeed(), "staging PR should still exist while dev is not yet healthy")
 
-						prodPRName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						prodPRName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prodPRName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2295,7 +2293,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					By("By checking that the staging pull request has been merged and the production pull request is still open " + iterLabel)
 					Eventually(func(g Gomega) {
-						prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2303,7 +2301,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						g.Expect(err).To(HaveOccurred())
 						g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-						prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2316,7 +2314,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					By("Verifying production stays open and unpromoted while staging's commit status is not yet success " + iterLabel)
 					Consistently(func(g Gomega) {
-						prodPRName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						prodPRName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prodPRName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2358,7 +2356,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					By("By checking that the production pull request has been merged " + iterLabel)
 					Eventually(func(g Gomega) {
-						prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 						err = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      prName,
 							Namespace: typeNamespacedName.Namespace,
@@ -2470,7 +2468,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2486,14 +2484,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2524,7 +2522,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the staging pull request has been merged and the production pull request is still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2532,7 +2530,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2583,7 +2581,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the production pull request has been merged")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2694,21 +2692,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.PullRequest.Url).To(ContainSubstring("localhost"))
 
 					// Dev PR should stay open because it has a proposed commit
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestDev)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2748,7 +2746,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the development pull request has been merged and that staging, production pull request are still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2764,7 +2762,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
 					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2778,7 +2776,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpStaging.Status.PullRequest).To(Not(BeNil()))
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2939,21 +2937,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 
 					// Dev PR should stay open because it has a proposed commit
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestDev)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2990,7 +2988,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the development pull request has been merged and that staging, production pull request are still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -2998,14 +2996,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3062,7 +3060,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+				argoOwner, argoName := scmTarget.repoOwnerName(gitRepo)
+				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, argoOwner, argoName)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -3160,7 +3159,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				pullRequestProd := promoterv1alpha1.PullRequest{}
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3168,14 +3167,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3214,7 +3213,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Expect(err).To(Succeed())
 					}
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3222,7 +3221,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred(), "Staging PR should be closed since the dev app is healthy")
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3263,7 +3262,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Expect(err).To(Succeed())
 					}
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3325,7 +3324,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+				argoOwner, argoName := scmTarget.repoOwnerName(gitRepo)
+				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, argoOwner, argoName)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -3417,7 +3417,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				pullRequestProd := promoterv1alpha1.PullRequest{}
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3425,14 +3425,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3471,7 +3471,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Expect(err).To(Succeed())
 					}
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3479,7 +3479,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3520,7 +3520,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Expect(err).To(Succeed())
 					}
 
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3634,21 +3634,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.PullRequest.Url).To(ContainSubstring("localhost"))
 
 					// Dev PR should stay open because it has a proposed commit
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestDev)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
 					}, &pullRequestStaging)
 					g.Expect(err).To(Succeed())
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3697,7 +3697,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the development pull request has been merged and that staging, production pull request are still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3713,7 +3713,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
 					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3727,7 +3727,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpStaging.Status.PullRequest).To(Not(BeNil()))
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3773,7 +3773,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("By checking that the development and staging pull requests are closed and production pull request are still open")
 				Eventually(func(g Gomega) {
-					prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+					prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3789,7 +3789,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
 					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3805,7 +3805,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
 					g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
-					prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+					prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      prName,
 						Namespace: typeNamespacedName.Namespace,
@@ -3895,37 +3895,30 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	grName := stem + "-gr"
 	psName := stem + "-ps"
 
+	repo := scmTarget.newRepo(ctx, grName)
+
 	scmSecret := &v1.Secret{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      secName,
 		Namespace: namespace,
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      scmName,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: secName},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
-		Status: promoterv1alpha1.ScmProviderStatus{},
+		Spec:      scmTarget.scmProviderSpec(repo, secName),
+		Status:    promoterv1alpha1.ScmProviderStatus{},
 	}
 
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      grName,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: grName,
-				Name:  grName,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: scmName,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: scmName,
+		}),
 	}
 
 	commitStatusDevelopment := &promoterv1alpha1.CommitStatus{
@@ -4682,14 +4675,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				g.Expect(ctpProd.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(ctpProd.Status.PullRequest.ID).ToNot(BeZero())
 
-				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
 
-				prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				prName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -4697,7 +4690,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				g.Expect(err).To(Succeed())
 
 				ctpProdName = utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction))
-				prProdName = utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				prProdName = utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prProdName,
 					Namespace: typeNamespacedName.Namespace,

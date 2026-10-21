@@ -337,6 +337,9 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
+	By("configuring SCM test target")
+	scmTarget = initSCMTargetFromEnv(ctx)
+
 	go func() {
 		defer GinkgoRecover()
 		err = multiClusterManager.Start(ctx)
@@ -386,6 +389,10 @@ var _ = BeforeSuite(func() {
 		return multiClusterManager.GetLocalManager().GetClient().List(ctx, list)
 	}, constants.EventuallyTimeout, 100*time.Millisecond).Should(Succeed(),
 		"ArgoCDCommitStatus informer should be ready before tests run")
+})
+
+var _ = BeforeEach(func() {
+	skipIfFakeSCMOnly()
 })
 
 var _ = AfterSuite(func() {
@@ -455,9 +462,10 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+// testGitRepoCloneURL is the clone URL for the test repository. In fake mode it points at the
+// in-process gitkit server; in scmserver mode it is an authenticated HTTPS URL for the selected provider.
 func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
-	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+	return scmTarget.cloneURL(repo)
 }
 
 func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
@@ -802,6 +810,12 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
 	}
+	if ca := os.Getenv("GIT_SSL_CAINFO"); ca != "" {
+		cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO="+ca)
+	}
+	if ca := os.Getenv("SSL_CERT_FILE"); ca != "" {
+		cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+ca)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("failed to start git command: %w", err)
@@ -845,8 +859,13 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 	return string(payloadBytes)
 }
 
-// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior
+// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior.
+// When the suite targets scmserver, the server already delivers real provider-shaped push
+// webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	if scmTarget.sendsOwnWebhooks() {
+		return
+	}
 	// Build GitHub-style webhook payload
 	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
 

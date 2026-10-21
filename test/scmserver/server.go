@@ -282,11 +282,17 @@ func (s *Server) providerHandler(p Provider) http.Handler {
 		gitReq, isGit := parseGitRequest(r.URL.Path)
 		rec.git = isGit
 		defer func() {
-			s.requests.add(RequestRecord{
+			record := RequestRecord{
 				Time: start.UTC(), Provider: p, Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery,
 				Principal: rec.principal, Duration: D(time.Since(start)), StatusCode: rec.status, Fault: rec.fault,
 				Git: rec.git,
-			})
+			}
+			s.requests.add(record)
+			if !record.Git {
+				s.log.Debug("request", "provider", record.Provider, "method", record.Method, "path", record.Path,
+					"query", record.Query, "status", record.StatusCode, "duration", record.Duration.Duration,
+					"principal", record.Principal, "fault", record.Fault)
+			}
 		}()
 
 		if d := s.behavior.get(p).latency(); d > 0 {

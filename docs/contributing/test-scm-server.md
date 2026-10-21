@@ -11,12 +11,11 @@
 
 It serves each provider's REST API over HTTPS, hosts real git repositories over smart HTTP, merges pull requests with real merge commits, and sends provider-shaped push and pull request webhooks. Point an `ScmProvider`'s `domain` at it and trust its CA, and the **unmodified** provider implementations in `internal/scms` run against it.
 
-It is used in two places:
+It is used in three places:
 
 - **The contract suite** (`test/scmserver/*_test.go`, Ginkgo). It runs in `make test-parallel` and drives the real provider implementations against an in-process server.
 - **The e2e suite** (`test/e2e/scm_providers_test.go`). It deploys the server into Kind and promotes a hydrated change through every provider with the deployed controller.
-
-Controller integration tests under `internal/controller` keep using the in-process fake provider.
+- **Controller integration tests** (`internal/controller`, opt-in, local only). By default those tests still use the in-process fake provider. Locally you can point them at a running scmserver provider (see [Controller integration tests against scmserver](#controller-integration-tests-against-scmserver)).
 
 > [!WARNING]
 > The server is not hardened. Run it only in tests and on your own machine.
@@ -30,7 +29,7 @@ make run-scm-server
 This starts:
 
 - the admin API on `http://localhost:9000`;
-- the provider APIs on `https://localhost:9001` (GitHub) through `:9006`;
+- the provider APIs on `https://localhost:9001` (GitHub) through `:9006` (override with `SCM_SERVER_PORT_BASE`, see below);
 - a generated CA, written to `bin/scm-server-ca.pem`;
 - a token, `dev-token`, accepted by every provider.
 
@@ -136,6 +135,42 @@ Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows it
 The defaults (`scmserver.DefaultBehavior`) are asynchronous where the real provider is, but fast enough for happy-path promotions.
 
 A `FaultRule` makes matching requests fail. It matches on provider, method and path regexp. It answers with a status and a provider-native error, adds a delay, or drops the connection. It can apply a limited number of times or with a probability.
+
+## Controller integration tests against scmserver
+
+CI and `make test-parallel` always use the fake provider. To exercise the real provider implementations from the envtest suite locally:
+
+1. Start the server in one terminal:
+
+    ```shell
+    make run-scm-server
+    ```
+
+2. In another terminal, run the controller suite against one provider:
+
+    ```shell
+    make test-scm-provider SCM_PROVIDER=gitea
+    ```
+
+`SCM_PROVIDER` may be any of `github`, `gitlab`, `azuredevops`, `bitbucket`, `gitea`, or `forgejo`. Specs that call the in-process fake package directly are labeled `fake-scm-only` and are skipped automatically (the Makefile also passes `--label-filter='!fake-scm-only'`).
+
+| Environment variable | Default | Purpose |
+|----------------------|---------|---------|
+| `PROMOTER_TEST_SCM_PROVIDER` | `fake` (unset) | Provider name, or `fake` |
+| `PROMOTER_TEST_SCM_ADMIN_URL` | `http://127.0.0.1:9000` | Admin API base URL |
+| `PROMOTER_TEST_SCM_CA_FILE` | `bin/scm-server-ca.pem` | CA written by `make run-scm-server` |
+| `PROMOTER_TEST_SCM_TOKEN` | `dev-token` | Token accepted by every provider |
+
+The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`.
+
+If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the six providers on the next six, in the order of the table above. Pass the same value to both targets:
+
+```shell
+make run-scm-server SCM_SERVER_PORT_BASE=9100
+make test-scm-provider SCM_PROVIDER=gitea SCM_SERVER_PORT_BASE=9100
+```
+
+`make run-scm-server` logs every provider API request (provider, method, path, status, duration and principal) at the `debug` level. Set `SCM_SERVER_LOG_LEVEL=info` to log only startup and errors. Git clone, fetch and push requests and admin API calls are not logged; `GET /api/requests` returns every provider request, git included, as JSON.
 
 ## The e2e suite
 

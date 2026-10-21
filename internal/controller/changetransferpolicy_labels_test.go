@@ -288,10 +288,7 @@ func setupCTPLabelExpressionTest(
 	fixtures.gitPath, err = os.MkdirTemp("", "*")
 	Expect(err).NotTo(HaveOccurred())
 
-	fixtures.prName = utils.KubeSafeUniqueName(utils.GetPullRequestName(
-		fixtures.gitRepo.Spec.Fake.Owner,
-		fixtures.gitRepo.Spec.Fake.Name,
-		fixtures.ctp.Spec.ProposedBranch,
+	fixtures.prName = utils.KubeSafeUniqueName(scmTarget.prName(fixtures.gitRepo, fixtures.ctp.Spec.ProposedBranch,
 		fixtures.ctp.Spec.ActiveBranch,
 	))
 
