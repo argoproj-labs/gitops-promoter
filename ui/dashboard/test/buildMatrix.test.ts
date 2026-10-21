@@ -571,3 +571,70 @@ describe('buildMatrix check urls', () => {
     expect(urls(OLD_DRY)).toEqual(expected);
   });
 });
+
+describe('buildMatrix app commit references', () => {
+  const refCommit = (sha: string, extra: Record<string, unknown> = {}) => ({
+    commit: {
+      sha,
+      repoURL: 'https://github.com/example/ledger-service/',
+      subject: '  fix(ledger): prevent double-posting (#1234)  ',
+      author: 'Priya Raman <priya.raman@example.com>',
+      body: 'Checkpoint after commit.\n\nSigned-off-by: Priya Raman',
+      date: '2026-09-22T13:00:00Z',
+      ...extra,
+    },
+  });
+  const withRefs = (refs: unknown[]) => {
+    const strategy = strategyWithHistory(false);
+    const env = strategy.status!.environments![0] as Environment;
+    env.active.dry!.references = refs as never;
+    env.history![0]!.active!.dry!.references = refs as never;
+    return buildMatrix(strategy).rows.find((r) => r.dryShaFull === NEW_DRY)!;
+  };
+
+  it('maps every reference with short sha, commit url, repo name, author, body and date', () => {
+    const full = 'abcdef0123456789abcdef0123456789abcdef01';
+    const row = withRefs([refCommit(full), refCommit('1234567890abcdef1234567890abcdef12345678')]);
+    expect(row.references).toHaveLength(2);
+    expect(row.references[0]).toEqual({
+      shaShort: full.slice(0, 7),
+      url: `https://github.com/example/ledger-service/commit/${full}`,
+      repoName: 'ledger-service',
+      subject: 'fix(ledger): prevent double-posting (#1234)',
+      author: 'Priya Raman',
+      body: 'Checkpoint after commit.',
+      date: '2026-09-22T13:00:00Z',
+    });
+  });
+
+  it('derives the repo name without a trailing .git or slash', () => {
+    const row = withRefs([
+      refCommit('abcdef0123456789abcdef0123456789abcdef01', {
+        repoURL: 'https://github.com/example/ledger-service.git',
+      }),
+      refCommit('1234567890abcdef1234567890abcdef12345678', {
+        repoURL: 'https://github.com/example/billing-worker.git/',
+      }),
+    ]);
+    expect(row.references.map((r) => r.repoName)).toEqual(['ledger-service', 'billing-worker']);
+  });
+
+  it('leaves author, body and date undefined when the reference omits them', () => {
+    const row = withRefs([
+      refCommit('abcdef0123456789abcdef0123456789abcdef01', {
+        author: undefined,
+        body: undefined,
+        date: undefined,
+      }),
+    ]);
+    expect(row.references[0]).toMatchObject({
+      author: undefined,
+      body: undefined,
+      date: undefined,
+    });
+  });
+
+  it('yields no references for a dry commit without any', () => {
+    expect(withRefs([]).references).toEqual([]);
+  });
+});
