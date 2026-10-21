@@ -44,6 +44,8 @@ type BitbucketCloud struct {
 	// Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
 	// and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
 	// +kubebuilder:validation:XValidation:rule=`self != "bitbucket.org"`, message="Instead of setting the domain to bitbucket.org, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Domain string `json:"domain,omitempty"`

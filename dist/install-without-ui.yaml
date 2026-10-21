@@ -2039,6 +2039,13 @@ spec:
                     - message: Instead of setting the domain to bitbucket.org, leave
                         the field blank
                       rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               bitbucketDataCenter:
                 description: BitbucketDataCenter required configuration for Bitbucket
@@ -8469,6 +8476,13 @@ spec:
                     - message: Instead of setting the domain to bitbucket.org, leave
                         the field blank
                       rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               bitbucketDataCenter:
                 description: BitbucketDataCenter required configuration for Bitbucket
