@@ -3932,7 +3932,14 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ActiveBranch)
 		Expect(err).NotTo(HaveOccurred())
-		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctp.Spec.ProposedBranch)
+		// SCMs refuse to open a PR when the source branch has no commits the target lacks.
+		_, err = runGitCmd(ctx, gitPath, "checkout", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "-c", "user.name=testuser", "-c", "user.email=testemail@test.com", "commit", "--allow-empty", "-m", "diverge from "+ctp.Spec.ActiveBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", ctp.Spec.ProposedBranch)
 		Expect(err).NotTo(HaveOccurred())
 		originalMergeSha = strings.TrimSpace(originalMergeSha)
 

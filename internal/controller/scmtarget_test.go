@@ -56,6 +56,9 @@ const (
 	// githubAppIDBase is the starting App ID for per-repo GitHub App registrations.
 	// Each repo gets its own App so the provider's installation cache cannot poison later fixtures.
 	githubAppIDBase int64 = 20000
+	// githubAppIDsPerProcess partitions App IDs by Ginkgo process. Each process signs with its own
+	// key and the server overwrites an App on re-registration, so shared IDs break JWT verification.
+	githubAppIDsPerProcess int64 = 1_000_000
 )
 
 // scmTestTarget routes controller integration tests at either the in-process fake SCM + gitkit
@@ -69,6 +72,9 @@ type scmTestTarget struct {
 	githubKeyPEM []byte
 	githubAppSeq atomic.Int64
 	repoSeq      atomic.Int64
+	// runID keeps repo names unique across runs against a long-lived scmserver, which may still
+	// hold repos from an earlier run whose cleanup did not complete.
+	runID string
 }
 
 // testRepo is the SCM-side identity of a repository created for a single test.
@@ -132,8 +138,8 @@ func (t *scmTestTarget) newRepo(ctx context.Context, stem string) testRepo {
 
 	seq := t.repoSeq.Add(1)
 	// Keep owner/name short: GitHub owners are capped at 39 chars and Azure orgs at 50.
-	owner := fmt.Sprintf("o%d-%d", GinkgoParallelProcess(), seq)
-	name := fmt.Sprintf("r%d-%d", GinkgoParallelProcess(), seq)
+	owner := fmt.Sprintf("o%s-%d-%d", t.runID, GinkgoParallelProcess(), seq)
+	name := fmt.Sprintf("r%s-%d-%d", t.runID, GinkgoParallelProcess(), seq)
 	req := scmserver.CreateRepoRequest{
 		Provider: t.provider,
 		Owner:    owner,
@@ -141,7 +147,7 @@ func (t *scmTestTarget) newRepo(ctx context.Context, stem string) testRepo {
 		// Leave Init false: setup helpers push the first commit themselves.
 	}
 	if t.provider == scmserver.AzureDevOps {
-		req.Project = fmt.Sprintf("p%d-%d", GinkgoParallelProcess(), seq)
+		req.Project = fmt.Sprintf("p%s-%d-%d", t.runID, GinkgoParallelProcess(), seq)
 	}
 	info, err := t.admin.CreateRepo(ctx, req)
 	Expect(err).NotTo(HaveOccurred(), "create repo on scmserver (is make run-scm-server running?)")
@@ -170,7 +176,7 @@ func (t *scmTestTarget) newRepo(ctx context.Context, stem string) testRepo {
 	}
 
 	if t.provider == scmserver.GitHub {
-		appID := githubAppIDBase + t.githubAppSeq.Add(1)
+		appID := githubAppIDBase + int64(GinkgoParallelProcess())*githubAppIDsPerProcess + t.githubAppSeq.Add(1)
 		Expect(t.admin.RegisterGitHubApp(ctx, scmserver.RegisterGitHubAppRequest{
 			AppID:        appID,
 			PublicKeyPEM: string(t.githubKeyPEM),
@@ -298,6 +304,34 @@ func (t *scmTestTarget) gitUser() string {
 	}
 }
 
+// expectPromotionMergeCommit asserts that hydrated is the merge commit of a promotion PR. Real
+// providers pick their own merge subject and author (GitHub: "Merge pull request #N from ..." by
+// the App's bot user) and put the requested message in the body, so only the fake provider is
+// held to the exact subject/author.
+func (t *scmTestTarget) expectPromotionMergeCommit(g Gomega, hydrated promoterv1alpha1.CommitShaState) {
+	if t.isFake() {
+		g.Expect(hydrated.Author).To(Equal("GitOps Promoter"))
+		g.Expect(hydrated.Subject).To(ContainSubstring("Promote"))
+		g.Expect(hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
+		return
+	}
+	message := hydrated.Subject + "\n\n" + hydrated.Body
+	g.Expect(hydrated.Author).NotTo(BeEmpty())
+	g.Expect(message).To(ContainSubstring("Promote"))
+	g.Expect(message).To(ContainSubstring("This PR promotes changes to"))
+}
+
+// mergeReportsTargetSha reports whether the provider's Merge returns the resulting target-branch
+// commit. Gitea, Forgejo and Azure DevOps do not, and the controller recovers it with a Get-by-ID lookup.
+func (t *scmTestTarget) mergeReportsTargetSha() bool {
+	switch t.provider {
+	case "", scmserver.GitHub, scmserver.GitLab, scmserver.BitbucketCloud:
+		return true
+	default:
+		return false
+	}
+}
+
 // skipIfFakeSCMOnly skips the current spec when a real scmserver provider is selected and the
 // spec (or any of its containers) is labeled fake-scm-only.
 func skipIfFakeSCMOnly() {
@@ -377,6 +411,7 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 		token:        token,
 		caFile:       caFile,
 		githubKeyPEM: githubKeyPEM,
+		runID:        strings.ToLower(randomString(6)),
 	}
 }
 

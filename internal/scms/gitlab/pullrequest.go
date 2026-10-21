@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -254,7 +253,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		logger.V(4).Info("gitlab response status", "status", "nil response")
-		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
+		return scms.FindOpenResult{}, fmt.Errorf("received nil response from GitLab API: %w", err)
 	}
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {

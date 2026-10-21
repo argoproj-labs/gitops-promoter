@@ -1055,10 +1055,12 @@ var _ = Describe("PullRequest Controller", func() {
 				close(stopPolling)
 
 				By("Verifying the merged target sha from the merge response was persisted alongside the merged state")
-				// The fake provider reports the resulting target-branch commit in its merge response, so the
+				// When the provider reports the resulting target-branch commit in its merge response, the
 				// sha must land in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
-				Expect(observedStatus.MergedTargetSha).To(Equal(
-					getGitBranchSHA(ctx, gitRepo, pullRequest.Spec.TargetBranch)))
+				if scmTarget.mergeReportsTargetSha() {
+					Expect(observedStatus.MergedTargetSha).To(Equal(
+						getGitBranchSHA(ctx, gitRepo, pullRequest.Spec.TargetBranch)))
+				}
 
 				By("Verifying the PullRequest is then deleted on next reconciliation")
 				// Now that we've proven the status was persisted, the NEXT reconciliation
@@ -1984,6 +1986,8 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 		}),
 	}
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
+	// SCMs refuse to open a PR when the source branch has no commits the target lacks.
+	pushEmptyCommit(ctx, gitRepo, testBranchDevelopmentNext, "diverge from "+testBranchDevelopment)
 
 	scmSecret := &v1.Secret{
 		TypeMeta:  metav1.TypeMeta{},
@@ -2059,6 +2063,21 @@ func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 		cc.Spec.PullRequest.WorkQueue.RequeueDuration = original
 		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
 	})
+}
+
+func pushEmptyCommit(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, branch, message string) {
+	GinkgoHelper()
+	gitPath := GinkgoT().TempDir()
+	_, err := runGitCmd(ctx, gitPath, "clone", "--single-branch", "--branch", branch, testGitRepoCloneURL(gitRepo), ".")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", message)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", branch)
+	Expect(err).NotTo(HaveOccurred())
 }
 
 func getGitBranchSHA(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, branch string) string {
