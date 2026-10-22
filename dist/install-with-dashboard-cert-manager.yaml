@@ -2001,11 +2001,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -2019,6 +2028,27 @@ spec:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                required:
+                - domain
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -2028,6 +2058,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -2040,6 +2078,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2050,8 +2096,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2067,11 +2122,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -2090,11 +2154,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -2114,8 +2187,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
@@ -5910,6 +5983,25 @@ spec:
                 - name
                 - owner
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenterRepo is a repository in Bitbucket
+                  DataCenter/Server, identified by its project key and repository
+                  slug.
+                properties:
+                  name:
+                    description: Name is the repository slug (e.g. "my-repo").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the Bitbucket project key (e.g. "MYPROJ").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - project
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
@@ -6028,8 +6120,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
@@ -8327,11 +8419,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -8345,6 +8446,27 @@ spec:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                required:
+                - domain
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -8354,6 +8476,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -8366,6 +8496,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8376,8 +8514,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -8393,11 +8540,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -8416,11 +8572,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -8440,8 +8605,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider

@@ -81,6 +81,16 @@ func (in BitbucketCloudRepo) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in BitbucketDataCenter) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.BitbucketDataCenter"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in BitbucketDataCenterRepo) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.BitbucketDataCenterRepo"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Bucket) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Bucket"
 }

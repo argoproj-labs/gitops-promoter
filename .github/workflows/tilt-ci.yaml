@@ -10,7 +10,7 @@ on:
     branches: [main, 'release-*']
 
 env:
-  ARGOCD_VERSION: v3.5.5
+  ARGOCD_VERSION: v3.5.6
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
