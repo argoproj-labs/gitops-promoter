@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -213,6 +214,8 @@ var _ = Describe("BuildTLSClient", func() {
 	var certPEM, keyPEM []byte
 
 	BeforeEach(func() {
+		utils.ResetProcessTLSSettingsForTest()
+
 		key, err := rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -230,6 +233,10 @@ var _ = Describe("BuildTLSClient", func() {
 		keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	})
 
+	AfterEach(func() {
+		utils.ResetProcessTLSSettingsForTest()
+	})
+
 	It("builds an HTTP client with TLS config from secret", func() {
 		secret := &corev1.Secret{
 			Name: "tls-secret",
@@ -244,6 +251,30 @@ var _ = Describe("BuildTLSClient", func() {
 		Expect(client).NotTo(BeNil())
 		Expect(client.Transport).NotTo(BeNil())
 		Expect(client.Timeout).To(Equal(10 * time.Second))
+	})
+
+	It("applies process-wide TLS policy to the client transport", func() {
+		_, err := utils.SetProcessTLSSettings(utils.TLSSettings{
+			MinVersion:       "1.3",
+			CurvePreferences: "X25519",
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		secret := &corev1.Secret{
+			Name: "tls-secret",
+			Data: map[string][]byte{
+				httpauth.TLSCertKey: certPEM,
+				httpauth.TLSKeyKey:  keyPEM,
+			},
+		}
+
+		client, err := httpauth.BuildTLSClient(context.Background(), secret, 10*time.Second)
+		Expect(err).NotTo(HaveOccurred())
+		transport, ok := client.Transport.(*http.Transport)
+		Expect(ok).To(BeTrue())
+		Expect(transport.TLSClientConfig).NotTo(BeNil())
+		Expect(transport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
+		Expect(transport.TLSClientConfig.CurvePreferences).To(Equal([]tls.CurveID{tls.X25519}))
 	})
 
 	It("includes RootCAs when ca.crt is present in secret", func() {

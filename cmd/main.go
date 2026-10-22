@@ -81,6 +81,9 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var tlsMinVersion string
+	var tlsCiphers string
+	var tlsCurvePreferences string
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -93,6 +96,11 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				utils.TLSSettings{
+					MinVersion:       tlsMinVersion,
+					Ciphers:          tlsCiphers,
+					CurvePreferences: tlsCurvePreferences,
+				},
 				clientConfig,
 			)
 		},
@@ -108,6 +116,15 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().StringVar(&tlsMinVersion, "tls-min-version", "",
+		"Process-wide minimum TLS version for metrics/webhook servers and outbound HTTPS/mTLS "+
+			"(e.g. 1.2, 1.3). Empty uses Go defaults.")
+	cmd.Flags().StringVar(&tlsCiphers, "tls-ciphers", "",
+		"Process-wide colon-separated TLS 1.2 cipher suite names for metrics/webhook servers and outbound HTTPS/mTLS "+
+			"(e.g. TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256). Has no effect when --tls-min-version is 1.3 or higher.")
+	cmd.Flags().StringVar(&tlsCurvePreferences, "tls-curve-preferences", "",
+		"Process-wide colon-separated TLS elliptic curves for metrics/webhook servers and outbound HTTPS/mTLS "+
+			"(e.g. X25519:P-256:P-384). Empty uses Go defaults.")
 
 	return cmd
 }
@@ -120,6 +137,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	tlsSettings utils.TLSSettings,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -128,8 +146,18 @@ func runController(
 		os.Exit(1)
 	}
 
-	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
-		setupLog.Error(err, "failed to configure HTTP TLS roots from environment")
+	// Install process-wide TLS policy first so DefaultTransport and mTLS clients share it.
+	tlsWarnings, err := utils.SetProcessTLSSettings(tlsSettings)
+	if err != nil {
+		setupLog.Error(err, "invalid TLS settings")
+		os.Exit(1)
+	}
+	for _, warning := range tlsWarnings {
+		setupLog.Info(warning)
+	}
+
+	if err := utils.ConfigureDefaultHTTPTransport(); err != nil {
+		setupLog.Error(err, "failed to configure default HTTP transport TLS")
 		os.Exit(1)
 	}
 
@@ -156,6 +184,9 @@ func runController(
 	tlsOpts := []func(*tls.Config){}
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
+	}
+	if tlsOpt := utils.ProcessTLSOpt(); tlsOpt != nil {
+		tlsOpts = append(tlsOpts, tlsOpt)
 	}
 
 	webhookServer := webhook.NewServer(webhook.Options{

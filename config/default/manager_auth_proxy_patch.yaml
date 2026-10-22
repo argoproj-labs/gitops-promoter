@@ -15,6 +15,11 @@ spec:
           - "--health-probe-bind-address=:8081"
           - "--metrics-bind-address=127.0.0.1:8080"
           - "--leader-elect"
+          # Optional process-wide TLS policy (metrics/webhook servers + outbound HTTPS/mTLS).
+          # Also settable from Helm manager.args or any Deployment running `gitops-promoter controller`:
+          # - "--tls-min-version=1.2"
+          # - "--tls-ciphers=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+          # - "--tls-curve-preferences=X25519:P-256"
       - name: kube-rbac-proxy
         securityContext:
           allowPrivilegeEscalation: false

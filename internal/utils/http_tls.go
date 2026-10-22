@@ -8,26 +8,20 @@ import (
 	"os"
 )
 
-// ConfigureDefaultTransportFromEnv replaces http.DefaultTransport with a clone whose
-// RootCAs are loaded from SSL_CERT_FILE when set.
+// ConfigureDefaultHTTPTransport replaces http.DefaultTransport with a clone that
+// applies the process-wide TLS policy (min version / ciphers / curves) and, when
+// SSL_CERT_FILE is set, custom RootCAs.
 //
 // On macOS, Go's default verifier uses the platform trust store and does not honor
 // SSL_CERT_FILE for http.DefaultTransport. That breaks MITM proxies unless
 // we install an explicit root pool. Git subprocesses use GIT_SSL_CAINFO instead;
 // see internal/git.proxyRelatedEnvVars.
-func ConfigureDefaultTransportFromEnv() error {
+//
+// No-op when neither SSL_CERT_FILE nor a process TLS policy is configured.
+func ConfigureDefaultHTTPTransport() error {
 	caPath := os.Getenv("SSL_CERT_FILE")
-	if caPath == "" {
+	if caPath == "" && !HasProcessTLSPolicy() {
 		return nil
-	}
-
-	pem, err := os.ReadFile(caPath)
-	if err != nil {
-		return fmt.Errorf("read TLS CA file %q: %w", caPath, err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem) {
-		return fmt.Errorf("parse TLS CA file %q: no certificates found", caPath)
 	}
 
 	base, ok := http.DefaultTransport.(*http.Transport)
@@ -36,9 +30,28 @@ func ConfigureDefaultTransportFromEnv() error {
 	}
 	cloned := base.Clone()
 	if cloned.TLSClientConfig == nil {
-		cloned.TLSClientConfig = &tls.Config{}
+		cloned.TLSClientConfig = &tls.Config{} //nolint:gosec // policy applied below; empty means Go defaults
 	}
-	cloned.TLSClientConfig.RootCAs = pool
+	ApplyProcessTLSConfig(cloned.TLSClientConfig)
+
+	if caPath != "" {
+		pem, err := os.ReadFile(caPath)
+		if err != nil {
+			return fmt.Errorf("read TLS CA file %q: %w", caPath, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("parse TLS CA file %q: no certificates found", caPath)
+		}
+		cloned.TLSClientConfig.RootCAs = pool
+	}
+
 	http.DefaultTransport = cloned
 	return nil
+}
+
+// ConfigureDefaultTransportFromEnv is kept as an alias for callers/tests that
+// historically only cared about SSL_CERT_FILE. Prefer ConfigureDefaultHTTPTransport.
+func ConfigureDefaultTransportFromEnv() error {
+	return ConfigureDefaultHTTPTransport()
 }
