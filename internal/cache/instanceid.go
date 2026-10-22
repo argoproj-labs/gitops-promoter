@@ -111,6 +111,27 @@ func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cac
 	return opts, nil
 }
 
+// WithSecretNamespaces copies opts and restricts the Secret informer to namespaces, so the
+// controller needs Secret RBAC only in those namespaces instead of cluster-wide. Secrets outside
+// them cannot be read, so every Secret a provider or gate references must live in one of them.
+// When namespaces is empty, opts is returned unchanged and Secrets are watched cluster-wide.
+func WithSecretNamespaces(opts cache.Options, namespaces []string) cache.Options {
+	if len(namespaces) == 0 {
+		return opts
+	}
+	opts.ByObject = maps.Clone(opts.ByObject)
+	if opts.ByObject == nil {
+		opts.ByObject = make(map[client.Object]cache.ByObject, 1)
+	}
+	byObj := opts.ByObject[partitionedSecretObject]
+	byObj.Namespaces = make(map[string]cache.Config, len(namespaces))
+	for _, ns := range namespaces {
+		byObj.Namespaces[ns] = cache.Config{}
+	}
+	opts.ByObject[partitionedSecretObject] = byObj
+	return opts
+}
+
 // ProviderClusterCacheOptions returns cache options for kubeconfig provider clusters.
 // Argo CD Application is the only type watched on those clusters (ArgoCDCommitStatus).
 // Lists are read-only, so UnsafeDisableDeepCopy skips the per-List DeepCopy of Application

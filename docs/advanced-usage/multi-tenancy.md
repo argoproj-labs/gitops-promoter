@@ -32,6 +32,50 @@ that one tenant's resources do not reference another tenant's resources within t
 If there are no trust boundaries to be enforced among PromotionStrategy users, a GitOps Promoter admin may choose to 
 host all resources in a single namespace, keeping in mind the need to avoid resource name collisions.
 
+### Limiting Secret access to specific namespaces
+
+By default, the controller watches Secrets cluster-wide, so the bundled `promoter-manager-role` ClusterRole grants
+`get`, `list`, `watch` and `update` on every Secret in the cluster. To restrict this, pass the namespaces that hold
+promoter Secrets to the controller with `--secret-namespaces` (comma-separated, or repeat the flag):
+
+```yaml
+args:
+  - --secret-namespaces=promoter-system,team-a
+```
+
+The controller then only watches Secrets in those namespaces, so you can remove the `secrets` rule from
+`promoter-manager-role` and grant it per namespace instead:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promoter-secrets
+  namespace: team-a
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promoter-secrets
+  namespace: team-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-secrets
+subjects:
+  - kind: ServiceAccount
+    name: promoter-controller-manager
+    namespace: promoter-system
+```
+
+Every Secret referenced by a ScmProvider, ClusterScmProvider, gate or multicluster kubeconfig must then be in one of
+the listed namespaces. A reference to a Secret anywhere else fails to resolve. ClusterScmProvider and kubeconfig
+Secrets live in the controller's namespace, so include it in the list whenever you use them.
+
 ## CommitStatus Tenancy
 
 As with PromotionStrategies, all references from CommitStatuses (to GitRepositories, then ScmProviders, and finally to
