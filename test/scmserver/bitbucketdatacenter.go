@@ -19,9 +19,11 @@ const (
 	// bitbucketDCDefaultLimit and bitbucketDCMaxLimit bound the page size of paged endpoints.
 	bitbucketDCDefaultLimit = 25
 	bitbucketDCMaxLimit     = 1000
-	// bitbucketDCMaxField and bitbucketDCMaxURL are the build status field limits.
+	// bitbucketDCMaxField, bitbucketDCMaxURL and bitbucketDCMaxRef are the build status field limits; the parent key
+	// and ref share the longest.
 	bitbucketDCMaxField = 255
 	bitbucketDCMaxURL   = 450
+	bitbucketDCMaxRef   = 1024
 	// bitbucketDCPushCommits is how many of the pushed commits a repo:refs_changed payload lists.
 	bitbucketDCPushCommits = 5
 
@@ -706,15 +708,22 @@ func (s *Server) bitbucketDCReopenPR(w http.ResponseWriter, r *http.Request, _ p
 	writeJSON(w, http.StatusOK, s.bitbucketDCPRJSONLocked(pr, base))
 }
 
-// bitbucketDCMissingBuildsLocked returns the required build keys of pr's target branch that have no successful build
-// on its head. The Required Builds merge check reads only statuses posted to the repository builds resource, not
-// those posted to the deprecated /rest/build-status resource.
+// bitbucketDCMissingBuildsLocked returns the required build parent keys of pr's target branch that have no
+// successful build on its head. The Required Builds merge check matches builds by their parent key, not their key,
+// and reads only statuses posted to the repository builds resource, not those posted to the deprecated
+// /rest/build-status resource. The latest build with the parent key decides.
 func (s *Server) bitbucketDCMissingBuildsLocked(pr *pullRequest) []string {
 	var missing []string
-	for _, key := range pr.repo.protection[pr.target] {
-		cs := s.bitbucketDCStatusLocked(pr.repo, pr.headSHA, key, false)
-		if cs == nil || cs.state != "SUCCESSFUL" {
-			missing = append(missing, key)
+	for _, parent := range pr.repo.protection[pr.target] {
+		var latest *commitStatus
+		for _, cs := range s.store.statuses[pr.repo.id] {
+			if cs.sha == pr.headSHA && cs.parent == parent && !cs.legacyBuild &&
+				(latest == nil || !cs.updatedAt.Before(latest.updatedAt)) {
+				latest = cs
+			}
+		}
+		if latest == nil || latest.state != "SUCCESSFUL" {
+			missing = append(missing, parent)
 		}
 	}
 	return missing
@@ -896,6 +905,7 @@ func (s *Server) bitbucketDCActivities(w http.ResponseWriter, r *http.Request, _
 type bitbucketDCBuildRequest struct {
 	State       string `json:"state"`
 	Key         string `json:"key"`
+	Parent      string `json:"parent"`
 	Name        string `json:"name"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
@@ -915,6 +925,8 @@ func (req bitbucketDCBuildRequest) validate(w http.ResponseWriter, states []stri
 		bitbucketDCValidation(w, "key", fmt.Sprintf("Build status fields are limited to %d characters.", bitbucketDCMaxField))
 	case len(req.URL) > bitbucketDCMaxURL:
 		bitbucketDCValidation(w, "url", fmt.Sprintf("The build status URL is limited to %d characters.", bitbucketDCMaxURL))
+	case len(req.Parent) > bitbucketDCMaxRef:
+		bitbucketDCValidation(w, "parent", fmt.Sprintf("The parent key is limited to %d characters.", bitbucketDCMaxRef))
 	case req.Ref != "" && !strings.HasPrefix(req.Ref, "refs/"):
 		bitbucketDCValidation(w, "ref", "The ref must be a fully qualified ref such as refs/heads/main.")
 	default:
@@ -942,6 +954,7 @@ func (s *Server) bitbucketDCUpsertBuildLocked(rp *repo, sha string, req bitbucke
 		cs = s.store.addStatusLocked(rp, &commitStatus{sha: sha, context: req.Key, createdAt: now, legacyBuild: legacy})
 	}
 	cs.state = req.State
+	cs.parent = req.Parent
 	cs.name = req.Name
 	cs.description = req.Description
 	cs.targetURL = req.URL
@@ -957,6 +970,9 @@ func bitbucketDCBuildJSON(cs *commitStatus, rp *repo) map[string]any {
 	if cs.legacyBuild {
 		body["dateAdded"] = epochMillis(cs.updatedAt)
 		return body
+	}
+	if cs.parent != "" {
+		body["parent"] = cs.parent
 	}
 	body["createdDate"] = epochMillis(cs.createdAt)
 	body["updatedDate"] = epochMillis(cs.updatedAt)

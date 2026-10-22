@@ -243,8 +243,8 @@ var _ = Describe("provider contract", func() {
 
 			By("rejecting the stale merge SHA")
 			_, err = f.prs.Merge(ctx, prObj)
-			if p == scmserver.BitbucketCloud || p == scmserver.BitbucketDataCenter {
-				// Neither Bitbucket has a SHA guard; Data Center's version guard is read just before the merge.
+			if p == scmserver.BitbucketCloud {
+				// Bitbucket Cloud has no SHA guard.
 				return
 			}
 			Expect(err).To(HaveOccurred())

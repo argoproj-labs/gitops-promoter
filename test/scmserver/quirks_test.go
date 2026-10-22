@@ -76,9 +76,26 @@ func countRepoLabels(ctx context.Context, p scmserver.Provider, fullName string)
 
 // bitbucketDC sends an authenticated request to the fixture repository's Bitbucket Data Center REST resource at
 // path (relative to /rest/api/1.0/projects/{key}/repos/{slug}) and returns the status code and body.
-func (f *fixture) bitbucketDC(ctx context.Context, method, path, body string) (int, string) {
+func (f *fixture) bitbucketDC(ctx context.Context, method, path string) (int, string) {
 	GinkgoHelper()
-	url := fmt.Sprintf("https://%s/rest/api/1.0/projects/%s/repos/%s%s", srv.Domain(scmserver.BitbucketDataCenter), f.repo.Owner, f.repo.Name, path)
+	return bitbucketDCRequest(ctx, method, f.bitbucketDCPath(path), "")
+}
+
+// bitbucketDCPost posts body to the fixture repository's Bitbucket Data Center REST resource at path.
+func (f *fixture) bitbucketDCPost(ctx context.Context, path, body string) (int, string) {
+	GinkgoHelper()
+	return bitbucketDCRequest(ctx, http.MethodPost, f.bitbucketDCPath(path), body)
+}
+
+func (f *fixture) bitbucketDCPath(path string) string {
+	return fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s%s", f.repo.Owner, f.repo.Name, path)
+}
+
+// bitbucketDCRequest sends an authenticated request to the Bitbucket Data Center listener at path and returns the
+// status code and body.
+func bitbucketDCRequest(ctx context.Context, method, path, body string) (int, string) {
+	GinkgoHelper()
+	url := "https://" + srv.Domain(scmserver.BitbucketDataCenter) + path
 	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(body))
 	Expect(err).NotTo(HaveOccurred())
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -404,22 +421,28 @@ var _ = Describe("provider quirks", func() {
 			f := newFixture(ctx, scmserver.BitbucketDataCenter)
 			prObj := f.createPR(ctx, "stale-version")
 			path := "/pull-requests/" + prObj.Status.ID
-			_, body := f.bitbucketDC(ctx, http.MethodGet, path, "")
+			_, body := f.bitbucketDC(ctx, http.MethodGet, path)
 			version := gjson.Get(body, "version").Int()
 
 			moved := f.pushToSource(ctx, "replicas: 4\n")
 			Eventually(func(g Gomega) {
-				_, body := f.bitbucketDC(ctx, http.MethodGet, path, "")
+				_, body := f.bitbucketDC(ctx, http.MethodGet, path)
 				g.Expect(gjson.Get(body, "fromRef.latestCommit").String()).To(Equal(moved))
 				g.Expect(gjson.Get(body, "version").Int()).To(Equal(version + 1))
 			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 
-			status, body := f.bitbucketDC(ctx, http.MethodPost, fmt.Sprintf("%s/merge?version=%d", path, version), "")
+			status, body := f.bitbucketDC(ctx, http.MethodPost, fmt.Sprintf("%s/merge?version=%d", path, version))
 			Expect(status).To(Equal(http.StatusConflict))
 			Expect(gjson.Get(body, "errors.0.exceptionName").String()).To(HaveSuffix("PullRequestOutOfDateException"))
 			Expect(gjson.Get(body, "errors.0.currentVersion").Int()).To(Equal(version + 1))
 
+			By("refusing, in the provider, to merge a source branch that moved past the expected merge SHA")
+			_, err := f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(ContainSubstring("does not match the expected merge SHA")))
+			Expect(f.serverPR(ctx, prObj.Status.ID).State).To(Equal("open"))
+
 			By("merging through the provider, which reads the current version first")
+			prObj.Spec.MergeSha = moved
 			result, err := f.prs.Merge(ctx, prObj)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CommitSHA).To(Equal(f.branchSHA(ctx, targetBranch)))
@@ -445,22 +468,29 @@ var _ = Describe("provider quirks", func() {
 			Expect(f.serverPR(ctx, prObj.Status.ID).State).To(Equal("open"))
 		})
 
-		It("ignores build statuses posted to the deprecated build-status resource in the Required Builds merge check", func(ctx SpecContext) {
+		It("satisfies the Required Builds merge check only with builds the provider reports through the repository builds resource", func(ctx SpecContext) {
 			f := newFixture(ctx, scmserver.BitbucketDataCenter)
 			Expect(admin.SetProtection(ctx, f.repo.ID, targetBranch, scmserver.ProtectionRequest{RequiredStatuses: []string{"promoter-gate"}})).To(Succeed())
 			prObj := f.createPR(ctx, "required-builds")
 
-			By("vetoing the merge after the provider reports the build through /rest/build-status")
-			_, err := f.statuses.Set(ctx, f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(requestsMatching(scmserver.BitbucketDataCenter, http.MethodPost, "/rest/build-status/1.0/commits/"+f.headSHA)).NotTo(BeEmpty())
-			_, err = f.prs.Merge(ctx, prObj)
-			Expect(err).To(MatchError(And(ContainSubstring("409"), ContainSubstring("Not all required builds are successful yet"))))
-
-			By("merging once the build is reported through the repository builds resource")
-			status, body := f.bitbucketDC(ctx, http.MethodPost, "/commits/"+f.headSHA+"/builds",
+			By("vetoing the merge while the build is reported only through the deprecated /rest/build-status resource")
+			status, body := bitbucketDCRequest(ctx, http.MethodPost, "/rest/build-status/1.0/commits/"+f.headSHA,
 				`{"key":"promoter-gate","state":"SUCCESSFUL","url":"https://ci.example.com/promoter-gate"}`)
 			Expect(status).To(Equal(http.StatusNoContent), body)
+			_, err := f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(And(ContainSubstring("409"), ContainSubstring("Not all required builds are successful yet"))))
+
+			By("vetoing the merge while the repository builds resource has the build without a parent key")
+			status, body = f.bitbucketDCPost(ctx, "/commits/"+f.headSHA+"/builds",
+				`{"key":"promoter-gate","state":"SUCCESSFUL","url":"https://ci.example.com/promoter-gate"}`)
+			Expect(status).To(Equal(http.StatusNoContent), body)
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(ContainSubstring("Not all required builds are successful yet")))
+
+			By("merging once the provider reports the build with its parent key")
+			_, err = f.statuses.Set(ctx, f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requestsMatching(scmserver.BitbucketDataCenter, http.MethodPost, "/commits/"+f.headSHA+"/builds")).NotTo(BeEmpty())
 			_, err = f.prs.Merge(ctx, prObj)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -473,7 +503,7 @@ var _ = Describe("provider quirks", func() {
 			_, err = admin.PullRequestAction(ctx, f.repo.ID, number, scmserver.PullRequestAction{Action: "merge", Squash: true})
 			Expect(err).NotTo(HaveOccurred())
 
-			_, body := f.bitbucketDC(ctx, http.MethodGet, "/pull-requests/"+prObj.Status.ID, "")
+			_, body := f.bitbucketDC(ctx, http.MethodGet, "/pull-requests/"+prObj.Status.ID)
 			Expect(gjson.Get(body, "state").String()).To(Equal("MERGED"))
 			Expect(gjson.Get(body, "properties.mergeCommit").Exists()).To(BeFalse())
 

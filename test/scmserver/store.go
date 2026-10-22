@@ -137,8 +137,10 @@ type commitStatus struct {
 	summary     string
 	genre       string
 	name        string
-	id          int64
-	repoID      int64
+	// parent is a Bitbucket Data Center build's parent key, which the Required Builds merge check matches.
+	parent string
+	id     int64
+	repoID int64
 	// legacyBuild marks a Bitbucket Data Center build status posted to the deprecated /rest/build-status endpoint,
 	// which the Required Builds merge check does not read.
 	legacyBuild bool

@@ -272,11 +272,6 @@ func scmProviderSpecs() {
 		name := func(p scmserver.Provider) string { return string(p) + "-protected" }
 		cleanupPromotions("promotionstrategy,commitstatus", name, "-required")
 		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
-			if p == scmserver.BitbucketDataCenter {
-				// The provider reports commit statuses through the deprecated /rest/build-status resource, which
-				// Bitbucket Data Center's Required Builds merge check does not read, so the merge is never allowed.
-				return
-			}
 			newFlow(p).promoteThroughProtection(ctx, p, name(p))
 		})
 	}, NodeTimeout(12*time.Minute))
