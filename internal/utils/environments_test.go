@@ -17,6 +17,8 @@ limitations under the License.
 package utils_test
 
 import (
+	"fmt"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -132,5 +134,99 @@ var _ = Describe("GetApplicableEnvironments", func() {
 				wantBranches: []string{"environment/prod"},
 			},
 		),
+	)
+})
+
+var _ = Describe("DetermineReportOn", func() {
+	type testCase struct {
+		key              string
+		psSpec           promoterv1alpha1.PromotionStrategySpec
+		shouldError      bool
+		expectedReportOn string
+	}
+
+	DescribeTable("returns correct ReportOn and errors when needed",
+		func(tc testCase) {
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Spec: tc.psSpec,
+			}
+			reportOn, err := utils.DetermineReportOn(ps, tc.key)
+			fmt.Println(reportOn, err)
+			Expect(reportOn).To(Equal(tc.expectedReportOn))
+			Expect(err != nil).To(Equal(tc.shouldError))
+		},
+		Entry("key is located in proposed", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefProposed,
+		}),
+		Entry("key is located in active", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefActive,
+		}),
+		Entry("key is located in an environments proposed", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}}},
+				},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefProposed,
+		}),
+		Entry("key is located in an environments active", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}}},
+				},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefActive,
+		}),
+		Entry("key is located in both active and proposed", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				ActiveCommitStatuses:   []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+			},
+			shouldError:      true,
+			expectedReportOn: "",
+		}),
+		Entry("key is not in promotion strategy", testCase{
+			key:              "test-key",
+			psSpec:           promoterv1alpha1.PromotionStrategySpec{},
+			shouldError:      true,
+			expectedReportOn: "",
+		}),
+		Entry("key is located in both global proposed and environments proposed", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+				Environments: []promoterv1alpha1.Environment{
+					{ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}}},
+				},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefProposed,
+		}),
+		Entry("key is located in both global proposed and environments active", testCase{
+			key: "test-key",
+			psSpec: promoterv1alpha1.PromotionStrategySpec{
+				ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}},
+				Environments: []promoterv1alpha1.Environment{
+					{ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "test-key"}}},
+				},
+			},
+			shouldError:      false,
+			expectedReportOn: constants.CommitRefActive,
+		}),
 	)
 })

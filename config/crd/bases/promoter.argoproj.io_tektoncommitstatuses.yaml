@@ -61,6 +61,15 @@ spec:
                       description: |-
                         Expression is an expr expression to be used with the result. Must return a boolean.
                         The result can be accessed through the string variable Result.
+                        For example:
+                        expectedResult:
+                          - key: testCoverage
+                            expression: "Result >= 80"
+
+                        Would check to see if the Tekton run resource has the result testCoverage and if it does
+                        then it will evaluate whether the value is 80 or greater.
+
+                        Tekton results are either a string, array, or object so casting will need to be done accordingly.
                       type: string
                     key:
                       description: Key is the name of the result from the Tekton resource
@@ -74,7 +83,7 @@ spec:
               expression:
                 description: |-
                   Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean.
-                  The results values can be accessed through the map variable Results.
+                  The results values can be accessed through the map variable Result.
                   If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of
                   the Tekton run.
                 type: string
@@ -277,17 +286,6 @@ spec:
                   description: TektonCommitStatusEnvironmentStatus defines the observed
                     status for a specific environment based on specified result keys.
                   properties:
-                    activeHydratedSha:
-                      description: |-
-                        FIXME: MAKE BETTER
-                        ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that the Tekton resource was run on.
-                        This comes from the PromotionStrategy's environment status.
-                        The expression is evaluated against THIS commit's data, not the proposed commit.
-                        May be empty if the PromotionStrategy hasn't reconciled yet.
-                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                      maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
-                      type: string
                     branch:
                       description: Branch is the name of the branch/environment.
                       minLength: 1
@@ -315,10 +313,6 @@ spec:
                         - key
                         type: object
                       type: array
-                    lastRunTime:
-                      description: LastRunTime is when the Tekton run was started/created
-                      format: date-time
-                      type: string
                     phase:
                       description: |-
                         Phase is the current phase of the commit status.
@@ -328,18 +322,6 @@ spec:
                       - pending
                       - success
                       - failure
-                      type: string
-                    proposedHydratedSha:
-                      description: |-
-                        FIXME: MAKE BETTER
-                        ProposedHydratedSha is the proposed hydrated commit SHA where the Tekton resource was run on.
-                        This comes from the PromotionStrategy's environment status.
-                        The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
-                        promotions based on the validation of the ACTIVE commit.
-                        May be empty if the PromotionStrategy hasn't reconciled yet.
-                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
-                      maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                     targetedSha:
                       description: |-
@@ -358,11 +340,9 @@ spec:
                       description: TektonRunPhase is the phase that the Tekton run
                         is in
                       enum:
-                      - Pending
                       - Running
                       - Succeeded
                       - Failed
-                      - Cancelled
                       type: string
                   required:
                   - branch
