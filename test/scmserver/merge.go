@@ -236,6 +236,15 @@ func (s *Server) refreshPR(ctx context.Context, pr *pullRequest) error {
 		// A rescope: new commits on the source branch change the pull request.
 		pr.version++
 	}
+	if pr.headSHA != head {
+		reason := "push"
+		if len(pr.iterations) == 0 {
+			reason = "create"
+		}
+		pr.iterations = append(pr.iterations, prIteration{
+			id: len(pr.iterations) + 1, source: head, target: base, reason: reason, createdAt: s.now(),
+		})
+	}
 	if pr.headSHA != head || pr.baseSHA != base || pr.mergeableAt.IsZero() {
 		pr.mergeableAt = s.now().Add(behavior.MergeabilityDelay.Duration)
 		// Azure DevOps re-runs the merge when either branch moves, clearing a previous completion failure.

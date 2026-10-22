@@ -67,15 +67,20 @@ type pullRequest struct {
 	completionDueAt       time.Time
 	asyncMergeDueAt       time.Time
 	repo                  *repo
-	state                 prState
-	title                 string
-	body                  string
-	source                string
-	target                string
-	author                string
-	headSHA               string
-	baseSHA               string
-	mergeCommitSHA        string
+	// iterations are the Azure DevOps iterations of the pull request: one when it is created and one for every
+	// update of its source branch, oldest first.
+	iterations []prIteration
+	// statuses are the statuses posted to the Azure DevOps pull request, oldest first.
+	statuses       []*prStatus
+	state          prState
+	title          string
+	body           string
+	source         string
+	target         string
+	author         string
+	headSHA        string
+	baseSHA        string
+	mergeCommitSHA string
 	// squashCommitSHA is the squash commit of a squashed merge. On providers that land a squash as a single commit
 	// it equals mergeCommitSHA; on GitLab's default merge method it is the squashed commit the merge commit merges.
 	squashCommitSHA     string
@@ -108,6 +113,38 @@ type pullRequest struct {
 	completionSquash bool
 	// asyncMergePending is true while a Bitbucket asynchronous merge task is running.
 	asyncMergePending bool
+}
+
+// prIteration is an Azure DevOps pull request iteration: the source and target commits after a source branch update.
+type prIteration struct {
+	createdAt time.Time
+	source    string
+	target    string
+	reason    string
+	id        int
+}
+
+// prStatus is a status posted to an Azure DevOps pull request, optionally for one of its iterations. All fields are
+// guarded by store.mu.
+type prStatus struct {
+	createdAt   time.Time
+	updatedAt   time.Time
+	name        string
+	genre       string
+	state       string
+	description string
+	targetURL   string
+	author      string
+	id          int64
+	iterationID int
+}
+
+// latestIterationID returns the ID of the pull request's latest iteration, or 0 when it has none.
+func (pr *pullRequest) latestIterationID() int {
+	if len(pr.iterations) == 0 {
+		return 0
+	}
+	return pr.iterations[len(pr.iterations)-1].id
 }
 
 // mergeabilityKnown reports whether the provider has finished computing mergeability for the current head.

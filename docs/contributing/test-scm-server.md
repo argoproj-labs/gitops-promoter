@@ -96,6 +96,8 @@ Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows it
     - Deliveries carry the provider's headers and signatures, and the promoter's webhook receiver classifies each one the way it does the real provider's. The receiver acts on push events only; it accepts pull request events with 204 and ignores them for now.
 - **Azure DevOps**
     - A completion request (`status=completed`) returns 200 while the pull request stays `active` with `mergeStatus: queued` and the *preview* merge commit. The real merge lands `completionDelay` later.
+    - Pull requests have iterations: one when created and one for every update of the source branch (`GET …/pullRequests/{id}/iterations`). Pull request statuses (`POST …/pullRequests/{id}/statuses`) may name an iteration; every post adds a status.
+    - Branch protection is a status policy, which reads pull request statuses, never commit statuses. A required status is `genre/name`, or `name` for any genre. The latest pull request status for it must be `succeeded` and posted for the latest iteration or for no iteration, as with the policy's "reset status whenever there are new changes" option.
     - A completion request for a conflicting pull request, or one whose required statuses have not passed, is refused with 400; a stale `lastMergeSourceCommit` gets 409. Azure DevOps does not document these responses. `azureAsyncCompletionFailures` switches to the other model: the request is accepted and fails later, leaving the pull request active with `mergeFailureMessage`.
     - The SDK's `OPTIONS /{org}/_apis` route discovery is served.
     - A pull request whose head is pushed to the target branch stays active.

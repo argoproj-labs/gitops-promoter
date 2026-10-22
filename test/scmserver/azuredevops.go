@@ -37,6 +37,8 @@ var azureLocations = []azureLocation{
 	{ID: "428dd4fb-fda5-4722-af02-9313b80305da", Area: "git", ResourceName: "statuses", RouteTemplate: "{project}/_apis/{area}/repositories/{repositoryId}/commits/{commitId}/{resource}"},
 	{ID: "f22387e3-984e-4c52-9c6d-fbb8f14c812d", Area: "git", ResourceName: "labels", RouteTemplate: "{project}/_apis/{area}/repositories/{repositoryId}/pullRequests/{pullRequestId}/{resource}/{labelIdOrName}"},
 	{ID: "225f7195-f9c7-4d14-ab28-a83f7ff77e1f", Area: "git", ResourceName: "repositories", RouteTemplate: "{project}/_apis/{area}/{resource}/{repositoryId}"},
+	{ID: "d43911ee-6958-46b0-a42b-8445b8a0d004", Area: "git", ResourceName: "iterations", RouteTemplate: "{project}/_apis/{area}/repositories/{repositoryId}/pullRequests/{pullRequestId}/{resource}/{iterationId}", ResourceVersion: 2},
+	{ID: "b5f6bb4f-8d1e-4d79-8d11-4c9172c99c35", Area: "git", ResourceName: "statuses", RouteTemplate: "{project}/_apis/{area}/repositories/{repositoryId}/pullRequests/{pullRequestId}/{resource}/{statusId}"},
 }
 
 var azureStatusStates = []string{"notSet", "pending", "succeeded", "failed", "error", "notApplicable"}
@@ -58,6 +60,10 @@ func (s *Server) azureRoutes(mux *http.ServeMux) {
 	api("GET /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/labels", s.azureListLabels)
 	api("POST /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/labels", s.azureAddLabel)
 	api("DELETE /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/labels/{label}", s.azureRemoveLabel)
+	api("GET /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/iterations", s.azureListIterations)
+	api("GET /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/iterations/{iteration}", s.azureGetIteration)
+	api("POST /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/statuses", s.azureCreatePRStatus)
+	api("GET /{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{id}/statuses", s.azureListPRStatuses)
 	api("POST /{org}/{project}/_apis/git/repositories/{repo}/commits/{sha}/statuses", s.azureCreateStatus)
 	api("GET /{org}/{project}/_apis/git/repositories/{repo}/commits/{sha}/statuses", s.azureListStatuses)
 }
@@ -77,7 +83,10 @@ func azureCollection[T any](w http.ResponseWriter, values []T) {
 func (s *Server) azureOptions(w http.ResponseWriter, _ *http.Request, _ principal) {
 	locations := make([]azureLocation, 0, len(azureLocations))
 	for _, l := range azureLocations {
-		l.MinVersion, l.MaxVersion, l.ReleasedVersion, l.ResourceVersion = "1.0", "7.1", "7.1", 1
+		l.MinVersion, l.MaxVersion, l.ReleasedVersion = "1.0", "7.1", "7.1"
+		if l.ResourceVersion == 0 {
+			l.ResourceVersion = 1
+		}
 		locations = append(locations, l)
 	}
 	azureCollection(w, locations)
@@ -522,7 +531,7 @@ func (s *Server) azureApplyStatusLocked(pr *pullRequest, req azureUpdatePRReques
 			if pr.mergeabilityKnown(now) && pr.conflicts {
 				return "The pull request cannot be completed because it has merge conflicts.", http.StatusBadRequest
 			}
-			if missing := s.missingRequiredStatusesLocked(pr); len(missing) > 0 {
+			if missing := s.azureMissingRequiredStatusesLocked(pr); len(missing) > 0 {
 				return "The pull request cannot be completed because the following required policies are not met: status " + strings.Join(missing, ", ") + ".", http.StatusBadRequest
 			}
 		}
@@ -566,7 +575,7 @@ func (s *Server) processAzureCompletions(ctx context.Context) {
 
 func (s *Server) completeAzurePR(ctx context.Context, pr *pullRequest) {
 	s.store.mu.Lock()
-	missing := s.missingRequiredStatusesLocked(pr)
+	missing := s.azureMissingRequiredStatusesLocked(pr)
 	merge := mergeRequest{
 		pr: pr, expectedHead: pr.completionSourceSHA, message: defaultMergeMessage(pr, pr.completionMessage),
 		squashMessage: defaultSquashMessage(pr, pr.completionMessage), author: actor(AzureDevOps, pr.author),
@@ -736,4 +745,175 @@ func (s *Server) azureListStatuses(w http.ResponseWriter, r *http.Request, _ pri
 		out = append(out, s.azureStatusJSON(rp, statuses[i], requestBaseURL(r)))
 	}
 	azureCollection(w, out)
+}
+
+// azurePRURL is the REST URL of a pull request, the base of its iterations and statuses URLs.
+func azurePRURL(pr *pullRequest, base string) string {
+	r := pr.repo
+	return fmt.Sprintf("%s/%s/%s/_apis/git/repositories/%s/pullRequests/%d", base, r.owner, r.projectUUID, r.uuid, pr.number)
+}
+
+func azureIterationJSON(pr *pullRequest, it prIteration, base string) map[string]any {
+	r := pr.repo
+	commitURL := func(sha string) string {
+		return fmt.Sprintf("%s/%s/%s/_apis/git/repositories/%s/commits/%s", base, r.owner, r.projectUUID, r.uuid, sha)
+	}
+	return map[string]any{
+		"id":              it.id,
+		"description":     pr.title,
+		"author":          azureIdentity(pr.author),
+		"createdDate":     formatTime(it.createdAt, azureTimeFormat),
+		"updatedDate":     formatTime(it.createdAt, azureTimeFormat),
+		"sourceRefCommit": azureCommitRef(it.source, commitURL(it.source)),
+		"targetRefCommit": azureCommitRef(it.target, commitURL(it.target)),
+		"hasMoreCommits":  false,
+		"reason":          it.reason,
+		"_links": map[string]any{
+			"self": map[string]any{"href": fmt.Sprintf("%s/iterations/%d", azurePRURL(pr, base), it.id)},
+		},
+	}
+}
+
+// azureListIterations lists a pull request's iterations, oldest first. Azure DevOps creates one when the pull
+// request is created and one for every update of its source branch.
+func (s *Server) azureListIterations(w http.ResponseWriter, r *http.Request, _ principal) {
+	pr, ok := s.azurePR(w, r)
+	if !ok {
+		return
+	}
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	base := requestBaseURL(r)
+	out := make([]map[string]any, 0, len(pr.iterations))
+	for _, it := range pr.iterations {
+		out = append(out, azureIterationJSON(pr, it, base))
+	}
+	azureCollection(w, out)
+}
+
+func azureIterationNotFound(w http.ResponseWriter, id string) {
+	azureErrorResponse(w, http.StatusNotFound,
+		fmt.Sprintf("TF401181: The requested pull request iteration was not found. Iteration ID: %s.", id),
+		"GitPullRequestIterationNotFoundException")
+}
+
+func (s *Server) azureGetIteration(w http.ResponseWriter, r *http.Request, _ principal) {
+	pr, ok := s.azurePR(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.Atoi(r.PathValue("iteration"))
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	if err != nil || id < 1 || id > len(pr.iterations) {
+		azureIterationNotFound(w, r.PathValue("iteration"))
+		return
+	}
+	writeJSON(w, http.StatusOK, azureIterationJSON(pr, pr.iterations[id-1], requestBaseURL(r)))
+}
+
+func azurePRStatusJSON(pr *pullRequest, st *prStatus, base string) map[string]any {
+	body := map[string]any{
+		"id":           st.id,
+		"state":        st.state,
+		"description":  st.description,
+		"targetUrl":    st.targetURL,
+		"context":      map[string]any{"name": st.name, "genre": st.genre},
+		"creationDate": formatTime(st.createdAt, azureTimeFormat),
+		"updatedDate":  formatTime(st.updatedAt, azureTimeFormat),
+		"createdBy":    azureIdentity(st.author),
+		"_links": map[string]any{
+			"self": map[string]any{"href": fmt.Sprintf("%s/statuses/%d", azurePRURL(pr, base), st.id)},
+		},
+	}
+	if st.iterationID > 0 {
+		body["iterationId"] = st.iterationID
+	}
+	return body
+}
+
+// azureCreatePRStatus posts a status to a pull request. Every post adds a status, even for a context that already
+// has one; the latest status of a context is the one that counts. iterationId, when set, must name an existing
+// iteration.
+func (s *Server) azureCreatePRStatus(w http.ResponseWriter, r *http.Request, who principal) {
+	pr, ok := s.azurePR(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Context     *azureStatusContext `json:"context"`
+		IterationID *int                `json:"iterationId"`
+		State       string              `json:"state"`
+		Description string              `json:"description"`
+		TargetURL   string              `json:"targetUrl"`
+	}
+	if !decodeJSON(w, r, AzureDevOps, &req) {
+		return
+	}
+	if req.Context == nil || req.Context.Name == "" {
+		azureErrorResponse(w, http.StatusBadRequest, "The status context name cannot be empty.", "InvalidArgumentValueException")
+		return
+	}
+	if req.State == "" {
+		req.State = "notSet"
+	}
+	if !slices.Contains(azureStatusStates, req.State) {
+		azureErrorResponse(w, http.StatusBadRequest, "Invalid status state: "+req.State, "InvalidArgumentValueException")
+		return
+	}
+	now := s.now()
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	iterationID := 0
+	if req.IterationID != nil {
+		iterationID = *req.IterationID
+		if iterationID < 1 || iterationID > len(pr.iterations) {
+			azureIterationNotFound(w, strconv.Itoa(iterationID))
+			return
+		}
+	}
+	st := &prStatus{
+		id: s.store.allocIDLocked(), iterationID: iterationID, name: req.Context.Name, genre: req.Context.Genre,
+		state: req.State, description: req.Description, targetURL: req.TargetURL, author: who.name,
+		createdAt: now, updatedAt: now,
+	}
+	pr.statuses = append(pr.statuses, st)
+	writeJSON(w, http.StatusOK, azurePRStatusJSON(pr, st, requestBaseURL(r)))
+}
+
+func (s *Server) azureListPRStatuses(w http.ResponseWriter, r *http.Request, _ principal) {
+	pr, ok := s.azurePR(w, r)
+	if !ok {
+		return
+	}
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	base := requestBaseURL(r)
+	out := make([]map[string]any, 0, len(pr.statuses))
+	for _, st := range pr.statuses {
+		out = append(out, azurePRStatusJSON(pr, st, base))
+	}
+	azureCollection(w, out)
+}
+
+// azureMissingRequiredStatusesLocked returns the required statuses of pr's target branch whose status policy is not
+// met. Azure DevOps status policies read pull request statuses, never commit statuses. A requirement names a status
+// as "genre/name", or as "name" for any genre. The latest pull request status for it decides; it must be succeeded
+// and posted for the latest iteration or for no iteration, as with the policy's "reset status whenever there are
+// new changes" option.
+func (s *Server) azureMissingRequiredStatusesLocked(pr *pullRequest) []string {
+	latestIteration := pr.latestIterationID()
+	var missing []string
+	for _, required := range pr.repo.protection[pr.target] {
+		var latest *prStatus
+		for _, st := range pr.statuses {
+			if st.name == required || st.genre+"/"+st.name == required {
+				latest = st
+			}
+		}
+		if latest == nil || latest.state != "succeeded" || (latest.iterationID != 0 && latest.iterationID != latestIteration) {
+			missing = append(missing, required)
+		}
+	}
+	return missing
 }

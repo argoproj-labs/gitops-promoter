@@ -108,6 +108,24 @@ func bitbucketDCRequest(ctx context.Context, method, path, body string) (int, st
 	return resp.StatusCode, string(respBody)
 }
 
+// azure sends an authenticated request to the fixture repository's Azure DevOps git resource at path (relative to
+// /{org}/{project}/_apis/git/repositories/{repo}) and returns the status code and body.
+func (f *fixture) azure(ctx context.Context, method, path, body string) (int, string) {
+	GinkgoHelper()
+	url := fmt.Sprintf("https://%s/%s/%s/_apis/git/repositories/%s%s?api-version=7.1",
+		srv.Domain(scmserver.AzureDevOps), f.repo.Owner, f.repo.Project, f.repo.Name, path)
+	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(body))
+	Expect(err).NotTo(HaveOccurred())
+	req.SetBasicAuth("", testToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp.StatusCode, string(respBody)
+}
+
 func statusCodes(records []scmserver.RequestRecord) []int {
 	codes := make([]int, 0, len(records))
 	for _, rec := range records {
@@ -181,7 +199,48 @@ var _ = Describe("provider quirks", func() {
 			Expect(err).To(MatchError(ContainSubstring("required policies are not met")))
 			Expect(f.serverPR(ctx, prObj.Status.ID).CompletionQueued).To(BeFalse())
 
+			By("still refusing while the status exists only as a commit status, which status policies do not read")
+			status, body := f.azure(ctx, http.MethodPost, "/commits/"+f.headSHA+"/statuses",
+				`{"state":"succeeded","context":{"name":"promoter-gate","genre":"promoter"}}`)
+			Expect(status).To(Equal(http.StatusCreated), body)
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(ContainSubstring("required policies are not met")))
+
+			By("completing once the provider mirrors the status onto the pull request's iteration")
 			_, err = f.statuses.Set(ctx, f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.serverPR(ctx, prObj.Status.ID).Statuses).To(ContainElement(scmserver.PullRequestStatusInfo{
+				Context: "promoter-gate", Genre: "promoter", State: "succeeded", IterationID: 1,
+			}))
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.serverPR(ctx, prObj.Status.ID).CompletionQueued).To(BeTrue())
+		})
+
+		It("adds an iteration for every source branch update, and a status for an older iteration no longer meets the policy", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.AzureDevOps)
+			Expect(admin.SetProtection(ctx, f.repo.ID, targetBranch, scmserver.ProtectionRequest{RequiredStatuses: []string{"promoter/promoter-gate"}})).To(Succeed())
+			prObj := f.createPR(ctx, "iterations")
+			moved := f.pushToSource(ctx, "replicas: 4\n")
+			Eventually(func(g Gomega) {
+				g.Expect(f.serverPR(ctx, prObj.Status.ID).Iterations).To(Equal(2))
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+			_, body := f.azure(ctx, http.MethodGet, "/pullRequests/"+prObj.Status.ID+"/iterations", "")
+			Expect(gjson.Get(body, "value.#.sourceRefCommit.commitId").Value()).To(Equal([]any{f.headSHA, moved}))
+			Expect(gjson.Get(body, "value.#.reason").Value()).To(Equal([]any{"create", "push"}))
+
+			By("refusing with a successful status for the first iteration")
+			_, err := f.statuses.Set(ctx, f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.serverPR(ctx, prObj.Status.ID).Statuses).To(ConsistOf(HaveField("IterationID", 1)))
+			prObj.Spec.MergeSha = moved
+			_, err = f.prs.Merge(ctx, prObj)
+			Expect(err).To(MatchError(ContainSubstring("required policies are not met")))
+
+			By("completing with a successful status for the latest iteration")
+			latest := f.commitStatus("promoter-gate", v1alpha1.CommitPhaseSuccess)
+			latest.Spec.Sha = moved
+			_, err = f.statuses.Set(ctx, latest)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = f.prs.Merge(ctx, prObj)
 			Expect(err).NotTo(HaveOccurred())

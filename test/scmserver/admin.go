@@ -131,15 +131,28 @@ type PullRequestInfo struct {
 	PreviewMergeSHA       string     `json:"previewMergeSHA,omitempty"`
 	CompletionFailure     string     `json:"completionFailure,omitempty"`
 	Labels                []string   `json:"labels"`
-	ID                    int64      `json:"id"`
-	RepoID                int64      `json:"repoID"`
-	Number                int        `json:"number"`
-	Conflicts             bool       `json:"conflicts"`
-	MergeabilityKnown     bool       `json:"mergeabilityKnown"`
-	CompletionQueued      bool       `json:"completionQueued"`
-	AsyncMergePending     bool       `json:"asyncMergePending"`
-	HiddenFromLists       bool       `json:"hiddenFromLists"`
-	Squashed              bool       `json:"squashed"`
+	// Statuses are the statuses posted to the pull request itself (Azure DevOps), oldest first.
+	Statuses []PullRequestStatusInfo `json:"statuses,omitempty"`
+	// Iterations is the number of Azure DevOps iterations: one at creation and one per source branch update.
+	Iterations        int   `json:"iterations,omitempty"`
+	ID                int64 `json:"id"`
+	RepoID            int64 `json:"repoID"`
+	Number            int   `json:"number"`
+	Conflicts         bool  `json:"conflicts"`
+	MergeabilityKnown bool  `json:"mergeabilityKnown"`
+	CompletionQueued  bool  `json:"completionQueued"`
+	AsyncMergePending bool  `json:"asyncMergePending"`
+	HiddenFromLists   bool  `json:"hiddenFromLists"`
+	Squashed          bool  `json:"squashed"`
+}
+
+// PullRequestStatusInfo describes a status posted to an Azure DevOps pull request.
+type PullRequestStatusInfo struct {
+	Context string `json:"context"`
+	Genre   string `json:"genre,omitempty"`
+	State   string `json:"state"`
+	// IterationID is the iteration the status was posted for, or 0 for the whole pull request.
+	IterationID int `json:"iterationID,omitempty"`
 }
 
 // PullRequestAction changes a pull request out of band, as a person using the provider's UI would.
@@ -735,7 +748,12 @@ func timePtr(t time.Time) *time.Time {
 
 func (s *Server) pullInfoLocked(pr *pullRequest) PullRequestInfo {
 	now := s.now()
+	statuses := make([]PullRequestStatusInfo, 0, len(pr.statuses))
+	for _, st := range pr.statuses {
+		statuses = append(statuses, PullRequestStatusInfo{Context: st.name, Genre: st.genre, State: st.state, IterationID: st.iterationID})
+	}
 	return PullRequestInfo{
+		Statuses: statuses, Iterations: len(pr.iterations),
 		Provider: pr.repo.provider, Repo: pr.repo.fullName(), RepoID: pr.repo.id, Number: pr.number,
 		ID: pr.globalID, State: string(pr.state), Title: pr.title, Body: pr.body, Source: pr.source,
 		Target: pr.target, Author: pr.author, HeadSHA: pr.headSHA, BaseSHA: pr.baseSHA,
