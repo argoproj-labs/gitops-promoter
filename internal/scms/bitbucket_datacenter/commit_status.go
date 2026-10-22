@@ -37,7 +37,8 @@ func NewBitbucketDataCenterCommitStatusProvider(k8sClient k8sClient.Client, scmP
 	}, nil
 }
 
-// buildStatusRequest is the request body for POST /rest/build-status/1.0/commits/{commitId}.
+// buildStatusRequest is the request body for POST
+// /rest/api/1.0/projects/{projectKey}/repos/{repositorySlug}/commits/{commitId}/builds.
 type buildStatusRequest struct {
 	State       string `json:"state"`
 	Key         string `json:"key"`
@@ -72,7 +73,13 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		Description: commitStatus.Spec.Description,
 	}
 
-	path := "/rest/build-status/1.0/commits/" + commitStatus.Spec.Sha
+	// The repository builds resource (Bitbucket 7.4+) rather than the deprecated /rest/build-status resource, whose
+	// statuses the Required Builds merge check does not read.
+	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/commits/%s/builds",
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Project),
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Name),
+		url.PathEscape(commitStatus.Spec.Sha),
+	)
 
 	start := time.Now()
 	statusCode, _, err := cs.client.do(ctx, http.MethodPost, path, payload)
