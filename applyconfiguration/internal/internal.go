@@ -689,6 +689,9 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
       default: Cluster
+    - name: tektonCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonCommitStatusConfiguration
     - name: timedCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusConfiguration
@@ -1928,6 +1931,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: secretRef
       type:
         namedType: io.k8s.api.core.v1.LocalObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatus
   map:
     fields:

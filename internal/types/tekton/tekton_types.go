@@ -19,6 +19,12 @@ type ObjectReference struct {
 	Name string `json:"name,omitempty"`
 }
 
+// TektonRunResource represents an interface for TektonRunResources
+// +kubebuilder:object:generate=false
+type TektonRunResource interface {
+	GetConditions() []metav1.Condition
+}
+
 // +versionName=v1
 
 // +kubebuilder:object:root=true
@@ -85,6 +91,15 @@ const (
 	TektonKindTask     = "Task"
 	TektonKindPipeline = "Pipeline"
 )
+
+// Below are two helper functions that allow for the interface to be satisfied
+func (t *TaskRun) GetConditions() []metav1.Condition {
+	return t.GetConditions()
+}
+
+func (p *PipelineRun) GetConditions() []metav1.Condition {
+	return p.GetConditions()
+}
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
