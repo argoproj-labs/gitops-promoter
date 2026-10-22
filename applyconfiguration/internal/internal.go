@@ -1131,6 +1131,9 @@ var schemaYAML = typed.YAMLObject(`types:
         map:
           elementType:
             scalar: string
+    - name: httpRequestVariables
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HTTPRequestVariablesSpec
     - name: method
       type:
         scalar: string
@@ -1142,6 +1145,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
       default: 30s
     - name: urlTemplate
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HTTPRequestVariablesSpec
+  map:
+    fields:
+    - name: expression
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HealthyDryShas
