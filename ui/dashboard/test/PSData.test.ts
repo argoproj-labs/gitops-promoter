@@ -291,6 +291,7 @@ const environmentWithChecks: Environment = {
     hydrated: {},
     commitStatuses: [
       { key: 'timer', phase: 'pending' },
+      { key: 'dependents-successful', phase: 'pending' },
       { key: 'no-manager', phase: 'success' },
     ],
   },
