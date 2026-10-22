@@ -39,7 +39,17 @@ type GitLab struct {
 }
 
 // BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
-type BitbucketCloud struct{}
+type BitbucketCloud struct {
+	// Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+	// Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+	// and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "bitbucket.org"`, message="Instead of setting the domain to bitbucket.org, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	Domain string `json:"domain,omitempty"`
+}
 
 // BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration.
 type BitbucketDataCenter struct {

@@ -2021,7 +2021,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 		})
 	})
 
-	Describe("Scm - use PromotionStrategy SCM credentials", func() {
+	Describe("Scm - use PromotionStrategy SCM credentials", Label(fakeSCMOnlyLabel), func() {
 		var (
 			scmAuthCtx               context.Context
 			scmAuthName              string
@@ -2242,7 +2242,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		wrcs              *promoterv1alpha1.WebRequestCommitStatus
 	)
 
-	Context("when the URL host matches the SCM provider domain", func() {
+	Context("when the URL host matches the SCM provider domain", Label(fakeSCMOnlyLabel), func() {
 		BeforeEach(func() {
 			ctx = context.Background()
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2354,7 +2354,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		})
 	})
 
-	Context("when the URL host does not match the SCM provider domain", func() {
+	Context("when the URL host does not match the SCM provider domain", Label(fakeSCMOnlyLabel), func() {
 		BeforeEach(func() {
 			ctx = context.Background()
 			By("Creating unique SCM resources with Fake domain that does not match the test server")

@@ -423,6 +423,10 @@ spec:
   secretRef:
     name: <your-secret-name>
   bitbucketCloud: {}
+  # To reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible host, set the domain.
+  # API requests then go to https://<domain>/2.0 and git/web URLs use https://<domain>.
+  # bitbucketCloud:
+  #   domain: bitbucket.example.com
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository

@@ -146,7 +146,10 @@ export type components = {
             secretRef: components["schemas"]["LocalObjectReference"];
         };
         /** @description BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings. */
-        BitbucketCloud: Record<string, never>;
+        BitbucketCloud: {
+            /** @description Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty. */
+            domain?: string;
+        };
         /** @description BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name. */
         BitbucketCloudRepo: {
             /**

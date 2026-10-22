@@ -653,8 +653,7 @@ type restoredPromotionStrategy struct {
 
 func (s restoredPromotionStrategy) developmentPRKey() types.NamespacedName {
 	return types.NamespacedName{
-		Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
-			s.gitRepo.Spec.Fake.Owner, s.gitRepo.Spec.Fake.Name, s.ctpDev.Spec.ProposedBranch, s.ctpDev.Spec.ActiveBranch)),
+		Name:      utils.KubeSafeUniqueName(scmTarget.prName(s.gitRepo, s.ctpDev.Spec.ProposedBranch, s.ctpDev.Spec.ActiveBranch)),
 		Namespace: "default",
 	}
 }

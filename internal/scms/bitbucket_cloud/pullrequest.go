@@ -23,13 +23,15 @@ import (
 type PullRequest struct {
 	client    *bitbucket.Client
 	k8sClient client.Client
+	domain    string
 }
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
-// NewBitbucketCloudPullRequestProvider creates a new instance of PullRequest for Bitbucket Cloud.
-func NewBitbucketCloudPullRequestProvider(k8sClient client.Client, secret v1.Secret) (*PullRequest, error) {
-	client, err := GetClient(secret)
+// NewBitbucketCloudPullRequestProvider creates a new instance of PullRequest for Bitbucket Cloud. A non-empty
+// domain overrides the Bitbucket Cloud host (see v1alpha1.BitbucketCloud.Domain).
+func NewBitbucketCloudPullRequestProvider(k8sClient client.Client, secret v1.Secret, domain string) (*PullRequest, error) {
+	client, err := GetClient(secret, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +39,7 @@ func NewBitbucketCloudPullRequestProvider(k8sClient client.Client, secret v1.Sec
 	return &PullRequest{
 		client:    client,
 		k8sClient: k8sClient,
+		domain:    domain,
 	}, nil
 }
 
@@ -435,7 +438,8 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 		return "", fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	return fmt.Sprintf("https://bitbucket.org/%s/%s/pull-requests/%s",
+	return fmt.Sprintf("%s/%s/%s/pull-requests/%s",
+		webBaseURL(pr.domain),
 		repo.Spec.BitbucketCloud.Owner,
 		repo.Spec.BitbucketCloud.Name,
 		prObj.Status.ID), nil

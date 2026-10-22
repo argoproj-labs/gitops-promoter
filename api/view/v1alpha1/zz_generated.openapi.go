@@ -948,6 +948,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref common
 			SchemaProps: spec.SchemaProps{
 				Description: "BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.",
 				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}
