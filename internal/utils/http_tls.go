@@ -49,9 +49,3 @@ func ConfigureDefaultHTTPTransport() error {
 	http.DefaultTransport = cloned
 	return nil
 }
-
-// ConfigureDefaultTransportFromEnv is kept as an alias for callers/tests that
-// historically only cared about SSL_CERT_FILE. Prefer ConfigureDefaultHTTPTransport.
-func ConfigureDefaultTransportFromEnv() error {
-	return ConfigureDefaultHTTPTransport()
-}

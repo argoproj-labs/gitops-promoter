@@ -44,9 +44,9 @@ type TLSSettings struct {
 // processTLS holds the parsed process-wide TLS policy set at startup.
 // Empty/zero means leave that field to Go defaults.
 type processTLSPolicy struct {
-	minVersion       uint16
 	cipherSuites     []uint16
 	curvePreferences []tls.CurveID
+	minVersion       uint16
 }
 
 var (
@@ -270,27 +270,4 @@ func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
 	}
 
 	return tlsCfg, warnings, nil
-}
-
-// TLSOpt returns a tls.Config mutator suitable for controller-runtime TLSOpts.
-// When no settings are configured, it returns nil.
-func (t TLSSettings) TLSOpt() (func(*tls.Config), []string, error) {
-	cfg, warnings, err := t.BuildTLSConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-	if cfg == nil {
-		return nil, nil, nil
-	}
-	return func(c *tls.Config) {
-		if cfg.MinVersion != 0 {
-			c.MinVersion = cfg.MinVersion
-		}
-		if len(cfg.CipherSuites) > 0 {
-			c.CipherSuites = cfg.CipherSuites
-		}
-		if len(cfg.CurvePreferences) > 0 {
-			c.CurvePreferences = cfg.CurvePreferences
-		}
-	}, warnings, nil
 }

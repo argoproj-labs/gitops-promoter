@@ -234,8 +234,8 @@ func TestTLSVersionName(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // mutates process-wide TLS policy shared across the package
 func TestSetProcessTLSSettingsAndApply(t *testing.T) {
-	// Not parallel: mutates process-wide TLS policy.
 	t.Cleanup(ResetProcessTLSSettingsForTest)
 	ResetProcessTLSSettingsForTest()
 
@@ -273,7 +273,7 @@ func TestSetProcessTLSSettingsAndApply(t *testing.T) {
 	if opt == nil {
 		t.Fatal("expected non-nil ProcessTLSOpt")
 	}
-	cfg2 := &tls.Config{} //nolint:gosec
+	cfg2 := &tls.Config{} //nolint:gosec // empty config; MinVersion set by ProcessTLSOpt
 	opt(cfg2)
 	if cfg2.MinVersion != tls.VersionTLS13 {
 		t.Fatalf("opt MinVersion got %d, want %d", cfg2.MinVersion, tls.VersionTLS13)
