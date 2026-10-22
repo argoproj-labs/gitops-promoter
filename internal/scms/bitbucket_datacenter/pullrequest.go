@@ -289,7 +289,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return scms.MergeResult{}, fmt.Errorf("failed to merge pull request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to send the merge request: %w", err)
 	}
 	if statusCode != http.StatusOK {
 		return scms.MergeResult{}, fmt.Errorf("unexpected status code %d when merging pull request: %s", statusCode, string(body))
