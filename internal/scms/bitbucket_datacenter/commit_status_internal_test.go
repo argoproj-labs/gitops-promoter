@@ -62,13 +62,13 @@ var _ = Describe("CommitStatus", func() {
 	})
 
 	// The Required Builds merge check reads only the repository builds resource, not the deprecated
-	// /rest/build-status resource.
-	It("reports the build through the repository builds resource", func() {
+	// /rest/build-status resource, and matches builds by their parent key.
+	It("reports the build through the repository builds resource, with the status name as its parent key", func() {
 		updated, err := provider.Set(context.Background(), cs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(path).To(Equal("POST /rest/api/1.0/projects/PROJ/repos/my%20repo/commits/" + sha + "/builds"))
 		Expect(body).To(Equal(map[string]any{
-			"key": "promoter-gate", "name": "promoter-gate", "state": "SUCCESSFUL",
+			"key": "promoter-gate", "parent": "promoter-gate", "name": "promoter-gate", "state": "SUCCESSFUL",
 			"url": "https://ci.example.com/gate", "description": "checked by the promoter",
 		}))
 		Expect(updated.Status.Phase).To(Equal(v1alpha1.CommitPhaseSuccess))

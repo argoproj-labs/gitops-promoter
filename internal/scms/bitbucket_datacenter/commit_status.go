@@ -40,8 +40,10 @@ func NewBitbucketDataCenterCommitStatusProvider(k8sClient k8sClient.Client, scmP
 // buildStatusRequest is the request body for POST
 // /rest/api/1.0/projects/{projectKey}/repos/{repositorySlug}/commits/{commitId}/builds.
 type buildStatusRequest struct {
-	State       string `json:"state"`
-	Key         string `json:"key"`
+	State string `json:"state"`
+	Key   string `json:"key"`
+	// Parent is the key the Required Builds merge check matches builds by.
+	Parent      string `json:"parent"`
 	Name        string `json:"name"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
@@ -68,6 +70,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	payload := buildStatusRequest{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),
 		Key:         commitStatus.Spec.Name,
+		Parent:      commitStatus.Spec.Name,
 		Name:        commitStatus.Spec.Name,
 		URL:         commitURL,
 		Description: commitStatus.Spec.Description,
