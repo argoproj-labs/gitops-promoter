@@ -96,10 +96,20 @@ var _ = Describe("PullRequest version handling", func() {
 	})
 
 	It("merges with a merge commit and the promoter's commit message", func() {
+		prJSON = `{"id":1,"version":0,"fromRef":{"displayId":"env-next","latestCommit":"1111111111111111111111111111111111111111"},"toRef":{"displayId":"env"}}`
+		prObj.Spec.MergeSha = "1111111111111111111111111111111111111111"
 		_, err := provider.Merge(context.Background(), prObj)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(requests[http.MethodPost]).To(HaveKeyWithValue("strategyId", "no-ff"))
 		Expect(requests[http.MethodPost]).To(HaveKeyWithValue("message", "Promote\n\nPull-request-id: 1"))
+	})
+
+	It("refuses to merge when the source branch moved past the expected merge SHA", func() {
+		prJSON = `{"id":1,"version":0,"fromRef":{"displayId":"env-next","latestCommit":"2222222222222222222222222222222222222222"},"toRef":{"displayId":"env"}}`
+		prObj.Spec.MergeSha = "1111111111111111111111111111111111111111"
+		_, err := provider.Merge(context.Background(), prObj)
+		Expect(err).To(MatchError(ContainSubstring("does not match the expected merge SHA")))
+		Expect(requests).NotTo(HaveKey(http.MethodPost), "no merge request is sent")
 	})
 
 	It("takes the merge commit from the MERGED activity when the pull request has no mergeCommit property", func() {

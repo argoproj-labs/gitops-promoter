@@ -37,10 +37,13 @@ func NewBitbucketDataCenterCommitStatusProvider(k8sClient k8sClient.Client, scmP
 	}, nil
 }
 
-// buildStatusRequest is the request body for POST /rest/build-status/1.0/commits/{commitId}.
+// buildStatusRequest is the request body for POST
+// /rest/api/1.0/projects/{projectKey}/repos/{repositorySlug}/commits/{commitId}/builds.
 type buildStatusRequest struct {
-	State       string `json:"state"`
-	Key         string `json:"key"`
+	State string `json:"state"`
+	Key   string `json:"key"`
+	// Parent is the key the Required Builds merge check matches builds by.
+	Parent      string `json:"parent"`
 	Name        string `json:"name"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
@@ -58,6 +61,9 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
+	if repo.Spec.BitbucketDataCenter == nil {
+		return nil, fmt.Errorf("GitRepository %q does not have BitbucketDataCenter configuration", repo.Name)
+	}
 
 	commitURL := commitStatus.Spec.Url
 	if commitURL == "" {
@@ -67,12 +73,19 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	payload := buildStatusRequest{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),
 		Key:         commitStatus.Spec.Name,
+		Parent:      commitStatus.Spec.Name,
 		Name:        commitStatus.Spec.Name,
 		URL:         commitURL,
 		Description: commitStatus.Spec.Description,
 	}
 
-	path := "/rest/build-status/1.0/commits/" + commitStatus.Spec.Sha
+	// The repository builds resource (Bitbucket 7.4+) rather than the deprecated /rest/build-status resource, whose
+	// statuses the Required Builds merge check does not read.
+	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/commits/%s/builds",
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Project),
+		url.PathEscape(repo.Spec.BitbucketDataCenter.Name),
+		url.PathEscape(commitStatus.Spec.Sha),
+	)
 
 	start := time.Now()
 	statusCode, _, err := cs.client.do(ctx, http.MethodPost, path, payload)
