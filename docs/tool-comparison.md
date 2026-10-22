@@ -74,7 +74,7 @@ be assembled in a DAG. You can interact with the DAG via a custom UI/CLI.
 ## Codefresh GitOps (Deprecated)
 
 > [!WARNING]
-> Codefresh (now under Octopus Deploy) has disabled their Promotions feature, and it will no longer be available starting with version 0.24.0.
+> Codefresh (now under Octopus Deploy) has disabled their Promotions feature, and it will no longer be available in GitOps Runtimes released after version 0.24.0.
 
 [Codefresh GitOps' promotion feature](https://codefresh.io/docs/docs/promotions/promotions-overview/) uses file selectors and json paths. You can structure your git repo however you want. Then you write file 
 selectors and json paths to determine which parts of the repo should be moved from file to file. For example, if your 
