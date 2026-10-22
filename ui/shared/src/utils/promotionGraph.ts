@@ -1,35 +1,49 @@
+/**
+ * Builds and lays out the promotion graph of a PromotionStrategy's environments.
+ *
+ * Invariants relied on, all enforced by k8s validation on the PromotionStrategy resource:
+ * - environment branch names are unique, so a branch is a node's identity
+ * - an environment never depends on itself
+ * - a single dependsOn list has no duplicate entries
+ *
+ * Not validated, so handled here: dependsOn entries naming a branch that is not declared in the
+ * environments list. Those edges are dropped.
+ */
 export const NODE_WIDTH = 154;
 export const NODE_HEIGHT = 60;
 export const COLUMN_GAP = 72;
 export const ROW_GAP = 24;
 export const CANVAS_PADDING = 16;
 
+/** The subset of a PromotionStrategy needed to build the graph. */
 export interface PromotionGraphSource {
   spec?: {
     environments?: ReadonlyArray<{ branch: string; dependsOn?: readonly string[] }>;
   };
 }
 
+/** A single environment. `branch` is the node's unique identity. */
 export interface GraphNode {
-  id: string;
   branch: string;
   index: number;
 }
 
+/** A promotion dependency: `from` must be promoted before `to`. */
 export interface GraphEdge {
   id: string;
   from: string;
   to: string;
 }
 
+/** Nodes in spec order, plus edges and branch-keyed parent/child adjacency lists. */
 export interface PromotionGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   parents: Record<string, string[]>;
   children: Record<string, string[]>;
-  inferredLinear: boolean;
 }
 
+/** A node with its computed canvas position and layer (column) index. */
 export interface PositionedNode extends GraphNode {
   x: number;
   y: number;
@@ -38,6 +52,7 @@ export interface PositionedNode extends GraphNode {
   layer: number;
 }
 
+/** Positioned nodes in spec order, the branches in each layer, and the canvas size. */
 export interface GraphLayout {
   nodes: PositionedNode[];
   layers: string[][];
@@ -45,6 +60,7 @@ export interface GraphLayout {
   height: number;
 }
 
+/** Overrides for the default layout dimensions; `sweeps` is the number of ordering passes. */
 export interface LayoutOptions {
   nodeWidth?: number;
   nodeHeight?: number;
@@ -54,37 +70,36 @@ export interface LayoutOptions {
   sweeps?: number;
 }
 
+/** A canvas coordinate. */
 export interface Point {
   x: number;
   y: number;
 }
 
+/**
+ * Builds the graph from the declared environments. If any environment declares dependsOn, those
+ * declarations are the edges (environments without one are roots); otherwise the environments
+ * are chained in spec order. Edges to undeclared branches are dropped.
+ */
 export function buildPromotionGraph(source: PromotionGraphSource): PromotionGraph {
-  const specEnvs = source.spec?.environments ?? [];
-  const seen = new Set<string>();
-  const envs: { branch: string; dependsOn?: readonly string[] }[] = [];
-  for (const env of specEnvs) {
-    if (seen.has(env.branch)) continue;
-    seen.add(env.branch);
-    envs.push(env);
-  }
+  const envs = source.spec?.environments ?? [];
+  const seen = new Set(envs.map((env) => env.branch));
 
   const nodes: GraphNode[] = envs.map((env, index) => ({
-    id: env.branch,
     branch: env.branch,
     index,
   }));
   const parents: Record<string, string[]> = {};
   const children: Record<string, string[]> = {};
   for (const node of nodes) {
-    parents[node.id] = [];
-    children[node.id] = [];
+    parents[node.branch] = [];
+    children[node.branch] = [];
   }
 
   const anyDeclared = envs.some((env) => (env.dependsOn?.length ?? 0) > 0);
   const edges: GraphEdge[] = [];
   const addEdge = (from: string, to: string) => {
-    if (from === to || !seen.has(from) || !seen.has(to) || parents[to].includes(from)) return;
+    if (!seen.has(from)) return;
     parents[to].push(from);
     children[from].push(to);
     edges.push({ id: `${from}->${to}`, from, to });
@@ -98,13 +113,15 @@ export function buildPromotionGraph(source: PromotionGraphSource): PromotionGrap
     for (let i = 1; i < envs.length; i++) addEdge(envs[i - 1].branch, envs[i].branch);
   }
 
-  return { nodes, edges, parents, children, inferredLinear: !anyDeclared };
+  return { nodes, edges, parents, children };
 }
 
+/** Direct parents of a branch; empty for unknown branches. */
 export function parentsOf(graph: PromotionGraph, id: string): string[] {
   return graph.parents[id] ?? [];
 }
 
+/** Direct children of a branch; empty for unknown branches. */
 export function childrenOf(graph: PromotionGraph, id: string): string[] {
   return graph.children[id] ?? [];
 }
@@ -122,10 +139,12 @@ function walk(start: string, next: Record<string, string[]>): Set<string> {
   return visited;
 }
 
+/** All transitive parents of a branch, excluding the branch itself. Terminates on cycles. */
 export function ancestors(graph: PromotionGraph, id: string): Set<string> {
   return walk(id, graph.parents);
 }
 
+/** All transitive children of a branch, excluding the branch itself. Terminates on cycles. */
 export function descendants(graph: PromotionGraph, id: string): Set<string> {
   return walk(id, graph.children);
 }
@@ -147,7 +166,7 @@ function computeLayers(graph: PromotionGraph): Map<string, number> {
     depth.set(id, d);
     return d;
   };
-  for (const node of graph.nodes) visit(node.id);
+  for (const node of graph.nodes) visit(node.branch);
   return depth;
 }
 
@@ -180,6 +199,10 @@ function reorder(
   return result as string[];
 }
 
+/**
+ * Layered left-to-right layout: each node sits one column right of its deepest parent, and
+ * nodes within a column are reordered by barycenter to reduce edge crossings.
+ */
 export function layoutPromotionGraph(
   graph: PromotionGraph,
   options: LayoutOptions = {},
@@ -198,7 +221,7 @@ export function layoutPromotionGraph(
   const depth = computeLayers(graph);
   const layerCount = Math.max(...depth.values()) + 1;
   const layers: string[][] = Array.from({ length: layerCount }, () => []);
-  for (const node of graph.nodes) layers[depth.get(node.id)!].push(node.id);
+  for (const node of graph.nodes) layers[depth.get(node.branch)!].push(node.branch);
 
   const positionOf = (layer: string[]) => new Map(layer.map((id, i) => [id, i]));
 
@@ -213,7 +236,7 @@ export function layoutPromotionGraph(
 
   const tallest = Math.max(...layers.map((layer) => layer.length));
   const innerHeight = tallest * nodeHeight + (tallest - 1) * rowGap;
-  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const byId = new Map(graph.nodes.map((n) => [n.branch, n]));
   const positioned: PositionedNode[] = [];
   layers.forEach((layer, l) => {
     const layerHeight = layer.length * nodeHeight + (layer.length - 1) * rowGap;
@@ -239,6 +262,7 @@ export function layoutPromotionGraph(
   };
 }
 
+/** SVG cubic bezier path from a parent node's right-middle to a child node's left-middle. */
 export function edgePath(
   from: Point,
   to: Point,

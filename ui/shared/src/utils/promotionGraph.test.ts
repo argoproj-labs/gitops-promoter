@@ -39,8 +39,7 @@ describe('buildPromotionGraph', () => {
 
   it('infers a linear chain from spec order when no environment declares dependsOn', () => {
     const g = buildPromotionGraph(strategy([{ branch: 'a' }, { branch: 'b' }, { branch: 'c' }]));
-    expect(g.inferredLinear).toBe(true);
-    expect(g.nodes.map((n) => n.id)).toEqual(['a', 'b', 'c']);
+    expect(g.nodes.map((n) => n.branch)).toEqual(['a', 'b', 'c']);
     expect(g.edges.map((e) => [e.from, e.to])).toEqual([
       ['a', 'b'],
       ['b', 'c'],
@@ -54,7 +53,6 @@ describe('buildPromotionGraph', () => {
 
   it('treats empty dependsOn arrays as undeclared for the linear fallback', () => {
     const g = buildPromotionGraph(strategy([{ branch: 'a', dependsOn: [] }, { branch: 'b' }]));
-    expect(g.inferredLinear).toBe(true);
     expect(g.edges).toHaveLength(1);
   });
 
@@ -62,7 +60,6 @@ describe('buildPromotionGraph', () => {
     const g = buildPromotionGraph(
       strategy([{ branch: 'a' }, { branch: 'b' }, { branch: 'c', dependsOn: ['a', 'b'] }]),
     );
-    expect(g.inferredLinear).toBe(false);
     expect(parentsOf(g, 'b')).toEqual([]);
     expect(parentsOf(g, 'c')).toEqual(['a', 'b']);
   });
@@ -74,16 +71,13 @@ describe('buildPromotionGraph', () => {
     expect(g.edges).toHaveLength(3 + 1 + 3 + 1);
   });
 
-  it('ignores unknown parents, self references, and duplicate entries', () => {
+  it('drops edges to branches not declared in the environments list', () => {
     const g = buildPromotionGraph(
-      strategy([
-        { branch: 'a' },
-        { branch: 'b', dependsOn: ['a', 'a', 'b', 'ghost'] },
-        { branch: 'a' },
-      ]),
+      strategy([{ branch: 'a' }, { branch: 'b', dependsOn: ['a', 'ghost'] }]),
     );
     expect(g.nodes).toHaveLength(2);
     expect(g.edges.map((e) => e.id)).toEqual(['a->b']);
+    expect(parentsOf(g, 'b')).toEqual(['a']);
   });
 
   it('returns empty arrays for unknown ids', () => {
@@ -146,7 +140,7 @@ describe('layoutPromotionGraph', () => {
 
   it('layers by longest path', () => {
     const layout = layoutPromotionGraph(buildPromotionGraph(dag));
-    const layerOf = Object.fromEntries(layout.nodes.map((n) => [n.id, n.layer]));
+    const layerOf = Object.fromEntries(layout.nodes.map((n) => [n.branch, n.layer]));
     expect(layerOf).toEqual({
       dev: 0,
       'e2e-1': 1,
@@ -166,7 +160,8 @@ describe('layoutPromotionGraph', () => {
         { branch: 'c', dependsOn: ['a', 'b'] },
       ]),
     );
-    const layerOf = Object.fromEntries(layoutPromotionGraph(g).nodes.map((n) => [n.id, n.layer]));
+    const layout = layoutPromotionGraph(g);
+    const layerOf = Object.fromEntries(layout.nodes.map((n) => [n.branch, n.layer]));
     expect(layerOf.c).toBe(2);
   });
 
@@ -194,14 +189,14 @@ describe('layoutPromotionGraph', () => {
       ]),
     );
     const layout = layoutPromotionGraph(g);
-    const y = Object.fromEntries(layout.nodes.map((n) => [n.id, n.y]));
+    const y = Object.fromEntries(layout.nodes.map((n) => [n.branch, n.y]));
     expect(y.r1 < y.r2).toBe(y.y < y.x);
   });
 
   it('centers narrower layers vertically', () => {
     const layout = layoutPromotionGraph(buildPromotionGraph(dag));
-    const dev = layout.nodes.find((n) => n.id === 'dev')!;
-    const mid = layout.nodes.find((n) => n.id === 'e2e-2')!;
+    const dev = layout.nodes.find((n) => n.branch === 'dev')!;
+    const mid = layout.nodes.find((n) => n.branch === 'e2e-2')!;
     expect(dev.y).toBeCloseTo(mid.y);
   });
 
@@ -217,7 +212,7 @@ describe('layoutPromotionGraph', () => {
 
   it('keeps nodes in spec order in the returned array', () => {
     const layout = layoutPromotionGraph(buildPromotionGraph(dag));
-    expect(layout.nodes.map((n) => n.id)).toEqual(dag.spec!.environments!.map((e) => e.branch));
+    expect(layout.nodes.map((n) => n.branch)).toEqual(dag.spec!.environments!.map((e) => e.branch));
   });
 });
 
