@@ -445,6 +445,11 @@ spec:
 
 To configure the GitOps Promoter with Bitbucket DataCenter or Bitbucket Server, you will need to create either an HTTP access token or use HTTP Basic Auth credentials.
 
+> [!NOTE]
+> Bitbucket DataCenter/Server 7.4 or later is required. The GitOps Promoter reports commit statuses through the
+> repository builds API (`/rest/api/1.0/projects/{projectKey}/repos/{repositorySlug}/commits/{commitId}/builds`),
+> which was added in 7.4.
+
 **Creating a Bitbucket DataCenter/Server HTTP access token**
 
 The GitOps Promoter opens and merges pull requests and sets commit statuses as the owner of the token, so consider
@@ -529,6 +534,11 @@ Check the following settings of every repository the GitOps Promoter manages:
 * **Merge checks**: The GitOps Promoter's commit statuses appear as builds on the pull requests. Merge checks such as
   required approvals or builds also apply to merges by the GitOps Promoter; a vetoed merge is retried until the checks
   pass, so required approvals effectively disable `autoMerge`.
+* **Required builds**: To block merges until the GitOps Promoter's commit statuses pass, add a *Required builds*
+  merge check (Bitbucket DataCenter 7.14+) under **Repository settings** → **Merge checks**. Bitbucket matches required
+  builds by their parent key, which the GitOps Promoter sets to the commit status name, so enter the names exactly as
+  they appear on the builds of a pull request. Commit statuses created by the GitOps Promoter's own gates are named
+  `<key>/<environment branch>`, for example `argocd-health/environment/production`.
 * **Ref name restrictions**: The GitOps Promoter stores promotion history in git notes (`refs/notes/promoter.history`),
   and hydrators such as the Argo CD source hydrator do the same (`refs/notes/hydrator.metadata`). If your instance
   restricts ref names, for example with a pre-receive hook or a branch naming plugin, allow `refs/notes/*`.
