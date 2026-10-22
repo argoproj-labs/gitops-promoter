@@ -61,6 +61,9 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
+	if repo.Spec.BitbucketDataCenter == nil {
+		return nil, fmt.Errorf("GitRepository %q does not have BitbucketDataCenter configuration", repo.Name)
+	}
 
 	commitURL := commitStatus.Spec.Url
 	if commitURL == "" {
