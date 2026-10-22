@@ -91,6 +91,10 @@ func patchControllerConfigurationInstanceID(ctx context.Context, instanceID *str
 	base := cc.DeepCopy()
 	cc.Spec.InstanceID = instanceID
 	Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+	// k8sClient writes straight to the API. Reconcilers read instance ID through
+	// the settings informer and do not watch ControllerConfiguration, so a
+	// reconcile that still sees the previous value succeeds and never retries.
+	waitForCachedControllerInstanceID(ctx, instanceID)
 
 	return func() {
 		restore := &promoterv1alpha1.ControllerConfiguration{}
@@ -101,7 +105,16 @@ func patchControllerConfigurationInstanceID(ctx context.Context, instanceID *str
 		restoreBase := restore.DeepCopy()
 		restore.Spec.InstanceID = nil
 		Expect(k8sClient.Patch(ctx, restore, client.MergeFrom(restoreBase))).To(Succeed())
+		waitForCachedControllerInstanceID(ctx, nil)
 	}
+}
+
+func waitForCachedControllerInstanceID(ctx context.Context, want *string) {
+	Eventually(func(g Gomega) {
+		got, err := settingsMgr.GetInstanceID(ctx)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(got).To(Equal(want))
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 func expectReadyFalseOnInstanceIDDrift(ctx context.Context, key types.NamespacedName, obj utils.PromoterResource) {

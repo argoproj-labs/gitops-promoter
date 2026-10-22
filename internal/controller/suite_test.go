@@ -103,6 +103,9 @@ var (
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
 	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	// settingsMgr is the manager the suite's reconcilers use. It reads
+	// ControllerConfiguration from the informer cache, not the API.
+	settingsMgr *settings.Manager
 )
 
 func TestControllers(t *testing.T) {
@@ -188,7 +191,7 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
-	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
+	settingsMgr = settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
 
