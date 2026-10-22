@@ -989,7 +989,7 @@ func (s *Server) bitbucketDCSetLegacyBuild(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) bitbucketDCListLegacyBuilds(w http.ResponseWriter, r *http.Request, _ principal) {
 	sha := strings.ToLower(r.PathValue("commit"))
-	var builds []*commitStatus
+	builds := []*commitStatus{}
 	seen := map[string]bool{}
 	for _, rp := range s.bitbucketDCReposWithCommit(r, sha) {
 		s.store.mu.Lock()
