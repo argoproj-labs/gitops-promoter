@@ -374,7 +374,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
   it('matches a DependentsSuccessfulCommitStatus by spec.key and status.environments[].branch', () => {
     const dependentsCommitStatus = {
       kind: 'DependentsSuccessfulCommitStatus',
-      spec: { key: 'timer', promotionStrategyRef: { name: 'my-strategy' } },
+      spec: { key: 'dependents-successful', promotionStrategyRef: { name: 'my-strategy' } },
       status: {
         environments: [
           {
@@ -391,7 +391,7 @@ describe('enrichFromEnvironments - branch/kind/manager', () => {
 
     const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
     const [env] = enrichFromEnvironments([mergedEnv], 0);
-    const check = env.proposedChecks.find((c) => c.name === 'timer');
+    const check = env.proposedChecks.find((c) => c.name === 'dependents-successful');
 
     expect(check?.kind).toBe('DependentsSuccessfulCommitStatus');
     expect(check?.manager).toBe(dependentsCommitStatus);
