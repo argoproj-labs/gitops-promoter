@@ -17,6 +17,8 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
@@ -54,4 +56,50 @@ func GetApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key strin
 		}
 	}
 	return applicable
+}
+
+// DetermineCommitStatusReportOn parses the passed PromotionStrategy and searches for the provided key in both
+// activeCommitStatuses and proposedCommitStatuses to see which type to use before selecting environments.
+// If the key is not found in the PromotionStrategy an error will be returned. If the key is found in both
+// active and proposed an error will also be returned.
+func DetermineReportOn(ps *promoterv1alpha1.PromotionStrategy, key string) (string, error) {
+	reportOn := ""
+	found := false
+
+	parseCommitStatuses := func(statuses []promoterv1alpha1.CommitStatusSelector, setTo string) error {
+		for _, pcs := range statuses {
+			if key == pcs.Key && !found {
+				reportOn = setTo
+				found = true
+				break
+			} else if key == pcs.Key && found && reportOn != setTo {
+				return fmt.Errorf("key %s was found as both a proposed and active commit status", key)
+			}
+		}
+		return nil
+	}
+
+	if err := parseCommitStatuses(ps.Spec.ProposedCommitStatuses, constants.CommitRefProposed); err != nil {
+		return "", err
+	}
+
+	if err := parseCommitStatuses(ps.Spec.ActiveCommitStatuses, constants.CommitRefActive); err != nil {
+		return "", err
+	}
+
+	for _, env := range ps.Spec.Environments {
+		if err := parseCommitStatuses(env.ProposedCommitStatuses, constants.CommitRefProposed); err != nil {
+			return "", err
+		}
+
+		if err := parseCommitStatuses(env.ActiveCommitStatuses, constants.CommitRefActive); err != nil {
+			return "", err
+		}
+	}
+
+	if reportOn == "" {
+		return "", fmt.Errorf("key %s was not found in PromotionStrategy %s/%s", key, ps.Namespace, ps.Name)
+	}
+
+	return reportOn, nil
 }

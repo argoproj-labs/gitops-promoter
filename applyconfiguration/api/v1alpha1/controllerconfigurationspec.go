@@ -76,6 +76,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	RestoreActiveCommit *RestoreActiveCommitConfigurationApplyConfiguration `json:"restoreActiveCommit,omitempty"`
+	// TektonCommitStatus contains the configuration for the TektonCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	TektonCommitStatus *TektonCommitStatusConfigurationApplyConfiguration `json:"tektonCommitStatus,omitempty"`
 	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
 	ClusterScmProvider *ClusterScmProviderConfigurationApplyConfiguration `json:"clusterScmProvider,omitempty"`
 	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
@@ -192,6 +195,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatu
 // If called multiple times, the RestoreActiveCommit field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithRestoreActiveCommit(value *RestoreActiveCommitConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.RestoreActiveCommit = value
+	return b
+}
+
+// WithTektonCommitStatus sets the TektonCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TektonCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithTektonCommitStatus(value *TektonCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.TektonCommitStatus = value
 	return b
 }
 

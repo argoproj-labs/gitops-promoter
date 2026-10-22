@@ -265,6 +265,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
 		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusConfiguration"):
+		return &apiv1alpha1.TektonCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
 		return &apiv1alpha1.TimedCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatusConfiguration"):
