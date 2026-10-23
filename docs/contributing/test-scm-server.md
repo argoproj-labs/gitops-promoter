@@ -172,7 +172,7 @@ CI and `make test-parallel` always use the fake provider. To exercise the real p
 | `PROMOTER_TEST_SCM_CA_FILE` | `bin/scm-server-ca.pem` | CA written by `make run-scm-server` |
 | `PROMOTER_TEST_SCM_TOKEN` | `dev-token` | Token accepted by every provider |
 
-The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`.
+The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`. It also turns off the server's rate limiting, since every spec shares one token. The Makefile target puts `hack/git` on `PATH` so git can authenticate through `promoter_askpass.sh`; add it yourself if you run ginkgo directly.
 
 If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the seven providers on the next seven, in the order of the table above. Pass the same value to both targets:
 

@@ -409,10 +409,12 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 
 	Expect(admin.AddCredential(ctx, scmserver.Credential{Provider: p, Token: token})).To(Succeed())
 
-	// Keep provider quirks from slowing the envtest suite: zero the async delays.
+	// Keep provider quirks from slowing the envtest suite: zero the async delays. Also turn off rate
+	// limiting: every spec shares one token, and the suite exceeds Bitbucket Cloud's 1000 requests per hour.
 	b := scmserver.DefaultBehavior(p)
 	b.MergeabilityDelay = scmserver.D(0)
 	b.CompletionDelay = scmserver.D(0)
+	b.RateLimit = 0
 	Expect(admin.SetBehavior(ctx, p, b)).To(Succeed())
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
