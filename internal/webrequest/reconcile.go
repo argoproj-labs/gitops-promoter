@@ -248,10 +248,10 @@ func applyHTTPExecutionDecision(
 
 	rendered, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 	if err != nil {
-		return reconcileOutcome{}, fmt.Errorf("failed to render URL for status: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to render HTTP request: %w", err)
 	}
 
-	resp, err := exec.Execute(ctx, wrcs, td)
+	resp, err := exec.Execute(ctx, wrcs, rendered)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)
 	}

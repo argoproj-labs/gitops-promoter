@@ -754,6 +754,36 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(byBranch["prod"].RenderedURL).To(Equal("https://api.example.com/alerts?branch=prod&limit=10"))
 		})
 
+		// urlTemplate is rendered exactly once: the same value lands in status.renderedURL and in
+		// the URL passed to the executor. The Sprig randInt function produces a different integer on
+		// every call, so a double-render would make the two values diverge — this test catches any
+		// regression introduced by re-rendering templates inside the executor.
+		It("stores the same RenderedURL as the URL sent to the executor (templates rendered once)", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com/{{ randInt 0 1000000 }}/{{ .Branch }}`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+
+			executedURLByBranch := map[string]string{}
+			for _, req := range result.RenderedRequests {
+				executedURLByBranch[req.Branch] = req.URL
+			}
+			for _, env := range result.Status.Environments {
+				Expect(env.RenderedURL).To(Equal(executedURLByBranch[env.Branch]),
+					"status.renderedURL must equal the URL the executor received for branch %q", env.Branch)
+			}
+		})
+
 		It("carries forward RenderedURL per environment when the trigger does not fire", func() {
 			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Trigger: &promoterv1alpha1.TriggerModeSpec{
@@ -1012,6 +1042,31 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
 			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal("https://example.com/v2/checks"))
+		})
+
+		// Same single-render guarantee as the environments context: status.renderedURL and the URL
+		// sent to the executor must be identical even when the template is non-deterministic.
+		It("stores the same RenderedURL in PromotionStrategyContext as the URL sent to the executor (templates rendered once)", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+				},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com/{{ randInt 0 1000000 }}`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(1))
+			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal(result.RenderedRequests[0].URL),
+				"status.renderedURL must equal the URL the executor received")
 		})
 
 		It("carries forward RenderedURL in PromotionStrategyContext when the trigger does not fire", func() {
