@@ -2,15 +2,16 @@
 package tekton
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Data represents a Tekton input or output
 type Data struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-	Type  string `json:"type,omitempty"`
+	Name  string                `json:"name,omitempty"`
+	Value *apiextensionsv1.JSON `json:"value,omitempty"`
+	Type  string                `json:"type,omitempty"`
 }
 
 // ObjectReference represents a reference to a Pipeline or Task by name that is in the same
@@ -92,18 +93,36 @@ const (
 	TektonKindPipeline = "Pipeline"
 )
 
+// +kubebuilder:object:root=true
+
+// TaskRunList contains a list of Tekton TaskRuns.
+type TaskRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []TaskRun `json:"items"`
+}
+
+// +kubebuilder:object:root=true
+
+// PipelineRunList contains a list of Tekton PipelineRuns.
+type PipelineRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PipelineRun `json:"items"`
+}
+
 // Below are two helper functions that allow for the interface to be satisfied
 func (t *TaskRun) GetConditions() []metav1.Condition {
-	return t.GetConditions()
+	return t.Status.Conditions
 }
 
 func (p *PipelineRun) GetConditions() []metav1.Condition {
-	return p.GetConditions()
+	return p.Status.Conditions
 }
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &TaskRun{}, &PipelineRun{})
+		s.AddKnownTypes(SchemeGroupVersion, &TaskRun{}, &TaskRunList{}, &PipelineRun{}, &PipelineRunList{})
 		return nil
 	})
 }

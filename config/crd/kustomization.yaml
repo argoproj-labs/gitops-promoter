@@ -18,6 +18,7 @@ resources:
 - bases/promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml
 - bases/promoter.argoproj.io_scheduledcommitstatuses.yaml
 - bases/promoter.argoproj.io_changetransferpolicyhistories.yaml
+- bases/promoter.argoproj.io_tektoncommitstatuses.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

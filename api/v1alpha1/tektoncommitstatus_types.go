@@ -220,6 +220,7 @@ type IndividualExpressionResult struct {
 	ExpressionResult bool `json:"expressionResult"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#tektoncommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -227,6 +228,7 @@ type IndividualExpressionResult struct {
 // TektonCommitStatus is the schema for the tektoncommitstatus API.
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder
 type TektonCommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
