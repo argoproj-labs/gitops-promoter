@@ -480,16 +480,19 @@
 .hp-row {
   display: grid;
   gap: 8px;
-  padding: 7px 8px;
-  background: $bg-softer;
-  border: 1px solid $stroke;
+  padding: 6px 8px;
+  background: $row-bg;
+  border: 1px solid $row-border;
   border-radius: $radius-md;
   align-items: stretch;
   transition: border-color 0.14s ease;
   min-width: max-content;
+  min-height: 72px;
+  flex-shrink: 0;
 
   &:hover {
     border-color: $stroke-strong;
+    background: $bg-soft;
   }
   &--selected {
     border-color: $accent;
@@ -510,8 +513,8 @@
   background: $bg-surface;
   box-shadow: -16px 0 0 0 $bg-surface;
   clip-path: inset(0 0 0 -16px);
-  margin: -7px 0 -7px -8px;
-  padding: 11px 10px 11px 16px;
+  margin: -6px 0 -6px -8px;
+  padding: 8px 10px 8px 16px;
   border-right: 1px solid $stroke;
 }
 
@@ -584,4 +587,11 @@
 
 .hp-row__sep {
   color: $text-muted;
+}
+
+.hp-row {
+  transition:
+    border-color 0.14s ease,
+    opacity 0.2s ease,
+    background 0.2s ease;
 }

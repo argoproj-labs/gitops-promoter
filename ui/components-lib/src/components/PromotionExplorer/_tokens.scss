@@ -36,12 +36,54 @@ $failure-soft: rgba(220, 67, 67, 0.1);
 $failure-border: rgba(192, 57, 43, 0.55);
 $pending-soft: rgba(13, 173, 234, 0.14);
 $pending-border: rgba(11, 120, 166, 0.55);
+$neutral-rail: #7a8aa0;
 $restored-soft: rgba(154, 90, 15, 0.12);
 $restored-border: rgba(154, 90, 15, 0.55);
 
 // Blocked mark inside a blue pill for a proposed commit a RestoreActiveCommit is holding. Bright
 // enough to read on the pending fill with no backing disc.
 $held-stop: #ff5a4e;
+
+$cell-live-bg: #e4efeb;
+$cell-live-border: #79ad99;
+$cell-live-rail: #3d916f;
+$cell-live-pill: #328765;
+$cell-proposed-bg: #e8f0f3;
+$cell-proposed-border: #a9c3cf;
+$cell-proposed-rail: #668fa1;
+$cell-proposed-pill: #527f91;
+$cell-failed-bg: #f3e8ea;
+$cell-failed-border: #cfa0a8;
+$cell-failed-rail: #b5636f;
+$cell-failed-pill: #a64f5d;
+$cell-prev-bg: #edf1f2;
+$cell-prev-border: #aebbc2;
+$cell-prev-rail: #8198a2;
+$cell-prev-label: #52616d;
+$cell-prev-link: #667784;
+$cell-empty-bg: #f5f6f8;
+$cell-empty-border: #c6d0d5;
+$cell-empty-text: #7b8791;
+$cell-divider: #bdcec7;
+$cell-chip-bg: #e8eef0;
+$cell-chip-ink: #315565;
+$cell-link-ink: #315c6c;
+$cell-time-ink: #64748b;
+$cell-check-name: #344b55;
+$cell-more-bg: #315565;
+$cell-more-ink: #f2f7f8;
+$cell-more-shadow: rgba(21, 48, 60, 0.35);
+$cell-scroll-thumb: #8fa9b3;
+$cell-scroll-track: rgba(49, 85, 101, 0.1);
+$cell-checks-fade: 16px;
+$cell-run-ring: #38a7e5;
+$cell-run-track: #d9eef9;
+$cell-pass-ring: #49b98a;
+$cell-pass-mark: #2da875;
+$cell-fail-ring: #dc6676;
+$cell-fail-mark: #c94759;
+$row-border: #cbd4d9;
+$row-bg: rgba(255, 255, 255, 0.72);
 
 $radius-sm: 4px;
 $radius-md: 6px;

@@ -14,6 +14,16 @@ export function healthFromStatuses(statuses: CommitStatus[] | undefined): Health
   return 'unknown';
 }
 
+export function safeHttpUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function shortSha(sha?: string): string {
   return sha ? sha.slice(0, 7) : '';
 }
