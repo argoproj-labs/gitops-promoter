@@ -23,6 +23,7 @@
 }
 
 .hp-body {
+  --hp-drawer-offset: 0px;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -31,6 +32,7 @@
 }
 
 .hp-main {
+  isolation: isolate;
   flex: 1;
   min-width: 0;
   display: flex;

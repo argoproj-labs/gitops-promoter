@@ -24,3 +24,12 @@ export function commitKey(c: Commit | undefined): string | null {
   if (c?.subject || c?.author) return `nokey:${c?.subject ?? ''}|${c?.author ?? ''}`;
   return null;
 }
+
+export function parseEnvSelection(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(',').filter(Boolean))];
+}
+
+export function formatEnvSelection(branches: readonly string[]): string | null {
+  return branches.length > 0 ? branches.join(',') : null;
+}
