@@ -190,6 +190,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 		RepoSlug:          repo.Spec.BitbucketCloud.Name,
 		ID:                prObj.Status.ID,
 		CloseSourceBranch: false,
+		Message:           prObj.Spec.Commit.Message,
 	}
 
 	start := time.Now()
