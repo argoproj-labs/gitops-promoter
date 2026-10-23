@@ -94,7 +94,10 @@ jobs:
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
+          # flags labels this upload. Codecov merges it with the e2e flag into the project total.
           files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          flags: integration
+          name: integration
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
