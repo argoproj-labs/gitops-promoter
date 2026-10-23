@@ -87,6 +87,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return controllerConfigurationStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.RestoreActiveCommit:
 		return restoreActiveCommitStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.TektonCommitStatus:
+		return tektonCommitStatusStatusApply(o, conditionsOnly)
 	default:
 		return nil, fmt.Errorf("unsupported object type for status SSA: %T", obj)
 	}
@@ -180,6 +182,16 @@ func argoCDCommitStatusStatusApply(o *promoterv1alpha1.ArgoCDCommitStatus, condi
 		return nil, err
 	}
 	return acv1alpha1.ArgoCDCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func tektonCommitStatusStatusApply(o *promoterv1alpha1.TektonCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.TektonCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.TektonCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func pullRequestStatusApply(o *promoterv1alpha1.PullRequest, conditionsOnly bool) (any, error) {
