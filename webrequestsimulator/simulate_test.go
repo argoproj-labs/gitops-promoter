@@ -1046,7 +1046,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 
 		// Same single-render guarantee as the environments context: status.renderedURL and the URL
 		// sent to the executor must be identical even when the template is non-deterministic.
-		It("stores the same RenderedURL in PromotionStrategyContext as the URL sent to the executor (templates rendered once)", func() {
+		It("stores the same RenderedURL in PromotionStrategyContext as the URL sent to the executor "+
+			"(templates rendered once)", func() {
 			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
 					Context: promoterv1alpha1.ContextPromotionStrategy,
