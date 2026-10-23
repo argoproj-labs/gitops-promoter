@@ -198,9 +198,16 @@ func ParseTLSCurvePreferences(curves string) ([]tls.CurveID, error) {
 }
 
 // ValidateTLSConfig validates the TLS configuration parameters.
-// It checks that all configured cipher suites are compatible with the minimum TLS version.
+// It checks that each configured cipher suite can be negotiated under the given
+// minimum TLS version. A cipher is accepted when it supports any version in the
+// inclusive range [minVersion, TLS 1.2]: MinVersion is a floor (so TLS 1.1 still
+// allows TLS 1.2), and Go's tls.Config.CipherSuites has no effect above TLS 1.2.
 func ValidateTLSConfig(minVersion uint16, cipherSuites []uint16) error {
 	if len(cipherSuites) == 0 || minVersion == 0 {
+		return nil
+	}
+	// CipherSuites only apply to TLS 1.0–1.2; nothing to validate above that.
+	if minVersion > tls.VersionTLS12 {
 		return nil
 	}
 
@@ -210,15 +217,15 @@ func ValidateTLSConfig(minVersion uint16, cipherSuites []uint16) error {
 			if cs.ID != cipherID {
 				continue
 			}
-			supported := false
+			compatible := false
 			for _, v := range cs.SupportedVersions {
-				if v == minVersion {
-					supported = true
+				if v >= minVersion && v <= tls.VersionTLS12 {
+					compatible = true
 					break
 				}
 			}
-			if !supported {
-				return fmt.Errorf("cipher suite %s is not supported by minimum TLS version %s",
+			if !compatible {
+				return fmt.Errorf("cipher suite %s is not supported for minimum TLS version %s",
 					cs.Name, TLSVersionName(minVersion))
 			}
 			break

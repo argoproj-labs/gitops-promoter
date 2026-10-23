@@ -124,11 +124,10 @@ func TestParseTLSCurvePreferences(t *testing.T) {
 func TestValidateTLSConfig(t *testing.T) {
 	t.Parallel()
 
-	// Pick a cipher that does not support TLS 1.3 as its only version check against min 1.3.
-	// All tls.CipherSuites() entries have SupportedVersions; find one that supports 1.2 but
-	// use minVersion TLS 1.3 which CipherSuites field wouldn't apply to anyway — still validate
-	// compatibility against SupportedVersions.
+	// ECDHE-GCM suites list only VersionTLS12 in SupportedVersions, but a MinVersion of
+	// 1.1 still allows TLS 1.2, so they must be accepted.
 	var cipherTLS12Only uint16
+	var cipherTLS12OnlyName string
 	found := false
 	for _, cs := range tls.CipherSuites() {
 		supports12 := false
@@ -143,19 +142,24 @@ func TestValidateTLSConfig(t *testing.T) {
 		}
 		if supports12 && !supports13 {
 			cipherTLS12Only = cs.ID
+			cipherTLS12OnlyName = cs.Name
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Skip("no TLS 1.2-only cipher suite available to test incompatibility")
+		t.Skip("no TLS 1.2-only cipher suite available")
 	}
 
+	if err := ValidateTLSConfig(tls.VersionTLS11, []uint16{cipherTLS12Only}); err != nil {
+		t.Fatalf("min TLS 1.1 with %s should pass (TLS 1.2 is still allowed): %v", cipherTLS12OnlyName, err)
+	}
 	if err := ValidateTLSConfig(tls.VersionTLS12, []uint16{cipherTLS12Only}); err != nil {
 		t.Fatalf("expected compatible cipher to pass: %v", err)
 	}
-	if err := ValidateTLSConfig(tls.VersionTLS13, []uint16{cipherTLS12Only}); err == nil {
-		t.Fatal("expected incompatible cipher/min version to fail")
+	// CipherSuites have no effect above TLS 1.2, so min 1.3 skips the check.
+	if err := ValidateTLSConfig(tls.VersionTLS13, []uint16{cipherTLS12Only}); err != nil {
+		t.Fatalf("min TLS 1.3 should skip cipher check: %v", err)
 	}
 	if err := ValidateTLSConfig(0, []uint16{cipherTLS12Only}); err != nil {
 		t.Fatalf("empty min version should skip cipher check: %v", err)
