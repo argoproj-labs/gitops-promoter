@@ -764,10 +764,14 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			)
 			// Seed prior status that already has RenderedURL set.
 			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-				{Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/dev"},
-				{Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/prod"},
+				{
+					Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/dev",
+				},
+				{
+					Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/prod",
+				},
 			}
 			ps := twoEnvPromotionStrategy()
 
