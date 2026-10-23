@@ -105,6 +105,58 @@ var _ = Describe("OptionsForInstanceID", func() {
 	})
 })
 
+var _ = Describe("WithSecretNamespaces", func() {
+	It("leaves Secrets cluster-wide when no namespaces are given", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		opts, err := promotercache.WithSecretNamespaces(base, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opts.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(BeEmpty())
+	})
+
+	It("scopes only the Secret informer to the given namespaces, keeping its selector and transform", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		opts, err := promotercache.WithSecretNamespaces(base, []string{testControllerNamespace, "team-a"})
+		Expect(err).NotTo(HaveOccurred())
+
+		secretByObj := opts.ByObject[promotercache.PartitionedSecretObject()]
+		Expect(secretByObj.Namespaces).To(HaveLen(2))
+		Expect(secretByObj.Namespaces).To(HaveKey(testControllerNamespace))
+		Expect(secretByObj.Namespaces).To(HaveKey("team-a"))
+		Expect(secretByObj.Label.String()).To(Equal("!promoter.argoproj.io/instance-id"))
+		Expect(secretByObj.Transform).NotTo(BeNil())
+
+		for _, obj := range promotercache.PartitionedObjects() {
+			if obj == promotercache.PartitionedSecretObject() {
+				continue
+			}
+			Expect(opts.ByObject[obj].Namespaces).To(BeEmpty(), "unexpected namespace scope on %T", obj)
+		}
+	})
+
+	It("trims surrounding whitespace from namespace names", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		opts, err := promotercache.WithSecretNamespaces(base, []string{" team-a ", testControllerNamespace})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opts.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(HaveKey("team-a"))
+	})
+
+	It("rejects empty namespace entries so they cannot widen the cache to all namespaces", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		_, err := promotercache.WithSecretNamespaces(base, []string{"team-a", ""})
+		Expect(err).To(MatchError("secret namespaces must not contain empty entries"))
+
+		_, err = promotercache.WithSecretNamespaces(base, []string{" "})
+		Expect(err).To(MatchError("secret namespaces must not contain empty entries"))
+	})
+
+	It("does not mutate the options it was given", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		_, err := promotercache.WithSecretNamespaces(base, []string{testControllerNamespace})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(base.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(BeEmpty())
+	})
+})
+
 var _ = Describe("ProviderClusterCacheOptions", func() {
 	It("disables deep copy for Argo CD Application Get/List on provider clusters", func() {
 		opts := promotercache.ProviderClusterCacheOptions()

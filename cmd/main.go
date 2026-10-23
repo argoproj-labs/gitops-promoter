@@ -81,6 +81,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var secretNamespaces []string
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -93,6 +94,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				secretNamespaces,
 				clientConfig,
 			)
 		},
@@ -108,6 +110,9 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().StringSliceVar(&secretNamespaces, "secret-namespaces", nil,
+		"Namespaces to watch Secrets in. If unset, Secrets are watched cluster-wide. "+
+			"Every Secret referenced by a provider or gate must be in one of these namespaces.")
 
 	return cmd
 }
@@ -120,6 +125,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	secretNamespaces []string,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -196,10 +202,14 @@ func runController(
 
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
-	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
+	cacheOpts, err := promotercache.WithSecretNamespaces(
 		promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
-		restConfig,
+		secretNamespaces,
 	)
+	if err != nil {
+		return fmt.Errorf("build Secret cache options: %w", err)
+	}
+	cacheOpts, err = promotercache.WithArgoCDApplicationIfInstalled(cacheOpts, restConfig)
 	if err != nil {
 		return fmt.Errorf("build instance-id cache options: %w", err)
 	}
