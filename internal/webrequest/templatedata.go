@@ -120,6 +120,7 @@ type reconcileOutcome struct {
 	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
 	SuccessVariables       map[string]any
 	Phase                  promoterv1alpha1.CommitStatusPhase
+	RenderedURL            string
 }
 
 // HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for the given template data

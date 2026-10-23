@@ -227,6 +227,15 @@ Notable fields:
 
 In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
 
+### Rendered URL (`renderedURL`)
+
+After each HTTP request the controller stores the fully-rendered `spec.httpRequest.urlTemplate` (including any `HTTPRequestVariables` substitutions) in the status:
+
+- **`environments` context** — `status.environments[].renderedURL`, one entry per environment.
+- **`promotionstrategy` context** — `status.promotionStrategyContext.renderedURL`, shared across all environments.
+
+The field is empty until the first HTTP request fires and is carried forward unchanged on reconciles that skip the HTTP call (polling interval not elapsed, trigger returned false, or polling fast-path). Use it to verify that Go template logic and `HTTPRequestVariables` expressions resolve to the expected URL.
+
 ### Polling optimization (`reportOn: proposed` only)
 
 When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
