@@ -108,13 +108,15 @@ var _ = Describe("OptionsForInstanceID", func() {
 var _ = Describe("WithSecretNamespaces", func() {
 	It("leaves Secrets cluster-wide when no namespaces are given", func() {
 		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
-		opts := promotercache.WithSecretNamespaces(base, nil)
+		opts, err := promotercache.WithSecretNamespaces(base, nil)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(opts.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(BeEmpty())
 	})
 
 	It("scopes only the Secret informer to the given namespaces, keeping its selector and transform", func() {
 		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
-		opts := promotercache.WithSecretNamespaces(base, []string{testControllerNamespace, "team-a"})
+		opts, err := promotercache.WithSecretNamespaces(base, []string{testControllerNamespace, "team-a"})
+		Expect(err).NotTo(HaveOccurred())
 
 		secretByObj := opts.ByObject[promotercache.PartitionedSecretObject()]
 		Expect(secretByObj.Namespaces).To(HaveLen(2))
@@ -131,9 +133,26 @@ var _ = Describe("WithSecretNamespaces", func() {
 		}
 	})
 
+	It("trims surrounding whitespace from namespace names", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		opts, err := promotercache.WithSecretNamespaces(base, []string{" team-a ", testControllerNamespace})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opts.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(HaveKey("team-a"))
+	})
+
+	It("rejects empty namespace entries so they cannot widen the cache to all namespaces", func() {
+		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		_, err := promotercache.WithSecretNamespaces(base, []string{"team-a", ""})
+		Expect(err).To(MatchError("secret namespaces must not contain empty entries"))
+
+		_, err = promotercache.WithSecretNamespaces(base, []string{" "})
+		Expect(err).To(MatchError("secret namespaces must not contain empty entries"))
+	})
+
 	It("does not mutate the options it was given", func() {
 		base := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
-		_ = promotercache.WithSecretNamespaces(base, []string{testControllerNamespace})
+		_, err := promotercache.WithSecretNamespaces(base, []string{testControllerNamespace})
+		Expect(err).NotTo(HaveOccurred())
 		Expect(base.ByObject[promotercache.PartitionedSecretObject()].Namespaces).To(BeEmpty())
 	})
 })

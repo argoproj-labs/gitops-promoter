@@ -202,13 +202,14 @@ func runController(
 
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
-	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
-		promotercache.WithSecretNamespaces(
-			promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
-			secretNamespaces,
-		),
-		restConfig,
+	cacheOpts, err := promotercache.WithSecretNamespaces(
+		promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
+		secretNamespaces,
 	)
+	if err != nil {
+		return fmt.Errorf("build Secret cache options: %w", err)
+	}
+	cacheOpts, err = promotercache.WithArgoCDApplicationIfInstalled(cacheOpts, restConfig)
 	if err != nil {
 		return fmt.Errorf("build instance-id cache options: %w", err)
 	}

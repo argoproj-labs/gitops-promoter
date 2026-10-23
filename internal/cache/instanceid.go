@@ -1,8 +1,10 @@
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"maps"
+	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
@@ -115,21 +117,29 @@ func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cac
 // controller needs Secret RBAC only in those namespaces instead of cluster-wide. Secrets outside
 // them cannot be read, so every Secret a provider or gate references must live in one of them.
 // When namespaces is empty, opts is returned unchanged and Secrets are watched cluster-wide.
-func WithSecretNamespaces(opts cache.Options, namespaces []string) cache.Options {
+//
+// Surrounding whitespace is trimmed and empty entries are rejected: controller-runtime treats the
+// empty namespace as AllNamespaces, so accepting one would silently restore a cluster-wide watch.
+func WithSecretNamespaces(opts cache.Options, namespaces []string) (cache.Options, error) {
 	if len(namespaces) == 0 {
-		return opts
+		return opts, nil
+	}
+	nsConfigs := make(map[string]cache.Config, len(namespaces))
+	for _, ns := range namespaces {
+		ns = strings.TrimSpace(ns)
+		if ns == "" {
+			return cache.Options{}, errors.New("secret namespaces must not contain empty entries")
+		}
+		nsConfigs[ns] = cache.Config{}
 	}
 	opts.ByObject = maps.Clone(opts.ByObject)
 	if opts.ByObject == nil {
 		opts.ByObject = make(map[client.Object]cache.ByObject, 1)
 	}
 	byObj := opts.ByObject[partitionedSecretObject]
-	byObj.Namespaces = make(map[string]cache.Config, len(namespaces))
-	for _, ns := range namespaces {
-		byObj.Namespaces[ns] = cache.Config{}
-	}
+	byObj.Namespaces = nsConfigs
 	opts.ByObject[partitionedSecretObject] = byObj
-	return opts
+	return opts, nil
 }
 
 // ProviderClusterCacheOptions returns cache options for kubeconfig provider clusters.

@@ -72,6 +72,10 @@ subjects:
     namespace: promoter-system
 ```
 
+Create both the Role and the RoleBinding in every namespace listed in `--secret-namespaces`. The example above grants
+access only in `team-a`; with the flag as shown, you also need them in `promoter-system` for ClusterScmProvider and
+multicluster kubeconfig Secrets.
+
 Every Secret referenced by a ScmProvider, ClusterScmProvider, gate or multicluster kubeconfig must then be in one of
 the listed namespaces. A reference to a Secret anywhere else fails to resolve. ClusterScmProvider and kubeconfig
 Secrets live in the controller's namespace, so include it in the list whenever you use them.
