@@ -469,18 +469,24 @@ func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, 
 	return nameToID, nil
 }
 
+// labelPageSize is the largest page the labels endpoint serves.
+const labelPageSize = 50
+
 func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*gitea.Label, error) {
 	var allLabels []*gitea.Label
 	page := 1
 	for {
 		repoLabels, resp, err := pr.giteaClient.ListRepoLabels(owner, repo, gitea.ListLabelsOptions{
-			Page: page, PageSize: 50,
+			Page: page, PageSize: labelPageSize,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list repository labels: %w", err)
 		}
 		allLabels = append(allLabels, repoLabels...)
-		if len(repoLabels) == 0 || resp == nil || page >= resp.LastPage {
+		// The labels endpoint sends X-Total-Count but no Link header, so the SDK never learns the last page
+		// (resp.LastPage stays 0). A page shorter than the page size is the last one; a Link header, when a
+		// server does send one, ends the loop too.
+		if len(repoLabels) < labelPageSize || (resp != nil && resp.LastPage > 0 && page >= resp.LastPage) {
 			break
 		}
 		page++

@@ -99,7 +99,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			})
 
 			AfterEach(func() {
@@ -771,7 +771,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -968,7 +968,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1064,7 +1064,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1252,7 +1252,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1368,7 +1368,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", func() {
+			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1529,7 +1529,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, 3*time.Second, 200*time.Millisecond).Should(Succeed())
 			})
 
-			It("should delete PR quickly when externally merged on SCM and CTP reconciles", func() {
+			It("should delete PR quickly when externally merged on SCM and CTP reconciles", Label(fakeSCMOnlyLabel), func() {
 				setPullRequestRequeueDuration(ctx, time.Hour)
 
 				By("Adding a pending commit and waiting for open PR")
@@ -1622,7 +1622,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 				prKey = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(prName),
 					Namespace: "default",
@@ -1731,7 +1731,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("writes a history note for an externally squash-merged PR and builds history without trailers", func() {
+			It("writes a history note for an externally squash-merged PR and builds history without trailers", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1796,7 +1796,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("skips the note but still releases the PR when it was closed without merging", func() {
+			It("skips the note but still releases the PR when it was closed without merging", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1878,7 +1878,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 				prKey = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
 
 				gitPath, err = os.MkdirTemp("", "*")
@@ -1909,7 +1909,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			// Regression for open-PR steady state with blocked promotion: routine PR status
 			// writes used to Owns(PullRequest)-enqueue CTP, which SSA-reapplied the PR and
 			// retriggered PR controller SCM sync in a CTP→PR→CTP feedback loop.
-			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", func() {
+			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", Label(fakeSCMOnlyLabel), func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
@@ -1952,7 +1952,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 			})
 
-			It("should still hit SCM when the PR spec changes", func() {
+			It("should still hit SCM when the PR spec changes", Label(fakeSCMOnlyLabel), func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
@@ -2241,7 +2241,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_ = k8sClient.Delete(ctx, changeTransferPolicy)
 			})
 
-			It("does not call SCM Merge with a stale PullRequest.spec.mergeSha", func() {
+			It("does not call SCM Merge with a stale PullRequest.spec.mergeSha", Label(fakeSCMOnlyLabel), func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 				defer func() { _ = os.RemoveAll(gitPath) }()
@@ -2285,10 +2285,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(pushGitNote(ctx, gitPath, strings.TrimSpace(hydratedSha), proposedDrySha)).To(Succeed())
 
 				prKey := types.NamespacedName{
-					Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
-						gitRepo.Spec.Fake.Owner,
-						gitRepo.Spec.Fake.Name,
-						changeTransferPolicy.Spec.ProposedBranch,
+					Name: utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch,
 						changeTransferPolicy.Spec.ActiveBranch,
 					)),
 					Namespace: "default",
@@ -2929,10 +2926,7 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(pushGitNote(ctx, gitPath, hydratedSha, drySha)).To(Succeed())
 				sendWebhookForPush(ctx, beforeSha, proposedBranch)
 
-				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
-					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
-					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
-				))
+				prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch))
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
@@ -2965,10 +2959,7 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sendWebhookForPush(ctx, strings.TrimSpace(beforeSha), proposedBranch)
 
-				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
-					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
-					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
-				))
+				prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch))
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
@@ -3316,19 +3307,14 @@ func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, 
 //nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
+	repo := scmTarget.newRepo(ctx, name)
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      name,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: name,
+		}),
 	}
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -3336,18 +3322,15 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: namespace,
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
-		Status: promoterv1alpha1.ScmProviderStatus{},
+		Spec:      scmTarget.scmProviderSpec(repo, name),
+		Status:    promoterv1alpha1.ScmProviderStatus{},
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
@@ -3949,7 +3932,14 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ActiveBranch)
 		Expect(err).NotTo(HaveOccurred())
-		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctp.Spec.ProposedBranch)
+		// SCMs refuse to open a PR when the source branch has no commits the target lacks.
+		_, err = runGitCmd(ctx, gitPath, "checkout", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "-c", "user.name=testuser", "-c", "user.email=testemail@test.com", "commit", "--allow-empty", "-m", "diverge from "+ctp.Spec.ActiveBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", ctp.Spec.ProposedBranch)
 		Expect(err).NotTo(HaveOccurred())
 		originalMergeSha = strings.TrimSpace(originalMergeSha)
 
@@ -3964,7 +3954,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		ctp.Status.Proposed.Dry.Sha = strings.Repeat("d", 40)
 		ctp.Status.Proposed.Hydrated.Sha = strings.Repeat("b", 40)
 
-		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+		prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
 		pr = &promoterv1alpha1.PullRequest{
 			Name:       prName,

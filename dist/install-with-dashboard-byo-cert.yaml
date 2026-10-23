@@ -2027,6 +2027,25 @@ spec:
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+                      Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+                      and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+                    maxLength: 253
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to bitbucket.org, leave
+                        the field blank
+                      rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               bitbucketDataCenter:
                 description: BitbucketDataCenter required configuration for Bitbucket
@@ -8445,6 +8464,25 @@ spec:
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+                      Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+                      and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+                    maxLength: 253
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to bitbucket.org, leave
+                        the field blank
+                      rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               bitbucketDataCenter:
                 description: BitbucketDataCenter required configuration for Bitbucket
@@ -9207,6 +9245,23 @@ spec:
                       HeaderTemplates are additional HTTP headers to include in the request.
                       The map key is the header name and the value is the header value (supports Go templates).
                       See HTTPRequestSpec for available template variables.
+                    type: object
+                  httpRequestVariables:
+                    description: |-
+                      HTTPRequestVariables optionally holds an expr expression that produces a free-form map of
+                      variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate
+                      as {{ index .HTTPRequestVariables "key" }}.
+                      Evaluated before the HTTP request (same timing as the templates above). Available in both
+                      polling and trigger modes. See HTTPRequestVariablesSpec for details.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that must return a map/object.
+                          The result is exposed to all httpRequest Go templates as .HTTPRequestVariables.
+                          Available variables match those documented on HTTPRequestSpec.
+                        type: string
+                    required:
+                    - expression
                     type: object
                   method:
                     description: |-

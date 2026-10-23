@@ -58,7 +58,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 		}
 	})
 
-	It("applies and retracts SCM labels via the fake provider", func() {
+	It("applies and retracts SCM labels via the fake provider", Label(fakeSCMOnlyLabel), func() {
 		var name string
 		name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "scm-labels-apply")
 		resourceName = types.NamespacedName{Name: name, Namespace: "default"}
@@ -114,7 +114,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Expect(applied).To(BeEmpty())
 	})
 
-	It("re-applies labels removed externally on the SCM", func() {
+	It("re-applies labels removed externally on the SCM", Label(fakeSCMOnlyLabel), func() {
 		var name string
 		name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "scm-labels-drift")
 		resourceName = types.NamespacedName{Name: name, Namespace: "default"}
@@ -162,7 +162,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Expect(fake.LabelCallCount(pullRequest.UID)).To(BeNumerically(">", 0))
 	})
 
-	It("leaves third-party SCM labels alone during reconcile", func() {
+	It("leaves third-party SCM labels alone during reconcile", Label(fakeSCMOnlyLabel), func() {
 		const thirdPartyLabel = "tide/merge"
 
 		var name string
@@ -214,7 +214,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Expect(fake.LabelCallCount(pullRequest.UID)).To(BeZero())
 	})
 
-	It("removes retracted promoter labels but leaves third-party labels on the SCM", func() {
+	It("removes retracted promoter labels but leaves third-party labels on the SCM", Label(fakeSCMOnlyLabel), func() {
 		const thirdPartyLabel = "tide/merge"
 
 		var name string

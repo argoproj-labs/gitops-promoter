@@ -143,37 +143,30 @@ var _ = Describe("CommitStatus Controller", func() {
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind CommitStatus")
 
+			repo := scmTarget.newRepo(ctx, typeNamespacedName.Name)
+
 			scmSecret = &v1.Secret{
 				TypeMeta:  metav1.TypeMeta{},
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Data:      nil,
+				Data:      scmTarget.secretData(repo),
 			}
 
 			scmProvider = &promoterv1alpha1.ScmProvider{
 				TypeMeta:  metav1.TypeMeta{},
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: resourceName},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-				Status: promoterv1alpha1.ScmProviderStatus{},
+				Spec:      scmTarget.scmProviderSpec(repo, resourceName),
+				Status:    promoterv1alpha1.ScmProviderStatus{},
 			}
 
 			gitRepo = &promoterv1alpha1.GitRepository{
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: typeNamespacedName.Name,
-						Name:  typeNamespacedName.Name,
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: typeNamespacedName.Name,
-					},
-				},
+				Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+					Kind: promoterv1alpha1.ScmProviderKind,
+					Name: typeNamespacedName.Name,
+				}),
 			}
 
 			commitStatus = &promoterv1alpha1.CommitStatus{
@@ -433,35 +426,27 @@ var _ = Describe("CommitStatus Controller", func() {
 // Note: URL is set to empty by default and can be customized in tests
 func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
+	repo := scmTarget.newRepo(ctx, name)
 
 	scmSecret := &v1.Secret{
 		Name:      name,
 		Namespace: "default",
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
+		Spec:      scmTarget.scmProviderSpec(repo, name),
 	}
 
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: "test-owner",
-				Name:  "test-repo",
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: name,
+		}),
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{

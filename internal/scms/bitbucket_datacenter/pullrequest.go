@@ -41,10 +41,11 @@ func NewBitbucketDataCenterPullRequestProvider(k8sClient k8sClient.Client, scmPr
 	}, nil
 }
 
-// prResponseRef holds the display ID and repository of a branch reference in a pull-request response.
+// prResponseRef holds the display ID, head commit and repository of a branch reference in a pull-request response.
 type prResponseRef struct {
-	Repository pullRequestRefRepository `json:"repository"`
-	DisplayID  string                   `json:"displayId"`
+	Repository   pullRequestRefRepository `json:"repository"`
+	DisplayID    string                   `json:"displayId"`
+	LatestCommit string                   `json:"latestCommit"`
 }
 
 // prResponseLinks holds the self links from a pull-request response.
@@ -269,6 +270,11 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 	if err != nil {
 		return scms.MergeResult{}, fmt.Errorf("failed to get pull request %d before merging: %w", prID, err)
 	}
+	// The merge API takes no expected head commit, so a merge would land whatever the source branch points to.
+	if !strings.EqualFold(current.FromRef.LatestCommit, prObj.Spec.MergeSha) {
+		return scms.MergeResult{}, fmt.Errorf("source branch head %q of pull request %d does not match the expected merge SHA %q",
+			current.FromRef.LatestCommit, prID, prObj.Spec.MergeSha)
+	}
 
 	path := fmt.Sprintf("%s/%d/merge?version=%d", prPath(projectKey, repoSlug), prID, current.Version)
 
@@ -283,7 +289,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return scms.MergeResult{}, fmt.Errorf("failed to merge pull request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to send the merge request: %w", err)
 	}
 	if statusCode != http.StatusOK {
 		return scms.MergeResult{}, fmt.Errorf("unexpected status code %d when merging pull request: %s", statusCode, string(body))

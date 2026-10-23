@@ -1056,6 +1056,197 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 			Expect(err.Error()).To(ContainSubstring("failed to render method template"))
 		})
 	})
+
+	// HTTPRequestVariables tests verify that httpRequest.httpRequestVariables.expression is
+	// evaluated before templates are rendered and that its map result is accessible in
+	// urlTemplate/methodTemplate/headerTemplates as {{ index .HTTPRequestVariables "key" }}.
+	// urlValuesEncode and TriggerVariables availability are also exercised end-to-end.
+	Describe("HTTPRequestVariables", func() {
+		It("injects the expression map into urlTemplate", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{"pathSuffix": "/api/v1/alerts"}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com{{ index .HTTPRequestVariables "pathSuffix" }}`
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+			for _, req := range result.RenderedRequests {
+				Expect(req.URL).To(Equal("https://example.com/api/v1/alerts"))
+			}
+		})
+
+		It("urlValuesEncode percent-encodes query parameters in urlTemplate", func() {
+			// The query value contains ':' (%3A) and '+' (%2B) — characters that must be
+			// percent-encoded and would require hand-written %xx sequences in urlTemplate.
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{
+					"qs": urlValuesEncode({
+						"query": "Namespace:petclinic-" + Branch + "+Violation State:ACTIVE",
+						"limit": "50"
+					})
+				}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://api.example.com/alerts` +
+				`{{- $qs := index .HTTPRequestVariables "qs" -}}` +
+				`{{- if $qs }}?{{ $qs }}{{ end -}}`
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+
+			reqByBranch := map[string]simulatortypes.RenderedRequest{}
+			for _, req := range result.RenderedRequests {
+				reqByBranch[req.Branch] = req
+			}
+
+			// url.Values.Encode sorts keys alphabetically: limit < query.
+			Expect(reqByBranch["dev"].URL).To(Equal(
+				`https://api.example.com/alerts?limit=50&query=Namespace%3Apetclinic-dev%2BViolation+State%3AACTIVE`,
+			))
+			Expect(reqByBranch["prod"].URL).To(Equal(
+				`https://api.example.com/alerts?limit=50&query=Namespace%3Apetclinic-prod%2BViolation+State%3AACTIVE`,
+			))
+		})
+
+		It("reads TriggerVariables (from trigger.when.variables) in the expression", func() {
+			// trigger.when.variables computes namespace per branch; httpRequestVariables
+			// reads TriggerVariables["namespace"] and feeds it to urlValuesEncode.
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Trigger: &promoterv1alpha1.TriggerModeSpec{
+					RequeueDuration: metav1.Duration{Duration: 0},
+					When: promoterv1alpha1.WhenWithOutputSpec{
+						Expression: "true",
+						Variables: &promoterv1alpha1.OutputSpec{
+							Expression: `{ "namespace": "petclinic-" + Branch }`,
+						},
+					},
+				}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{
+					"qs": urlValuesEncode({
+						"ns": TriggerVariables["namespace"] ?? ""
+					})
+				}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://api.example.com/alerts` +
+				`{{- $qs := index .HTTPRequestVariables "qs" -}}` +
+				`{{- if $qs }}?{{ $qs }}{{ end -}}`
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+
+			reqByBranch := map[string]simulatortypes.RenderedRequest{}
+			for _, req := range result.RenderedRequests {
+				reqByBranch[req.Branch] = req
+			}
+			Expect(reqByBranch["dev"].URL).To(ContainSubstring("ns=petclinic-dev"))
+			Expect(reqByBranch["prod"].URL).To(ContainSubstring("ns=petclinic-prod"))
+		})
+
+		It("selects method and path suffix per branch — templates contain no branching", func() {
+			// dev is pending, prod is success; expression branches on Phase and returns
+			// method + pathSuffix; methodTemplate and urlTemplate just splice the values.
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{
+					"method":     Phase == "success" ? "POST" : "GET",
+					"pathSuffix": Phase == "success" ? "/close" : "/search"
+				}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com{{ index .HTTPRequestVariables "pathSuffix" }}`
+			wrcs.Spec.HTTPRequest.MethodTemplate = `{{ index .HTTPRequestVariables "method" }}`
+			// Seed different prior phases per branch so the expression branches differ.
+			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+				{Branch: "dev", Phase: promoterv1alpha1.CommitPhasePending},
+				{Branch: "prod", Phase: promoterv1alpha1.CommitPhaseSuccess},
+			}
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+
+			reqByBranch := map[string]simulatortypes.RenderedRequest{}
+			for _, req := range result.RenderedRequests {
+				reqByBranch[req.Branch] = req
+			}
+			Expect(reqByBranch["dev"].Method).To(Equal("GET"))
+			Expect(reqByBranch["dev"].URL).To(Equal("https://example.com/search"))
+			Expect(reqByBranch["prod"].Method).To(Equal("POST"))
+			Expect(reqByBranch["prod"].URL).To(Equal("https://example.com/close"))
+		})
+
+		It("surfaces an error when the expression returns a non-map", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `"not a map"`,
+			}
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("must return a map/object"))
+		})
+
+		It("surfaces an error when the expression does not compile", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: "this is not valid expr !!!",
+			}
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).To(HaveOccurred())
+		})
+	})
 })
 
 // End-to-end expr + template coverage for real change-management manifests (testdata YAML) and a

@@ -114,6 +114,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.GiteaRepo{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_GiteaRepo(ref),
 		apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPAuthentication(ref),
 		apiv1alpha1.HTTPRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref),
+		apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestVariablesSpec(ref),
 		apiv1alpha1.HealthyDryShas{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
 		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
 		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
@@ -947,6 +948,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref common
 			SchemaProps: spec.SchemaProps{
 				Description: "BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.",
 				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}
@@ -4071,7 +4081,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "HTTPRequestSpec defines the HTTP request configuration.\n\nURLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available. These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made, so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from the previous run (trigger mode only).\n\nTemplate variables:\n  - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)\n  - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches\n  - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)\n  - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)\n  - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace\n  - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace\n  - {{ index .TriggerOutput \"key\" }}, {{ index .ResponseOutput \"key\" }}: (trigger mode only) from previous reconcile\n  - {{ index .SuccessOutput \"key\" }}: custom data from the previous success.when.output.expression evaluation\n  - {{ index .TriggerVariables \"key\" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile\n\nExample: \"https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\n\nExactly one of Method or MethodTemplate must be set.",
+				Description: "HTTPRequestSpec defines the HTTP request configuration.\n\nURLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available. These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made, so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from the previous run (trigger mode only).\n\nTemplate variables:\n  - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)\n  - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches\n  - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)\n  - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)\n  - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace\n  - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace\n  - {{ index .TriggerOutput \"key\" }}, {{ index .ResponseOutput \"key\" }}: (trigger mode only) from previous reconcile\n  - {{ index .SuccessOutput \"key\" }}: custom data from the previous success.when.output.expression evaluation\n  - {{ index .TriggerVariables \"key\" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile\n  - {{ index .HTTPRequestVariables \"key\" }}: result of httpRequest.httpRequestVariables.expression for this reconcile (nil when not configured)\n\nExample: \"https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\n\nExactly one of Method or MethodTemplate must be set.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"urlTemplate": {
@@ -4118,6 +4128,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"httpRequestVariables": {
+						SchemaProps: spec.SchemaProps{
+							Description: "HTTPRequestVariables optionally holds an expr expression that produces a free-form map of variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate as {{ index .HTTPRequestVariables \"key\" }}. Evaluated before the HTTP request (same timing as the templates above). Available in both polling and trigger modes. See HTTPRequestVariablesSpec for details.",
+							Ref:         ref(apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName()),
+						},
+					},
 					"timeout": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Timeout is the maximum time to wait for the HTTP request to complete.",
@@ -4135,7 +4151,29 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
+			apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName(), apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestVariablesSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "HTTPRequestVariablesSpec holds an expr expression that computes a free-form map of variables made available to all httpRequest templates as .HTTPRequestVariables.\n\nThe expression is evaluated before the HTTP request is made — the same timing as the templates above — so it shares their variable set (see HTTPRequestSpec for the full list). It is available in both polling and trigger modes, unlike TriggerVariables which require trigger mode.\n\nThe expression must return a map/object. Every key is then accessible in templates via {{ index .HTTPRequestVariables \"key\" }}.\n\nThe built-in expr function urlValuesEncode(map) URL-encodes a map of query-parameter key/value pairs and returns a percent-encoded key=value&… string suitable for appending to a URL.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is an expr expression that must return a map/object. The result is exposed to all httpRequest Go templates as .HTTPRequestVariables. Available variables match those documented on HTTPRequestSpec.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"expression"},
+			},
+		},
 	}
 }
 

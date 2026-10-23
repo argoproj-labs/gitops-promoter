@@ -25,18 +25,20 @@ const maxKeyFieldLength = 40
 type CommitStatus struct {
 	client    *bitbucket.Client
 	k8sClient client.Client
+	domain    string
 }
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-// NewBitbucketCloudCommitStatusProvider creates a new instance of CommitStatus for Bitbucket Cloud.
-func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Secret) (*CommitStatus, error) {
-	client, err := GetClient(secret)
+// NewBitbucketCloudCommitStatusProvider creates a new instance of CommitStatus for Bitbucket Cloud. A non-empty
+// domain overrides the Bitbucket Cloud host (see v1alpha1.BitbucketCloud.Domain).
+func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Secret, domain string) (*CommitStatus, error) {
+	client, err := GetClient(secret, domain)
 	if err != nil {
 		return nil, err
 	}
 
-	return &CommitStatus{client: client, k8sClient: k8sClient}, nil
+	return &CommitStatus{client: client, k8sClient: k8sClient, domain: domain}, nil
 }
 
 // Set sets the commit status for a given commit SHA in the specified repository.
@@ -60,7 +62,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 
 	commitUrl := commitStatus.Spec.Url
 	if commitUrl == "" {
-		commitUrl = createCommitURL(repo, commitStatus.Spec.Sha)
+		commitUrl = createCommitURL(cs.domain, repo, commitStatus.Spec.Sha)
 	}
 	commitStatusOptions := &bitbucket.CommitStatusOptions{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),

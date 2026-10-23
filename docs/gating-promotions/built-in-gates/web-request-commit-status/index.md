@@ -89,6 +89,50 @@ Both are `map[string]any`. They are `nil` when the corresponding `when.variables
 
 The same field exists on **`spec.success.when`**: variables run before the success boolean (and optional `success.when.output`), with `Response` included when an HTTP response exists for that reconcile.
 
+### HTTP request variables (`httpRequestVariables`)
+
+**`spec.httpRequest.httpRequestVariables`** holds an optional expr expression that runs **once per HTTP request, before any template is rendered**. It must return a map/object; every key is then available in `urlTemplate`, `methodTemplate`, `headerTemplates`, and `bodyTemplate` as `{{ index .HTTPRequestVariables "key" }}`.
+
+Use it to centralise branching logic that would otherwise be duplicated across multiple templates, or to build URL-encoded query strings without hand-writing `%xx` sequences.
+
+**Available variables:** the same set as `httpRequest` Go templates.
+
+**Built-in helper — `urlValuesEncode(map)`:** encodes a string→any map as a percent-encoded `key=value&key2=value2` query string (`url.Values.Encode` — keys sorted alphabetically, values percent-encoded). Pass it to build clean query strings; append the result with `?{{ index .HTTPRequestVariables "qs" }}`.
+
+```yaml
+httpRequest:
+  httpRequestVariables:
+    expression: |
+      {
+        "qs": urlValuesEncode({
+          "query":  "Namespace:petclinic-" + Branch + "+Violation State:ACTIVE",
+          "limit":  "50"
+        })
+      }
+  urlTemplate: >-
+    https://api.example.com/alerts
+    {{- $qs := index .HTTPRequestVariables "qs" -}}
+    {{- if $qs }}?{{ $qs }}{{ end -}}
+  methodTemplate: GET
+```
+
+When combined with trigger mode, `TriggerVariables` lets the expression branch on values already computed by `trigger.when.variables`:
+
+```yaml
+httpRequest:
+  httpRequestVariables:
+    expression: |
+      let close = TriggerVariables["inCloseMode"] ?? false;
+      {
+        "pathSuffix": close ? "/change/close/" + (TriggerVariables["changeId"] ?? "") : "/changes/search",
+        "method":     close ? "POST" : "GET"
+      }
+  urlTemplate: 'https://api.example.com{{ index .HTTPRequestVariables "pathSuffix" }}'
+  methodTemplate: '{{ index .HTTPRequestVariables "method" }}'
+```
+
+Expr owns all branching; templates contain no conditionals.
+
 ## Request scope: environments vs promotionstrategy
 
 Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per `WebRequestCommitStatus` and **how** the success expression’s result maps to `CommitStatus` resources.
@@ -914,6 +958,51 @@ spec:
 ```
 
 After each `response.output` evaluation, `ResponseOutput.changeId` is either populated from a search hit (next reconcile sends `POST`) or carried forward (continued action), so the next reconcile naturally renders the matching method, URL, and body.
+
+### HTTP request variables — clean query strings with `urlValuesEncode`
+
+`httpRequestVariables.expression` computes a map before any template is rendered. The `urlValuesEncode` helper builds percent-encoded query strings without hand-writing `%xx` sequences.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: rhacs-alert-gate
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: rhacs-alert-gate
+  reportOn: proposed
+  descriptionTemplate: "RHACS alert gate ({{ .Phase }}) — {{ .Branch }}"
+  httpRequest:
+    httpRequestVariables:
+      expression: |
+        {
+          "qs": urlValuesEncode({
+            "query":            "Namespace:petclinic-" + Branch + "+Platform Component:false+Entity Type:DEPLOYMENT+Violation State:ACTIVE",
+            "pagination.limit":  "50",
+            "pagination.offset": "0"
+          })
+        }
+    urlTemplate: >-
+      https://central-rhacs.example.com/v1/alerts
+      {{- $qs := index .HTTPRequestVariables "qs" -}}
+      {{- if $qs }}?{{ $qs }}{{ end -}}
+    methodTemplate: GET
+    authentication:
+      bearer:
+        secretRef:
+          name: rhacs-api-token
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? Response.StatusCode == 200 && len(Response.Body.alerts) == 0
+          : Phase == "success"
+  mode:
+    polling:
+      interval: 2m
+```
 
 ### Integrating with PromotionStrategy
 

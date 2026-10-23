@@ -49,6 +49,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.BasicAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuth"):
 		return &apiv1alpha1.BearerAuthApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketCloud"):
+		return &apiv1alpha1.BitbucketCloudApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketCloudRepo"):
 		return &apiv1alpha1.BitbucketCloudRepoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketDataCenter"):
@@ -171,6 +173,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPAuthenticationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestSpec"):
 		return &apiv1alpha1.HTTPRequestSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestVariablesSpec"):
+		return &apiv1alpha1.HTTPRequestVariablesSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):

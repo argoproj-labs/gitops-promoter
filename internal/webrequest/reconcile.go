@@ -223,6 +223,8 @@ func reconcileOutcomeWithoutNewResponse(
 
 // applyHTTPExecutionDecision runs the HTTP executor when decision.ShouldFire; otherwise reconciles
 // without a new HTTP response (carries forward last HTTP metadata).
+// When ShouldFire, it first evaluates httpRequest.httpRequestVariables.expression (if configured) and
+// injects the result into td.HTTPRequestVariables so all subsequent template rendering can reference it.
 func applyHTTPExecutionDecision(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
@@ -235,6 +237,15 @@ func applyHTTPExecutionDecision(
 	if !decision.ShouldFire {
 		return reconcileOutcomeWithoutNewResponse(ctx, evaluator, wrcs, td, lastState)
 	}
+
+	// Evaluate httpRequestVariables before rendering any templates so keys are
+	// available as {{ index .HTTPRequestVariables "key" }} in URL/method/header/body.
+	httpReqVars, err := evaluator.EvaluateHTTPRequestVariables(ctx, wrcs.Spec.HTTPRequest.HTTPRequestVariables, td)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate httpRequestVariables: %w", err)
+	}
+	td.HTTPRequestVariables = httpReqVars
+
 	resp, err := exec.Execute(ctx, wrcs, td)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)

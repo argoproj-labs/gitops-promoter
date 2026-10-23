@@ -169,16 +169,10 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.api.core.v1.LocalObjectReference
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloud
   map:
-    elementType:
-      scalar: untyped
-      list:
-        elementType:
-          namedType: __untyped_atomic_
-        elementRelationship: atomic
-      map:
-        elementType:
-          namedType: __untyped_deduced_
-        elementRelationship: separable
+    fields:
+    - name: domain
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloudRepo
   map:
     fields:
@@ -1131,6 +1125,9 @@ var schemaYAML = typed.YAMLObject(`types:
         map:
           elementType:
             scalar: string
+    - name: httpRequestVariables
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HTTPRequestVariablesSpec
     - name: method
       type:
         scalar: string
@@ -1142,6 +1139,12 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
       default: 30s
     - name: urlTemplate
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HTTPRequestVariablesSpec
+  map:
+    fields:
+    - name: expression
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HealthyDryShas
