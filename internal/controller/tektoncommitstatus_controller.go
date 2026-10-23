@@ -32,6 +32,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -260,6 +261,7 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 		// If the object does not exist it gets created and the currentStatus will be empty
 		var currentStatus tekton.TektonRunStatus
 		runName := ""
+		// FIXME: need to handle a case where its trying to create something that already exists gracefully
 		if needToCreate {
 			runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
 		} else {
@@ -341,7 +343,7 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 			return nil, err
 		}
 
-		params = append(params, tekton.Data{Name: name, Value: writer.String()})
+		params = append(params, tekton.Data{Name: name, Value: &apiextensionsv1.JSON{Raw: writer.Bytes()}})
 	}
 	return params, nil
 }
@@ -349,14 +351,14 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 // buildTaskRun builds a TaskRun object with the information from the CommitStatus, the branch, and SHA.
 // It also parses the parameters provided and evaluates the templates that may be in them.
 func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (*tekton.TaskRun, error) {
-	name := fmt.Sprintf("%s-%s-sha%s", tcs.Spec.Key, branch, sha)
+	name := fmt.Sprintf("%s-sha%s", tcs.Spec.Key, sha[:8])
 	taskRun := &tekton.TaskRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
 			Name:      utils.KubeSafeUniqueName(name),
 			Labels: map[string]string{
 				commitStatusLabelKey:              tcs.Name,
-				promoterv1alpha1.EnvironmentLabel: branch,
+				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
 			},
 		},
 		Spec: tekton.TaskRunSpec{
@@ -378,14 +380,14 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 // buildPipelineRun builds a PipelinRun object with the information from the CommitStatus, the branch, and SHA.
 // It also parses the parameters provided and evaluates the templates that may be in them.
 func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (*tekton.PipelineRun, error) {
-	name := fmt.Sprintf("%s-%s-sha%s", tcs.Spec.Key, branch, sha)
+	name := fmt.Sprintf("%s-sha%s", tcs.Spec.Key, sha)
 	pipelineRun := &tekton.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
 			Name:      utils.KubeSafeUniqueName(name),
 			Labels: map[string]string{
 				commitStatusLabelKey:              tcs.Name,
-				promoterv1alpha1.EnvironmentLabel: branch,
+				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
 			},
 		},
 		Spec: tekton.PipelineRunSpec{
@@ -428,7 +430,7 @@ func (r *TektonCommitStatusReconciler) deleteTektonResource(ctx context.Context,
 // a string, array, or object. If the unmarshal fails then it is a string so just return it as is.
 func parseResultValue(result tekton.Data) any {
 	var value any
-	if err := json.Unmarshal([]byte(result.Value), &value); err == nil {
+	if err := json.Unmarshal([]byte(result.Value.Raw), &value); err == nil {
 		return value
 	}
 	return result.Value
