@@ -348,6 +348,15 @@ func (t *scmTestTarget) mergeReportsTargetSha() bool {
 	}
 }
 
+// mergeGuardsHeadSha reports whether the provider refuses a merge when the pull request's head no
+// longer matches PullRequest.spec.mergeSha. Bitbucket Cloud's merge API takes no expected head SHA:
+// its documented body is type, message, close_source_branch and merge_strategy, and the go-bitbucket,
+// drone/go-scm and jenkins-x/go-scm clients send none, so the server merges whatever the head is.
+// TODO: confirm against real Bitbucket Cloud, with and without a merge queue on the target branch.
+func (t *scmTestTarget) mergeGuardsHeadSha() bool {
+	return t.provider != scmserver.BitbucketCloud
+}
+
 // skipIfFakeSCMOnly skips the current spec when a real scmserver provider is selected and the
 // spec (or any of its containers) is labeled fake-scm-only.
 func skipIfFakeSCMOnly() {

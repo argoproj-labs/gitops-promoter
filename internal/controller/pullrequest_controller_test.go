@@ -368,6 +368,10 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When merge SHA is invalid", func() {
 			BeforeEach(func() {
+				if !scmTarget.mergeGuardsHeadSha() {
+					Skip("provider merges regardless of the expected head SHA")
+				}
+
 				By("Creating test resources with invalid merge SHA")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-error-message-test")
 
@@ -393,6 +397,9 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			AfterEach(func() {
+				if !scmTarget.mergeGuardsHeadSha() {
+					return
+				}
 				By("Cleaning up the PullRequest")
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 			})
