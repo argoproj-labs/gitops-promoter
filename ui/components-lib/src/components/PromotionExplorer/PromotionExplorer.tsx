@@ -18,7 +18,7 @@ export interface CellSelection {
   branch: string;
 }
 
-export interface HistoryViewProps {
+export interface PromotionExplorerProps {
   strategy?: PromotionStrategy;
   name?: string;
   namespace?: string;
@@ -32,7 +32,7 @@ export interface HistoryViewProps {
   fillViewport?: boolean;
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({
+const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   strategy,
   name: nameProp,
   namespace: namespaceProp,
@@ -476,4 +476,4 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   );
 };
 
-export default HistoryView;
+export default PromotionExplorer;

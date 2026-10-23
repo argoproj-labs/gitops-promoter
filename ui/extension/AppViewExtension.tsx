@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
-import HistoryView from '@components-lib/components/HistoryView/HistoryView';
-import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
+import PromotionExplorer from '@components-lib/components/PromotionExplorer/PromotionExplorer';
+import type { CellSelection } from '@components-lib/components/PromotionExplorer/PromotionExplorer';
 import { PromotionStrategy } from '@shared/types/promotion';
 import type { PromotionStrategyDetails } from '@shared/types/view';
 import { mergeCommitStatusManagers } from '@shared/utils/PSData';
@@ -270,7 +270,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       )}
       {selected && view === 'history' && (
         <div className="gp-history-wrapper">
-          <HistoryView
+          <PromotionExplorer
             strategy={selected.promotionStrategy}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}

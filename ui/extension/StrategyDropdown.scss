@@ -9,7 +9,7 @@
 
 // ArgoCD mounts the extension into `application-details__tree`, a
 // definite-height, scroll-capable flex child. We fill it with a flex column so
-// the History view's `height: 100%` resolves natively — no viewport
+// the Promotion Explorer's `height: 100%` resolves natively — no viewport
 // measurement. The toggle/controls take their natural height; the history
 // wrapper flexes to the remaining space and contains the inner `.hp`.
 .extension-container {

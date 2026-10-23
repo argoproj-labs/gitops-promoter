@@ -3,7 +3,7 @@ import {
   healthFromStatuses,
   shortSha,
   commitKey,
-} from '@components-lib/components/HistoryView/helpers';
+} from '@components-lib/components/PromotionExplorer/helpers';
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 
 const status = (phase: string, key = phase): CommitStatus => ({ key, phase });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildMatrix } from '@lib/components/HistoryView/buildMatrix';
-import { canShowRestoreCommand } from '@lib/components/HistoryView/restoreCommand';
+import { buildMatrix } from '@lib/components/PromotionExplorer/buildMatrix';
+import { canShowRestoreCommand } from '@lib/components/PromotionExplorer/restoreCommand';
 import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 const BRANCH = 'environments/development';

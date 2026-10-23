@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import HistoryView from '@lib/components/HistoryView/HistoryView';
+import PromotionExplorer from '@lib/components/PromotionExplorer/PromotionExplorer';
 import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 const BRANCH = 'environments/staging';
@@ -57,7 +57,7 @@ function strategyWith(
 }
 
 const meta: Meta = {
-  title: 'History/Held by revert',
+  title: 'Promotion Explorer/Held by revert',
   parameters: { layout: 'fullscreen' },
 };
 
@@ -67,7 +67,7 @@ type Story = StoryObj;
 
 const render = (strategy: PromotionStrategy, rowSha: string) => (
   <div style={{ height: '100vh' }}>
-    <HistoryView
+    <PromotionExplorer
       strategy={strategy}
       namespace="default"
       fillViewport
@@ -121,7 +121,7 @@ function restoreEnv(branch: string, hydratedSha: string, restoredFrom: string) {
 export const CollapsedRestore: Story = {
   render: () => (
     <div style={{ height: '100vh' }}>
-      <HistoryView
+      <PromotionExplorer
         strategy={
           {
             metadata: { name: 'argocon-demo', namespace: 'default' },
