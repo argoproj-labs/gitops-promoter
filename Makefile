@@ -399,9 +399,12 @@ test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/build/buildkit/
+# COVER=1 instruments the manager binary so an e2e run can write a go coverage profile. The release image leaves it at 0.
+COVER ?= 0
+
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg COVER=$(COVER) -t ${IMG} .
 
 SCM_SERVER_IMG ?= scm-server:e2e
 

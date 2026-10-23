@@ -45,7 +45,45 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run E2E-Tests
-        run: make test-e2e
+        run: |
+          if [ -z "${{ strategy.job-index }}" ]; then
+            echo "strategy.job-index is unset, so no matrix leg would collect coverage"
+            exit 1
+          fi
+          make test-e2e
+        env:
+          # 2% of provider API and git requests fail. Three local passes stayed within a few seconds of the
+          # unfaulted suite; 5% and 10% timed out on a history entry that nothing requeued.
+          E2E_SCM_FAULT_PROBABILITY: "0.02"
+          # The second matrix leg (index 1) builds the manager with -cover and writes a profile. job-index follows
+          # the version list, so a Renovate bump of a kindest/node patch does not drop the upload. The other legs
+          # run the release-shaped image.
+          E2E_COVERAGE: ${{ strategy.job-index == 1 && '1' || '0' }}
+      - name: Convert e2e coverage
+        id: e2e-coverage
+        if: ${{ !cancelled() && strategy.job-index == 1 }}
+        run: |
+          cluster="${KIND_CLUSTER:-kind}"
+          mkdir -p e2e-covdata
+          docker cp "${cluster}-control-plane:/var/promoter-cover/." e2e-covdata/
+          if ! ls e2e-covdata/covmeta.* >/dev/null 2>&1; then
+            echo "the controller wrote no coverage data"
+            exit 1
+          fi
+          go tool covdata textfmt -i=e2e-covdata -o e2e-cover.out
+      - name: Upload e2e coverage to Codecov
+        if: ${{ !cancelled() && strategy.job-index == 1 && steps.e2e-coverage.outcome == 'success' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          # flags labels this upload in the Codecov UI. It still merges into the project total alongside the
+          # unflagged upload from the unit-test workflow.
+          files: e2e-cover.out
+          flags: e2e
+          name: e2e
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   e2e:
     # Stable status check for branch protection; matrix jobs above may change names when
     # kindest/node versions bump, but this job name stays constant.
