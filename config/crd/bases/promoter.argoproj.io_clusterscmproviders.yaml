@@ -74,9 +74,34 @@ spec:
                     minLength: 1
                     pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                     type: string
+                  workloadIdentity:
+                    description: |-
+                      WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
+                      The controller pod must be configured for Azure workload identity, which projects a federated service account token
+                      and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
+                      Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set,
+                      secretRef must be omitted.
+                    properties:
+                      clientID:
+                        description: |-
+                          ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as.
+                          Defaults to the AZURE_CLIENT_ID environment variable of the controller.
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                        type: string
+                      tenantID:
+                        description: |-
+                          TenantID is the Microsoft Entra tenant ID of the identity.
+                          Defaults to the AZURE_TENANT_ID environment variable of the controller.
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                        type: string
+                    type: object
                 required:
                 - organization
                 type: object
+                x-kubernetes-validations:
+                - message: workloadIdentity is only supported for Azure DevOps Services,
+                    leave domain empty
+                  rule: '!has(self.workloadIdentity) || !has(self.domain)'
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
@@ -258,6 +283,10 @@ spec:
                 x-kubernetes-map-type: atomic
             type: object
             x-kubernetes-validations:
+            - message: secretRef must not be set when azureDevOps.workloadIdentity
+                is used
+              rule: '!has(self.azureDevOps) || !has(self.azureDevOps.workloadIdentity)
+                || !has(self.secretRef)'
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
                 bitbucketDataCenter azureDevOps fake] must be set
               rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)

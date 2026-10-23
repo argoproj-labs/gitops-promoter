@@ -141,3 +141,92 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 		})
 	})
 })
+
+var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", func() {
+	ctx := context.Background()
+
+	newProvider := func(name string, azdo *promoterv1alpha1.AzureDevOps, secretRef *v1.LocalObjectReference) *promoterv1alpha1.ClusterScmProvider {
+		return &promoterv1alpha1.ClusterScmProvider{
+			Name: name,
+			Spec: promoterv1alpha1.ScmProviderSpec{SecretRef: secretRef, AzureDevOps: azdo},
+		}
+	}
+
+	It("accepts workloadIdentity without a secretRef", func() {
+		provider := newProvider("azdo-wi-valid", &promoterv1alpha1.AzureDevOps{
+			Organization:     "example-org",
+			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
+		}, nil)
+		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, provider)).To(Succeed())
+	})
+
+	It("resolves workloadIdentity without a secret", func() {
+		provider := newProvider("azdo-wi-resolve", &promoterv1alpha1.AzureDevOps{
+			Organization:     "example-org",
+			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
+		}, nil)
+		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, provider)).To(Succeed()) })
+
+		repo := &promoterv1alpha1.GitRepository{
+			Name:      "azdo-wi-resolve",
+			Namespace: "default",
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				AzureDevOps:    &promoterv1alpha1.AzureDevOpsRepo{Project: "example-project", Name: "example-repo"},
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: promoterv1alpha1.ClusterScmProviderKind, Name: provider.Name},
+			},
+		}
+		Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, repo)).To(Succeed()) })
+
+		scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, "default", promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(scmProvider.GetName()).To(Equal(provider.Name))
+		Expect(secret.Data).To(BeEmpty())
+	})
+
+	It("reports a missing secretRef for providers that need a secret", func() {
+		provider := &promoterv1alpha1.ClusterScmProvider{
+			Name: "github-no-secret",
+			Spec: promoterv1alpha1.ScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}},
+		}
+		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, provider)).To(Succeed()) })
+
+		repo := &promoterv1alpha1.GitRepository{
+			Name:      "github-no-secret",
+			Namespace: "default",
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				GitHub:         &promoterv1alpha1.GitHubRepo{Owner: "example-owner", Name: "example-repo"},
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: promoterv1alpha1.ClusterScmProviderKind, Name: provider.Name},
+			},
+		}
+		Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, repo)).To(Succeed()) })
+
+		_, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, "default", promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
+		Expect(err).To(MatchError(ContainSubstring("has no secretRef")))
+	})
+
+	It("rejects workloadIdentity together with a secretRef", func() {
+		provider := newProvider("azdo-wi-with-secret", &promoterv1alpha1.AzureDevOps{
+			Organization:     "example-org",
+			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
+		}, &v1.LocalObjectReference{Name: "azdo-token"})
+		err := k8sClient.Create(ctx, provider)
+		Expect(errors.IsInvalid(err)).To(BeTrue(), "expected an Invalid error, got %v", err)
+		Expect(err).To(MatchError(ContainSubstring("secretRef must not be set when azureDevOps.workloadIdentity is used")))
+	})
+
+	It("rejects workloadIdentity together with a custom domain", func() {
+		provider := newProvider("azdo-wi-with-domain", &promoterv1alpha1.AzureDevOps{
+			Organization:     "example-org",
+			Domain:           "devops.example.com",
+			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
+		}, nil)
+		err := k8sClient.Create(ctx, provider)
+		Expect(errors.IsInvalid(err)).To(BeTrue(), "expected an Invalid error, got %v", err)
+		Expect(err).To(MatchError(ContainSubstring("workloadIdentity is only supported for Azure DevOps Services")))
+	})
+})

@@ -61,6 +61,11 @@ func (in AzureDevOpsRepo) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in AzureWorkloadIdentity) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.AzureWorkloadIdentity"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in BasicAuth) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.BasicAuth"
 }

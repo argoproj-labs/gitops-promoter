@@ -45,6 +45,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.AzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("AzureDevOpsRepo"):
 		return &apiv1alpha1.AzureDevOpsRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("AzureWorkloadIdentity"):
+		return &apiv1alpha1.AzureWorkloadIdentityApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuth"):
 		return &apiv1alpha1.BasicAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuth"):

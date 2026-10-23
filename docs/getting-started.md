@@ -575,7 +575,8 @@ To configure a Bitbucket DataCenter/Server webhook:
 
 /// tab | Azure DevOps
 
-To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
+To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT). On a
+ClusterScmProvider you can use [Azure workload identity](#azure-workload-identity-clusterscmprovider-only) instead.
 
 **ScmProvider**
 
@@ -602,6 +603,40 @@ spec:
   azureDevOps:
     organization: <your-azdo-organization>
 ```
+
+### Azure workload identity (ClusterScmProvider only)
+
+Instead of a PAT, the controller can authenticate with a Microsoft Entra ID identity through
+[Azure workload identity](https://learn.microsoft.com/azure/aks/workload-identity-overview). This uses the
+controller's own identity, so it is only available on a ClusterScmProvider, which only cluster admins can create.
+
+1. Create a user-assigned managed identity (or an Entra application) and add a federated credential for the
+   controller's service account (`system:serviceaccount:<promoter-namespace>:<controller-service-account>`).
+2. [Add the identity to your Azure DevOps organization](https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/service-principal-managed-identity)
+   and give it 'Contribute', 'Create branch' and 'Contribute to pull requests' permissions on the repositories.
+3. Enable workload identity on the controller: annotate its service account with
+   `azure.workload.identity/client-id: <client-id>` and label its pod with `azure.workload.identity/use: "true"`.
+   The workload identity webhook then injects `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_FEDERATED_TOKEN_FILE`.
+
+No secret is needed:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ClusterScmProvider
+metadata:
+  name: <your-clusterscmprovider-name>
+spec:
+  azureDevOps:
+    organization: <your-azdo-organization>
+    workloadIdentity: {}
+```
+
+`workloadIdentity.clientID` and `workloadIdentity.tenantID` can be set to override the values injected by the
+webhook, for example to use a different identity per ClusterScmProvider. Each identity needs a federated credential
+for the controller's service account. Workload identity only works with Azure DevOps Services, so leave `domain`
+empty.
+
+Reference it from a GitRepository with `scmProviderRef.kind: ClusterScmProvider`.
 
 **GitRepository**
 
