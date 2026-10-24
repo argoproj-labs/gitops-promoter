@@ -204,6 +204,7 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 # Local-only: run controller integration tests against an externally running scmserver provider.
 # Requires `make run-scm-server` in another terminal. Not used by CI.
 # Example: make test-scm-provider SCM_PROVIDER=gitea
+# hack/git goes on PATH because git authenticates to the server through promoter_askpass.sh (see internal/git).
 SCM_PROVIDER ?=
 # Admin API listens on this port; the seven providers use the next seven. Override if 9000 is taken (e.g. by Zscaler).
 SCM_SERVER_PORT_BASE ?= 9000
@@ -212,6 +213,7 @@ SCM_SERVER_LOG_LEVEL ?= debug
 .PHONY: test-scm-provider
 test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
 	@if [ -z "$(SCM_PROVIDER)" ]; then echo "SCM_PROVIDER is required (e.g. SCM_PROVIDER=gitea)"; exit 1; fi
+	PATH="$(CURDIR)/hack/git:$$PATH" \
 	PROMOTER_TEST_SCM_PROVIDER="$(SCM_PROVIDER)" \
 	PROMOTER_TEST_SCM_ADMIN_URL="$${PROMOTER_TEST_SCM_ADMIN_URL:-http://127.0.0.1:$(SCM_SERVER_PORT_BASE)}" \
 	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \

@@ -348,6 +348,15 @@ func (t *scmTestTarget) mergeReportsTargetSha() bool {
 	}
 }
 
+// mergeGuardsHeadSha reports whether the provider refuses a merge when the pull request's head no
+// longer matches PullRequest.spec.mergeSha. Bitbucket Cloud's merge API takes no expected head SHA:
+// its documented body is type, message, close_source_branch and merge_strategy, and the go-bitbucket,
+// drone/go-scm and jenkins-x/go-scm clients send none, so the server merges whatever the head is.
+// TODO: confirm against real Bitbucket Cloud, with and without a merge queue on the target branch.
+func (t *scmTestTarget) mergeGuardsHeadSha() bool {
+	return t.provider != scmserver.BitbucketCloud
+}
+
 // skipIfFakeSCMOnly skips the current spec when a real scmserver provider is selected and the
 // spec (or any of its containers) is labeled fake-scm-only.
 func skipIfFakeSCMOnly() {
@@ -409,10 +418,12 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 
 	Expect(admin.AddCredential(ctx, scmserver.Credential{Provider: p, Token: token})).To(Succeed())
 
-	// Keep provider quirks from slowing the envtest suite: zero the async delays.
+	// Keep provider quirks from slowing the envtest suite: zero the async delays. Also turn off rate
+	// limiting: every spec shares one token, and the suite exceeds Bitbucket Cloud's 1000 requests per hour.
 	b := scmserver.DefaultBehavior(p)
 	b.MergeabilityDelay = scmserver.D(0)
 	b.CompletionDelay = scmserver.D(0)
+	b.RateLimit = 0
 	Expect(admin.SetBehavior(ctx, p, b)).To(Succeed())
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
