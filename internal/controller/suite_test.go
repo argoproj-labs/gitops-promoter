@@ -49,6 +49,7 @@ import (
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/k8sfault"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -170,6 +171,12 @@ var _ = BeforeSuite(func() {
 
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
+
+	// k8sClient is already built from cfg, and client.New copies the config, so wrapping here reaches only
+	// clients created afterwards: the reconcilers, and the partitioned manager tests pass the same cfg.
+	if probability, enabled := k8sfault.MaybeWrap(cfg); enabled {
+		GinkgoWriter.Printf("fault injection enabled for reconciler writes to the Kubernetes API: probability=%.3f\n", probability)
+	}
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
