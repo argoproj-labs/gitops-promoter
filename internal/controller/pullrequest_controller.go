@@ -47,7 +47,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -643,22 +642,22 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 
 // ensureFinalizer adds the PullRequest finalizer to a PullRequest that is not being deleted, so that
 // every deletion is funneled through the terminating Get/Close lane above.
+//
+// This makes one Update attempt using pr as already loaded by Reconcile's top-level Get, rather than
+// re-Getting under retry.RetryOnConflict. A conflict (or any other) error here is returned up through
+// Reconcile like any other failure: the standard workqueue rate limiter retries with a fresh top-level
+// Get on the next Reconcile call. Re-Getting inside this function would overwrite pr -- including
+// status.conditions, which Reconcile already reset via RemoveReadyCondition -- with whatever was last
+// persisted, silently reintroducing a stale Ready condition from an earlier failed reconcile.
 func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
-	finalizer := promoterv1alpha1.PullRequestFinalizer
-
-	if controllerutil.ContainsFinalizer(pr, finalizer) {
+	if !controllerutil.AddFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		// Already has the finalizer.
 		return nil
 	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		if controllerutil.AddFinalizer(pr, finalizer) {
-			return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
-	})
+	if err := r.Update(ctx, pr); err != nil {
+		return fmt.Errorf("failed to add finalizer: %w", err)
+	}
+	return nil
 }
 
 // releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no
