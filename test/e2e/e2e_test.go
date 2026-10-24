@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,13 @@ const (
 	// coverageHostPath is where the Kind node stores the controller's coverage files. The CI workflow copies it
 	// after the suite deletes the controller namespace, which is what makes the process exit and flush the profile.
 	coverageHostPath = "/var/promoter-cover"
+	// k8sFaultProbabilityEnv, when set to a fraction in (0, 1], is forwarded as-is into the deployed manager
+	// container under the same name. cmd/main.go's maybeInjectKubernetesAPIFaults reads it at startup and fails
+	// that fraction of the controller's PATCH/POST/PUT/DELETE requests to the real Kubernetes API server with a
+	// synthetic 500; GET, WATCH, and coordination.k8s.io (lease) writes are exempt. Unset leaves the client-go
+	// transport unwrapped. CI does not set this yet, pending a probability sweep like the one that picked 0.02
+	// for E2E_SCM_FAULT_PROBABILITY.
+	k8sFaultProbabilityEnv = "E2E_K8S_FAULT_PROBABILITY"
 )
 
 var _ = Describe("controller", Ordered, func() {
@@ -139,6 +147,22 @@ var _ = Describe("controller", Ordered, func() {
 					`"volumes":[{"name":"coverage","hostPath":{"path":"` + coverageHostPath + `","type":"Directory"}}],` +
 					`"containers":[{"name":"manager","env":[{"name":"GOCOVERDIR","value":"/coverage"}],` +
 					`"volumeMounts":[{"name":"coverage","mountPath":"/coverage"}]}]}}}}`
+				cmd = exec.Command("kubectl", "patch", "deployment", "promoter-controller-manager",
+					"-n", namespace, "--type=strategic", "-p", patch)
+				_, err = utils.Run(cmd)
+				ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			}
+
+			if raw := os.Getenv(k8sFaultProbabilityEnv); raw != "" {
+				probability, err := strconv.ParseFloat(raw, 64)
+				ExpectWithOffset(1, err).NotTo(HaveOccurred())
+				ExpectWithOffset(1, probability).To(BeNumerically(">", 0))
+				ExpectWithOffset(1, probability).To(BeNumerically("<=", 1))
+				By(fmt.Sprintf("failing %.0f%% of the controller's writes to the Kubernetes API server", probability*100))
+				// env is a patchMergeKey=name list, so this merges alongside the coverage patch's GOCOVERDIR entry
+				// above instead of replacing it, regardless of which patch lands first.
+				patch := `{"spec":{"template":{"spec":{"containers":[{"name":"manager","env":[` +
+					`{"name":"` + k8sFaultProbabilityEnv + `","value":"` + raw + `"}]}]}}}}`
 				cmd = exec.Command("kubectl", "patch", "deployment", "promoter-controller-manager",
 					"-n", namespace, "--type=strategic", "-p", patch)
 				_, err = utils.Run(cmd)

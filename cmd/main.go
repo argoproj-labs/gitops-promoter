@@ -182,6 +182,7 @@ func runController(
 	provider := kubeconfigprovider.New(providerOpts)
 
 	restConfig := ctrl.GetConfigOrDie()
+	maybeInjectKubernetesAPIFaults(restConfig)
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
 	if err := settings.BootstrapControllerInstanceID(processSignalsCtx, restConfig, controllerNamespace); err != nil {
