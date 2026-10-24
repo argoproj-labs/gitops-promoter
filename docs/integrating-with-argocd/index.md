@@ -145,6 +145,8 @@ spec:
         {{- end }}
 ```
 
+The extension also persists the selected commit and environment of the promotion explorer in the `psCommit` and `psEnv` query parameters, and the environments the history is filtered to in the `psNode` query parameter (a single branch, or several separated by commas), so a URL copied from the extension reopens the same selection.
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
