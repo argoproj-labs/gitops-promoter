@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -253,8 +254,10 @@ func prepareKindCoverageDir() error {
 	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
 		cluster = v
 	}
-	cmd := exec.Command("docker", "exec", cluster+"-control-plane", "sh", "-c",
+	cmd := exec.CommandContext(context.Background(), "docker", "exec", cluster+"-control-plane", "sh", "-c",
 		"mkdir -p "+coverageHostPath+" && chmod 777 "+coverageHostPath)
-	_, err := utils.Run(cmd)
-	return err
+	if _, err := utils.Run(cmd); err != nil {
+		return fmt.Errorf("preparing coverage dir on the kind node: %w", err)
+	}
+	return nil
 }

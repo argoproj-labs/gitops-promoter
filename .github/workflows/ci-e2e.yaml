@@ -46,12 +46,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run E2E-Tests
         run: |
-          if [ -z "${{ strategy.job-index }}" ]; then
+          if [ -z "$JOB_INDEX" ]; then
             echo "strategy.job-index is unset, so no matrix leg would collect coverage"
             exit 1
           fi
           make test-e2e
         env:
+          JOB_INDEX: ${{ strategy.job-index }}
           # 2% of provider API and git requests fail. Three local passes stayed within a few seconds of the
           # unfaulted suite; 5% and 10% timed out on a history entry that nothing requeued.
           E2E_SCM_FAULT_PROBABILITY: "0.02"
