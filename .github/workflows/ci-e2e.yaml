@@ -55,7 +55,7 @@ jobs:
           JOB_INDEX: ${{ strategy.job-index }}
           # 2% of provider API and git requests fail. Three local passes stayed within a few seconds of the
           # unfaulted suite; 5% and 10% timed out on a history entry that nothing requeued.
-          E2E_SCM_FAULT_PROBABILITY: "0.02"
+          E2E_SCM_FAULT_PROBABILITY: "0.05"
           # The second matrix leg (index 1) builds the manager with -cover and writes a profile. job-index follows
           # the version list, so a Renovate bump of a kindest/node patch does not drop the upload. The other legs
           # run the release-shaped image.
