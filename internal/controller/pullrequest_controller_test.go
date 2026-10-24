@@ -1598,25 +1598,44 @@ var _ = Describe("PullRequest Controller", func() {
 
 			// Status must be persisted as closed before the promoter finalizer is released so the
 			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
+			//
+			// The closed-status-but-finalizer-still-held state is a single, narrow intermediate
+			// resourceVersion: it exists only between the "Closing PullRequest" reconcile that persists
+			// status.state=Closed and the very next reconcile that releases the finalizer, which in this
+			// envtest setup can be under 15ms apart. A fixed-interval Get-poll can straddle that window
+			// under CI load, where any single Get can itself take longer than the window it's trying to
+			// sample -- that's a sampling gap, not evidence the controller skipped persisting the status.
+			// A watch has no such gap: the API server delivers every resourceVersion transition in order,
+			// so the intermediate state can't be missed regardless of how narrow it is or how slow the
+			// test runner is. The watch must start before Delete below so the first relevant event isn't
+			// missed to the same race this is fixing.
+			watchClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).ToNot(HaveOccurred())
+			watcher, err := watchClient.Watch(ctx, &promoterv1alpha1.PullRequestList{},
+				client.InNamespace(pullRequest.Namespace),
+				client.MatchingFields{"metadata.name": pullRequest.Name})
+			Expect(err).ToNot(HaveOccurred())
+			defer watcher.Stop()
+
 			closedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
+			stopWatching := make(chan bool)
 			go func() {
 				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
 				timeout := time.After(constants.EventuallyTimeout)
 				for {
 					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil &&
+					case event, ok := <-watcher.ResultChan():
+						if !ok {
+							return
+						}
+						currentPR, ok := event.Object.(*promoterv1alpha1.PullRequest)
+						if ok &&
 							currentPR.Status.State == promoterv1alpha1.PullRequestClosed &&
-							controllerutil.ContainsFinalizer(&currentPR, promoterv1alpha1.PullRequestFinalizer) {
+							controllerutil.ContainsFinalizer(currentPR, promoterv1alpha1.PullRequestFinalizer) {
 							closedStatusObserved <- currentPR.Status
 							return
 						}
-					case <-stopPolling:
+					case <-stopWatching:
 						return
 					case <-timeout:
 						return
@@ -1634,7 +1653,7 @@ var _ = Describe("PullRequest Controller", func() {
 			var observedStatus promoterv1alpha1.PullRequestStatus
 			Eventually(closedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 				"closed status should be persisted before the promoter finalizer is released")
-			close(stopPolling)
+			close(stopWatching)
 
 			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
 			Eventually(func(g Gomega) {
@@ -1681,7 +1700,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			base := pullRequest.DeepCopy()
 			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
-			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			err = k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
 			Consistently(func(g Gomega) {
