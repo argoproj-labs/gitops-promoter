@@ -47,13 +47,21 @@ const (
 	// controller learns of it only by re-reading the pull request. The server does send the provider's pull request
 	// event; the receiver does not consume it yet.
 	pollingRequeue = 5 * time.Second
-	// retryDelay is the PullRequest rate limiter's slow delay, which retries a merge the provider refused (branch
-	// protection). It defaults to 5 minutes.
+	// retryDelay is the rate limiter's slow delay for every controller the suite configures. It retries a merge the
+	// provider refused (branch protection) and any reconcile a provider error failed. It defaults to 5 minutes,
+	// longer than promotionTimeout, so a controller that fails maxFastAttempts times in a row would stall the spec.
 	retryDelay = 5 * time.Second
+	// retryFastDelay and maxFastAttempts are the rate limiter's fast retries before it switches to retryDelay.
+	retryFastDelay  = time.Second
+	maxFastAttempts = 3
 	// holdTime is how long a spec watches a pull request it expects the controller to leave open. With requeues off,
 	// the controller acts on a pull request within seconds of the webhook that announces it, so this long a hold
 	// proves the controller declined to merge.
 	holdTime = 8 * time.Second
+	// scmFaultProbabilityEnv, when set to a fraction in (0, 1], makes the test SCM server fail that fraction of
+	// provider requests, API and git included, with 500. Unset leaves the server reliable. CI sets it to 0.02.
+	// The admin API, which the suite itself calls, is a different listener and is never faulted.
+	scmFaultProbabilityEnv = "E2E_SCM_FAULT_PROBABILITY"
 )
 
 // scmServerPorts are the Service ports of each provider listener of the test SCM server.
@@ -166,6 +174,17 @@ func scmProviderSpecs() {
 		for _, p := range scmserver.AllProviders {
 			Expect(admin.AddCredential(ctx, scmserver.Credential{Provider: p, Token: scmToken})).To(Succeed())
 		}
+		if raw := os.Getenv(scmFaultProbabilityEnv); raw != "" {
+			probability, err := strconv.ParseFloat(raw, 64)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(probability).To(BeNumerically(">", 0))
+			Expect(probability).To(BeNumerically("<=", 1))
+			By(fmt.Sprintf("failing %.0f%% of provider API and git requests", probability*100))
+			_, err = admin.AddFault(ctx, scmserver.FaultRule{
+				Status: http.StatusInternalServerError, Probability: probability,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
 		key, err := rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 		githubKey = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
@@ -178,9 +197,15 @@ func scmProviderSpecs() {
 		DeferCleanup(kubectlIgnoringErrors, "delete", "ns", scmE2ENamespace, "--ignore-not-found", "--wait=false")
 	}, NodeTimeout(15*time.Minute))
 
+	// BeforeEach clears the request log so the summary below counts only the spec that just ran.
+	BeforeEach(func(ctx SpecContext) {
+		Expect(admin.ClearRequests(ctx)).To(Succeed())
+	})
+
 	// AfterEach rather than DeferCleanup: the enclosing container's AfterAll removes the controller before
 	// cleanups run, and its logs are the most useful evidence of why a promotion stalled.
 	AfterEach(func(ctx SpecContext) {
+		summarizeSCMRequests(ctx, admin)
 		if CurrentSpecReport().Failed() {
 			printSCMDiagnostics(ctx, admin)
 		}
@@ -277,23 +302,24 @@ func scmProviderSpecs() {
 	}, NodeTimeout(12*time.Minute))
 }
 
-// configureRequeue sets every controller's work queue requeue interval to interval on the deployed
-// ControllerConfiguration, and the PullRequest rate limiter's slow delay to retryDelay.
+// configureRequeue sets the work queue requeue interval of every controller the promotions use to interval on the
+// deployed ControllerConfiguration, and their rate limiters' retries to retryFastDelay and retryDelay.
 func configureRequeue(ctx context.Context, interval time.Duration) {
 	GinkgoHelper()
-	d := interval.String()
-	retry := retryDelay.String()
-	requeue := `{"spec":{` +
-		`"promotionStrategy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
-		`"changeTransferPolicy":{"workQueue":{"requeueDuration":"` + d + `"}},` +
-		`"changeTransferPolicyHistory":{"workQueue":{"requeueDuration":"` + d + `"}},` +
-		`"pullRequest":{"workQueue":{"requeueDuration":"` + d + `","rateLimiter":{"maxOf":[` +
-		`{"bucket":{"qps":10,"bucket":100}},` +
-		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + retry + `","maxFastAttempts":3}}]}}},` +
-		`"commitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
-		`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}}}}`
+	workQueue := fmt.Sprintf(`{"workQueue":{"requeueDuration":%q,"rateLimiter":{"maxOf":[`+
+		`{"bucket":{"qps":10,"bucket":100}},`+
+		`{"fastSlow":{"fastDelay":%q,"slowDelay":%q,"maxFastAttempts":%d}}]}}}`,
+		interval.String(), retryFastDelay.String(), retryDelay.String(), maxFastAttempts)
+	controllers := []string{
+		"promotionStrategy", "changeTransferPolicy", "changeTransferPolicyHistory", "pullRequest", "commitStatus",
+		"dependentsSuccessfulCommitStatus",
+	}
+	sections := make([]string, 0, len(controllers))
+	for _, c := range controllers {
+		sections = append(sections, fmt.Sprintf("%q:%s", c, workQueue))
+	}
 	run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
-		"-n", namespace, "--type=merge", "-p", requeue)
+		"-n", namespace, "--type=merge", "-p", `{"spec":{`+strings.Join(sections, ",")+`}}`)
 }
 
 // forEachProvider runs body for every provider of the test SCM server concurrently and waits for all of them. A
@@ -927,6 +953,33 @@ func (f promotionFlow) mergeByHand(ctx context.Context, repo scmserver.RepoInfo,
 	Expect(merged.State).To(Equal("merged"))
 	Expect(merged.Squashed).To(Equal(squash))
 	return merged
+}
+
+// summarizeSCMRequests writes how many provider requests the spec generated and how many the fault rule answered.
+func summarizeSCMRequests(ctx context.Context, admin *scmserver.AdminClient) {
+	if admin == nil {
+		return
+	}
+	reqs, err := admin.Requests(ctx)
+	if err != nil {
+		GinkgoWriter.Printf("scm request summary: %v\n", err)
+		return
+	}
+	var api, apiFaults, git, gitFaults int
+	for _, r := range reqs {
+		if r.Git {
+			git++
+			if r.Fault {
+				gitFaults++
+			}
+			continue
+		}
+		api++
+		if r.Fault {
+			apiFaults++
+		}
+	}
+	GinkgoWriter.Printf("scm request summary: api=%d faulted=%d git=%d faulted=%d\n", api, apiFaults, git, gitFaults)
 }
 
 // printSCMDiagnostics writes the state of the controller, the test SCM server and the promotion resources to the
