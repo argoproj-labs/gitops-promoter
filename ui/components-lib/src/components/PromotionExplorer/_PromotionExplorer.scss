@@ -44,6 +44,8 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-wrap: wrap;
+  row-gap: 8px;
   padding: 10px 16px 10px 20px;
   background: $bg-surface;
   border-bottom: 1px solid $stroke;
@@ -92,6 +94,7 @@
 }
 
 .hp-header__subtitle {
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
   color: $text-muted;

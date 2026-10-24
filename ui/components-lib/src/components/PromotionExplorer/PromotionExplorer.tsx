@@ -74,6 +74,16 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
 
+  const initialRowId = initialSelection?.rowId;
+  const initialBranch = initialSelection?.branch;
+  useEffect(() => {
+    const next =
+      initialRowId && initialBranch ? { rowId: initialRowId, branch: initialBranch } : null;
+    setSelectedState((current) =>
+      current?.rowId === next?.rowId && current?.branch === next?.branch ? current : next,
+    );
+  }, [initialRowId, initialBranch]);
+
   const selectCell = useCallback((next: CellSelection | null) => {
     setSelectedState(next);
     onSelectionChangeRef.current?.(next);
@@ -82,6 +92,15 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const envFilterRef = useRef(envFilter);
   const onSelectedEnvsChangeRef = useRef(onSelectedEnvsChange);
   onSelectedEnvsChangeRef.current = onSelectedEnvsChange;
+
+  const initialEnvsKey = initialSelectedEnvs?.join('\0') ?? '';
+  useEffect(() => {
+    const next = initialEnvsKey ? initialEnvsKey.split('\0') : [];
+    const current = envFilterRef.current;
+    if (current.length === next.length && current.every((b, i) => b === next[i])) return;
+    envFilterRef.current = next;
+    setEnvFilterState(next);
+  }, [initialEnvsKey]);
 
   const updateEnvFilter = useCallback((next: string[]) => {
     const current = envFilterRef.current;
@@ -95,9 +114,28 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
     updateEnvFilter([]);
   }, [updateEnvFilter]);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) clearSelection();
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const root = rootRef.current;
+      if (!root) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+        )
+      ) {
+        return;
+      }
+      const active = document.activeElement;
+      if (active && active !== document.body && !root.contains(active)) return;
+      const otherDialogOpen = Array.from(
+        document.querySelectorAll('[role="dialog"], [aria-modal="true"]'),
+      ).some((dialog) => !root.contains(dialog));
+      if (otherDialogOpen) return;
+      clearSelection();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -249,7 +287,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const gridTemplate = `minmax(350px, 420px) repeat(${visibleEnvs.length}, minmax(286px, 1fr))`;
 
   return (
-    <div className={`hp ${rootClass}`}>
+    <div ref={rootRef} className={`hp ${rootClass}`}>
       <header className="hp-header">
         {handleBack && (
           <button className="hp-header__back" onClick={handleBack} type="button">
