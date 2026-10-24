@@ -50,6 +50,7 @@ const row: CommitRow = {
   dryShaShort: 'bbbbbbb',
   subject: 'a commit',
   author: 'Someone',
+  references: [],
   repoUrl: 'https://github.com/org/repo',
   freshestAt: 0,
   earliestAt: 0,

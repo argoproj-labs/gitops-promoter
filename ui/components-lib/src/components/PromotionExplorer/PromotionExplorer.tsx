@@ -1,15 +1,16 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'react-icons/fa';
-import { GoGitCommit } from 'react-icons/go';
+import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaRocket } from 'react-icons/fa';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
-import { isEmptyCellKind } from './helpers';
+import { isEmptyCellKind, safeHttpUrl } from './helpers';
 import { buildExplorerModel, type ExplorerModel } from './explorerModel';
 import { buildCommitPath } from './graphFocus';
 import PromotionMap from './PromotionMap/PromotionMap';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
+import { AppCommits } from './AppCommits';
+import { CommitBlock } from './CommitBlock';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
@@ -231,7 +232,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const hasMultipleEnvs = envs.length > 1;
 
   const FILTERS: { id: FilterId; label: string }[] = [
-    { id: 'all', label: 'All commits' },
+    { id: 'all', label: 'All dry commits' },
     { id: 'live', label: 'Live' },
     { id: 'in-flight', label: 'In flight' },
     { id: 'failed', label: 'Failed' },
@@ -245,7 +246,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
-  const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(286px, 1fr))`;
+  const gridTemplate = `minmax(350px, 420px) repeat(${visibleEnvs.length}, minmax(286px, 1fr))`;
 
   return (
     <div className={`hp ${rootClass}`}>
@@ -266,7 +267,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
             icon={<FaFilter />}
             label="Filter"
             active={filter !== 'all'}
-            value={FILTERS.find((f) => f.id === filter)?.label ?? 'All commits'}
+            value={FILTERS.find((f) => f.id === filter)?.label ?? 'All dry commits'}
           >
             {(close) =>
               FILTERS.map((f) => (
@@ -404,22 +405,12 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
               )}
               <div className="hp-matrix__head" style={{ gridTemplateColumns: gridTemplate }}>
                 <span className="hp-matrix__head-commit">
-                  <span className="hp-matrix__head-label">Commit</span>
-                  <span className="hp-matrix__head-promotes">
-                    Promotes
-                    <FaArrowRight className="hp-matrix__head-promotes-arrow" aria-hidden="true" />
-                  </span>
+                  <span className="hp-matrix__head-label">Dry commit</span>
+                  <span className="hp-matrix__head-promotes">Promotes to</span>
                 </span>
-                {visibleEnvs.map((env, i) => (
+                {visibleEnvs.map((env) => (
                   <span key={env.branch} className="hp-matrix__head-env">
-                    <span className="hp-matrix__head-pill-row">
-                      {i > 0 && (
-                        <span className="hp-matrix__head-connector" aria-hidden="true">
-                          <FaArrowRight />
-                        </span>
-                      )}
-                      <span className="hp-matrix__head-pill">{env.branch}</span>
-                    </span>
+                    <span className="hp-matrix__head-pill">{env.branch}</span>
                   </span>
                 ))}
               </div>
@@ -430,99 +421,92 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                 No commits match these filters. Try adjusting them.
               </div>
             ) : (
-              filteredRows.map((row) => (
-                <div
-                  key={row.id}
-                  id={`row-${row.id}`}
-                  className={`hp-row ${selected?.rowId === row.id ? 'hp-row--selected' : ''}`}
-                  style={{ gridTemplateColumns: gridTemplate }}
-                >
-                  <div className="hp-row__commit">
-                    <div className="hp-row__subject" title={row.subject}>
-                      {row.subject}
+              filteredRows.map((row) => {
+                const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull));
+                return (
+                  <div
+                    key={row.id}
+                    id={`row-${row.id}`}
+                    className={['hp-row', selected?.rowId === row.id ? 'hp-row--selected' : '']
+                      .filter(Boolean)
+                      .join(' ')}
+                    style={{ gridTemplateColumns: gridTemplate }}
+                  >
+                    <div className="hp-row__commit">
+                      <CommitBlock
+                        role="group"
+                        ariaLabel="Dry commit"
+                        icon={
+                          <span title="Dry commit" className="hp-commit__icon-wrap">
+                            <FaRocket className="hp-commit__icon" aria-hidden="true" />
+                          </span>
+                        }
+                        chip={
+                          dryCommitUrl ? (
+                            <a
+                              className="hp-commit__sha"
+                              href={dryCommitUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`Dry commit ${row.dryShaShort}, opens in new tab`}
+                            >
+                              {row.dryShaShort}
+                            </a>
+                          ) : (
+                            <span className="hp-commit__sha">{row.dryShaShort}</span>
+                          )
+                        }
+                        title={row.subject}
+                        author={
+                          row.author && (
+                            <Tooltip label={`Authored by ${row.author}`}>
+                              <span className="hp-commit__author">{row.author}</span>
+                            </Tooltip>
+                          )
+                        }
+                        time={
+                          row.freshestAt > 0 && (
+                            <Tooltip
+                              label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
+                            >
+                              <span className="hp-commit__time">
+                                {timeAgo(new Date(row.earliestAt || row.freshestAt).toISOString())}
+                              </span>
+                            </Tooltip>
+                          )
+                        }
+                      />
+                      {row.references.length > 0 && <AppCommits references={row.references} />}
                     </div>
-                    <div className="hp-row__meta">
-                      {row.repoUrl && row.dryShaFull ? (
-                        <a
-                          className="hp-row__sha"
-                          href={getCommitUrl(row.repoUrl, row.dryShaFull)}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
+                    {visibleEnvs.map((env) => {
+                      const isFocusedEnv = envFilter.includes(env.branch);
+                      return (
+                        <div
+                          key={env.branch}
+                          className={[
+                            'hp-row__env-slot',
+                            isFocusedEnv ? 'hp-row__env-slot--focus' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
                         >
-                          {row.dryShaShort}
-                        </a>
-                      ) : (
-                        <span className="hp-row__sha">{row.dryShaShort}</span>
-                      )}
-                      {row.refShaShort && row.refUrl && (
-                        <Tooltip
-                          label={
-                            <>
-                              Source commit <code>{row.refShaShort}</code>
-                              <br />
-                              Open on remote
-                            </>
-                          }
-                        >
-                          <a
-                            className="hp-row__pr"
-                            href={row.refUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Source commit ${row.refShaShort}, opens in new tab`}
-                          >
-                            <GoGitCommit aria-hidden="true" /> {row.refShaShort}
-                          </a>
-                        </Tooltip>
-                      )}
-                      <span className="hp-row__sep" aria-hidden="true">
-                        ·
-                      </span>
-                      <Tooltip label={`Authored by ${row.author}`}>
-                        <span className="hp-row__author-inline">{row.author}</span>
-                      </Tooltip>
-                      {row.freshestAt > 0 && (
-                        <>
-                          <span className="hp-row__sep">·</span>
-                          <Tooltip
-                            label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
-                          >
-                            <span className="hp-row__time-inline">
-                              {timeAgo(new Date(row.earliestAt || row.freshestAt).toISOString())}
-                            </span>
-                          </Tooltip>
-                        </>
-                      )}
-                    </div>
+                          <FlowCell
+                            cell={row.cells[env.branch]}
+                            branch={env.branch}
+                            isSelected={
+                              selected?.rowId === row.id && selected?.branch === env.branch
+                            }
+                            onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
+                            rowsById={rowsById}
+                            onJumpToRow={handleJumpToRow}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                  {visibleEnvs.map((env) => {
-                    const isFocusedEnv = envFilter.includes(env.branch);
-                    return (
-                      <div
-                        key={env.branch}
-                        className={[
-                          'hp-row__env-slot',
-                          isFocusedEnv ? 'hp-row__env-slot--focus' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      >
-                        <FlowCell
-                          cell={row.cells[env.branch]}
-                          branch={env.branch}
-                          isSelected={selected?.rowId === row.id && selected?.branch === env.branch}
-                          onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
-                          rowsById={rowsById}
-                          onJumpToRow={handleJumpToRow}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -73,6 +73,16 @@ export interface EnvColumn {
 // accents. #d97706 (3.2:1) was darkened to #9a5a0f (5.5:1 on white).
 export const LANE_COLORS = ['#1f4f5e', '#6f42c1', '#9a5a0f', '#0f766e', '#b91c1c', '#4338ca'];
 
+export interface RowReference {
+  shaShort: string;
+  url?: string;
+  repoName?: string;
+  subject?: string;
+  author?: string;
+  body?: string;
+  date?: string;
+}
+
 export interface CommitRow {
   id: string;
   dryShaFull: string;
@@ -82,8 +92,7 @@ export interface CommitRow {
   body?: string;
   prId?: string;
   prUrl?: string;
-  refShaShort?: string;
-  refUrl?: string;
+  references: RowReference[];
   /**
    * Set on rows built from a restore entry. Those rows share a dry sha with the
    * original promotion and are keyed `{dry sha}-restore` to keep the two distinct.
