@@ -2008,6 +2008,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: phase
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: renderedURL
+      type:
+        scalar: string
     - name: reportedSha
       type:
         scalar: string
@@ -2093,6 +2096,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - branch
+    - name: renderedURL
+      type:
+        scalar: string
     - name: responseOutput
       type:
         map:

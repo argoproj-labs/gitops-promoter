@@ -2077,6 +2077,8 @@ export type components = {
              * @default
              */
             phase: string;
+            /** @description RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt for this environment (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            renderedURL?: string;
             /** @description ReportedSha is the commit SHA being reported on for this environment. This is determined by the reportOn field (proposed or active). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             reportedSha?: string;
             /** @description ResponseOutput is the map from spec.mode.trigger.response.output.expression when spec.mode.trigger.response is set; otherwise nil. */
@@ -2122,6 +2124,8 @@ export type components = {
             lastSuccessfulShas?: components["schemas"]["WebRequestCommitStatusLastSuccessfulShaItem"][];
             /** @description PhasePerBranch holds the resolved phase for each applicable branch. Every applicable branch is always present after reconciliation. */
             phasePerBranch?: components["schemas"]["WebRequestCommitStatusPhasePerBranchItem"][];
+            /** @description RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            renderedURL?: string;
             /** @description ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput, one shared map for context=promotionstrategy. */
             responseOutput?: components["schemas"]["JSON"];
             /** @description SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput, one shared map for context=promotionstrategy. */

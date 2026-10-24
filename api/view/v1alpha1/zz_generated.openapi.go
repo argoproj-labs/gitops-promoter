@@ -6862,6 +6862,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 							Format:      "",
 						},
 					},
+					"renderedURL": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt for this environment (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"lastRequestTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "LastRequestTime is when the last HTTP request was made.",
@@ -7035,6 +7042,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 									},
 								},
 							},
+						},
+					},
+					"renderedURL": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path).",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"lastRequestTime": {

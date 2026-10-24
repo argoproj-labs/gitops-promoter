@@ -520,6 +520,13 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// +optional
 	PhasePerBranch []WebRequestCommitStatusPhasePerBranchItem `json:"phasePerBranch,omitempty"`
 
+	// RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+	// for the last HTTP request attempt (empty when no request has been made yet).
+	// It carries forward the previous value when a reconcile skips the HTTP request
+	// (polling interval, trigger false, or already-successful SHA fast path).
+	// +optional
+	RenderedURL string `json:"renderedURL,omitempty"`
+
 	// LastRequestTime is when the last HTTP request was made.
 	// +optional
 	LastRequestTime *metav1.Time `json:"lastRequestTime,omitempty"`
@@ -589,6 +596,13 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase CommitStatusPhase `json:"phase"`
+
+	// RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+	// for the last HTTP request attempt for this environment (empty when no request has been made yet).
+	// It carries forward the previous value when a reconcile skips the HTTP request
+	// (polling interval, trigger false, or already-successful SHA fast path).
+	// +optional
+	RenderedURL string `json:"renderedURL,omitempty"`
 
 	// LastRequestTime is when the last HTTP request was made.
 	// +optional

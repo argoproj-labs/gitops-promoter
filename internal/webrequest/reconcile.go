@@ -246,11 +246,22 @@ func applyHTTPExecutionDecision(
 	}
 	td.HTTPRequestVariables = httpReqVars
 
-	resp, err := exec.Execute(ctx, wrcs, td)
+	rendered, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to render HTTP request: %w", err)
+	}
+
+	resp, err := exec.Execute(ctx, wrcs, rendered)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)
 	}
-	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+
+	outcome, err := reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate httpResponse for status: %w", err)
+	}
+	outcome.RenderedURL = rendered.URL
+	return outcome, nil
 }
 
 // resolvePhaseFromSuccessWhen evaluates spec.success.when.expression for the current mode.context.
@@ -438,11 +449,19 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
 
+		// RenderedURL is updated when the HTTP request fires this reconcile; otherwise the
+		// previous value is carried forward so the field always shows the last-used URL.
+		renderedURL := lastState.RenderedURL
+		if decision.ShouldFire {
+			renderedURL = result.RenderedURL
+		}
+
 		wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
 			Branch:                 branch,
 			ReportedSha:            reportedSha,
 			LastSuccessfulSha:      lastSuccessfulSha,
 			Phase:                  result.Phase,
+			RenderedURL:            renderedURL,
 			LastRequestTime:        result.LastRequestTime,
 			LastResponseStatusCode: result.LastResponseStatusCode,
 			TriggerOutput:          triggerDataJSON,
@@ -583,8 +602,16 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 
 	resolvedPhases := getPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)
 
+	// RenderedURL is updated when the HTTP request fires this reconcile; otherwise the
+	// previous value is carried forward so the field always shows the last-used URL.
+	renderedURL := lastState.RenderedURL
+	if decision.ShouldFire {
+		renderedURL = result.RenderedURL
+	}
+
 	psc := &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
 		PhasePerBranch:         phasePerBranchSliceFromMap(resolvedPhases),
+		RenderedURL:            renderedURL,
 		LastRequestTime:        result.LastRequestTime,
 		LastResponseStatusCode: result.LastResponseStatusCode,
 		TriggerOutput:          triggerDataJSON,

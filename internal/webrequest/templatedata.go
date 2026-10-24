@@ -120,13 +120,16 @@ type reconcileOutcome struct {
 	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
 	SuccessVariables       map[string]any
 	Phase                  promoterv1alpha1.CommitStatusPhase
+	RenderedURL            string
 }
 
-// HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for the given template data
-// (render, auth, transport). The simulator supplies an implementation that returns a mock response
-// or ErrHTTPResponseRequiredWhenTriggerFires when none is set.
+// HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for a pre-rendered request
+// (auth, transport). The caller is responsible for rendering templates before calling Execute so
+// that rendering happens exactly once and status.renderedURL reflects the URL that was actually
+// requested. The simulator supplies an implementation that returns a mock response or
+// ErrHTTPResponseRequiredWhenTriggerFires when none is set.
 type HTTPEXecutor interface {
-	Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (HTTPResponse, error)
+	Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, rendered RenderedHTTPRequest) (HTTPResponse, error)
 }
 
 // triggerExprData builds the expression data map for trigger and trigger output expressions.

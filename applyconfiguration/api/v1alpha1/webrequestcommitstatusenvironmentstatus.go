@@ -44,6 +44,11 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
 	// return form documented on SuccessSpec.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
+	// RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+	// for the last HTTP request attempt for this environment (empty when no request has been made yet).
+	// It carries forward the previous value when a reconcile skips the HTTP request
+	// (polling interval, trigger false, or already-successful SHA fast path).
+	RenderedURL *string `json:"renderedURL,omitempty"`
 	// LastRequestTime is when the last HTTP request was made.
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
@@ -93,6 +98,14 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastSucc
 // If called multiple times, the Phase field is set to the value of the last call.
 func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Phase = &value
+	return b
+}
+
+// WithRenderedURL sets the RenderedURL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RenderedURL field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithRenderedURL(value string) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.RenderedURL = &value
 	return b
 }
 
