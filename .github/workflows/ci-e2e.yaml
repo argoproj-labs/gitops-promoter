@@ -67,8 +67,14 @@ jobs:
           cluster="${KIND_CLUSTER:-kind}"
           mkdir -p e2e-covdata
           docker cp "${cluster}-control-plane:/var/promoter-cover/." e2e-covdata/
+          # covmeta is written when the covered process starts. covcounters is written when it exits.
+          # textfmt accepts meta alone and emits an all-zero profile, so require both.
           if ! ls e2e-covdata/covmeta.* >/dev/null 2>&1; then
-            echo "the controller wrote no coverage data"
+            echo "the controller wrote no coverage metadata (covmeta.*)"
+            exit 1
+          fi
+          if ! ls e2e-covdata/covcounters.* >/dev/null 2>&1; then
+            echo "the controller wrote no coverage counters (covcounters.*)"
             exit 1
           fi
           go tool covdata textfmt -i=e2e-covdata -o e2e-cover.out
