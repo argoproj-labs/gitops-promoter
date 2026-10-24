@@ -268,7 +268,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if pullRequestStatusIsFinalized(&pr) {
 			logger.V(4).Info("PullRequest is finalized, releasing finalizer")
 			// Status is Finalized; release the promoter finalizer now so deletion can finish once other finalizers clear.
-			return ctrl.Result{}, r.releaseFinalizer(ctx, &pr)
+			err := r.releaseFinalizer(ctx, &pr)
+			// releaseFinalizer's Update call can restore a stale persisted Ready condition into pr the same
+			// way ensureFinalizer's can (see its comment below); clear it again so that, if other finalizers
+			// still hold the object, HandleReconciliationResult below doesn't persist stale status while it lingers.
+			utils.RemoveReadyCondition(&pr)
+			return ctrl.Result{}, err
 		}
 
 		provider, err := r.getPullRequestProvider(ctx, pr)
@@ -327,6 +332,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.ensureFinalizer(ctx, &pr); err != nil {
 		return ctrl.Result{}, err
 	}
+	// ensureFinalizer's Update call decodes the API server's response back into pr, which can restore
+	// whatever Ready condition is currently persisted (stale or not) even though the update itself never
+	// touches status. Clear it again so the deferred HandleReconciliationResult below can't preserve a
+	// stale condition from an earlier failed reconcile. previousReady (captured above) is untouched, so
+	// health-gated event logic further down still sees the condition as it was at the top of Reconcile.
+	utils.RemoveReadyCondition(&pr)
 
 	if pullRequestStatusIsTerminal(&pr) {
 		logger.Info("Deleting terminal PullRequest", "pullRequestID", pr.Status.ID, "statusState", pr.Status.State, "specState", pr.Spec.State)
@@ -649,6 +660,13 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 // Get on the next Reconcile call. Re-Getting inside this function would overwrite pr -- including
 // status.conditions, which Reconcile already reset via RemoveReadyCondition -- with whatever was last
 // persisted, silently reintroducing a stale Ready condition from an earlier failed reconcile.
+//
+// Even without an explicit Get, the Update call below isn't free of this risk: the API server's response
+// to a plain Update of a status-subresource resource still includes whatever status is currently
+// persisted (the update itself can't change it, but the response reflects it), and client-go decodes that
+// response back into pr, overwriting pr.Status wholesale. So a successful Update here can still silently
+// restore a stale persisted Ready condition into pr even though Reconcile already cleared it. Reconcile
+// clears Ready again immediately after this call returns to guard against that.
 func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
 	if !controllerutil.AddFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		// Already has the finalizer.
@@ -662,6 +680,10 @@ func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promote
 
 // releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no
 // other finalizer retains it.
+//
+// Like ensureFinalizer, a successful Update here can restore a stale persisted Ready condition into pr
+// via the API server's response decode (see ensureFinalizer's comment for why). The caller clears Ready
+// again after this returns.
 func (r *PullRequestReconciler) releaseFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
 	if !controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		return nil
