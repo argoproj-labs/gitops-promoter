@@ -72,9 +72,13 @@ jobs:
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
-      - name: Frontend Extension Unit Tests
+      - name: Frontend shared unit tests
+        run: make test-ui-test-shared
+      - name: Frontend components-lib unit tests
+        run: make test-ui-test-components-lib
+      - name: Frontend extension unit tests
         run: make test-unit-test-extension
-      - name: Frontend Dashboard Unit Tests
+      - name: Frontend dashboard unit tests
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
         run: make test-parallel
@@ -87,14 +91,33 @@ jobs:
           name: code-coverage
           path: |
             cover.out
+            ui/shared/coverage/lcov.info
+            ui/components-lib/coverage/lcov.info
             ui/dashboard/coverage/lcov.info
             ui/extension/coverage/lcov.info
-      - name: Upload code coverage information to codecov.io
+      - name: Upload Go coverage to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
-          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          # Ginkgo profile from make test-parallel. disable_search keeps this upload from also
+          # picking up the Vitest lcov files, which go up under the ui flag.
+          files: cover.out
+          flags: integration
+          name: integration
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload UI coverage to codecov.io
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          # Vitest lcov (repo-root SF: via lcov projectRoot). One flag for the whole UI upload:
+          # Codecov applies a flag to every file in that upload, so a second flag here would
+          # duplicate the same hits.
+          files: ui/shared/coverage/lcov.info,ui/components-lib/coverage/lcov.info,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          flags: ui
+          name: ui
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
