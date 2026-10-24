@@ -71,6 +71,10 @@ The "release latest" model has some drawbacks.
 
 For most use cases, these tradeoffs are worth it.
 
+If upper environments need to hold a release while lower environments keep moving, for example a UAT environment
+where customers approve a release before it goes to production, see
+[Holding Back Upper Environments with Release Tracks](advanced-usage/release-tracks.md).
+
 To mitigate the downsides, try to speed up active commit statuses (maybe by shifting more of those validations left) or
 adopting a "slower" release model, such as by batching multiple changes in a single DRY commit.
 

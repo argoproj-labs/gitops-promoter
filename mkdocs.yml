@@ -74,6 +74,7 @@ nav:
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
       - Rolling Back an Environment: advanced-usage/rolling-back.md
+      - Holding Back Upper Environments: advanced-usage/release-tracks.md
   - CRD Specs: crd-specs.md
   - Contributing:
       - Overview: contributing/index.md
