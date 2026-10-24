@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -2040,21 +2039,20 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
 
 	if ctp.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(ctp, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
+		if !controllerutil.AddFinalizer(ctp, finalizer) {
+			// Already has the finalizer.
 			return false, nil
 		}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(ctp, finalizer) {
-				return r.Update(ctx, ctp) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
+		// A single attempt, not a Get-retry loop: on conflict Reconcile returns the error and the
+		// standard workqueue rate limiter retries with a fresh top-level Get on the next Reconcile
+		// call. Re-Getting here would overwrite ctp -- including status.conditions, which Reconcile
+		// already reset via RemoveReadyCondition -- with whatever was last persisted, silently
+		// reintroducing a stale Ready condition from an earlier failed reconcile.
+		if err := r.Update(ctx, ctp); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
 	}
 
 	// If we're here, the object is being deleted
@@ -2069,16 +2067,11 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 		return false, fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
 	}
 
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
+	// A single attempt, not a Get-retry loop: see the add-finalizer path above.
+	if controllerutil.RemoveFinalizer(ctp, finalizer) {
+		if err := r.Update(ctx, ctp); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
-		if controllerutil.RemoveFinalizer(ctp, finalizer) {
-			return r.Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
-		}
-		return nil
-	}); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil
 }

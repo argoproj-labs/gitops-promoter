@@ -47,7 +47,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -269,7 +268,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if pullRequestStatusIsFinalized(&pr) {
 			logger.V(4).Info("PullRequest is finalized, releasing finalizer")
 			// Status is Finalized; release the promoter finalizer now so deletion can finish once other finalizers clear.
-			return ctrl.Result{}, r.releaseFinalizer(ctx, &pr)
+			err := r.releaseFinalizer(ctx, &pr)
+			// releaseFinalizer's Update call can restore a stale persisted Ready condition into pr the same
+			// way ensureFinalizer's can (see its comment below); clear it again so that, if other finalizers
+			// still hold the object, HandleReconciliationResult below doesn't persist stale status while it lingers.
+			utils.RemoveReadyCondition(&pr)
+			return ctrl.Result{}, err
 		}
 
 		provider, err := r.getPullRequestProvider(ctx, pr)
@@ -328,6 +332,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.ensureFinalizer(ctx, &pr); err != nil {
 		return ctrl.Result{}, err
 	}
+	// ensureFinalizer's Update call decodes the API server's response back into pr, which can restore
+	// whatever Ready condition is currently persisted (stale or not) even though the update itself never
+	// touches status. Clear it again so the deferred HandleReconciliationResult below can't preserve a
+	// stale condition from an earlier failed reconcile. previousReady (captured above) is untouched, so
+	// health-gated event logic further down still sees the condition as it was at the top of Reconcile.
+	utils.RemoveReadyCondition(&pr)
 
 	if pullRequestStatusIsTerminal(&pr) {
 		logger.Info("Deleting terminal PullRequest", "pullRequestID", pr.Status.ID, "statusState", pr.Status.State, "specState", pr.Spec.State)
@@ -643,26 +653,37 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 
 // ensureFinalizer adds the PullRequest finalizer to a PullRequest that is not being deleted, so that
 // every deletion is funneled through the terminating Get/Close lane above.
+//
+// This makes one Update attempt using pr as already loaded by Reconcile's top-level Get, rather than
+// re-Getting under retry.RetryOnConflict. A conflict (or any other) error here is returned up through
+// Reconcile like any other failure: the standard workqueue rate limiter retries with a fresh top-level
+// Get on the next Reconcile call. Re-Getting inside this function would overwrite pr -- including
+// status.conditions, which Reconcile already reset via RemoveReadyCondition -- with whatever was last
+// persisted, silently reintroducing a stale Ready condition from an earlier failed reconcile.
+//
+// Even without an explicit Get, the Update call below isn't free of this risk: the API server's response
+// to a plain Update of a status-subresource resource still includes whatever status is currently
+// persisted (the update itself can't change it, but the response reflects it), and client-go decodes that
+// response back into pr, overwriting pr.Status wholesale. So a successful Update here can still silently
+// restore a stale persisted Ready condition into pr even though Reconcile already cleared it. Reconcile
+// clears Ready again immediately after this call returns to guard against that.
 func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
-	finalizer := promoterv1alpha1.PullRequestFinalizer
-
-	if controllerutil.ContainsFinalizer(pr, finalizer) {
+	if !controllerutil.AddFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		// Already has the finalizer.
 		return nil
 	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		if controllerutil.AddFinalizer(pr, finalizer) {
-			return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
-	})
+	if err := r.Update(ctx, pr); err != nil {
+		return fmt.Errorf("failed to add finalizer: %w", err)
+	}
+	return nil
 }
 
 // releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no
 // other finalizer retains it.
+//
+// Like ensureFinalizer, a successful Update here can restore a stale persisted Ready condition into pr
+// via the API server's response decode (see ensureFinalizer's comment for why). The caller clears Ready
+// again after this returns.
 func (r *PullRequestReconciler) releaseFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
 	if !controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		return nil

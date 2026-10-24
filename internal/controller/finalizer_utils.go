@@ -26,7 +26,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -66,24 +65,18 @@ func ensureSecretFinalizerForProvider(
 		return nil
 	}
 
-	if controllerutil.ContainsFinalizer(&secret, finalizer) {
+	if !controllerutil.AddFinalizer(&secret, finalizer) {
+		// Already has the finalizer.
 		return nil
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := c.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		// Check again after getting the secret in case it was deleted during the retry
-		if !secret.DeletionTimestamp.IsZero() {
-			return nil
-		}
-		if controllerutil.AddFinalizer(&secret, finalizer) {
-			// Core Secrets have no /finalizers subresource; update metadata.finalizers via the main resource.
-			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
-	})
+	// A single attempt, not a Get-retry loop: on conflict the caller's Reconcile returns the error
+	// and the standard workqueue rate limiter retries with a fresh top-level Get on the next
+	// Reconcile call. Re-Getting here would just push the same race one layer deeper.
+	if err := c.Update(ctx, &secret); err != nil {
+		return fmt.Errorf("failed to add finalizer to Secret: %w", err)
+	}
+	return nil
 }
 
 // removeSecretFinalizerForProvider removes a finalizer from a Secret if no other providers are using it.
@@ -128,15 +121,15 @@ func removeSecretFinalizerForProvider(
 		return nil
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := c.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
+	if !controllerutil.RemoveFinalizer(&secret, finalizer) {
 		return nil
-	})
+	}
+
+	// A single attempt, not a Get-retry loop: see ensureSecretFinalizerForProvider.
+	if err := c.Update(ctx, &secret); err != nil {
+		return fmt.Errorf("failed to remove finalizer from Secret: %w", err)
+	}
+	return nil
 }
 
 // removeUnreferencedSecretFinalizers removes finalizer from Secrets in secretNamespace that are not in referenced,
@@ -188,21 +181,20 @@ func handleResourceFinalizerWithDependencies(
 
 	// If not being deleted, ensure finalizer exists
 	if obj.GetDeletionTimestamp().IsZero() {
-		if controllerutil.ContainsFinalizer(obj, finalizer) {
+		if !controllerutil.AddFinalizer(obj, finalizer) {
+			// Already has the finalizer.
 			return false, nil
 		}
 
-		// Add finalizer with retry logic
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(obj, finalizer) {
-				// CRDs have no /finalizers API subresource; update metadata.finalizers via the main resource.
-				return c.Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
+		// A single attempt, not a Get-retry loop: on conflict the caller's Reconcile returns the
+		// error and the standard workqueue rate limiter retries with a fresh top-level Get on the
+		// next Reconcile call. Re-Getting here would overwrite obj -- including status.conditions,
+		// which the caller already reset via RemoveReadyCondition -- with whatever was last
+		// persisted, silently reintroducing a stale Ready condition from an earlier failed reconcile.
+		if err := c.Update(ctx, obj); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
 	}
 
 	// If we're here, the object is being deleted
@@ -242,18 +234,12 @@ func handleResourceFinalizerWithDependencies(
 		return true, errors.New(errMsg)
 	}
 
-	// No dependencies, remove finalizer with retry logic
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
+	// No dependencies; remove the finalizer with a single attempt (see the add-finalizer path above
+	// for why this doesn't re-Get under retry.RetryOnConflict).
+	if controllerutil.RemoveFinalizer(obj, finalizer) {
+		if err := c.Update(ctx, obj); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
-		if controllerutil.RemoveFinalizer(obj, finalizer) {
-			return c.Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
-		}
-		return nil
-	})
-	if err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 
 	// Clear metrics when finalizer is removed
