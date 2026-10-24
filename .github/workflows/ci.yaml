@@ -82,6 +82,10 @@ jobs:
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
         run: make test-parallel
+        env:
+          # 2% of reconciler writes to the envtest API server fail with a synthetic 500. Reads, watches,
+          # and lease writes are exempt. See internal/k8sfault.
+          K8S_FAULT_PROBABILITY: "0.02"
       - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
         run: make fuzz-replay
       - name: Generate code coverage artifacts
