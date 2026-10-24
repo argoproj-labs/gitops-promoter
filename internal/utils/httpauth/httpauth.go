@@ -94,6 +94,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 const (
@@ -268,11 +269,12 @@ func BuildTLSClient(ctx context.Context, secret *corev1.Secret, timeout time.Dur
 		return nil, fmt.Errorf("failed to load client certificate: %w", err)
 	}
 
-	// Create TLS config
+	// Create TLS config. MinVersion / CipherSuites / CurvePreferences come from the
+	// process-wide policy (CLI flags); empty policy leaves Go defaults.
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
+	} //nolint:gosec // MinVersion is applied from process TLS policy when configured
+	utils.ApplyProcessTLSConfig(tlsConfig)
 
 	// Optionally load CA certificate
 	if caPEM, exists := secret.Data[TLSCAKey]; exists && len(caPEM) > 0 {
