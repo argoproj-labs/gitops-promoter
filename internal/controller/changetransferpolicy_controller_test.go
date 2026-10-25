@@ -2056,13 +2056,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
 				Expect(secondDrySha).NotTo(Equal(firstDrySha))
 
-				By("Waiting for the controller to advance the CTP and report Ready=True without an SSA validation error")
+				By("Waiting for the full status apply to record the transition without an SSA validation error")
 				// Without the fix the full status SSA is rejected with 422 and the
-				// fallback writes only Ready=False with reason=ReconciliationError and
-				// the apiserver error in the message. With the fix the controller
-				// successfully applies status and Ready=True. We assert both the
-				// positive end state and the absence of the bug-specific error text in
-				// the Ready condition message.
+				// conditions-only fallback leaves Proposed.Dry on the previous SHA,
+				// leaves Proposed.Note populated, and writes Ready=False with the
+				// apiserver error in the message. The positive signal is that full
+				// status landing: Dry advances and Note is cleared. Ready=True is the
+				// wrong signal here — the CTP inherits PullRequestNotReady whenever
+				// the pull request reconcile is still retrying, which is routine
+				// under SCM or apiserver faults and is unrelated to this apply bug.
 				Eventually(func(g Gomega) {
 					var ctp promoterv1alpha1.ChangeTransferPolicy
 					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
@@ -2073,10 +2075,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
 					g.Expect(ready.Message).NotTo(ContainSubstring("must be of type object"),
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
-					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
-						"Ready should be True after the populated → empty proposed.note transition, got reason=%q message=%q", ready.Reason, ready.Message)
-					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationSuccess)))
-					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+
+					// A conditions-only fallback cannot change these fields, so both
+					// landing means the full status apply was accepted.
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
+						"controller should have advanced Proposed.Dry.Sha to the new dry commit")
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
