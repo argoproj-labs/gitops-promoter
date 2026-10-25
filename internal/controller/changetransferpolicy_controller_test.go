@@ -4474,3 +4474,60 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 		})
 	})
 })
+
+var _ = Describe("setPullRequestState with a not-yet-reconciled successor PR", func() {
+	It("clears the last-known PullRequest status instead of overwriting it with an all-empty one", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-ctp",
+				Namespace: "default",
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel: "stale-pr-status-ps",
+				},
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch: "environment/development",
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				// Last-known status from the previous PR, which has since been merged/closed and
+				// replaced by a new PR object below.
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:    "41",
+					State: promoterv1alpha1.PullRequestMerged,
+				},
+			},
+		}
+
+		// A brand new PullRequest was just created for this CTP. Its status hasn't been populated
+		// by the PullRequest controller yet, so Status.ID/State/etc. are all still zero-valued -
+		// this is the race window the bug lives in.
+		pr := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-pr",
+				Namespace: ctp.Namespace,
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+				},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				State: promoterv1alpha1.PullRequestOpen,
+			},
+		}
+
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr).Build()
+		r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+		Expect(r.setPullRequestState(ctx, ctp)).To(Succeed())
+
+		// Regression guard for kubernetes/kubernetes#135841: an all-empty PullRequestCommonStatus
+		// (every field is omitempty) marshals to "{}" in the server-side-apply body, which
+		// structured-merge turns into a JSON null on re-apply. Unlike status.proposed.dry (marked
+		// +nullable), the CRD schema for status.pullRequest rejects a null value, so the apply is
+		// rejected by the API server. The CTP must clear the field to nil - not copy the new PR's
+		// still-empty status over the last-known one - so the apply stays valid until the
+		// PullRequest controller populates the new PR's status (which re-triggers a CTP reconcile).
+		Expect(ctp.Status.PullRequest).To(BeNil())
+	})
+})
