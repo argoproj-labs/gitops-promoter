@@ -9,6 +9,3 @@ extend-exclude = [
     # verbatim (e.g. "ANDed", "mutatation"); don't spell-check generated code.
     "**/zz_generated.openapi.go",
 ]
-
-[default.extend-words]
-ba = "ba"
