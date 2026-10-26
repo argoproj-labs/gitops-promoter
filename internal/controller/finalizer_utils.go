@@ -70,19 +70,34 @@ func ensureSecretFinalizerForProvider(
 		return nil
 	}
 
+	return patchSecretFinalizers(ctx, c, secretKey, func(s *v1.Secret) bool {
+		// Check again after getting the secret in case it was deleted during the retry
+		if !s.DeletionTimestamp.IsZero() {
+			return false
+		}
+		return controllerutil.AddFinalizer(s, finalizer)
+	})
+}
+
+// patchSecretFinalizers re-reads the Secret, applies mutate, and writes back only the fields mutate changed
+// (metadata.finalizers) as a merge patch with optimistic locking, retrying on conflict. mutate returns false
+// when there is nothing to write.
+//
+// Never Update a Secret read through the manager client: the informer cache stores Secrets through
+// secretDataTransform, which drops every data key promoter does not read. A full Update would send that
+// truncated object to the API server and delete the other keys from the real Secret. Core Secrets have no
+// /finalizers subresource, so a metadata-only patch on the main resource is the only safe write.
+func patchSecretFinalizers(ctx context.Context, c client.Client, secretKey types.NamespacedName, mutate func(*v1.Secret) bool) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		var secret v1.Secret
 		if err := c.Get(ctx, secretKey, &secret); err != nil {
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
-		// Check again after getting the secret in case it was deleted during the retry
-		if !secret.DeletionTimestamp.IsZero() {
+		original := secret.DeepCopy()
+		if !mutate(&secret) {
 			return nil
 		}
-		if controllerutil.AddFinalizer(&secret, finalizer) {
-			// Core Secrets have no /finalizers subresource; update metadata.finalizers via the main resource.
-			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
+		return c.Patch(ctx, &secret, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 	})
 }
 
@@ -128,14 +143,8 @@ func removeSecretFinalizerForProvider(
 		return nil
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := c.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
+	return patchSecretFinalizers(ctx, c, secretKey, func(s *v1.Secret) bool {
+		return controllerutil.RemoveFinalizer(s, finalizer)
 	})
 }
 
