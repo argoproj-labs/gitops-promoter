@@ -968,8 +968,9 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 // the finalizer release, typically two or three passes. The note's content is fixed once the PR is merged
 // (spec.commit.message is never rewritten for a merged PR and the merge commit is immutable), so an existing
 // note is reused rather than rewritten, which avoids a redundant notes-ref push per pass. GetHistoryNote
-// reads the remote notes ref and does not need the merge commit locally; when the note already exists,
-// both the branch fetch and the ChangeTransferPolicyHistory wake-up are skipped.
+// reads the notes ref FetchNotes mirrored from the remote at the start of the reconcile, so a note whose
+// push failed is not mistaken for one that exists, and it does not need the merge commit locally; when
+// the note already exists, both the branch fetch and the ChangeTransferPolicyHistory wake-up are skipped.
 //
 // The merge commit may not be in the local clone yet: CloneRepo is blob-less and the active branch is only
 // fetched later in the reconcile by calculateStatus, so on the first pass after an external merge the active
