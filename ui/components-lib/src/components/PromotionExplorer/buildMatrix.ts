@@ -7,7 +7,7 @@ import type {
   ReferenceCommit,
 } from '@shared/types/promotion';
 import { LANE_COLORS } from './types';
-import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
+import type { CellKind, CellState, CommitRow, EnvColumn, RowReference } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
 import { proposedIsBlocked } from '@shared/utils/environments';
 
@@ -24,6 +24,23 @@ function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
       ...c,
       url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha) : undefined,
     }));
+}
+
+function toRowReferences(dry: Commit): RowReference[] {
+  return toReferenceCommits(dry).map((c) => ({
+    shaShort: shortSha(c.sha),
+    url: c.url,
+    repoName:
+      c.repoURL
+        ?.replace(/\/$/, '')
+        .replace(/\.git$/, '')
+        .split('/')
+        .pop() || undefined,
+    subject: c.subject?.trim() || undefined,
+    author: c.author ? extractNameOnly(c.author) : undefined,
+    body: c.body ? extractBodyPreTrailer(c.body) || undefined : undefined,
+    date: c.date || undefined,
+  }));
 }
 
 // The per-environment shape the matrix renders: the generated EnvironmentStatus plus the
@@ -113,8 +130,6 @@ function getRow(
   if (!key || !commit) return null;
   let row = rowsById.get(key);
   if (!row) {
-    const ref = commit.references?.[0]?.commit;
-    const refUrl = ref ? getCommitUrl(ref.repoURL ?? '', ref.sha ?? '') : '';
     row = {
       id: key,
       dryShaFull: commit.sha ?? '',
@@ -124,8 +139,7 @@ function getRow(
       body: commit.body ? extractBodyPreTrailer(commit.body) : undefined,
       prId: pr?.id,
       prUrl: pr?.url,
-      refShaShort: ref?.sha ? shortSha(ref.sha) : undefined,
-      refUrl: refUrl || undefined,
+      references: toRowReferences(commit),
       repoUrl: commit.repoURL ?? repoUrlFallback,
       freshestAt: 0,
       earliestAt: 0,

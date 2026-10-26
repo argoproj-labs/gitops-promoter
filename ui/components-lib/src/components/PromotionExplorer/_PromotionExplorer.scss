@@ -310,8 +310,6 @@
   padding-top: 0;
 }
 
-// Commit column header: primary COMMIT label beside a lowercase accent
-// "promotes" caption whose trailing arrow points into the first env pill.
 .hp-matrix__head-commit {
   display: flex;
   align-items: center;
@@ -345,23 +343,11 @@
   color: $accent;
 }
 
-.hp-matrix__head-promotes-arrow {
-  font-size: 9px;
-}
-
 .hp-matrix__head-env {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
-  min-width: 0;
-}
-
-.hp-matrix__head-pill-row {
-  // Positioning context for the connector, which overlaps the pill's left edge.
-  position: relative;
-  display: flex;
-  align-items: center;
   min-width: 0;
 }
 
@@ -381,27 +367,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-// Circular arrow connector between consecutive env pills. Sits on the pill's
-// left edge with a page-colored bg so it reads as cut into the border.
-.hp-matrix__head-connector {
-  position: absolute;
-  left: -13px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  background: $bg-page;
-  color: $accent;
-  svg {
-    font-size: 11px;
-  }
 }
 
 .hp-matrix__empty {
@@ -518,75 +483,116 @@
   border-right: 1px solid $stroke;
 }
 
-.hp-row__subject {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: $text-primary;
-  line-height: 1.3;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.hp-commit {
+  --hp-commit-icon: 11px;
+  --hp-commit-gap: 5px;
+  --hp-commit-ink: #{$app-ink};
+  --hp-commit-soft: #{$app-soft};
+  --hp-commit-soft-strong: #{$app-soft-strong};
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
-.hp-row__meta {
+.hp-commit__line {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 2px;
+  gap: var(--hp-commit-gap);
+  min-width: 0;
+  min-height: 18px;
+  white-space: nowrap;
 }
 
-.hp-row__sha {
+.hp-commit__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.hp-commit__icon {
+  flex: 0 0 auto;
+  width: var(--hp-commit-icon);
+  height: var(--hp-commit-icon);
+  color: var(--hp-commit-ink);
+}
+
+.hp-commit__sha {
+  flex: 0 0 auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10.5px;
   font-weight: 600;
-  color: $accent;
-  background: rgba(31, 79, 94, 0.08);
+  color: var(--hp-commit-ink);
+  background: var(--hp-commit-soft);
   padding: 0 5px;
   border-radius: $radius-sm;
   text-decoration: none;
   &:hover {
-    background: rgba(31, 79, 94, 0.16);
+    background: var(--hp-commit-soft-strong);
   }
 }
 
-.hp-row__pr {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: $accent;
-  text-decoration: none;
-  padding: 0 5px;
-  border-radius: $radius-sm;
-  border: 1px solid rgba(31, 79, 94, 0.3);
-  &:hover {
-    background: rgba(31, 79, 94, 0.08);
-  }
-  svg {
-    font-size: 9px;
-  }
+.hp-commit__title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: $text-primary;
 }
 
-.hp-row__author {
-  font-size: 11px;
-  color: $text-muted;
+.hp-commit__meta {
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
-.hp-row__author-inline,
-.hp-row__time-inline {
+  gap: var(--hp-commit-gap);
+  min-width: 0;
+  padding-left: calc(var(--hp-commit-icon) + var(--hp-commit-gap));
   font-size: 11px;
+  line-height: 14px;
   color: $text-muted;
+  white-space: nowrap;
 }
 
-.hp-row__sep {
-  color: $text-muted;
+.hp-commit__author {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hp-commit__time {
+  flex: 0 0 auto;
+}
+
+.hp-commit__sep {
+  flex: 0 0 auto;
+}
+
+.hp-commit__more {
+  appearance: none;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: $radius-sm;
+  background: $app-soft;
+  color: $app-ink;
+  cursor: pointer;
+  &:hover {
+    background: $app-soft-strong;
+  }
+}
+
+.hp-row__app {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 4px;
+  border-top: 1px dashed $stroke;
 }
 
 .hp-row {

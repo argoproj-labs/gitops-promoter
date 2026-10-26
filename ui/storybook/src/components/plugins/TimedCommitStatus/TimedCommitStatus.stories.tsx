@@ -273,6 +273,7 @@ function buildRow(cell: CellState): CommitRow {
     id: DRY_SHA,
     dryShaFull: DRY_SHA,
     dryShaShort: DRY_SHA.slice(0, 7),
+    references: [],
     subject: 'Bump replicas to 3',
     author: 'Jane Doe',
     body: 'Increases replica count for staging load testing.\n\nSigned-off-by: Jane Doe <jane@example.com>',
