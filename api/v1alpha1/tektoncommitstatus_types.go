@@ -104,6 +104,7 @@ type TektonResourceRef struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:default="default"
 	ServiceAccount string `json:"serviceAccount"`
 
 	// Parameters are the parameters that get passed to the Tekton resource run that is created.

@@ -184,10 +184,10 @@ func tektonRunWatchUpdateHandler[T tekton.TektonRunResource](event event.UpdateE
 
 	oldCondition := meta.FindStatusCondition(oldTektonRun.GetConditions(), tekton.TektonConditionType)
 	newCondition := meta.FindStatusCondition(newTektonRun.GetConditions(), tekton.TektonConditionType)
-	if oldCondition == nil || newCondition == nil {
+	if newCondition == nil {
 		return false
 	}
-	return oldCondition.Status != newCondition.Status
+	return oldCondition == nil || oldCondition.Status != newCondition.Status
 }
 
 func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, []*promoterv1alpha1.CommitStatus, error) {
@@ -283,12 +283,12 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			if tcs.Spec.PruneRun {
 				// Only prune the Tekton resource on a successful transition to allow users to look at the resource to
 				// figure out what went wrong.
-				err = r.pruneTektonResource(ctx, tcs.Spec.TektonResource.Kind, tcs.Namespace, runName)
-				if err != nil {
-					logger.Error(err, "failed to prune Tekton resource, resource will still exist",
-						"kind", tcs.Spec.TektonResource.Kind, "namespace", tcs.Namespace,
-						"name", runName)
-				}
+				// err = r.pruneTektonResource(ctx, tcs.Spec.TektonResource.Kind, tcs.Namespace, runName)
+				// if err != nil {
+				// 	logger.Error(err, "failed to prune Tekton resource, resource will still exist",
+				// 		"kind", tcs.Spec.TektonResource.Kind, "namespace", tcs.Namespace,
+				// 		"name", runName)
+				// }
 			}
 		}
 
@@ -357,7 +357,7 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 			Namespace: tcs.Namespace,
 			Name:      utils.KubeSafeUniqueName(name),
 			Labels: map[string]string{
-				commitStatusLabelKey:              tcs.Name,
+				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
 			},
 		},
@@ -386,7 +386,7 @@ func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha stri
 			Namespace: tcs.Namespace,
 			Name:      utils.KubeSafeUniqueName(name),
 			Labels: map[string]string{
-				commitStatusLabelKey:              tcs.Name,
+				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
 			},
 		},
@@ -410,7 +410,7 @@ func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha stri
 
 // createTektonResource uses the reconciler's client to append an owner reference to the object and then create it.
 func (r *TektonCommitStatusReconciler) createTektonResource(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, obj client.Object) error {
-	if err := controllerutil.SetControllerReference(tcs, obj, r.Scheme()); err != nil {
+	if err := controllerutil.SetControllerReference(tcs, obj, r.RuntimeScheme); err != nil {
 		return err
 	}
 	return r.Create(ctx, obj, &client.CreateOptions{})

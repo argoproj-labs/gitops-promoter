@@ -2074,6 +2074,7 @@ var (
     - name: serviceAccount
       type:
         scalar: string
+      default: default
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatus
   map:
     fields:
