@@ -36,6 +36,15 @@ markdown_extensions:
         args: []
         kwds:
           case: lower
+validation:
+  # Raise these from INFO to WARNING so `make lint-docs` fails on them.
+  nav:
+    omitted_files: warn
+    absolute_links: warn
+  links:
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
 nav:
   - Overview: index.md
   - Architecture: architecture.md
