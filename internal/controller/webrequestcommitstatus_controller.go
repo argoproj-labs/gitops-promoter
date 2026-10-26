@@ -251,10 +251,15 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 
 	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.
-	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.Scm != nil {
-		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, rendered.URL); err != nil {
+	// The same host is enforced on every redirect hop below.
+	var scmAllowedHost string
+	scmAuth := wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.Scm != nil
+	if scmAuth {
+		allowed, err := r.validateURLHostAgainstScmProvider(ctx, wrcs, rendered.URL)
+		if err != nil {
 			return webrequest.HTTPResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
 		}
+		scmAllowedHost = allowed
 	}
 
 	var body io.Reader
@@ -283,6 +288,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		if authClient != nil {
 			clientToUse = authClient
 		}
+	}
+	if scmAuth {
+		clientToUse = clientWithSCMRedirectPolicy(clientToUse, scmAllowedHost)
 	}
 
 	// Set timeout
@@ -541,27 +549,58 @@ func hostMatches(configuredHost, requestHost, requestHostname string) bool {
 	return strings.ToLower(configured.Hostname()) == requestHostname
 }
 
+// checkHostAllowed reports whether u's host is the SCM provider host allowed (see hostMatches).
+func checkHostAllowed(allowed string, u *url.URL) error {
+	if u.Host == "" {
+		return fmt.Errorf("URL %q has no host", u.Redacted())
+	}
+	requestHost := strings.ToLower(u.Host)
+	requestHostname := strings.ToLower(u.Hostname())
+	if hostMatches(allowed, requestHost, requestHostname) {
+		return nil
+	}
+	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
+}
+
+// maxSCMRedirects mirrors net/http's default redirect limit, which a custom CheckRedirect replaces.
+const maxSCMRedirects = 10
+
+// clientWithSCMRedirectPolicy returns a copy of base that follows a redirect only while the target stays
+// on the SCM provider's allowed host. SCM credentials travel with every hop: the GitHub App transport
+// adds Authorization to each request it sends, and header-based tokens such as GitLab's Private-Token are
+// not among the headers net/http strips on a cross-host redirect. Without this check, any redirect the SCM
+// host answers with would carry the credentials to whatever host it names. base is not modified.
+func clientWithSCMRedirectPolicy(base *http.Client, allowedHost string) *http.Client {
+	c := *base
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxSCMRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxSCMRedirects)
+		}
+		if err := checkHostAllowed(allowedHost, req.URL); err != nil {
+			return fmt.Errorf("refusing to follow redirect to %q with SCM credentials: %w", req.URL.Redacted(), err)
+		}
+		return nil
+	}
+	return &c
+}
+
 // validateURLHostAgainstScmProvider checks that the host of renderedURL is among the hosts permitted by
-// the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when Scm
-// is configured, preventing SCM credentials from being sent to an arbitrary host.
+// the SCM provider that backs the PromotionStrategy's GitRepository, and returns that permitted host so
+// the caller can hold redirects to it. This is called only when Scm is configured, preventing SCM
+// credentials from being sent to an arbitrary host.
 func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	renderedURL string,
-) error {
+) (string, error) {
 	parsed, err := url.Parse(renderedURL)
 	if err != nil {
-		return fmt.Errorf("failed to parse URL %q: %w", renderedURL, err)
+		return "", fmt.Errorf("failed to parse URL %q: %w", renderedURL, err)
 	}
-	if parsed.Host == "" {
-		return fmt.Errorf("URL %q has no host", renderedURL)
-	}
-	requestHost := strings.ToLower(parsed.Host)
-	requestHostname := strings.ToLower(parsed.Hostname())
 
 	var ps promoterv1alpha1.PromotionStrategy
 	if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: wrcs.Spec.PromotionStrategyRef.Name}, &ps); err != nil {
-		return fmt.Errorf("failed to get PromotionStrategy for SCM host validation: %w", err)
+		return "", fmt.Errorf("failed to get PromotionStrategy for SCM host validation: %w", err)
 	}
 
 	// Resolve the GitRepository for this PromotionStrategy.
@@ -570,19 +609,18 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 		Name:      ps.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get GitRepository for SCM host validation: %w", err)
+		return "", fmt.Errorf("failed to get GitRepository for SCM host validation: %w", err)
 	}
 
 	// Resolve the ScmProvider (namespaced or cluster-scoped).
 	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, gitRepo, wrcs)
 	if err != nil {
-		return fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
+		return "", fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
 	}
 
 	allowed := allowedHostsForScmProvider(scmProvider.GetSpec())
-	if hostMatches(allowed, requestHost, requestHostname) {
-		return nil
+	if err := checkHostAllowed(allowed, parsed); err != nil {
+		return "", err
 	}
-
-	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
+	return allowed, nil
 }
