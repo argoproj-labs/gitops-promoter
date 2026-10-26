@@ -305,11 +305,11 @@ var _ = Describe("ScmProvider Controller", func() {
 				WithScheme(utils.GetScheme()).
 				WithObjects(secret, scmProvider).
 				WithInterceptorFuncs(interceptor.Funcs{
-					Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 						if _, ok := obj.(*v1.Secret); ok && secretUpdatesFail {
 							return goerrors.New("simulated update failure")
 						}
-						return cl.Update(ctx, obj, opts...)
+						return cl.Patch(ctx, obj, patch, opts...)
 					},
 				}).
 				Build()
