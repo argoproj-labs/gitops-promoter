@@ -8,11 +8,8 @@ import {
 } from '@components-lib/components/PromotionExplorer/helpers';
 import { PromotionStrategy } from '@shared/types/promotion';
 import type { PromotionStrategyDetails } from '@shared/types/view';
-import { mergeCommitStatusManagers } from '@shared/utils/PSData';
-import { environmentsFromBundle } from '@shared/utils/environments';
-import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
+import { strategyFromBundle } from '@shared/utils/bundle';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 const GROUP = 'view.promoter.argoproj.io';
@@ -22,40 +19,6 @@ const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface StrategyItem {
   promotionStrategy: PromotionStrategy;
-}
-
-function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
-  return {
-    timedCommitStatuses: bundle.timedCommitStatuses,
-    gitCommitStatuses: bundle.gitCommitStatuses,
-    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
-    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
-    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
-    dependentsSuccessfulCommitStatuses: bundle.dependentsSuccessfulCommitStatuses,
-  };
-}
-
-function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
-  const ps = bundle.promotionStrategy;
-  const environments = environmentsFromBundle(
-    ps.spec,
-    bundle.changeTransferPolicies ?? [],
-    bundle.changeTransferPolicyHistories ?? [],
-    bundle.restoreActiveCommits ?? [],
-  );
-  const promotionStrategy = {
-    ...ps,
-    metadata: {
-      ...ps.metadata,
-      name: bundle.metadata.name,
-      namespace: bundle.metadata.namespace,
-    },
-    status: { ...ps.status, environments },
-  } as PromotionStrategy;
-  sortStrategyCommitStatuses(promotionStrategy);
-  return {
-    promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
-  };
 }
 
 interface SelectOption {
@@ -191,7 +154,11 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           throw new Error(messageParts.join(' - '));
         }
         const data: { manifest: string } = await response.json();
-        return bundleToItem(JSON.parse(data.manifest) as PromotionStrategyDetails);
+        return {
+          promotionStrategy: strategyFromBundle(
+            JSON.parse(data.manifest) as PromotionStrategyDetails,
+          ),
+        };
       }),
     )
       .then((parsed) => {
