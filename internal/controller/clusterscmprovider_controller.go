@@ -28,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -139,7 +140,23 @@ func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clus
 		return dependentRepos, nil
 	}
 
-	deleted, err := handleResourceFinalizerWithDependencies(
+	// Remove the Secret finalizer before releasing the ClusterScmProvider's own finalizer. Once
+	// the ClusterScmProvider's finalizer list is empty the apiserver deletes it immediately,
+	// leaving nothing to retry from; if the Secret update failed by that point its finalizer
+	// would be stuck forever. Removing the Secret finalizer first means a failure here simply
+	// returns an error, the ClusterScmProvider (and its finalizer) is untouched, and the next
+	// reconcile retries both steps.
+	if !clusterScmProvider.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(clusterScmProvider, promoterv1alpha1.ClusterScmProviderFinalizer) {
+		if dependents, err := checkDependencies(); err != nil {
+			return false, fmt.Errorf("failed to check for dependent resources: %w", err)
+		} else if len(dependents) == 0 {
+			if err := r.removeSecretFinalizer(ctx, clusterScmProvider); err != nil {
+				return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
+			}
+		}
+	}
+
+	return handleResourceFinalizerWithDependencies(
 		ctx,
 		r.Client,
 		r.Recorder,
@@ -148,15 +165,6 @@ func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clus
 		"ClusterScmProvider",
 		checkDependencies,
 	)
-
-	// If we're being deleted and finalizer was removed, also remove Secret finalizer
-	if deleted && err == nil {
-		if err := r.removeSecretFinalizer(ctx, clusterScmProvider); err != nil {
-			return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
-		}
-	}
-
-	return deleted, err
 }
 
 func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
