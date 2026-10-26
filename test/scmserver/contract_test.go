@@ -135,6 +135,14 @@ var _ = Describe("provider contract", func() {
 			Expect(info.State).To(Equal("merged"))
 			Expect(info.MergeCommitSHA).To(Equal(landed))
 
+			By("carrying the requested commit message on the merge commit")
+			dir := filepath.Join(GinkgoT().TempDir(), "clone")
+			out, err := f.git(ctx, "", "clone", "--quiet", f.authenticatedCloneURL(ctx), dir)
+			Expect(err).NotTo(HaveOccurred(), out)
+			out, err = git(ctx, dir, "log", "-1", "--format=%B", landed)
+			Expect(err).NotTo(HaveOccurred(), out)
+			Expect(out).To(ContainSubstring(prObj.Spec.Commit.Message))
+
 			By("no longer finding an open pull request for the branch pair")
 			res, err := f.prs.FindOpen(ctx, prObj)
 			Expect(err).NotTo(HaveOccurred())
