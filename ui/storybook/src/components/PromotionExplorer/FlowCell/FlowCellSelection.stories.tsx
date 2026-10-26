@@ -68,6 +68,7 @@ const replacerRow: CommitRow = {
   id: REPLACER_SHA.slice(0, 7),
   dryShaFull: REPLACER_SHA,
   dryShaShort: REPLACER_SHA.slice(0, 7),
+  references: [],
   subject: 'Roll back connection pool change',
   author: 'Jane Doe',
   repoUrl: REPO_URL,
@@ -169,6 +170,7 @@ const sampleRow: CommitRow = {
   id: ROW_SHA.slice(0, 7),
   dryShaFull: ROW_SHA,
   dryShaShort: ROW_SHA.slice(0, 7),
+  references: [],
   subject: 'Raise connection pool size for checkout service',
   author: 'Jane Doe',
   body: 'Raise connection pool size for checkout service.\n\nSigned-off-by: Jane Doe <jane@example.com>',
@@ -343,15 +345,16 @@ export const SelectedInRow: Story = {
           }}
         >
           <div className="hp-row__commit">
-            <div className="hp-row__subject" title={sampleRow.subject}>
-              {sampleRow.subject}
-            </div>
-            <div className="hp-row__meta">
-              <span className="hp-row__sha">{sampleRow.dryShaShort}</span>
-              <span className="hp-row__sep" aria-hidden="true">
-                ·
-              </span>
-              <span className="hp-row__author-inline">{sampleRow.author}</span>
+            <div className="hp-commit">
+              <div className="hp-commit__line">
+                <span className="hp-commit__sha">{sampleRow.dryShaShort}</span>
+                <span className="hp-commit__title" title={sampleRow.subject}>
+                  {sampleRow.subject}
+                </span>
+              </div>
+              <div className="hp-commit__meta">
+                <span className="hp-commit__author">{sampleRow.author}</span>
+              </div>
             </div>
           </div>
           {envs.map((env) => (

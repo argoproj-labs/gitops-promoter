@@ -456,6 +456,25 @@ var _ = Describe("provider quirks", func() {
 			Expect(result.CommitSHA).To(Equal(f.branchSHA(ctx, targetBranch)))
 			Expect(requestsMatching(scmserver.BitbucketCloud, http.MethodGet, "/commit/"+result.CommitSHA[:12])).NotTo(BeEmpty())
 		})
+
+		// TODO: confirm against real Bitbucket Cloud, with and without a merge queue on the target branch. Its merge
+		// API documents no expected head SHA, and the go-bitbucket, drone/go-scm and jenkins-x/go-scm clients send none.
+		It("merges a source branch that moved past the expected merge SHA", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.BitbucketCloud)
+			prObj := f.createPR(ctx, "moved-head")
+			moved := f.pushToSource(ctx, "replicas: 4\n")
+			Eventually(func(g Gomega) {
+				g.Expect(f.serverPR(ctx, prObj.Status.ID).HeadSHA).To(Equal(moved))
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+			Expect(prObj.Spec.MergeSha).NotTo(Equal(moved))
+
+			result, err := f.prs.Merge(ctx, prObj)
+			Expect(err).NotTo(HaveOccurred())
+			info := f.serverPR(ctx, prObj.Status.ID)
+			Expect(info.State).To(Equal("merged"))
+			Expect(info.HeadSHA).To(Equal(moved))
+			Expect(result.CommitSHA).To(Equal(info.MergeCommitSHA))
+		})
 	})
 
 	Context("Bitbucket Data Center", func() {

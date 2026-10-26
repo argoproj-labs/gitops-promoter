@@ -4,6 +4,7 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import type { PromotionExplorerProps } from '@components-lib/components/PromotionExplorer/PromotionExplorer';
 
 const makeStrategy = (name: string, namespace = 'default') =>
   JSON.stringify({
@@ -47,6 +48,38 @@ const makeProps = (nodes: ReturnType<typeof makeTreeNode>[]) => ({
   application: { metadata: { name: 'test-app', namespace: 'test-ns' } },
 });
 
+const explorerProps = vi.hoisted(() => ({ current: null as PromotionExplorerProps | null }));
+
+vi.mock('@components-lib/components/PromotionExplorer/PromotionExplorer', () => ({
+  default: (props: PromotionExplorerProps) => {
+    explorerProps.current = props;
+    return React.createElement(
+      'div',
+      { 'data-testid': 'explorer' },
+      React.createElement('button', {
+        'data-testid': 'select',
+        onClick: () => props.onSelectionChange?.({ rowId: 'abc123', branch: 'env/prod' }),
+      }),
+      React.createElement('button', {
+        'data-testid': 'deselect',
+        onClick: () => props.onSelectionChange?.(null),
+      }),
+      React.createElement('button', {
+        'data-testid': 'pin',
+        onClick: () => props.onSelectedEnvsChange?.(['env/staging']),
+      }),
+      React.createElement('button', {
+        'data-testid': 'pin-many',
+        onClick: () => props.onSelectedEnvsChange?.(['env/staging', 'env/prod']),
+      }),
+      React.createElement('button', {
+        'data-testid': 'unpin',
+        onClick: () => props.onSelectedEnvsChange?.([]),
+      }),
+    );
+  },
+}));
+
 const wait = (ms = 100) => new Promise((resolve) => setTimeout(resolve, ms));
 
 vi.stubGlobal(
@@ -87,6 +120,8 @@ describe('AppViewExtension', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     vi.stubGlobal('fetch', vi.fn());
+    explorerProps.current = null;
+    window.history.replaceState(null, '', '/');
   });
 
   afterEach(() => {
@@ -304,6 +339,137 @@ describe('AppViewExtension', () => {
 
       expect(container.textContent).toContain('Failed to load PromotionStrategy');
       expect(container.textContent).toContain('network failure');
+    });
+  });
+
+  describe('promotion explorer', () => {
+    const mockSingleStrategy = () =>
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ manifest: makeStrategy('only-strategy') }),
+        text: async () => '',
+      } as Response);
+
+    const currentParams = () => new URLSearchParams(window.location.search);
+    const clickTestId = async (id: string) => {
+      (container.querySelector(`[data-testid="${id}"]`) as HTMLElement).click();
+      await wait();
+    };
+
+    it('renders the explorer directly with no Overview/History toggle', async () => {
+      mockSingleStrategy();
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      expect(container.querySelector('[data-testid="explorer"]')).not.toBeNull();
+      expect(container.querySelector('.gp-view-toggle')).toBeNull();
+      expect(container.querySelector('[role="tablist"]')).toBeNull();
+      expect(container.textContent).not.toContain('Overview');
+      expect(container.textContent).not.toContain('History');
+      expect(explorerProps.current?.strategy?.metadata.name).toBe('only-strategy');
+    });
+
+    it('starts with no selection or selected environments when the URL has none', async () => {
+      mockSingleStrategy();
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      expect(explorerProps.current?.initialSelection).toBeNull();
+      expect(explorerProps.current?.initialSelectedEnvs).toEqual([]);
+    });
+
+    it('restores selection and selected environments from psCommit, psEnv and psNode', async () => {
+      window.history.replaceState(
+        null,
+        '',
+        '/?psCommit=abc123&psEnv=env%2Fprod&psNode=env%2Fstaging',
+      );
+      mockSingleStrategy();
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      expect(explorerProps.current?.initialSelection).toEqual({
+        rowId: 'abc123',
+        branch: 'env/prod',
+      });
+      expect(explorerProps.current?.initialSelectedEnvs).toEqual(['env/staging']);
+    });
+
+    it('restores several selected environments from a comma separated psNode', async () => {
+      window.history.replaceState(null, '', '/?psNode=env%2Fstaging%2Cenv%2Fprod');
+      mockSingleStrategy();
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      expect(explorerProps.current?.initialSelectedEnvs).toEqual(['env/staging', 'env/prod']);
+    });
+
+    it('ignores psCommit without psEnv', async () => {
+      window.history.replaceState(null, '', '/?psCommit=abc123');
+      mockSingleStrategy();
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      expect(explorerProps.current?.initialSelection).toBeNull();
+    });
+
+    it('writes selection and selected environments to the URL and clears them', async () => {
+      mockSingleStrategy();
+      await render(makeProps([makeTreeNode('only-strategy')]));
+
+      await clickTestId('select');
+      expect(currentParams().get('psCommit')).toBe('abc123');
+      expect(currentParams().get('psEnv')).toBe('env/prod');
+
+      await clickTestId('pin');
+      expect(currentParams().get('psNode')).toBe('env/staging');
+      expect(currentParams().get('psCommit')).toBe('abc123');
+      expect(currentParams().get('promotionstrategy')).toBe('default/only-strategy');
+
+      await clickTestId('pin-many');
+      expect(currentParams().get('psNode')).toBe('env/staging,env/prod');
+
+      await clickTestId('unpin');
+      expect(currentParams().has('psNode')).toBe(false);
+
+      await clickTestId('deselect');
+      expect(currentParams().has('psCommit')).toBe(false);
+      expect(currentParams().has('psEnv')).toBe(false);
+    });
+
+    it('clears selection and selected environments when switching strategies', async () => {
+      window.history.replaceState(
+        null,
+        '',
+        '/?psCommit=abc123&psEnv=env%2Fprod&psNode=env%2Fstaging',
+      );
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('strategy-1') }),
+          text: async () => '',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('strategy-2') }),
+          text: async () => '',
+        } as Response);
+      await render(makeProps([makeTreeNode('strategy-1'), makeTreeNode('strategy-2')]));
+
+      container
+        .querySelector('.strategy-dropdown__control')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await wait();
+      Array.from(document.querySelectorAll('.strategy-dropdown__option'))
+        .find((o) => o.textContent === 'strategy-2')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      expect(currentParams().get('promotionstrategy')).toBe('default/strategy-2');
+      expect(currentParams().has('psCommit')).toBe(false);
+      expect(currentParams().has('psEnv')).toBe(false);
+      expect(currentParams().has('psNode')).toBe(false);
+      expect(explorerProps.current?.strategy?.metadata.name).toBe('strategy-2');
     });
   });
 });
