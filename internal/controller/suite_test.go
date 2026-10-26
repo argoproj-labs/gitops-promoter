@@ -349,6 +349,15 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&TektonCommitStatusReconciler{
+		Client:        k8sManager.GetClient(),
+		RuntimeScheme: k8sManager.GetScheme(),
+		Recorder:      k8sManager.GetEventRecorder("TektonCommitStatus"),
+		SettingsMgr:   settingsMgr,
+		EnqueueCTP:    ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {

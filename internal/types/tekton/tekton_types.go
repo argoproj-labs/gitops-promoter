@@ -29,6 +29,7 @@ type TektonRunResource interface {
 // +versionName=v1
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // TaskRun is an object that runs a specific Task
 type TaskRun struct {
@@ -46,6 +47,7 @@ type TaskRunSpec struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // PipelineRun is an object that runs a specific pipeline
 type PipelineRun struct {
@@ -68,8 +70,10 @@ type PipelineTaskRunTemplate struct {
 
 // TektonRunStatus is an object that represents the status of a TaskRun or PipelineRun
 type TektonRunStatus struct {
+	// +optional
 	Conditions []metav1.Condition `json:"conditions"`
-	Results    []Data             `json:"results,omitempty"`
+	// +optional
+	Results []Data `json:"results,omitempty"`
 }
 
 // The below constants represent the different run phases for a Tekton resource
