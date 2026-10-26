@@ -37,6 +37,15 @@ function mergedPR(id: number, mergedMinutesAgo: number): PullRequest {
   };
 }
 
+function hydrated(prefix: string, minutesAgo: number): Commit {
+  return {
+    sha: `${prefix}9f8e7d6c5b4a${prefix}9f8e7d6c5b4a${prefix}9f8e7d6c5b`,
+    subject: 'Update manifests',
+    commitTime: ago(minutesAgo),
+    repoURL: REPO_URL,
+  };
+}
+
 const passing: EnrichedBranchCommitStatus[] = [
   { key: 'argocd-health', phase: 'success', description: 'Application is Healthy' },
   { key: 'e2e-tests', phase: 'success', description: 'All 120 tests passed' },
@@ -59,6 +68,7 @@ const replacerRow: CommitRow = {
   id: REPLACER_SHA.slice(0, 7),
   dryShaFull: REPLACER_SHA,
   dryShaShort: REPLACER_SHA.slice(0, 7),
+  references: [],
   subject: 'Roll back connection pool change',
   author: 'Jane Doe',
   repoUrl: REPO_URL,
@@ -73,6 +83,7 @@ const replacerRow: CommitRow = {
 
 const CELLS = {
   live: {
+    hydrated: hydrated('a1', 25),
     kind: 'live',
     commit: commit('a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2', 'Bump replicas to 3', 25),
     commitStatuses: passing,
@@ -81,6 +92,7 @@ const CELLS = {
     at: ago(25),
   },
   'in-flight': {
+    hydrated: hydrated('b2', 10),
     kind: 'in-flight',
     commit: commit('b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3', 'Add readiness probe', 10),
     commitStatuses: pending,
@@ -94,14 +106,22 @@ const CELLS = {
     at: ago(10),
   },
   proposed: {
+    hydrated: hydrated('c3', 6),
     kind: 'in-flight',
     isProposed: true,
     commit: commit('c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4', 'Tune HPA thresholds', 6),
     commitStatuses: pending,
     health: 'pending',
+    pullRequest: {
+      id: '144',
+      url: `${REPO_URL}/pull/144`,
+      state: 'open',
+      prCreationTime: ago(6),
+    },
     at: ago(6),
   },
   failed: {
+    hydrated: hydrated('d4', 60),
     kind: 'failed',
     commit: commit('d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5', 'Enable new checkout flow', 60),
     commitStatuses: failing,
@@ -110,6 +130,7 @@ const CELLS = {
     at: ago(60),
   },
   'was-here': {
+    hydrated: hydrated('f6', 175),
     kind: 'was-here',
     commit: commit('f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1', 'Update base image', 175),
     commitStatuses: passing,
@@ -121,6 +142,7 @@ const CELLS = {
     at: ago(175),
   },
   'no-op': {
+    hydrated: hydrated('0a', 180),
     kind: 'no-op',
     commit: commit('0a1b2c3d4e5f0a1b2c3d4e5f0a1b2c3d4e5f0a1b', 'Docs-only change', 180),
     commitStatuses: passing,
@@ -148,6 +170,7 @@ const sampleRow: CommitRow = {
   id: ROW_SHA.slice(0, 7),
   dryShaFull: ROW_SHA,
   dryShaShort: ROW_SHA.slice(0, 7),
+  references: [],
   subject: 'Raise connection pool size for checkout service',
   author: 'Jane Doe',
   body: 'Raise connection pool size for checkout service.\n\nSigned-off-by: Jane Doe <jane@example.com>',
@@ -322,15 +345,16 @@ export const SelectedInRow: Story = {
           }}
         >
           <div className="hp-row__commit">
-            <div className="hp-row__subject" title={sampleRow.subject}>
-              {sampleRow.subject}
-            </div>
-            <div className="hp-row__meta">
-              <span className="hp-row__sha">{sampleRow.dryShaShort}</span>
-              <span className="hp-row__sep" aria-hidden="true">
-                ·
-              </span>
-              <span className="hp-row__author-inline">{sampleRow.author}</span>
+            <div className="hp-commit">
+              <div className="hp-commit__line">
+                <span className="hp-commit__sha">{sampleRow.dryShaShort}</span>
+                <span className="hp-commit__title" title={sampleRow.subject}>
+                  {sampleRow.subject}
+                </span>
+              </div>
+              <div className="hp-commit__meta">
+                <span className="hp-commit__author">{sampleRow.author}</span>
+              </div>
             </div>
           </div>
           {envs.map((env) => (

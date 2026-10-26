@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router';
+import { carriedSearch } from '../hooks/useNavigateWithParams';
 import logoSecondary from '../assets/logo-one-row-secondary.svg';
 import './TopBar.scss';
 
 export const TopBar: React.FC = () => {
-  const { search } = useLocation();
+  const search = carriedSearch(useLocation().search);
   return (
     <header className="topbar">
       <Link to={{ pathname: '/promotion-strategies', search }} className="topbar__brand">

@@ -3490,8 +3490,10 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(entry.RestoreUnblockedAt).To(BeNil())
 		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
 			"the original promotion's merge time is kept on a restore entry")
-		committed := strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha))
-		Expect(entry.Active.Hydrated.CommitTime.Format(time.RFC3339)).To(Equal(committed),
+		// git prints a zero offset as +00:00 where Go's RFC3339 prints Z, so compare instants, not strings.
+		committed, err := time.Parse(time.RFC3339, strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entry.Active.Hydrated.CommitTime.Time).To(BeTemporally("==", committed),
 			"the entry's own commit time is what readers use as the restore time")
 	})
 

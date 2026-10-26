@@ -114,6 +114,7 @@ Where a provider is open source (GitLab, Gitea, Forgejo) the behavior follows it
     - Webhooks carry their GitHub compatibility headers, so the promoter's receiver classifies them as GitHub.
 - **Bitbucket Cloud**
     - Merge responses carry abbreviated hashes.
+    - There is no head SHA guard: the merge API takes no expected head commit, so a pull request whose source branch moved is merged at its new head. This follows the REST documentation and the clients the promoter could use; it is not yet verified against Bitbucket Cloud, including with a merge queue.
     - With `asyncMergeDelay` (or `?async=true`), merges answer 202 with the task-status link in the `Location` header and no body; merging a queued pull request again returns the same 202. Unknown tasks poll as `PENDING`, and a failed task answers 400.
 - **Bitbucket Data Center**
     - A bearer token is accepted by the REST API and by git. A token sent as a basic auth password is accepted only with its owner's user name (`scmserver.TokenUser`), so `x-token-auth:<token>` is refused; this is why the provider sends `Authorization: Bearer` to git through `http.extraHeader`.
@@ -172,7 +173,7 @@ CI and `make test-parallel` always use the fake provider. To exercise the real p
 | `PROMOTER_TEST_SCM_CA_FILE` | `bin/scm-server-ca.pem` | CA written by `make run-scm-server` |
 | `PROMOTER_TEST_SCM_TOKEN` | `dev-token` | Token accepted by every provider |
 
-The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`.
+The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`. It also turns off the server's rate limiting, since every spec shares one token. The Makefile target puts `hack/git` on `PATH` so git can authenticate through `promoter_askpass.sh`; add it yourself if you run ginkgo directly.
 
 If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the seven providers on the next seven, in the order of the table above. Pass the same value to both targets:
 

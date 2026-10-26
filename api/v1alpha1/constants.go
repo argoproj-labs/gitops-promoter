@@ -81,3 +81,18 @@ const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/f
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
 const InstanceIDLabel = "promoter.argoproj.io/instance-id"
+
+// WebRequestCommitStatusAccessLabel grants WebRequestCommitStatuses access to the labeled object. Today the
+// controller requires it on Secrets referenced by httpRequest.authentication secretRefs (basic, bearer, oauth2,
+// tls) and refuses to read a Secret without it set to AccessAllowed, because it sends the credentials to a URL
+// the WebRequestCommitStatus author controls.
+const WebRequestCommitStatusAccessLabel = "promoter.argoproj.io/webrequestcommitstatus-access"
+
+// Access is the value of a <kind>-access label or annotation, such as WebRequestCommitStatusAccessLabel, that
+// grants resources of that kind access to the object it is set on.
+type Access string
+
+const (
+	// AccessAllowed lets every resource of the label's kind in the object's namespace use the object.
+	AccessAllowed Access = "allowed"
+)

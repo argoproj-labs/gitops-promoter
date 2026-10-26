@@ -204,6 +204,7 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 # Local-only: run controller integration tests against an externally running scmserver provider.
 # Requires `make run-scm-server` in another terminal. Not used by CI.
 # Example: make test-scm-provider SCM_PROVIDER=gitea
+# hack/git goes on PATH because git authenticates to the server through promoter_askpass.sh (see internal/git).
 SCM_PROVIDER ?=
 # Admin API listens on this port; the seven providers use the next seven. Override if 9000 is taken (e.g. by Zscaler).
 SCM_SERVER_PORT_BASE ?= 9000
@@ -212,6 +213,7 @@ SCM_SERVER_LOG_LEVEL ?= debug
 .PHONY: test-scm-provider
 test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
 	@if [ -z "$(SCM_PROVIDER)" ]; then echo "SCM_PROVIDER is required (e.g. SCM_PROVIDER=gitea)"; exit 1; fi
+	PATH="$(CURDIR)/hack/git:$$PATH" \
 	PROMOTER_TEST_SCM_PROVIDER="$(SCM_PROVIDER)" \
 	PROMOTER_TEST_SCM_ADMIN_URL="$${PROMOTER_TEST_SCM_ADMIN_URL:-http://127.0.0.1:$(SCM_SERVER_PORT_BASE)}" \
 	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \
@@ -376,6 +378,14 @@ lint-extension: install-ui-deps ## Run extension type-check, lint and audit chec
 test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
+.PHONY: test-ui-test-components-lib
+test-ui-test-components-lib: ## Run components-lib unit tests (with coverage)
+	cd ui/components-lib && npm test
+
+.PHONY: test-ui-test-shared
+test-ui-test-shared: ## Run shared unit tests (with coverage)
+	cd ui/shared && npm test
+
 .PHONY: lint-components-lib
 lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
 	cd ui/components-lib && npm run type-check && npm run format:check
@@ -396,12 +406,18 @@ lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-stor
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
 
+.PHONY: test-ui
+test-ui: test-ui-test-shared test-ui-test-components-lib test-unit-test-extension test-ui-test-dashboard ## Run all UI unit tests (with coverage)
+
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/build/buildkit/
+# COVER=1 instruments the manager binary so an e2e run can write a go coverage profile. The release image leaves it at 0.
+COVER ?= 0
+
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg COVER=$(COVER) -t ${IMG} .
 
 SCM_SERVER_IMG ?= scm-server:e2e
 
@@ -497,7 +513,7 @@ DEADCODE_VERSION ?= v0.52.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.1
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.3
+GORELEASER_VERSION ?= v2.19.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -549,7 +565,7 @@ serve-docs:
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings
-	@DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
+	@NO_MKDOCS_2_WARNING=1 DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
 	@if grep -q 'WARNING' mkdocs-lint.log; then \
 	  echo "MkDocs build produced warnings!"; \
 	  cat mkdocs-lint.log; \
