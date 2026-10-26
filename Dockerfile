@@ -51,7 +51,16 @@ COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gitops-promoter cmd/main.go
+# COVER=1 instruments the binary for an e2e coverage upload. Building the package (./cmd) is required for
+# that: building the file cmd/main.go does not instrument main. The release image leaves COVER at 0.
+ARG COVER=0
+RUN set -eu; \
+    extra=""; target="cmd/main.go"; \
+    if [ "$COVER" = "1" ]; then \
+      extra="-cover -covermode=atomic -coverpkg=github.com/argoproj-labs/gitops-promoter/..."; \
+      target="./cmd"; \
+    fi; \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a $extra -o gitops-promoter $target
 
 # Use distroless as minimal base image to package the gitops-promoter binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
