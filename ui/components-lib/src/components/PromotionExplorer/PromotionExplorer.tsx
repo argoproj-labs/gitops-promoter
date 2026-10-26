@@ -51,8 +51,8 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   defaultMapExpanded = false,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
-  const name = nameProp ?? strategy?.metadata?.name;
-  const namespace = namespaceProp ?? strategy?.metadata?.namespace;
+  const name = nameProp ?? strategy?.metadata.name;
+  const namespace = namespaceProp ?? strategy?.metadata.namespace;
 
   const model = useMemo<ExplorerModel | null>(
     () => (strategy ? buildExplorerModel(strategy) : null),
@@ -191,7 +191,10 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const envScopedRows = useMemo(
     () =>
       envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
+        ? rows.filter((r) =>
+            // envFilter can name a branch that is no longer a column until it is revalidated.
+            envFilter.some((b) => !(b in r.cells) || !isEmptyCellKind(r.cells[b].kind)),
+          )
         : rows,
     [rows, envFilter],
   );
@@ -357,7 +360,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                   </DropdownItem>
                   {envs.map((env) => {
                     const envCount = rows.filter(
-                      (r) => !isEmptyCellKind(r.cells[env.branch]?.kind),
+                      (r) => !isEmptyCellKind(r.cells[env.branch].kind),
                     ).length;
                     return (
                       <DropdownItem
@@ -533,7 +536,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                             cell={row.cells[env.branch]}
                             branch={env.branch}
                             isSelected={
-                              selected?.rowId === row.id && selected?.branch === env.branch
+                              selected?.rowId === row.id && selected.branch === env.branch
                             }
                             onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
                             rowsById={rowsById}

@@ -76,9 +76,10 @@ export function deriveNodeStatus(
   branch: string,
   rows: readonly CommitRow[],
 ): { status: NodeStatus; hash?: string; rowId?: string } {
+  // The graph can include spec branches that have no column, so their rows have no cell.
   const cells = rows
-    .map((row) => ({ row, cell: row.cells[branch] }))
-    .filter(({ cell }) => cell && !isEmptyCellKind(cell.kind));
+    .filter((row) => branch in row.cells && !isEmptyCellKind(row.cells[branch].kind))
+    .map((row) => ({ row, cell: row.cells[branch] }));
   const pick = (found: (typeof cells)[number] | undefined, status: NodeStatus) =>
     found ? { status, hash: found.row.dryShaShort, rowId: found.row.id } : undefined;
 
@@ -118,7 +119,7 @@ function graphSourceFor(
   strategy: PromotionStrategy,
   envs: readonly EnvColumn[],
 ): PromotionGraphSource {
-  if ((strategy.spec?.environments?.length ?? 0) > 0) return strategy;
+  if (strategy.spec.environments.length > 0) return strategy;
   return { spec: { environments: envs.map((env) => ({ branch: env.branch })) } };
 }
 

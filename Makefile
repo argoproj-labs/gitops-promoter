@@ -387,8 +387,8 @@ test-ui-test-shared: ## Run shared unit tests (with coverage)
 	cd ui/shared && npm test
 
 .PHONY: lint-components-lib
-lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
-	cd ui/components-lib && npm run type-check && npm run format:check
+lint-components-lib: install-ui-deps ## Run components-lib lint, type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run lint && npm run type-check && npm run format:check
 	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
 .PHONY: lint-shared
