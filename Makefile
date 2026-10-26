@@ -565,7 +565,7 @@ serve-docs:
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings
-	@DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
+	@NO_MKDOCS_2_WARNING=1 DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
 	@if grep -q 'WARNING' mkdocs-lint.log; then \
 	  echo "MkDocs build produced warnings!"; \
 	  cat mkdocs-lint.log; \
