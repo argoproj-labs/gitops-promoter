@@ -496,7 +496,7 @@ kind: Secret
 metadata:
   name: api-token-secret
   labels:
-    promoter.argoproj.io/allow-webrequest: "true"
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   token: "your-bearer-token-here"
@@ -688,7 +688,7 @@ kind: Secret
 metadata:
   name: compliance-api-creds
   labels:
-    promoter.argoproj.io/allow-webrequest: "true"
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   username: "service-account"
@@ -730,7 +730,7 @@ kind: Secret
 metadata:
   name: oauth-credentials
   labels:
-    promoter.argoproj.io/allow-webrequest: "true"
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   clientID: "your-client-id"
@@ -770,7 +770,7 @@ kind: Secret
 metadata:
   name: mtls-client-cert
   labels:
-    promoter.argoproj.io/allow-webrequest: "true"
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: kubernetes.io/tls
 data:
   tls.crt: <base64-encoded-certificate>
@@ -782,10 +782,15 @@ data:
 
 The controller sends the credentials from a `basic`, `bearer`, `oauth2`, or `tls` `secretRef` to the request URL
 you template (for `oauth2`, also to `tokenURL`). Because a WebRequestCommitStatus author chooses that URL, the
-controller only reads a referenced Secret that carries the label `promoter.argoproj.io/allow-webrequest: "true"`.
-Without it the reconcile fails with a `Ready=False` condition naming the label, and no request is made. Only a user
-who can already write the Secret can add the label, so creating a WebRequestCommitStatus never grants access to a
-Secret its author could not read directly.
+controller only reads a referenced Secret that carries the label `promoter.argoproj.io/webrequestcommitstatus-access: allowed`.
+Without it the reconcile fails with a `Ready=False` condition naming the label, and no request is made.
+
+The label is the only check. The controller does not check whether the WebRequestCommitStatus author can read the
+Secret. Adding the label is an explicit grant by someone who can write the Secret: any user who can create a
+WebRequestCommitStatus in the Secret's namespace can then reference it and have its credentials sent to a URL they
+choose. Only label a Secret if everyone with WebRequestCommitStatus create access in that namespace may use its
+credentials. To limit who that is, restrict WebRequestCommitStatus create permissions in the namespace, or keep the
+Secret in a namespace where only trusted users can create WebRequestCommitStatuses.
 
 ```yaml
 apiVersion: v1
@@ -793,7 +798,7 @@ kind: Secret
 metadata:
   name: deployments-api-token
   labels:
-    promoter.argoproj.io/allow-webrequest: "true"
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   token: your-api-token
@@ -802,7 +807,7 @@ stringData:
 Label an existing Secret in place:
 
 ```bash
-kubectl label secret deployments-api-token promoter.argoproj.io/allow-webrequest=true
+kubectl label secret deployments-api-token promoter.argoproj.io/webrequestcommitstatus-access=allowed
 ```
 
 `authentication.scm` does not use this label: it uses the ScmProvider's Secret and is limited to the provider's host.

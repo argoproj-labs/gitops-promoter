@@ -39,7 +39,9 @@ SCM Secrets) must resolve within the same namespace as the CommitStatus.
 
 WebRequestCommitStatus `httpRequest.authentication` secretRefs (`basic`, `bearer`, `oauth2`, `tls`) send the Secret's
 credentials to a URL the WebRequestCommitStatus author controls, so the controller only reads Secrets labeled
-`promoter.argoproj.io/allow-webrequest: "true"`. Only users who can write a Secret can grant that access. See
+`promoter.argoproj.io/webrequestcommitstatus-access: allowed`. The controller does not check whether the WebRequestCommitStatus
+author can read the Secret, so labeling a Secret lets anyone who can create a WebRequestCommitStatus in that
+namespace use its credentials. Treat the label as an explicit grant by the Secret's writer to all of those users. See
 [Opting Secrets in with a label](../gating-promotions/built-in-gates/web-request-commit-status/index.md#opting-secrets-in-with-a-label).
 
 Various actors may want to manage CommitStatuses:

@@ -20,7 +20,7 @@ import (
 )
 
 // Secret opt-in tests: a Secret named by httpRequest.authentication must carry
-// promoter.argoproj.io/allow-webrequest=true before the controller reads it. Each test uses unique resources (via promotionStrategyResource).
+// promoter.argoproj.io/webrequestcommitstatus-access=allowed before the controller reads it. Each test uses unique resources (via promotionStrategyResource).
 var _ = Describe("WebRequestCommitStatus Controller - Secret opt-in", func() {
 	var (
 		ctx               context.Context
@@ -120,7 +120,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Secret opt-in", func() {
 				if s.Labels == nil {
 					s.Labels = map[string]string{}
 				}
-				s.Labels[promoterv1alpha1.WebRequestSecretOptInLabel] = promoterv1alpha1.WebRequestSecretOptInLabelValue
+				s.Labels[promoterv1alpha1.WebRequestSecretOptInLabel] = string(promoterv1alpha1.WebRequestSecretAccessAllowed)
 				g.Expect(k8sClient.Update(ctx, &s)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 

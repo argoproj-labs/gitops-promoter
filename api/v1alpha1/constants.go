@@ -84,9 +84,14 @@ const InstanceIDLabel = "promoter.argoproj.io/instance-id"
 
 // WebRequestSecretOptInLabel marks a Secret as usable by WebRequestCommitStatus httpRequest.authentication
 // secretRefs (basic, bearer, oauth2, tls). The controller refuses to read a referenced Secret without this
-// label set to WebRequestSecretOptInLabelValue, because it sends the credentials to a URL the
-// WebRequestCommitStatus author controls.
-const WebRequestSecretOptInLabel = "promoter.argoproj.io/allow-webrequest"
+// label set to a WebRequestSecretAccess value that grants access, because it sends the credentials to a URL
+// the WebRequestCommitStatus author controls.
+const WebRequestSecretOptInLabel = "promoter.argoproj.io/webrequestcommitstatus-access"
 
-// WebRequestSecretOptInLabelValue is the only accepted value of WebRequestSecretOptInLabel.
-const WebRequestSecretOptInLabelValue = "true"
+// WebRequestSecretAccess is a value of the WebRequestSecretOptInLabel label on a Secret.
+type WebRequestSecretAccess string
+
+const (
+	// WebRequestSecretAccessAllowed lets every WebRequestCommitStatus in the Secret's namespace read the Secret.
+	WebRequestSecretAccessAllowed WebRequestSecretAccess = "allowed"
+)

@@ -7,7 +7,7 @@ This page documents breaking changes and migration steps between releases.
 > [!IMPORTANT]
 > Every WebRequestCommitStatus that uses `httpRequest.authentication.basic`, `.bearer`, `.oauth2`, or `.tls` stops
 > making requests after upgrading until the referenced Secret carries the label
-> `promoter.argoproj.io/allow-webrequest: "true"`. The gate reports `Ready=False` with a message naming the label.
+> `promoter.argoproj.io/webrequestcommitstatus-access: allowed`. The gate reports `Ready=False` with a message naming the label.
 > `authentication.scm` is unaffected.
 
 The controller sends those credentials to the request URL the WebRequestCommitStatus author templates (and, for
@@ -17,7 +17,7 @@ WebRequestCommitStatus could read Secrets they had no RBAC for. The label is an 
 Migration: label each Secret referenced by a WebRequestCommitStatus `secretRef`:
 
 ```bash
-kubectl -n <namespace> label secret <name> promoter.argoproj.io/allow-webrequest=true
+kubectl -n <namespace> label secret <name> promoter.argoproj.io/webrequestcommitstatus-access=allowed
 ```
 
 See [Opting Secrets in with a label](gating-promotions/built-in-gates/web-request-commit-status/index.md#opting-secrets-in-with-a-label).

@@ -411,22 +411,23 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 }
 
 // getAuthSecret fetches the Secret named by an httpRequest.authentication secretRef. The Secret must carry
-// promoterv1alpha1.WebRequestSecretOptInLabel set to "true"; otherwise the request is refused before any
-// credential is read. The controller sends these credentials to a user-templated URL, so the label is what
-// keeps a WebRequestCommitStatus author from reading Secrets they could not read directly: only a user who
-// can already write the Secret can add it.
+// promoterv1alpha1.WebRequestSecretOptInLabel set to WebRequestSecretAccessAllowed; otherwise the request is refused before any
+// credential is read. The controller sends these credentials to a user-templated URL. The label is an explicit
+// grant by a Secret writer to every user who can create a WebRequestCommitStatus in the namespace; the author's
+// own access to the Secret is not checked.
 func (r *WebRequestCommitStatusReconciler) getAuthSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
 	var secret corev1.Secret
 	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &secret); err != nil {
 		return nil, fmt.Errorf("failed to get secret %q: %w", name, err)
 	}
 
-	if secret.Labels[promoterv1alpha1.WebRequestSecretOptInLabel] != promoterv1alpha1.WebRequestSecretOptInLabelValue {
+	switch promoterv1alpha1.WebRequestSecretAccess(secret.Labels[promoterv1alpha1.WebRequestSecretOptInLabel]) {
+	case promoterv1alpha1.WebRequestSecretAccessAllowed:
+		return &secret, nil
+	default:
 		return nil, fmt.Errorf("secret %q is not opted in for WebRequestCommitStatus authentication: label it %s=%q",
-			name, promoterv1alpha1.WebRequestSecretOptInLabel, promoterv1alpha1.WebRequestSecretOptInLabelValue)
+			name, promoterv1alpha1.WebRequestSecretOptInLabel, promoterv1alpha1.WebRequestSecretAccessAllowed)
 	}
-
-	return &secret, nil
 }
 
 // applySCMAuthentication applies authentication using the SCM provider credentials from the referenced GitRepository.
