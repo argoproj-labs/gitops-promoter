@@ -170,6 +170,7 @@ spec:
                         - shortSha: "{{ .TargetedSha | trunc 8 }}"
                     type: object
                   serviceAccount:
+                    default: default
                     description: |-
                       ServiceAccount is a ServiceAccount in the same namespace as the Tekton resource and is passed to the resource to be used by it.
                       on the targeted Tekton resource

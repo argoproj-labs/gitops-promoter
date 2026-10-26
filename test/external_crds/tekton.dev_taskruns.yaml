@@ -133,8 +133,6 @@ spec:
                       x-kubernetes-preserve-unknown-fields: true
                   type: object
                 type: array
-            required:
-            - conditions
             type: object
         required:
         - metadata
@@ -142,3 +140,5 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
