@@ -75,16 +75,19 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
 	}
 
-	// Remove any existing Ready condition. We want to start fresh.
-	previousReady = utils.RemoveReadyCondition(&clusterScmProvider)
-
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// Finalizer handling runs before RemoveReadyCondition, matching ChangeTransferPolicy and
+	// RestoreActiveCommit: anything that mutates clusterScmProvider ahead of the fresh-status reset
+	// below should run first so it can't reintroduce a condition RemoveReadyCondition already cleared.
 	if deleted, err := r.handleFinalizer(ctx, &clusterScmProvider); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	previousReady = utils.RemoveReadyCondition(&clusterScmProvider)
 
 	// Add finalizer to referenced Secret if it exists
 	if err := r.ensureSecretFinalizer(ctx, &clusterScmProvider); err != nil {

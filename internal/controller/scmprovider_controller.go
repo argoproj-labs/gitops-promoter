@@ -75,16 +75,19 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
-	// Remove any existing Ready condition. We want to start fresh.
-	previousReady = utils.RemoveReadyCondition(&scmProvider)
-
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// Finalizer handling runs before RemoveReadyCondition, matching ChangeTransferPolicy and
+	// RestoreActiveCommit: anything that mutates scmProvider ahead of the fresh-status reset below
+	// should run first so it can't reintroduce a condition RemoveReadyCondition already cleared.
 	if deleted, err := r.handleFinalizer(ctx, &scmProvider); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	previousReady = utils.RemoveReadyCondition(&scmProvider)
 
 	// Add finalizer to referenced Secret if it exists
 	if err := r.ensureSecretFinalizer(ctx, &scmProvider); err != nil {
