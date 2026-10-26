@@ -73,9 +73,10 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# view aggregation API (api/view/...) is served by an extension
 	# apiserver, not as CRDs; including it would make controller-gen's CRD generator
 	# treat those TypeMeta/ObjectMeta types as Kinds and fail.
-	$(CONTROLLER_GEN) crd paths="./api/v1alpha1/..." paths="./internal/types/argocd/..." output:crd:artifacts:config=config/crd/bases
-	# Move the Application CRD to the test dir. We don't need it in the promoter config, but we need it for e2e tests.
+	$(CONTROLLER_GEN) crd paths="./api/v1alpha1/..." paths="./internal/types/argocd/..." paths="./internal/types/tekton/..." output:crd:artifacts:config=config/crd/bases
+	# Move the Application and Tekton CRDs to the test dir. We don't need it in the promoter config, but we need it for e2e tests.
 	mv config/crd/bases/argoproj.io_applications.yaml test/external_crds/
+	mv config/crd/bases/tekton.dev* test/external_crds/
 
 # controller-gen v0.21+ emits applyconfiguration types that import applyconfiguration/internal
 # (for Extract* helpers). On the first pass after an output-format change, controller-gen

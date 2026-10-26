@@ -72,13 +72,6 @@ type TektonRunStatus struct {
 	Results    []Data             `json:"results,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-
-type CustomRun struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-}
-
 // The below constants represent the different run phases for a Tekton resource
 const (
 	TektonConditionType     = "Succeeded"
@@ -91,6 +84,13 @@ const (
 const (
 	TektonKindTask     = "Task"
 	TektonKindPipeline = "Pipeline"
+)
+
+// The following constants represent the different kind of types a result can be
+const (
+	TektonResultTypeString = "string"
+	TektonResultTypeArray  = "array"
+	TektonResultTypeObject = "object"
 )
 
 // +kubebuilder:object:root=true
