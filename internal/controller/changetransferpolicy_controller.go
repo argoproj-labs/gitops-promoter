@@ -2125,11 +2125,14 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
 //   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
+//   - Update when the Ready condition's status changes (including appearing or disappearing). The CTP
+//     inherits a not-Ready PR's condition, so without this a CTP whose PR recovers from a transient
+//     failure would stay not-Ready until its periodic requeue.
 //
 // Does not enqueue CTP on status-only updates, including:
 //   - status.url (stable or changed)
 //   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
-//   - status.conditions (Ready message, reason, lastTransitionTime)
+//   - other status.conditions changes (Ready message, reason, lastTransitionTime)
 //   - status.observedGeneration
 //   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
@@ -2159,9 +2162,21 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
 				return true
 			}
+			if readyConditionStatus(oldPR) != readyConditionStatus(newPR) {
+				return true
+			}
 			return false
 		},
 	}
+}
+
+// readyConditionStatus returns the status of pr's Ready condition, or "" when it has none.
+func readyConditionStatus(pr *promoterv1alpha1.PullRequest) metav1.ConditionStatus {
+	ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+	if ready == nil {
+		return ""
+	}
+	return ready.Status
 }
 
 // metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time
