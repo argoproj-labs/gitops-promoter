@@ -346,26 +346,38 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
 	if auth.Basic != nil {
-		if err := httpauth.ApplyBasicAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Basic.SecretRef.Name, req); err != nil {
+		secret, err := r.getAuthSecret(ctx, wrcs.Namespace, auth.Basic.SecretRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply basic auth: %w", err)
+		}
+		if err := httpauth.ApplyBasicAuth(ctx, secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply basic auth: %w", err)
 		}
 		return nil, nil
 	}
 
 	if auth.Bearer != nil {
-		if err := httpauth.ApplyBearerAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Bearer.SecretRef.Name, req); err != nil {
+		secret, err := r.getAuthSecret(ctx, wrcs.Namespace, auth.Bearer.SecretRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply bearer auth: %w", err)
+		}
+		if err := httpauth.ApplyBearerAuth(ctx, secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply bearer auth: %w", err)
 		}
 		return nil, nil
 	}
 
 	if auth.OAuth2 != nil {
+		secret, err := r.getAuthSecret(ctx, wrcs.Namespace, auth.OAuth2.SecretRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply oauth2 auth: %w", err)
+		}
 		config := &httpauth.OAuth2Config{
 			SecretName: auth.OAuth2.SecretRef.Name,
 			TokenURL:   auth.OAuth2.TokenURL,
 			Scopes:     auth.OAuth2.Scopes,
 		}
-		if err := httpauth.ApplyOAuth2AuthFromSecret(ctx, r.Client, wrcs.Namespace, config, req); err != nil {
+		if err := httpauth.ApplyOAuth2Auth(ctx, secret, config, req); err != nil {
 			return nil, fmt.Errorf("failed to apply oauth2 auth: %w", err)
 		}
 		return nil, nil
@@ -376,7 +388,11 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 		if timeout == 0 {
 			timeout = 30 * time.Second
 		}
-		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, timeout)
+		secret, err := r.getAuthSecret(ctx, wrcs.Namespace, auth.TLS.SecretRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build TLS client: %w", err)
+		}
+		client, err := httpauth.BuildTLSClient(ctx, secret, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build TLS client: %w", err)
 		}
@@ -392,6 +408,25 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	return nil, nil
+}
+
+// getAuthSecret fetches the Secret named by an httpRequest.authentication secretRef. The Secret must carry
+// promoterv1alpha1.WebRequestSecretOptInLabel set to "true"; otherwise the request is refused before any
+// credential is read. The controller sends these credentials to a user-templated URL, so the label is what
+// keeps a WebRequestCommitStatus author from reading Secrets they could not read directly: only a user who
+// can already write the Secret can add it.
+func (r *WebRequestCommitStatusReconciler) getAuthSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get secret %q: %w", name, err)
+	}
+
+	if secret.Labels[promoterv1alpha1.WebRequestSecretOptInLabel] != promoterv1alpha1.WebRequestSecretOptInLabelValue {
+		return nil, fmt.Errorf("secret %q is not opted in for WebRequestCommitStatus authentication: label it %s=%q",
+			name, promoterv1alpha1.WebRequestSecretOptInLabel, promoterv1alpha1.WebRequestSecretOptInLabelValue)
+	}
+
+	return &secret, nil
 }
 
 // applySCMAuthentication applies authentication using the SCM provider credentials from the referenced GitRepository.

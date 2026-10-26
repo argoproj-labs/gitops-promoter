@@ -81,3 +81,12 @@ const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/f
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
 const InstanceIDLabel = "promoter.argoproj.io/instance-id"
+
+// WebRequestSecretOptInLabel marks a Secret as usable by WebRequestCommitStatus httpRequest.authentication
+// secretRefs (basic, bearer, oauth2, tls). The controller refuses to read a referenced Secret without this
+// label set to WebRequestSecretOptInLabelValue, because it sends the credentials to a URL the
+// WebRequestCommitStatus author controls.
+const WebRequestSecretOptInLabel = "promoter.argoproj.io/allow-webrequest"
+
+// WebRequestSecretOptInLabelValue is the only accepted value of WebRequestSecretOptInLabel.
+const WebRequestSecretOptInLabelValue = "true"

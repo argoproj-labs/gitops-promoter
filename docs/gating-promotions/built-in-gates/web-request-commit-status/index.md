@@ -495,6 +495,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: api-token-secret
+  labels:
+    promoter.argoproj.io/allow-webrequest: "true"
 type: Opaque
 stringData:
   token: "your-bearer-token-here"
@@ -685,6 +687,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: compliance-api-creds
+  labels:
+    promoter.argoproj.io/allow-webrequest: "true"
 type: Opaque
 stringData:
   username: "service-account"
@@ -725,6 +729,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: oauth-credentials
+  labels:
+    promoter.argoproj.io/allow-webrequest: "true"
 type: Opaque
 stringData:
   clientID: "your-client-id"
@@ -763,12 +769,43 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: mtls-client-cert
+  labels:
+    promoter.argoproj.io/allow-webrequest: "true"
 type: kubernetes.io/tls
 data:
   tls.crt: <base64-encoded-certificate>
   tls.key: <base64-encoded-private-key>
   ca.crt: <base64-encoded-ca-cert>  # Optional, for custom CA
 ```
+
+### Opting Secrets in with a label
+
+The controller sends the credentials from a `basic`, `bearer`, `oauth2`, or `tls` `secretRef` to the request URL
+you template (for `oauth2`, also to `tokenURL`). Because a WebRequestCommitStatus author chooses that URL, the
+controller only reads a referenced Secret that carries the label `promoter.argoproj.io/allow-webrequest: "true"`.
+Without it the reconcile fails with a `Ready=False` condition naming the label, and no request is made. Only a user
+who can already write the Secret can add the label, so creating a WebRequestCommitStatus never grants access to a
+Secret its author could not read directly.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: deployments-api-token
+  labels:
+    promoter.argoproj.io/allow-webrequest: "true"
+type: Opaque
+stringData:
+  token: your-api-token
+```
+
+Label an existing Secret in place:
+
+```bash
+kubectl label secret deployments-api-token promoter.argoproj.io/allow-webrequest=true
+```
+
+`authentication.scm` does not use this label: it uses the ScmProvider's Secret and is limited to the provider's host.
 
 ### SCM Provider Credentials
 

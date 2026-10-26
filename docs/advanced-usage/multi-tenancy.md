@@ -37,6 +37,11 @@ host all resources in a single namespace, keeping in mind the need to avoid reso
 As with PromotionStrategies, all references from CommitStatuses (to GitRepositories, then ScmProviders, and finally to
 SCM Secrets) must resolve within the same namespace as the CommitStatus.
 
+WebRequestCommitStatus `httpRequest.authentication` secretRefs (`basic`, `bearer`, `oauth2`, `tls`) send the Secret's
+credentials to a URL the WebRequestCommitStatus author controls, so the controller only reads Secrets labeled
+`promoter.argoproj.io/allow-webrequest: "true"`. Only users who can write a Secret can grant that access. See
+[Opting Secrets in with a label](../gating-promotions/built-in-gates/web-request-commit-status/index.md#opting-secrets-in-with-a-label).
+
 Various actors may want to manage CommitStatuses:
 
 1. GitOps Promoter administrators
