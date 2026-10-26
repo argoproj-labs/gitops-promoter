@@ -196,28 +196,16 @@ const envs: EnvColumn[] = [
     branch: DEV,
     autoMerge: true,
     color: '#1f4f5e',
-    liveStatuses: passing,
-    liveHealth: 'success',
-    proposedStatuses: [],
-    proposedHealth: 'unknown',
   },
   {
     branch: STAGING,
     autoMerge: true,
     color: '#6f42c1',
-    liveStatuses: passing,
-    liveHealth: 'success',
-    proposedStatuses: [],
-    proposedHealth: 'unknown',
   },
   {
     branch: PROD,
     autoMerge: false,
     color: '#9a5a0f',
-    liveStatuses: passing,
-    liveHealth: 'success',
-    proposedStatuses: pending,
-    proposedHealth: 'pending',
   },
 ];
 

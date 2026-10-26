@@ -99,28 +99,16 @@ const drawerEnvs: EnvColumn[] = [
     branch: 'environment/dev',
     autoMerge: true,
     color: '#1f4f5e',
-    liveStatuses: [],
-    liveHealth: 'success',
-    proposedStatuses: [],
-    proposedHealth: 'success',
   },
   {
     branch: BRANCH,
     autoMerge: false,
     color: '#6f42c1',
-    liveStatuses: [],
-    liveHealth: 'pending',
-    proposedStatuses: [],
-    proposedHealth: 'pending',
   },
   {
     branch: 'environment/prod',
     autoMerge: false,
     color: '#9a5a0f',
-    liveStatuses: [],
-    liveHealth: 'unknown',
-    proposedStatuses: [],
-    proposedHealth: 'unknown',
   },
 ];
 

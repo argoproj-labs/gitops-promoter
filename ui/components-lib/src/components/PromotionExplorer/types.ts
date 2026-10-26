@@ -1,6 +1,5 @@
 import type {
   Commit,
-  CommitStatus,
   EnrichedBranchCommitStatus,
   PullRequest,
   ReferenceCommit,
@@ -55,13 +54,6 @@ export interface EnvColumn {
   instanceId?: string;
   autoMerge: boolean;
   color: string;
-  liveCommit?: Commit;
-  liveStatuses: CommitStatus[];
-  liveHealth: HealthKey;
-  proposedCommit?: Commit;
-  proposedStatuses: CommitStatus[];
-  proposedHealth: HealthKey;
-  proposedPR?: PullRequest;
 }
 
 /**
