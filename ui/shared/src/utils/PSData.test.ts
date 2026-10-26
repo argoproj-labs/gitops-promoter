@@ -61,6 +61,21 @@ function webRequest(key: string, branches: string[]) {
   } as unknown as NonNullable<CommitStatusManagerBundle['webRequestCommitStatuses']>[number];
 }
 
+function dependents(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' } },
+    status: {
+      environments: branches.map((branch) => ({
+        branch,
+        phase: 'pending',
+        upstreams: [{ branch: 'environments/dev', satisfied: false, reason: 'not promoted' }],
+      })),
+    },
+  } as unknown as NonNullable<
+    CommitStatusManagerBundle['dependentsSuccessfulCommitStatuses']
+  >[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -95,6 +110,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['GitCommitStatus', 'gitCommitStatuses', git],
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
+    ['DependentsSuccessfulCommitStatus', 'dependentsSuccessfulCommitStatuses', dependents],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);
@@ -183,6 +199,16 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
 
       expect(check.kind).toBe('ArgoCDCommitStatus');
       expect(check.manager).toBe(managers.argoCDCommitStatuses![0]);
+    });
+
+    it('exposes upstreams on a matched dependentsSuccessful manager', () => {
+      const manager = dependents('gate', [BRANCH]);
+      const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), {
+        dependentsSuccessfulCommitStatuses: [manager],
+      });
+      const matched = check.manager as typeof manager;
+
+      expect(matched.status?.environments?.[0].upstreams?.[0].branch).toBe('environments/dev');
     });
 
     it('picks the first matching manager within a single kind', () => {

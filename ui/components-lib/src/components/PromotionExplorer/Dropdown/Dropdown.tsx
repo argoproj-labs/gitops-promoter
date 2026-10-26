@@ -35,7 +35,9 @@ export const Dropdown: React.FC<{
       close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      close();
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);

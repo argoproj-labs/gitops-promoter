@@ -4,8 +4,10 @@ import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
-import { buildMatrix } from './buildMatrix';
 import { isEmptyCellKind } from './helpers';
+import { buildExplorerModel, type ExplorerModel } from './explorerModel';
+import { buildCommitPath } from './graphFocus';
+import PromotionMap from './PromotionMap/PromotionMap';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
@@ -18,13 +20,16 @@ export interface CellSelection {
   branch: string;
 }
 
-export interface HistoryViewProps {
+export interface PromotionExplorerProps {
   strategy?: PromotionStrategy;
   name?: string;
   namespace?: string;
   onBack?: () => void;
   initialSelection?: CellSelection | null;
   onSelectionChange?: (_selection: CellSelection | null) => void;
+  initialSelectedEnvs?: string[];
+  onSelectedEnvsChange?: (_branches: string[]) => void;
+  defaultMapExpanded?: boolean;
   // By default the view fills its host container (`height: 100%`), which is
   // correct when mounted inside a sized ancestor like ArgoCD's
   // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
@@ -32,7 +37,7 @@ export interface HistoryViewProps {
   fillViewport?: boolean;
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({
+const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   strategy,
   name: nameProp,
   namespace: namespaceProp,
@@ -40,15 +45,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   fillViewport = false,
   initialSelection = null,
   onSelectionChange,
+  initialSelectedEnvs,
+  onSelectedEnvsChange,
+  defaultMapExpanded = false,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
   const namespace = namespaceProp ?? strategy?.metadata?.namespace;
 
-  const { envs, rows } = useMemo(
-    () => (strategy ? buildMatrix(strategy) : { envs: [], rows: [] }),
+  const model = useMemo<ExplorerModel | null>(
+    () => (strategy ? buildExplorerModel(strategy) : null),
     [strategy],
   );
+  const envs = useMemo(() => model?.envs ?? [], [model]);
+  const rows = useMemo(() => model?.rows ?? [], [model]);
   const rowsById = useMemo(() => {
     const m = new Map<string, CommitRow>();
     for (const r of rows) m.set(r.id, r);
@@ -57,7 +67,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const [filter, setFilter] = useState<FilterId>('all');
   const [sort, setSort] = useState<SortId>('newest');
-  const [envFilter, setEnvFilter] = useState<string[]>([]);
+  const [envFilter, setEnvFilterState] = useState<string[]>(() => initialSelectedEnvs ?? []);
   const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
 
   const onSelectionChangeRef = useRef(onSelectionChange);
@@ -68,7 +78,36 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     onSelectionChangeRef.current?.(next);
   }, []);
 
+  const envFilterRef = useRef(envFilter);
+  const onSelectedEnvsChangeRef = useRef(onSelectedEnvsChange);
+  onSelectedEnvsChangeRef.current = onSelectedEnvsChange;
+
+  const updateEnvFilter = useCallback((next: string[]) => {
+    const current = envFilterRef.current;
+    if (current.length === next.length && current.every((b, i) => b === next[i])) return;
+    envFilterRef.current = next;
+    setEnvFilterState(next);
+    onSelectedEnvsChangeRef.current?.(next);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    updateEnvFilter([]);
+  }, [updateEnvFilter]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clearSelection]);
+
   const drawer = useDrawerWidth();
+
+  const commitPath = useMemo(
+    () => (model && selected ? buildCommitPath(model.graph, rowsById.get(selected.rowId)) : null),
+    [model, selected, rowsById],
+  );
 
   const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
   useEffect(() => {
@@ -84,11 +123,31 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     }
   }, [selected, rows.length, rowsById, validBranches]);
 
-  const handleToggleEnvFilter = useCallback((branch: string) => {
-    setEnvFilter((prev) =>
-      prev.includes(branch) ? prev.filter((b) => b !== branch) : [...prev, branch],
-    );
-  }, []);
+  useEffect(() => {
+    if (envs.length === 0) return;
+    const valid = envFilter.filter((b) => validBranches.has(b));
+    if (valid.length !== envFilter.length) updateEnvFilter(valid);
+  }, [envFilter, envs.length, validBranches, updateEnvFilter]);
+
+  const handleToggleEnvFilter = useCallback(
+    (branch: string) => {
+      const current = envFilterRef.current;
+      updateEnvFilter(
+        current.includes(branch) ? current.filter((b) => b !== branch) : [...current, branch],
+      );
+    },
+    [updateEnvFilter],
+  );
+
+  const handleSelectNode = useCallback(
+    (branch: string, additive: boolean) => {
+      if (!validBranches.has(branch)) return;
+      const current = envFilterRef.current;
+      if (additive) handleToggleEnvFilter(branch);
+      else updateEnvFilter(current.length === 1 && current[0] === branch ? [] : [branch]);
+    },
+    [validBranches, handleToggleEnvFilter, updateEnvFilter],
+  );
 
   const envScopedRows = useMemo(
     () =>
@@ -114,8 +173,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       }
     };
     const list = envScopedRows.filter(apply);
-    if (sort === 'oldest') return [...list].sort((a, b) => a.freshestAt - b.freshestAt);
-    return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
+    return sort === 'oldest'
+      ? [...list].sort((a, b) => a.freshestAt - b.freshestAt)
+      : [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
 
   const counts = useMemo(() => {
@@ -147,7 +207,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     [envs, rowsById, selectCell],
   );
 
-  if (!strategy) return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
+  if (!strategy || !model)
+    return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
 
   if (envs.length === 0) {
     return (
@@ -184,9 +245,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
-  // Trailing 1fr spacer track (no cell placed in it) soaks up leftover width as
-  // empty gap; when columns overflow it collapses to 0 and the matrix scrolls.
-  const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(180px, 260px)) 1fr`;
+  const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(286px, 1fr))`;
 
   return (
     <div className={`hp ${rootClass}`}>
@@ -253,7 +312,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   <DropdownItem
                     multi
                     selected={envFilter.length === 0}
-                    onSelect={() => setEnvFilter([])}
+                    onSelect={() => updateEnvFilter([])}
                   >
                     <span className="hp-dd__item-label">All environments</span>
                   </DropdownItem>
@@ -307,23 +366,37 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
       </header>
 
-      <div className="hp-body">
+      <div
+        className="hp-body"
+        style={
+          { '--hp-drawer-offset': selected ? `${drawer.width}px` : '0px' } as React.CSSProperties
+        }
+      >
         <div className="hp-main">
+          <PromotionMap
+            model={model}
+            selectedNodes={envFilter}
+            path={commitPath}
+            defaultExpanded={defaultMapExpanded}
+            onSelectNode={handleSelectNode}
+            onClearSelection={clearSelection}
+          />
+
           <div className="hp-sr-only" role="status" aria-live="polite">
             {`${filteredRows.length} ${filteredRows.length === 1 ? 'commit' : 'commits'} shown`}
           </div>
 
           <div className="hp-matrix">
             <div className="hp-matrix__sticky">
-              {envFilter.length > 0 && visibleEnvs.length < envs.length && (
+              {envFilter.length > 0 && envFilter.length < envs.length && (
                 <div className="hp-env-banner">
                   <span className="hp-env-banner__text">
-                    Showing {visibleEnvs.length} of {envs.length} environments
+                    Showing {envFilter.length} of {envs.length} environments
                   </span>
                   <button
                     type="button"
                     className="hp-env-banner__clear"
-                    onClick={() => setEnvFilter([])}
+                    onClick={() => updateEnvFilter([])}
                   >
                     Clear filter
                   </button>
@@ -476,4 +549,4 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   );
 };
 
-export default HistoryView;
+export default PromotionExplorer;

@@ -14,6 +14,16 @@ export function healthFromStatuses(statuses: CommitStatus[] | undefined): Health
   return 'unknown';
 }
 
+export function safeHttpUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function shortSha(sha?: string): string {
   return sha ? sha.slice(0, 7) : '';
 }
@@ -23,4 +33,13 @@ export function commitKey(c: Commit | undefined): string | null {
   if (s && s.length >= 7) return s.slice(0, 7);
   if (c?.subject || c?.author) return `nokey:${c?.subject ?? ''}|${c?.author ?? ''}`;
   return null;
+}
+
+export function parseEnvSelection(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(',').filter(Boolean))];
+}
+
+export function formatEnvSelection(branches: readonly string[]): string | null {
+  return branches.length > 0 ? branches.join(',') : null;
 }

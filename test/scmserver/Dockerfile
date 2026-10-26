@@ -12,7 +12,7 @@ COPY test/scmserver/ test/scmserver/
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o scm-server ./test/scmserver/cmd
 
-FROM alpine:3.22
+FROM alpine:3.24
 # git-daemon provides git-http-backend, which serves the hosted repositories over smart HTTP.
 RUN apk add --no-cache git git-daemon tini && mkdir /data && chown 65532:65532 /data
 COPY --from=builder /workspace/scm-server /scm-server

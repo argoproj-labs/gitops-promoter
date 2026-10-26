@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router';
-import HistoryView from '@lib/components/HistoryView/HistoryView';
-import type { CellSelection } from '@lib/components/HistoryView/HistoryView';
+import PromotionExplorer from '@lib/components/PromotionExplorer/PromotionExplorer';
+import type { CellSelection } from '@lib/components/PromotionExplorer/PromotionExplorer';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 
@@ -43,7 +43,7 @@ const HistoryPage: React.FC = () => {
   );
 
   return (
-    <HistoryView
+    <PromotionExplorer
       strategy={strategy}
       name={name}
       namespace={namespace}

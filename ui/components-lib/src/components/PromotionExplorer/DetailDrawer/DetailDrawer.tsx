@@ -21,7 +21,7 @@ import {
   cellKindLabel,
   displayKind,
 } from '../presentation';
-import { isEmptyCellKind } from '../helpers';
+import { isEmptyCellKind, safeHttpUrl } from '../helpers';
 import { buildRestoreActiveCommitApplyCommand, canShowRestoreCommand } from '../restoreCommand';
 import { restoreBlockTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
@@ -107,11 +107,11 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
                   {check.description && (
                     <span className="hp-drawer__check-desc">{check.description}</span>
                   )}
-                  {check.url && (
+                  {safeHttpUrl(check.url) && (
                     <a
-                      href={check.url}
+                      href={safeHttpUrl(check.url)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="hp-drawer__check-link"
                       aria-label={`View details for ${check.name}, opens in new tab`}
                     >

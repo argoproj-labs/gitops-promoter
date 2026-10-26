@@ -376,6 +376,14 @@ lint-extension: install-ui-deps ## Run extension type-check, lint and audit chec
 test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
+.PHONY: test-ui-test-components-lib
+test-ui-test-components-lib: ## Run components-lib unit tests (with coverage)
+	cd ui/components-lib && npm test
+
+.PHONY: test-ui-test-shared
+test-ui-test-shared: ## Run shared unit tests (with coverage)
+	cd ui/shared && npm test
+
 .PHONY: lint-components-lib
 lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
 	cd ui/components-lib && npm run type-check && npm run format:check
@@ -395,6 +403,9 @@ lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-stor
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
+
+.PHONY: test-ui
+test-ui: test-ui-test-shared test-ui-test-components-lib test-unit-test-extension test-ui-test-dashboard ## Run all UI unit tests (with coverage)
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -497,7 +508,7 @@ DEADCODE_VERSION ?= v0.52.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.1
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.3
+GORELEASER_VERSION ?= v2.19.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

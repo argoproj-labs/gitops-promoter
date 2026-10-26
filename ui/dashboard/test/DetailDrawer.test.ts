@@ -1,14 +1,14 @@
 import { describe, it, beforeEach, afterEach, expect } from 'vitest';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
-import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
+import DetailDrawer from '@lib/components/PromotionExplorer/DetailDrawer/DetailDrawer';
+import type { CellState, CommitRow, EnvColumn } from '@lib/components/PromotionExplorer/types';
 import {
   buildRestoreActiveCommitApplyCommand,
   canShowRestoreCommand,
   restoreActiveCommitResourceName,
-} from '@lib/components/HistoryView/restoreCommand';
-import { cellKindLabel } from '@lib/components/HistoryView/presentation';
+} from '@lib/components/PromotionExplorer/restoreCommand';
+import { cellKindLabel } from '@lib/components/PromotionExplorer/presentation';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { CommitStatusContext } from '@shared/components/plugins';
