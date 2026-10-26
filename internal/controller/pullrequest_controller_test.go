@@ -321,7 +321,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestClosedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestClosedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -434,7 +434,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1362,7 +1362,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason)).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CTP status preserves unknown SCM outcome after PR deletion")

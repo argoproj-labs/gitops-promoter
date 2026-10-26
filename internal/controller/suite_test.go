@@ -54,6 +54,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -107,6 +108,9 @@ var (
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
+	// faultsInjected is true when K8S_FAULT_PROBABILITY or PROMOTER_TEST_SCM_FAULT_PROBABILITY is
+	// enabled. Specs then stop asserting best-effort side effects (see expectEventEmitted).
+	faultsInjected bool
 )
 
 func TestControllers(t *testing.T) {
@@ -176,6 +180,7 @@ var _ = BeforeSuite(func() {
 	// clients created afterwards: the reconcilers, and the partitioned manager tests pass the same cfg.
 	if probability, enabled := k8sfault.MaybeWrap(cfg); enabled {
 		GinkgoWriter.Printf("fault injection enabled for reconciler writes to the Kubernetes API: probability=%.3f\n", probability)
+		faultsInjected = true
 	}
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
@@ -195,6 +200,12 @@ var _ = BeforeSuite(func() {
 
 	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
 	Expect(err).NotTo(HaveOccurred())
+	if _, ok := scmFaultProbabilityFromEnv(); ok {
+		faultsInjected = true
+		// The shipped 5m slow delay would stall a spec whose reconciles hit maxFastAttempts injected
+		// faults in a row; retry well within the specs' timeouts instead.
+		controllerConfiguration = withSlowDelay(controllerConfiguration, "5s")
+	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
@@ -809,6 +820,39 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	return sha, shortSha
 }
 
+// withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.
+func withSlowDelay(cc *promoterv1alpha1.ControllerConfiguration, delay string) *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	data, err := json.Marshal(cc)
+	Expect(err).NotTo(HaveOccurred())
+	var obj map[string]any
+	Expect(json.Unmarshal(data, &obj)).To(Succeed())
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			if _, ok := v["slowDelay"]; ok {
+				v["slowDelay"] = delay
+			}
+			for _, child := range v {
+				walk(child)
+			}
+		case []any:
+			for _, child := range v {
+				walk(child)
+			}
+		default:
+			// Scalars have no children.
+		}
+	}
+	walk(obj)
+	data, err = json.Marshal(obj)
+	Expect(err).NotTo(HaveOccurred())
+	out := &promoterv1alpha1.ControllerConfiguration{}
+	Expect(json.Unmarshal(data, out)).To(Succeed())
+	return out
+}
+
 func runGitCmd(ctx context.Context, directory string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdoutBuf bytes.Buffer
@@ -819,6 +863,10 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
+		// Exempt fixture traffic from scmserver fault rules, which are meant for the controllers.
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=" + scmserver.NoFaultHeader + ": 1",
 	}
 	if ca := os.Getenv("GIT_SSL_CAINFO"); ca != "" {
 		cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO="+ca)

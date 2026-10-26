@@ -288,7 +288,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList corev1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-polling-success", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-polling-success", constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -407,7 +407,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList corev1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReason(eventList, name+"-unreachable-url", constants.WebRequestFailedReason)).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReason(eventList, name+"-unreachable-url", constants.WebRequestFailedReason))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

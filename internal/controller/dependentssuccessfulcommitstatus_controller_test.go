@@ -415,7 +415,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, dependentsSuccessfulCommitStatus.Name, constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, dependentsSuccessfulCommitStatus.Name, constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
