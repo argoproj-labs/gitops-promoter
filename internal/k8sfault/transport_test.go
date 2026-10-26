@@ -20,8 +20,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"testing"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"k8s.io/client-go/rest"
 )
 
@@ -40,48 +41,32 @@ func okResponse(req *http.Request) *http.Response {
 	}
 }
 
-func TestMaybeWrapIsOffUnlessConfigured(t *testing.T) {
-	t.Setenv(ProbabilityEnv, "")
-	cfg := &rest.Config{}
-	probability, enabled := MaybeWrap(cfg)
-	if enabled || probability != 0 || cfg.WrapTransport != nil {
-		t.Fatalf("unset env wrapped the config: enabled=%v probability=%v", enabled, probability)
-	}
+var _ = Describe("MaybeWrap", func() {
+	It("is off unless configured", func() {
+		GinkgoT().Setenv(ProbabilityEnv, "")
+		cfg := &rest.Config{}
+		probability, enabled := MaybeWrap(cfg)
+		Expect(enabled).To(BeFalse(), "unset env enabled fault injection")
+		Expect(probability).To(BeZero())
+		Expect(cfg.WrapTransport).To(BeNil(), "unset env wrapped the config")
 
-	t.Setenv(ProbabilityEnv, "nope")
-	probability, enabled = MaybeWrap(cfg)
-	if enabled || probability != 0 || cfg.WrapTransport != nil {
-		t.Fatalf("invalid env wrapped the config: enabled=%v probability=%v", enabled, probability)
-	}
+		GinkgoT().Setenv(ProbabilityEnv, "nope")
+		probability, enabled = MaybeWrap(cfg)
+		Expect(enabled).To(BeFalse(), "invalid env enabled fault injection")
+		Expect(probability).To(BeZero())
+		Expect(cfg.WrapTransport).To(BeNil(), "invalid env wrapped the config")
 
-	t.Setenv(ProbabilityEnv, "0.25")
-	probability, enabled = MaybeWrap(cfg)
-	if !enabled || probability != 0.25 || cfg.WrapTransport == nil {
-		t.Fatalf("valid env did not wrap the config: enabled=%v probability=%v", enabled, probability)
-	}
-}
+		GinkgoT().Setenv(ProbabilityEnv, "0.25")
+		probability, enabled = MaybeWrap(cfg)
+		Expect(enabled).To(BeTrue(), "valid env did not enable fault injection")
+		Expect(probability).To(Equal(0.25))
+		Expect(cfg.WrapTransport).NotTo(BeNil(), "valid env did not wrap the config")
+	})
+})
 
-func TestFaultyTransportOnlyFailsEligibleWrites(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name    string
-		method  string
-		path    string
-		forward bool
-	}{
-		{name: "get", method: http.MethodGet, path: "/api/v1/namespaces/default/configmaps/demo", forward: true},
-		{name: "watch", method: http.MethodGet, path: "/apis/promoter.argoproj.io/v1alpha1/pullrequests?watch=1", forward: true},
-		{name: "lease write", method: http.MethodPatch, path: "/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/promoter", forward: true},
-		{name: "status patch", method: http.MethodPatch, path: "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo/status", forward: false},
-		{name: "create", method: http.MethodPost, path: "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests", forward: false},
-		{name: "update", method: http.MethodPut, path: "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", forward: false},
-		{name: "delete", method: http.MethodDelete, path: "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", forward: false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+var _ = Describe("faultyTransport", func() {
+	DescribeTable("only fails eligible writes",
+		func(method, path string, forward bool) {
 			var forwarded int
 			transport := &faultyTransport{
 				base: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -90,35 +75,28 @@ func TestFaultyTransportOnlyFailsEligibleWrites(t *testing.T) {
 				}),
 				probability: 1,
 			}
-			req, err := http.NewRequestWithContext(t.Context(), tc.method, "https://apiserver"+tc.path, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			req, err := http.NewRequestWithContext(GinkgoT().Context(), method, "https://apiserver"+path, nil)
+			Expect(err).NotTo(HaveOccurred())
 			resp, err := transport.RoundTrip(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() {
-				if err := resp.Body.Close(); err != nil {
-					t.Error(err)
-				}
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(resp.Body.Close()).To(Succeed())
 			})
 
-			if tc.forward {
-				if forwarded != 1 {
-					t.Fatal("expected the request to reach the API server")
-				}
-				if resp.StatusCode != http.StatusOK {
-					t.Fatalf("status = %d, want 200", resp.StatusCode)
-				}
+			if forward {
+				Expect(forwarded).To(Equal(1), "expected the request to reach the API server")
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 				return
 			}
-			if forwarded != 0 {
-				t.Fatal("faulted request was forwarded to the API server")
-			}
-			if resp.StatusCode != http.StatusInternalServerError {
-				t.Fatalf("status = %d, want 500", resp.StatusCode)
-			}
-		})
-	}
-}
+			Expect(forwarded).To(BeZero(), "faulted request was forwarded to the API server")
+			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+		},
+		Entry("get", http.MethodGet, "/api/v1/namespaces/default/configmaps/demo", true),
+		Entry("watch", http.MethodGet, "/apis/promoter.argoproj.io/v1alpha1/pullrequests?watch=1", true),
+		Entry("lease write", http.MethodPatch, "/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/promoter", true),
+		Entry("status patch", http.MethodPatch, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo/status", false),
+		Entry("create", http.MethodPost, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests", false),
+		Entry("update", http.MethodPut, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", false),
+		Entry("delete", http.MethodDelete, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", false),
+	)
+})
