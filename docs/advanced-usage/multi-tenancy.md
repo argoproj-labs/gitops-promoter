@@ -41,7 +41,9 @@ WebRequestCommitStatus `httpRequest.authentication` secretRefs (`basic`, `bearer
 credentials to a URL the WebRequestCommitStatus author controls, so the controller only reads Secrets labeled
 `promoter.argoproj.io/webrequestcommitstatus-access: allowed`. The controller does not check whether the WebRequestCommitStatus
 author can read the Secret, so labeling a Secret lets anyone who can create a WebRequestCommitStatus in that
-namespace use its credentials. Treat the label as an explicit grant by the Secret's writer to all of those users. See
+namespace use its credentials. Treat the label as an explicit grant by the Secret's writer to all of those users.
+A WebRequestCommitStatus can only reference Secrets in its own namespace, so restricting WebRequestCommitStatus create
+permissions in a namespace limits who can use its labeled Secrets. See
 [Opting Secrets in with a label](../gating-promotions/built-in-gates/web-request-commit-status/index.md#opting-secrets-in-with-a-label).
 
 Various actors may want to manage CommitStatuses:

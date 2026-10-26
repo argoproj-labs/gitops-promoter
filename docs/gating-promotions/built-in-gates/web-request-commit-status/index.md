@@ -789,8 +789,11 @@ The label is the only check. The controller does not check whether the WebReques
 Secret. Adding the label is an explicit grant by someone who can write the Secret: any user who can create a
 WebRequestCommitStatus in the Secret's namespace can then reference it and have its credentials sent to a URL they
 choose. Only label a Secret if everyone with WebRequestCommitStatus create access in that namespace may use its
-credentials. To limit who that is, restrict WebRequestCommitStatus create permissions in the namespace, or keep the
-Secret in a namespace where only trusted users can create WebRequestCommitStatuses.
+credentials.
+
+A WebRequestCommitStatus can only reference Secrets in its own namespace. To limit who can use a labeled Secret,
+restrict WebRequestCommitStatus create permissions in that namespace, or keep the Secret in a namespace where only
+trusted users can create WebRequestCommitStatuses.
 
 ```yaml
 apiVersion: v1
