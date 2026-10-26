@@ -823,6 +823,21 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		return tooManyPRsError(pr)
 	}
 
+	if pr.Items[0].Status.ID == "" && pr.Items[0].Status.State == "" {
+		// A successor PR object exists (e.g. just created to replace a merged/closed one), but the
+		// PullRequest controller hasn't populated its status yet. Clear any last-known status rather
+		// than copying this empty one over it: an all-empty PullRequestCommonStatus (every field is
+		// omitempty) marshals to "{}" in the server-side-apply body, which structured-merge turns into
+		// a JSON null on re-apply, and unlike status.proposed.dry (+nullable), the CRD schema for
+		// status.pullRequest rejects a null value. This is safe: pullRequestUpdateEnqueuesChangeTransferPolicyPredicate
+		// re-triggers a reconcile once the new PR's status is populated (ID transitions from "" to non-empty),
+		// so the real status is filled in on the very next reconcile instead of being lost.
+		logger.V(4).Info("Successor PR status not yet populated, clearing stale PR status in CTP",
+			"prName", pr.Items[0].Name)
+		ctp.Status.PullRequest = nil
+		return nil
+	}
+
 	if ctp.Status.PullRequest == nil {
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
