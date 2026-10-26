@@ -115,7 +115,7 @@ export function restoreBlockTooltip(name: string, blocked: boolean): string {
  * (or when activeSha was not projected). Otherwise recover the same value from promotion history:
  * the entry immediately older than the live restore.
  */
-export function blockedDryShaFromHistory(env: Environment): string | undefined {
+function blockedDryShaFromHistory(env: Environment): string | undefined {
   const restore = env.restoreActiveCommit;
   const activeHydrated = env.active.hydrated?.sha;
   const tipMatches = !restore?.activeSha || restore.activeSha === activeHydrated;

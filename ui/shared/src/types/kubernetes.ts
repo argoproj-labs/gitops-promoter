@@ -11,8 +11,3 @@ export type KubernetesObjectMeta = Omit<V1ObjectMeta, 'name' | 'namespace'> & {
   name: string;
   namespace: string;
 };
-
-/** ObjectMeta for cluster-scoped promoter resources (e.g. ClusterScmProvider). */
-export type ClusterKubernetesObjectMeta = Omit<V1ObjectMeta, 'name'> & {
-  name: string;
-};
