@@ -780,7 +780,7 @@ Instead of creating separate secrets, you can reuse the SCM provider credentials
 
 Set `authentication.scm: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
 
-Because the SCM credentials travel with the request, the rendered URL must point at the SCM provider's host (the provider's `domain`, or the vendor's API host when none is set), and the controller only follows a redirect whose target stays on that host. A redirect to any other host fails the request with a `Ready=False` condition instead of forwarding the credentials.
+Because the SCM credentials travel with the request, the rendered URL must point at the SCM provider's host (the provider's `domain`, or the vendor's API host when none is set), and the controller only follows a redirect whose target stays on that host. A redirect to any other host, or from `https` to plain `http`, fails the request with a `Ready=False` condition instead of forwarding the credentials.
 
 
 **Example — Gate on GitHub branch protection rules being satisfied:**

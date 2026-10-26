@@ -63,6 +63,37 @@ var _ = Describe("clientWithSCMRedirectPolicy", func() {
 		Expect(otherHits.Load()).To(BeZero(), "the other host must never receive a request")
 	})
 
+	It("refuses a redirect from https to http on the allowed host", func() {
+		var plainHits atomic.Int32
+		plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			plainHits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		DeferCleanup(plain.Close)
+
+		scm := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, plain.URL+"/steal", http.StatusFound)
+		}))
+		DeferCleanup(scm.Close)
+
+		scmURL, err := url.Parse(scm.URL)
+		Expect(err).NotTo(HaveOccurred())
+		plainURL, err := url.Parse(plain.URL)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plainURL.Hostname()).To(Equal(scmURL.Hostname()), "both servers must share a hostname so only the scheme differs")
+
+		// Allow the hostname without a port so the plain-HTTP server passes the host check.
+		c := clientWithSCMRedirectPolicy(scm.Client(), scmURL.Hostname())
+
+		resp, err := c.Get(scm.URL + "/downgrade")
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		Expect(err).To(MatchError(ContainSubstring("refusing to follow redirect")))
+		Expect(err).To(MatchError(ContainSubstring("https to http")))
+		Expect(plainHits.Load()).To(BeZero(), "the plain-HTTP endpoint must never receive a request")
+	})
+
 	It("leaves the base client untouched", func() {
 		base := &http.Client{Timeout: 7 * time.Second}
 		c := clientWithSCMRedirectPolicy(base, "example.com")

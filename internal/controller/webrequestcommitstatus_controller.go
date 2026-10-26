@@ -566,10 +566,12 @@ func checkHostAllowed(allowed string, u *url.URL) error {
 const maxSCMRedirects = 10
 
 // clientWithSCMRedirectPolicy returns a copy of base that follows a redirect only while the target stays
-// on the SCM provider's allowed host. SCM credentials travel with every hop: the GitHub App transport
-// adds Authorization to each request it sends, and header-based tokens such as GitLab's Private-Token are
-// not among the headers net/http strips on a cross-host redirect. Without this check, any redirect the SCM
-// host answers with would carry the credentials to whatever host it names. base is not modified.
+// on the SCM provider's allowed host and does not downgrade from https. SCM credentials travel with every
+// hop: the GitHub App transport adds Authorization to each request it sends, and header-based tokens such
+// as GitLab's Private-Token are not among the headers net/http strips on a cross-host redirect. net/http
+// also keeps sensitive headers on a same-host redirect regardless of scheme. Without these checks, a
+// redirect the SCM host answers with could carry the credentials to another host or over plain HTTP.
+// base is not modified.
 func clientWithSCMRedirectPolicy(base *http.Client, allowedHost string) *http.Client {
 	c := *base
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -578,6 +580,9 @@ func clientWithSCMRedirectPolicy(base *http.Client, allowedHost string) *http.Cl
 		}
 		if err := checkHostAllowed(allowedHost, req.URL); err != nil {
 			return fmt.Errorf("refusing to follow redirect to %q with SCM credentials: %w", req.URL.Redacted(), err)
+		}
+		if prev := via[len(via)-1].URL; strings.EqualFold(prev.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+			return fmt.Errorf("refusing to follow redirect to %q with SCM credentials: scheme downgrade from https to %s", req.URL.Redacted(), req.URL.Scheme)
 		}
 		return nil
 	}
