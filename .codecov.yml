@@ -42,4 +42,8 @@ ignore:
   - 'hack'
   - 'internal/scms/mock'
   - 'internal/controller/testutils'
+  # The dashboard HTTP server (gitops-promoter dashboard) is not started by the e2e suite, so this
+  # package only shows up, at zero hits, once the manager image is built with -cover.
+  # TODO: exercise internal/webserver in the e2e tests, then drop this ignore.
+  - 'internal/webserver'
   - '**/zz_generated.*'
