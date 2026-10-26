@@ -844,6 +844,97 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		Context("When an open PullRequest's Ready condition changes", func() {
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var prNamespacedName types.NamespacedName
+
+			BeforeEach(func() {
+				var name string
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-pr-ready-flip", "default")
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(name+"-ps", testBranchDevelopment)
+				// No auto-merge and no gates: once the PR is open, nothing but the PR itself (or the 5m periodic
+				// requeue) re-enqueues the CTP.
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+				typeNamespacedName = types.NamespacedName{Name: changeTransferPolicy.Name, Namespace: "default"}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName := scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prNamespacedName = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+			})
+
+			AfterEach(func() {
+				deleteRestoreActiveCommitsForPolicy(ctx, changeTransferPolicy.Name, changeTransferPolicy.Namespace)
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			// setPullRequestReady overwrites the PR's Ready condition status, standing in for a PR reconcile that
+			// failed (False) and a later one that recovered (True). The PullRequest controller doesn't reconcile on
+			// its own status changes, so the overwrite sticks.
+			setPullRequestReady := func(status metav1.ConditionStatus) {
+				GinkgoHelper()
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					ready.Status = status
+					ready.Reason = "TestOverride"
+					ready.Message = "set by test"
+					g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			ctpReadyStatus := func(g Gomega) metav1.ConditionStatus {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+				ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				return ready.Status
+			}
+
+			It("becomes Ready again as soon as its PullRequest recovers", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+				By("Opening a PR")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(meta.IsStatusConditionTrue(pr.Status.Conditions, string(promoterConditions.Ready))).To(BeTrue())
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Failing the PR and letting the CTP inherit it")
+				setPullRequestReady(metav1.ConditionFalse)
+				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionFalse))
+					g.Expect(changeTransferPolicy.Status.Conditions).To(ContainElement(
+						HaveField("Reason", string(promoterConditions.PullRequestNotReady))))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Recovering the PR without enqueueing the CTP")
+				setPullRequestReady(metav1.ConditionTrue)
+				// Well inside the CTP's 5m periodic requeue: only the PR update can bring it back this fast.
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, 30*time.Second).Should(Succeed())
+			})
+		})
+
 		Context("When emitting promotion lifecycle events", func() {
 			var name string
 			var scmSecret *v1.Secret
@@ -2732,6 +2823,47 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	readyPR := func(status metav1.ConditionStatus, reason string) *promoterv1alpha1.PullRequest {
+		return &promoterv1alpha1.PullRequest{
+			Generation: 1,
+			Status: promoterv1alpha1.PullRequestStatus{
+				State: promoterv1alpha1.PullRequestOpen,
+				ID:    "1",
+				Conditions: []metav1.Condition{
+					{Type: string(promoterConditions.Ready), Status: status, Reason: reason, ObservedGeneration: 1},
+				},
+			},
+		}
+	}
+
+	It("enqueues when the Ready condition recovers", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition fails", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		newPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition first appears", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Status.Conditions = nil
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores Ready reason and message churn when the status is unchanged", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		oldPR.Status.Conditions[0].Message = "first failure"
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].Message = "second failure"
+		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
 
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
