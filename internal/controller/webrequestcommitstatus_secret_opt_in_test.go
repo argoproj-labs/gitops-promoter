@@ -109,7 +109,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Secret opt-in", func() {
 				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(ready).NotTo(BeNil())
 				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(ready.Message).To(ContainSubstring(promoterv1alpha1.WebRequestSecretOptInLabel))
+				g.Expect(ready.Message).To(ContainSubstring(promoterv1alpha1.WebRequestCommitStatusAccessLabel))
 				g.Expect(fetched.Status.Environments).To(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -120,7 +120,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Secret opt-in", func() {
 				if s.Labels == nil {
 					s.Labels = map[string]string{}
 				}
-				s.Labels[promoterv1alpha1.WebRequestSecretOptInLabel] = string(promoterv1alpha1.WebRequestSecretAccessAllowed)
+				s.Labels[promoterv1alpha1.WebRequestCommitStatusAccessLabel] = string(promoterv1alpha1.AccessAllowed)
 				g.Expect(k8sClient.Update(ctx, &s)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 

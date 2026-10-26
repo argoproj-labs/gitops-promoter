@@ -411,7 +411,7 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 }
 
 // getAuthSecret fetches the Secret named by an httpRequest.authentication secretRef. The Secret must carry
-// promoterv1alpha1.WebRequestSecretOptInLabel set to WebRequestSecretAccessAllowed; otherwise the request is refused before any
+// promoterv1alpha1.WebRequestCommitStatusAccessLabel set to AccessAllowed; otherwise the request is refused before any
 // credential is read. The controller sends these credentials to a user-templated URL. The label is an explicit
 // grant by a Secret writer to every user who can create a WebRequestCommitStatus in the namespace; the author's
 // own access to the Secret is not checked.
@@ -421,12 +421,12 @@ func (r *WebRequestCommitStatusReconciler) getAuthSecret(ctx context.Context, na
 		return nil, fmt.Errorf("failed to get secret %q: %w", name, err)
 	}
 
-	switch promoterv1alpha1.WebRequestSecretAccess(secret.Labels[promoterv1alpha1.WebRequestSecretOptInLabel]) {
-	case promoterv1alpha1.WebRequestSecretAccessAllowed:
+	switch promoterv1alpha1.Access(secret.Labels[promoterv1alpha1.WebRequestCommitStatusAccessLabel]) {
+	case promoterv1alpha1.AccessAllowed:
 		return &secret, nil
 	default:
 		return nil, fmt.Errorf("secret %q is not opted in for WebRequestCommitStatus authentication: label it %s=%q",
-			name, promoterv1alpha1.WebRequestSecretOptInLabel, promoterv1alpha1.WebRequestSecretAccessAllowed)
+			name, promoterv1alpha1.WebRequestCommitStatusAccessLabel, promoterv1alpha1.AccessAllowed)
 	}
 }
 

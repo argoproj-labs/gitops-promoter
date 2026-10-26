@@ -82,16 +82,17 @@ const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/f
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
 const InstanceIDLabel = "promoter.argoproj.io/instance-id"
 
-// WebRequestSecretOptInLabel marks a Secret as usable by WebRequestCommitStatus httpRequest.authentication
-// secretRefs (basic, bearer, oauth2, tls). The controller refuses to read a referenced Secret without this
-// label set to a WebRequestSecretAccess value that grants access, because it sends the credentials to a URL
+// WebRequestCommitStatusAccessLabel grants WebRequestCommitStatuses access to the labeled object. Today the
+// controller requires it on Secrets referenced by httpRequest.authentication secretRefs (basic, bearer, oauth2,
+// tls) and refuses to read a Secret without it set to AccessAllowed, because it sends the credentials to a URL
 // the WebRequestCommitStatus author controls.
-const WebRequestSecretOptInLabel = "promoter.argoproj.io/webrequestcommitstatus-access"
+const WebRequestCommitStatusAccessLabel = "promoter.argoproj.io/webrequestcommitstatus-access"
 
-// WebRequestSecretAccess is a value of the WebRequestSecretOptInLabel label on a Secret.
-type WebRequestSecretAccess string
+// Access is the value of a <kind>-access label or annotation, such as WebRequestCommitStatusAccessLabel, that
+// grants resources of that kind access to the object it is set on.
+type Access string
 
 const (
-	// WebRequestSecretAccessAllowed lets every WebRequestCommitStatus in the Secret's namespace read the Secret.
-	WebRequestSecretAccessAllowed WebRequestSecretAccess = "allowed"
+	// AccessAllowed lets every resource of the label's kind in the object's namespace use the object.
+	AccessAllowed Access = "allowed"
 )
