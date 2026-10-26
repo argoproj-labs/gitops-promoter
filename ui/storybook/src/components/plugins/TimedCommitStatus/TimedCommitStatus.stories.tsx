@@ -1,11 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { within } from 'storybook/test';
-import React, { useEffect, useState } from 'react';
-import Card from '@lib/components/Card';
+import React from 'react';
 import DetailDrawer from '@lib/components/PromotionExplorer/DetailDrawer/DetailDrawer';
 import type { CellState, CommitRow, EnvColumn } from '@lib/components/PromotionExplorer/types';
 import { DRAWER_DEFAULT_WIDTH } from '@lib/components/PromotionExplorer/presentation';
-import type { Environment, EnrichedBranchCommitStatus } from '@shared/types/promotion';
+import type { EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import '@lib/components/PromotionExplorer/index.scss';
 
 interface TimedCommitStatusArgs {
@@ -41,8 +39,6 @@ const meta: Meta<TimedCommitStatusArgs> = {
 export default meta;
 
 type Story = StoryObj<TimedCommitStatusArgs>;
-
-const commitTime = new Date(Date.now() - 4 * 60 * 1000).toISOString();
 
 function timedCommitStatusManager(elapsedSeconds: number, requiredDurationSeconds: number) {
   const remainingSeconds = Math.max(requiredDurationSeconds - elapsedSeconds, 0);
@@ -81,20 +77,6 @@ function pendingTimerCheck(
   };
 }
 
-function successTimerCheck(
-  requiredDurationSeconds: number,
-  url?: string,
-): EnrichedBranchCommitStatus {
-  return {
-    key: 'soak-timer',
-    phase: 'success',
-    description: 'Soak period elapsed',
-    url: url ?? `${REPO_URL}/actions/runs/3333`,
-    kind: 'TimedCommitStatus',
-    manager: timedCommitStatusManager(requiredDurationSeconds, requiredDurationSeconds),
-  };
-}
-
 const siblingChecks: EnrichedBranchCommitStatus[] = [
   {
     key: 'unit-tests',
@@ -109,95 +91,6 @@ const siblingChecks: EnrichedBranchCommitStatus[] = [
     url: `${REPO_URL}/actions/runs/2222`,
   },
 ];
-
-const trailingCheck: EnrichedBranchCommitStatus = {
-  key: 'smoke-tests',
-  phase: 'pending',
-  description: 'Smoke tests are queued',
-  url: `${REPO_URL}/actions/runs/5555`,
-};
-
-function buildEnvironment(timerCheck: EnrichedBranchCommitStatus): Environment {
-  return {
-    branch: BRANCH,
-    lastHealthyDryShas: [],
-    active: {
-      dry: {
-        sha: DRY_SHA,
-        author: 'Jane Doe',
-        subject: 'Bump replicas to 3',
-        body: 'Increases replica count for staging load testing.',
-        commitTime,
-        repoURL: REPO_URL,
-      },
-      hydrated: {
-        sha: HYDRATED_SHA,
-        commitTime,
-      },
-      commitStatuses: [...siblingChecks, timerCheck, trailingCheck],
-    },
-    proposed: {
-      dry: {
-        sha: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
-        author: 'John Smith',
-        subject: 'Add readiness probe',
-        body: 'Adds a readiness probe to the staging deployment.',
-        commitTime,
-        repoURL: REPO_URL,
-      },
-      hydrated: {
-        sha: 'd4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
-        commitTime,
-      },
-      commitStatuses: [
-        {
-          key: 'unit-tests',
-          phase: 'success',
-          description: 'All unit tests passed',
-        },
-      ],
-    },
-    pullRequest: {
-      id: '42',
-      url: `${REPO_URL}/pull/42`,
-      state: 'open',
-      prCreationTime: commitTime,
-    },
-  };
-}
-
-// Mirrors what the real controller does: once the required duration elapses since
-// commitTime, it flips the check to success. `args`-based stories never simulate
-// that transition, so the countdown would otherwise reach 0 and get stuck there.
-// Re-seeds from scratch whenever the inputs change (e.g. via Storybook Controls),
-// so editing elapsedSeconds/requiredDurationSeconds live restarts the timer.
-function useTransitioningEnvironment(
-  elapsedSeconds: number,
-  requiredDurationSeconds: number,
-  url?: string,
-): Environment {
-  const [environment, setEnvironment] = useState<Environment>(() =>
-    buildEnvironment(pendingTimerCheck(elapsedSeconds, requiredDurationSeconds, url)),
-  );
-
-  useEffect(() => {
-    setEnvironment(buildEnvironment(pendingTimerCheck(elapsedSeconds, requiredDurationSeconds, url)));
-
-    const remainingSeconds = requiredDurationSeconds - elapsedSeconds;
-    const timeout = setTimeout(() => {
-      setEnvironment(buildEnvironment(successTimerCheck(requiredDurationSeconds, url)));
-    }, remainingSeconds * 1000);
-    return () => clearTimeout(timeout);
-  }, [elapsedSeconds, requiredDurationSeconds, url]);
-
-  return environment;
-}
-
-const expandHealthSummary: Story['play'] = async ({ canvasElement }) => {
-  const canvas = within(canvasElement);
-  const toggles = await canvas.findAllByText('Current status');
-  toggles.forEach((toggle) => toggle.click());
-};
 
 const drawerCommitTime = new Date(Date.now() - 26 * 60 * 1000).toISOString();
 
@@ -326,28 +219,6 @@ function renderDrawer(commitStatuses: EnrichedBranchCommitStatus[], args: TimedC
     </div>
   );
 }
-
-function TransitioningOverviewCard({ elapsedSeconds, requiredDurationSeconds, url }: TimedCommitStatusArgs) {
-  const environment = useTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url);
-  return <Card environments={[environment]} />;
-}
-
-export const OverviewCard: Story = {
-  play: expandHealthSummary,
-  render: (args) => <TransitioningOverviewCard {...args} />,
-};
-
-export const OverviewCardSuccess: Story = {
-  args: {
-    elapsedSeconds: 10 * 60,
-    requiredDurationSeconds: 10 * 60,
-    url: `${REPO_URL}/actions/runs/3333`,
-  },
-  play: expandHealthSummary,
-  render: ({ requiredDurationSeconds, url }) => (
-    <Card environments={[buildEnvironment(successTimerCheck(requiredDurationSeconds, url))]} />
-  ),
-};
 
 export const HistoryDrawer: Story = {
   render: (args) =>

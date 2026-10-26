@@ -11,20 +11,6 @@ import './StatusIcon.scss';
 
 export type StatusType = 'promoted' | 'pending' | 'failure' | 'unknown' | 'success';
 
-export const statusLabel = (phase: StatusType) => {
-  switch (phase) {
-    case 'promoted':
-    case 'success':
-      return 'Healthy';
-    case 'pending':
-      return 'Pending';
-    case 'failure':
-      return 'Degraded';
-    default:
-      return 'Unknown';
-  }
-};
-
 export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health' }> = ({
   phase,
   type = 'status',

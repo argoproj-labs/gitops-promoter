@@ -14,7 +14,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
-      include: ['test/**/*.test.ts'],
+      include: ['test/**/*.test.{ts,tsx}'],
       server: {
         deps: {
           inline: [/react-icons/],
