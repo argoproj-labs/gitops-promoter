@@ -47,14 +47,15 @@ const ProbabilityEnv = "K8S_FAULT_PROBABILITY"
 // to coordination.k8s.io are exempt so leader election stays reliable.
 //
 // Returns the parsed probability and true when injection is enabled. Returns 0 and false, and leaves
-// cfg untouched, when the variable is unset, empty, zero, or not a float.
+// cfg untouched, when the variable is unset, empty, or not a number in (0, 1]. NaN and Inf are rejected.
 func MaybeWrap(cfg *rest.Config) (probability float64, enabled bool) {
 	raw := os.Getenv(ProbabilityEnv)
 	if raw == "" {
 		return 0, false
 	}
 	probability, err := strconv.ParseFloat(raw, 64)
-	if err != nil || probability <= 0 {
+	// Written as a negated range check so NaN, which compares false to everything, is rejected too.
+	if err != nil || !(probability > 0 && probability <= 1) {
 		return 0, false
 	}
 	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
@@ -73,6 +74,10 @@ type faultyTransport struct {
 func (t *faultyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !t.shouldFault(req) {
 		return t.base.RoundTrip(req) //nolint:wrapcheck // the base transport's error is the result
+	}
+	// A RoundTripper must close the request body even when it does not send the request.
+	if req.Body != nil {
+		_ = req.Body.Close()
 	}
 	return &http.Response{
 		Status:     "500 Internal Server Error",

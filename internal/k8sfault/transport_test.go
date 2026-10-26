@@ -41,6 +41,16 @@ func okResponse(req *http.Request) *http.Response {
 	}
 }
 
+type closeTrackingBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *closeTrackingBody) Close() error {
+	b.closed = true
+	return nil
+}
+
 var _ = Describe("MaybeWrap", func() {
 	It("is off unless configured", func() {
 		GinkgoT().Setenv(ProbabilityEnv, "")
@@ -61,6 +71,29 @@ var _ = Describe("MaybeWrap", func() {
 		Expect(enabled).To(BeTrue(), "valid env did not enable fault injection")
 		Expect(probability).To(Equal(0.25))
 		Expect(cfg.WrapTransport).NotTo(BeNil(), "valid env did not wrap the config")
+	})
+
+	DescribeTable("rejects probabilities outside (0, 1]",
+		func(raw string) {
+			GinkgoT().Setenv(ProbabilityEnv, raw)
+			cfg := &rest.Config{}
+			probability, enabled := MaybeWrap(cfg)
+			Expect(enabled).To(BeFalse(), "out-of-range env enabled fault injection")
+			Expect(probability).To(BeZero())
+			Expect(cfg.WrapTransport).To(BeNil(), "out-of-range env wrapped the config")
+		},
+		Entry("zero", "0"),
+		Entry("negative", "-0.1"),
+		Entry("above one", "1.5"),
+		Entry("NaN", "NaN"),
+		Entry("Inf", "Inf"),
+	)
+
+	It("accepts exactly 1", func() {
+		GinkgoT().Setenv(ProbabilityEnv, "1")
+		probability, enabled := MaybeWrap(&rest.Config{})
+		Expect(enabled).To(BeTrue())
+		Expect(probability).To(Equal(1.0))
 	})
 })
 
@@ -99,4 +132,25 @@ var _ = Describe("faultyTransport", func() {
 		Entry("update", http.MethodPut, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", false),
 		Entry("delete", http.MethodDelete, "/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests/demo", false),
 	)
+
+	It("closes the request body of a faulted request", func() {
+		transport := &faultyTransport{
+			base: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				Fail("faulted request was forwarded to the API server")
+				return nil, nil
+			}),
+			probability: 1,
+		}
+		body := &closeTrackingBody{Reader: strings.NewReader(`{"metadata":{}}`)}
+		req, err := http.NewRequestWithContext(GinkgoT().Context(), http.MethodPost,
+			"https://apiserver/apis/promoter.argoproj.io/v1alpha1/namespaces/default/pullrequests", body)
+		Expect(err).NotTo(HaveOccurred())
+		resp, err := transport.RoundTrip(req)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(resp.Body.Close()).To(Succeed())
+		})
+		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+		Expect(body.closed).To(BeTrue(), "faulted request body was not closed")
+	})
 })
