@@ -1127,6 +1127,11 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 		remoteSha := remote[ref]
 		if remoteSha == "" {
 			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
+			if local[ref] != "" {
+				if err := g.deleteLocalNotesRef(ctx, ref); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if local[ref] == remoteSha {
@@ -1159,7 +1164,7 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		if strings.Contains(stderr, "couldn't find remote ref") {
 			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
-			return nil
+			return g.deleteLocalNotesRef(ctx, ref)
 		}
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
 		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
@@ -1168,6 +1173,23 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
+	return nil
+}
+
+// deleteLocalNotesRef drops a notes ref that does not exist on the remote. A note added locally whose push
+// failed would otherwise outlive the failure, and GetHistoryNote would report it as written. Deleting a
+// ref that is already absent succeeds.
+//
+// Read-only with respect to the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) deleteLocalNotesRef(ctx context.Context, ref string) error {
+	_, stderr, err := g.runCmd(ctx, g.ClonePath(), "update-ref", "-d", ref)
+	g.forgetLocalRef(ref)
+	if ref == PromoterHistoryNotesRef {
+		clear(g.historyNotes)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete local notes ref %q: %w (stderr: %s)", ref, err, stderr)
+	}
 	return nil
 }
 
