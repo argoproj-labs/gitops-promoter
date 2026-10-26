@@ -277,7 +277,7 @@ See also [Labels — Instance ID](debugging/labels.md#instance-id-multi-install)
 - Topology shrink before propagation completes — remove environments from `PromotionStrategy`, drop branches from gate CRs, tighten Argo CD Application selectors, and similar edits belong in runbook step 5 only.
 - Setting `instanceID: ""` on `ControllerConfiguration` — omit the field for the default install.
 - Hand-editing `instance-id` on child objects (`ChangeTransferPolicy`, `CommitStatus`, `PullRequest`).
-- Relabeling a `Secret` while another install's `ScmProvider` or `ClusterScmProvider` still holds a secret finalizer on it — finish provider deletion on that install first, or remove the finalizer after verifying no provider still references the Secret. See [Finalizers](debugging/finalizers.md#scmprovider--clusterscmprovider).
+- Relabeling a `Secret` while another install's `ScmProvider` or `ClusterScmProvider` still holds a secret finalizer on it — finish provider deletion on that install first, or remove the finalizer after verifying no provider still references the Secret. See [Finalizers](debugging/finalizers.md#finalizer-reference).
 - Changing `ControllerConfiguration.spec.instanceID` in HA without rolling all controller pods — followers keep the old cache partition and reconcile the wrong resources on failover.
 
 ### Troubleshooting
