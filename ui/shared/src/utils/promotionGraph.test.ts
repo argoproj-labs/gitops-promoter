@@ -1,15 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  ancestors,
-  buildPromotionGraph,
-  childrenOf,
-  descendants,
-  edgePath,
-  layoutPromotionGraph,
-  parentsOf,
-  NODE_HEIGHT,
-  NODE_WIDTH,
-} from './promotionGraph';
+import { ancestors, buildPromotionGraph, edgePath, layoutPromotionGraph } from './promotionGraph';
 import type { PromotionGraphSource, PositionedNode } from './promotionGraph';
 
 function strategy(envs: { branch: string; dependsOn?: string[] }[]): PromotionGraphSource {
@@ -60,14 +50,14 @@ describe('buildPromotionGraph', () => {
     const g = buildPromotionGraph(
       strategy([{ branch: 'a' }, { branch: 'b' }, { branch: 'c', dependsOn: ['a', 'b'] }]),
     );
-    expect(parentsOf(g, 'b')).toEqual([]);
-    expect(parentsOf(g, 'c')).toEqual(['a', 'b']);
+    expect(g.parents.b).toEqual([]);
+    expect(g.parents.c).toEqual(['a', 'b']);
   });
 
   it('builds fan-out and fan-in edges', () => {
     const g = buildPromotionGraph(dag);
-    expect(childrenOf(g, 'dev')).toEqual(['e2e-1', 'e2e-2', 'e2e-3']);
-    expect(parentsOf(g, 'prod-eu')).toEqual(['e2e-1', 'e2e-2', 'e2e-3']);
+    expect(g.children.dev).toEqual(['e2e-1', 'e2e-2', 'e2e-3']);
+    expect(g.parents['prod-eu']).toEqual(['e2e-1', 'e2e-2', 'e2e-3']);
     expect(g.edges).toHaveLength(3 + 1 + 3 + 1);
   });
 
@@ -77,35 +67,17 @@ describe('buildPromotionGraph', () => {
     );
     expect(g.nodes).toHaveLength(2);
     expect(g.edges.map((e) => e.id)).toEqual(['a->b']);
-    expect(parentsOf(g, 'b')).toEqual(['a']);
-  });
-
-  it('returns empty arrays for unknown ids', () => {
-    const g = buildPromotionGraph(dag);
-    expect(parentsOf(g, 'nope')).toEqual([]);
-    expect(childrenOf(g, 'nope')).toEqual([]);
+    expect(g.parents.b).toEqual(['a']);
   });
 });
 
-describe('ancestors and descendants', () => {
+describe('ancestors', () => {
   const g = buildPromotionGraph(dag);
 
   it('collects transitive ancestors without the node itself', () => {
     expect([...ancestors(g, 'prod-eu')].sort()).toEqual(['dev', 'e2e-1', 'e2e-2', 'e2e-3']);
     expect([...ancestors(g, 'prod-us')].sort()).toEqual(['dev', 'e2e-1']);
     expect(ancestors(g, 'dev').size).toBe(0);
-  });
-
-  it('collects transitive descendants', () => {
-    expect([...descendants(g, 'dev')].sort()).toEqual([
-      'e2e-1',
-      'e2e-2',
-      'e2e-3',
-      'prod-apac',
-      'prod-eu',
-      'prod-us',
-    ]);
-    expect([...descendants(g, 'e2e-2')]).toEqual(['prod-eu']);
   });
 
   it('terminates on cyclic input', () => {
@@ -133,9 +105,9 @@ describe('layoutPromotionGraph', () => {
     const layout = layoutPromotionGraph(g);
     expect(layout.nodes.map((n) => n.layer)).toEqual([0, 1, 2]);
     expect(new Set(layout.nodes.map((n) => n.y)).size).toBe(1);
-    expect(layout.nodes[1].x).toBeGreaterThan(layout.nodes[0].x + NODE_WIDTH);
-    expect(layout.nodes[0].width).toBe(NODE_WIDTH);
-    expect(layout.nodes[0].height).toBe(NODE_HEIGHT);
+    expect(layout.nodes[1].x).toBeGreaterThan(layout.nodes[0].x + 154);
+    expect(layout.nodes[0].width).toBe(154);
+    expect(layout.nodes[0].height).toBe(60);
   });
 
   it('layers by longest path', () => {
@@ -218,9 +190,7 @@ describe('layoutPromotionGraph', () => {
 
 describe('edgePath', () => {
   it('draws a cubic bezier from parent right-middle to child left-middle', () => {
-    expect(edgePath({ x: 0, y: 0 }, { x: 226, y: 100 })).toBe(
-      `M${NODE_WIDTH} ${NODE_HEIGHT / 2} C190 30 190 130 226 130`,
-    );
+    expect(edgePath({ x: 0, y: 0 }, { x: 226, y: 100 })).toBe('M154 30 C190 30 190 130 226 130');
   });
 
   it('supports custom node sizes', () => {

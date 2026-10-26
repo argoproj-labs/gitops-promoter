@@ -1,6 +1,6 @@
 import type { Application } from '@shared/types/extension';
 
-export const LABEL = 'promoter.argoproj.io/has-promotionstrategy';
+const LABEL = 'promoter.argoproj.io/has-promotionstrategy';
 
 const GROUP = 'promoter.argoproj.io';
 const KIND = 'PromotionStrategy';

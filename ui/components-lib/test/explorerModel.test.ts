@@ -1,28 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildExplorerModel,
-  deriveNodeStatus,
-  orderEnvsByLayout,
-  splitBranch,
   statusFromCellKind,
 } from '@lib/components/PromotionExplorer/explorerModel';
-import { buildMatrix } from '@lib/components/PromotionExplorer/buildMatrix';
 import type { CellKind } from '@lib/components/PromotionExplorer/types';
 import { dagStrategy, linearStrategy, makeStrategy, rowId } from './fixtures';
+import type { EnvSpec } from './fixtures';
 
 const B = (name: string) => `environments/${name}`;
 
-describe('splitBranch', () => {
+const nodeOf = (envs: EnvSpec[], branch: string) =>
+  buildExplorerModel(makeStrategy(envs)).nodes.find((n) => n.branch === branch);
+
+describe('node kicker and title', () => {
   it('splits the last path segment into kicker and title', () => {
-    expect(splitBranch('environments/prod-us')).toEqual({
+    const envs = [{ branch: 'environments/prod-us' }, { branch: 'a/b/c' }];
+    expect(nodeOf(envs, 'environments/prod-us')).toMatchObject({
       kicker: 'environments',
       title: 'prod-us',
     });
-    expect(splitBranch('a/b/c')).toEqual({ kicker: 'a/b', title: 'c' });
+    expect(nodeOf(envs, 'a/b/c')).toMatchObject({ kicker: 'a/b', title: 'c' });
   });
 
   it('has no kicker for a bare branch', () => {
-    expect(splitBranch('main')).toEqual({ kicker: null, title: 'main' });
+    expect(nodeOf([{ branch: 'main' }], 'main')).toMatchObject({ kicker: null, title: 'main' });
   });
 });
 
@@ -41,12 +42,9 @@ describe('statusFromCellKind', () => {
   });
 });
 
-describe('deriveNodeStatus', () => {
-  const rowsOf = (envs: Parameters<typeof makeStrategy>[0]) => buildMatrix(makeStrategy(envs)).rows;
-
+describe('node status', () => {
   it('reports live with the live dry hash', () => {
-    const rows = rowsOf([{ branch: 'a', active: '4', history: ['4', '3'] }]);
-    expect(deriveNodeStatus('a', rows)).toEqual({
+    expect(nodeOf([{ branch: 'a', active: '4', history: ['4', '3'] }], 'a')).toMatchObject({
       status: 'live',
       hash: '4444444',
       rowId: rowId('4'),
@@ -54,43 +52,44 @@ describe('deriveNodeStatus', () => {
   });
 
   it('reports proposed ahead of live', () => {
-    const rows = rowsOf([{ branch: 'a', active: '3', proposed: '4', history: ['3'] }]);
-    expect(deriveNodeStatus('a', rows)).toMatchObject({ status: 'proposed', hash: '4444444' });
+    const envs = [{ branch: 'a', active: '3', proposed: '4', history: ['3'] }];
+    expect(nodeOf(envs, 'a')).toMatchObject({ status: 'proposed', hash: '4444444' });
   });
 
   it('reports failed when the proposed commit checks fail', () => {
-    const rows = rowsOf([
+    const envs: EnvSpec[] = [
       { branch: 'a', active: '3', proposed: '4', proposedPhase: 'failure', history: ['3'] },
-    ]);
-    expect(deriveNodeStatus('a', rows)).toMatchObject({ status: 'failed', hash: '4444444' });
+    ];
+    expect(nodeOf(envs, 'a')).toMatchObject({ status: 'failed', hash: '4444444' });
   });
 
   it('reports failed when the live commit checks fail', () => {
-    const rows = rowsOf([{ branch: 'a', active: '3', activePhase: 'failure', history: ['3'] }]);
-    expect(deriveNodeStatus('a', rows)).toMatchObject({ status: 'failed', hash: '3333333' });
+    const envs: EnvSpec[] = [{ branch: 'a', active: '3', activePhase: 'failure', history: ['3'] }];
+    expect(nodeOf(envs, 'a')).toMatchObject({ status: 'failed', hash: '3333333' });
   });
 
   it('reports previously live when only superseded history remains', () => {
-    const rows = rowsOf([{ branch: 'a', history: ['2', '1'] }]);
-    expect(deriveNodeStatus('a', rows)).toMatchObject({
+    expect(nodeOf([{ branch: 'a', history: ['2', '1'] }], 'a')).toMatchObject({
       status: 'previously-live',
       hash: '2222222',
     });
   });
 
   it('prefers a historical failure over previously live when nothing is live', () => {
-    const rows = rowsOf([{ branch: 'a', history: ['2', '1'], failedHistory: ['1'] }]);
-    expect(deriveNodeStatus('a', rows)).toMatchObject({ status: 'failed', hash: '1111111' });
+    const envs = [{ branch: 'a', history: ['2', '1'], failedHistory: ['1'] }];
+    expect(nodeOf(envs, 'a')).toMatchObject({ status: 'failed', hash: '1111111' });
   });
 
   it('keeps live when an older history entry failed', () => {
-    const rows = rowsOf([{ branch: 'a', active: '3', history: ['3', '2'], failedHistory: ['2'] }]);
-    expect(deriveNodeStatus('a', rows).status).toBe('live');
+    const envs = [{ branch: 'a', active: '3', history: ['3', '2'], failedHistory: ['2'] }];
+    expect(nodeOf(envs, 'a')?.status).toBe('live');
   });
 
   it('is not reached for a branch with no cells', () => {
-    const rows = rowsOf([{ branch: 'a', active: '3', history: ['3'] }]);
-    expect(deriveNodeStatus('missing', rows)).toEqual({ status: 'not-reached' });
+    const node = nodeOf([{ branch: 'a', active: '3', history: ['3'] }, { branch: 'b' }], 'b');
+    expect(node?.status).toBe('not-reached');
+    expect(node?.hash).toBeUndefined();
+    expect(node?.rowId).toBeUndefined();
   });
 });
 
@@ -205,7 +204,7 @@ describe('buildExplorerModel (edge cases)', () => {
   });
 });
 
-describe('orderEnvsByLayout', () => {
+describe('column order', () => {
   it('sorts columns by graph layer even when status order differs', () => {
     const strategy = linearStrategy();
     strategy.status!.environments = [...strategy.status!.environments!].reverse();
@@ -213,9 +212,12 @@ describe('orderEnvsByLayout', () => {
     expect(model.envs.map((e) => e.branch)).toEqual([B('dev'), B('staging'), B('prod')]);
   });
 
-  it('keeps unknown environments last and stable', () => {
-    const envs = [{ branch: 'x' }, { branch: 'a' }, { branch: 'y' }] as never[];
-    const ordered = orderEnvsByLayout(envs, { layers: [['a']] });
-    expect(ordered.map((e: { branch: string }) => e.branch)).toEqual(['a', 'x', 'y']);
+  it('keeps environments missing from the spec last and stable', () => {
+    const strategy = makeStrategy(
+      ['x', 'a', 'y'].map((branch) => ({ branch, active: '1', history: ['1'] })),
+    );
+    strategy.spec.environments = [{ branch: 'a' }];
+    const model = buildExplorerModel(strategy);
+    expect(model.envs.map((e) => e.branch)).toEqual(['a', 'x', 'y']);
   });
 });

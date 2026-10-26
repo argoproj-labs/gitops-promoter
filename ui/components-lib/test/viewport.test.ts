@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DRAG_THRESHOLD,
-  MAP_EXPAND_THRESHOLD,
-  MAP_MAX_HEIGHT,
-  MAP_MIN_HEIGHT,
-  SPLIT_KEY_STEP,
-  ZOOM_MAX,
-  ZOOM_MIN,
   clampSplitHeight,
-  clampZoom,
   exceedsDragThreshold,
   fitZoom,
   panOffset,
@@ -20,20 +12,12 @@ import {
   zoomAboutPoint,
 } from '@lib/components/PromotionExplorer/viewport';
 
-describe('clampZoom', () => {
-  it('clamps to the 50-150 range', () => {
-    expect(clampZoom(10)).toBe(ZOOM_MIN);
-    expect(clampZoom(500)).toBe(ZOOM_MAX);
-    expect(clampZoom(87)).toBe(87);
-  });
-});
-
 describe('stepZoom', () => {
   it('moves by 10 and never leaves the range', () => {
     expect(stepZoom(100, 1)).toBe(110);
     expect(stepZoom(100, -1)).toBe(90);
-    expect(stepZoom(145, 1)).toBe(ZOOM_MAX);
-    expect(stepZoom(55, -1)).toBe(ZOOM_MIN);
+    expect(stepZoom(145, 1)).toBe(150);
+    expect(stepZoom(55, -1)).toBe(50);
   });
 });
 
@@ -44,8 +28,8 @@ describe('wheelZoom', () => {
   });
 
   it('clamps at the limits', () => {
-    expect(wheelZoom(ZOOM_MAX, -1)).toBe(ZOOM_MAX);
-    expect(wheelZoom(ZOOM_MIN, 1)).toBe(ZOOM_MIN);
+    expect(wheelZoom(150, -1)).toBe(150);
+    expect(wheelZoom(50, 1)).toBe(50);
   });
 });
 
@@ -72,7 +56,7 @@ describe('zoomAboutPoint', () => {
   });
 
   it('clamps the requested zoom', () => {
-    expect(zoomAboutPoint(140, { x: 0, y: 0 }, 400, { x: 10, y: 10 }).zoom).toBe(ZOOM_MAX);
+    expect(zoomAboutPoint(140, { x: 0, y: 0 }, 400, { x: 10, y: 10 }).zoom).toBe(150);
   });
 });
 
@@ -86,8 +70,8 @@ describe('fitZoom', () => {
   });
 
   it('never exceeds the zoom range', () => {
-    expect(fitZoom({ width: 5000, height: 5000 }, { width: 100, height: 100 })).toBe(ZOOM_MAX);
-    expect(fitZoom({ width: 10, height: 10 }, { width: 1000, height: 1000 })).toBe(ZOOM_MIN);
+    expect(fitZoom({ width: 5000, height: 5000 }, { width: 100, height: 100 })).toBe(150);
+    expect(fitZoom({ width: 10, height: 10 }, { width: 1000, height: 1000 })).toBe(50);
   });
 
   it('falls back to 100 for empty content', () => {
@@ -99,7 +83,7 @@ describe('drag helpers', () => {
   it('detects movement past the 4px threshold', () => {
     expect(exceedsDragThreshold(1, 1)).toBe(false);
     expect(exceedsDragThreshold(3, 0)).toBe(false);
-    expect(exceedsDragThreshold(DRAG_THRESHOLD, 0)).toBe(true);
+    expect(exceedsDragThreshold(4, 0)).toBe(true);
     expect(exceedsDragThreshold(3, 3)).toBe(true);
   });
 
@@ -114,12 +98,12 @@ describe('preferredMapHeight', () => {
   });
 
   it('keeps a floor for short graphs', () => {
-    expect(preferredMapHeight(92, 1000)).toBe(MAP_MIN_HEIGHT);
+    expect(preferredMapHeight(92, 1000)).toBe(240);
   });
 
   it('is capped at 54% of the viewport and the absolute maximum', () => {
     expect(preferredMapHeight(2000, 600)).toBe(324);
-    expect(preferredMapHeight(2000, 2000)).toBe(MAP_MAX_HEIGHT);
+    expect(preferredMapHeight(2000, 2000)).toBe(524);
   });
 
   it('never exceeds a tiny viewport ceiling', () => {
@@ -139,11 +123,11 @@ describe('split helpers', () => {
   });
 
   it('moves by 24px on arrow keys and ignores other keys', () => {
-    expect(splitKeyHeight(200, 'ArrowDown', 72, 500)).toBe(200 + SPLIT_KEY_STEP);
-    expect(splitKeyHeight(200, 'ArrowUp', 72, 500)).toBe(200 - SPLIT_KEY_STEP);
+    expect(splitKeyHeight(200, 'ArrowDown', 72, 500)).toBe(224);
+    expect(splitKeyHeight(200, 'ArrowUp', 72, 500)).toBe(176);
     expect(splitKeyHeight(200, 'Enter', 72, 500)).toBeNull();
     expect(splitKeyHeight(80, 'ArrowUp', 72, 500)).toBe(72);
-    expect(splitKeyHeight(80, 'ArrowDown', 72, 500)).toBe(MAP_EXPAND_THRESHOLD + 1);
+    expect(splitKeyHeight(80, 'ArrowDown', 72, 500)).toBe(141);
   });
 
   it('collapses on null or small heights and expands past the threshold', () => {

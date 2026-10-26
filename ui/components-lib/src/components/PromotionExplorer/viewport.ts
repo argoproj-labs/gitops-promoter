@@ -1,18 +1,18 @@
-export const ZOOM_MIN = 50;
-export const ZOOM_MAX = 150;
+const ZOOM_MIN = 50;
+const ZOOM_MAX = 150;
 export const ZOOM_DEFAULT = 100;
 const ZOOM_STEP = 10;
 const WHEEL_ZOOM_STEP = 5;
-export const DRAG_THRESHOLD = 4;
+const DRAG_THRESHOLD = 4;
 const FIT_MARGIN_X = 96;
 const FIT_MARGIN_Y = 132;
 
 export const MAP_COLLAPSED_HEIGHT = 80;
-export const MAP_MIN_HEIGHT = 240;
-export const MAP_MAX_HEIGHT = 524;
-export const MAP_EXPAND_THRESHOLD = 140;
+const MAP_MIN_HEIGHT = 240;
+const MAP_MAX_HEIGHT = 524;
+const MAP_EXPAND_THRESHOLD = 140;
 export const SPLIT_MIN_HEIGHT = 72;
-export const SPLIT_KEY_STEP = 24;
+const SPLIT_KEY_STEP = 24;
 export const SPLIT_RESERVED_HEIGHT = 160;
 
 export interface Offset {
@@ -25,7 +25,7 @@ export interface Size {
   height: number;
 }
 
-export function clampZoom(value: number, min = ZOOM_MIN, max = ZOOM_MAX): number {
+function clampZoom(value: number, min = ZOOM_MIN, max = ZOOM_MAX): number {
   return Math.min(max, Math.max(min, value));
 }
 

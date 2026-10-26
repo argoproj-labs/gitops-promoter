@@ -24,7 +24,7 @@ const INITIAL: ScrollOverflow = {
   atBottom: true,
 };
 
-export function computeScrollOverflow({
+function computeScrollOverflow({
   scrollTop,
   clientHeight,
   scrollHeight,

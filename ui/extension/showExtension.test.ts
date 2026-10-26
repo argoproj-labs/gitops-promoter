@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { showExtension, LABEL } from './showExtension';
+import { showExtension } from './showExtension';
 import type { Application } from '@shared/types/extension';
+
+const LABEL = 'promoter.argoproj.io/has-promotionstrategy';
 
 const makeApp = (overrides: Partial<Application> = {}): Application => ({
   metadata: { name: 'my-app', namespace: 'default' },

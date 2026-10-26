@@ -1,7 +1,6 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, useLocation } from 'react-router';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { PromotionExplorerProps } from '@lib/components/PromotionExplorer/PromotionExplorer';
 
@@ -54,31 +53,18 @@ vi.mock('../src/stores/NamespaceStore', () => {
   return { namespaceStore: (selector: (_s: typeof state) => unknown) => selector(state) };
 });
 
-const { AppRoutes } = await import('../src/App');
-const { default: PromotionStrategiesTiles } =
-  await import('../src/components/PromotionStrategySummary/PromotionStrategyTiles');
-const { TopBar } = await import('../src/components/TopBar');
+const { default: App } = await import('../src/App');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const LocationProbe = () => {
-  const { pathname, search } = useLocation();
-  return <div data-testid="location">{pathname + search}</div>;
-};
 
 describe('PromotionStrategyPage routing', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  const renderAt = async (url: string, extra?: React.ReactNode) => {
+  const renderAt = async (url: string) => {
+    window.history.replaceState(null, '', url);
     await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={[url]}>
-          {extra}
-          <AppRoutes />
-          <LocationProbe />
-        </MemoryRouter>,
-      );
+      root.render(<App />);
     });
   };
 
@@ -88,7 +74,7 @@ describe('PromotionStrategyPage routing', () => {
       el!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
   };
-  const location = () => new URL(q('location')!.textContent!, 'http://localhost');
+  const location = () => new URL(window.location.href);
   const buttonByText = (text: string) =>
     Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) ??
     null;
@@ -240,10 +226,7 @@ describe('PromotionStrategyPage routing', () => {
   });
 
   it('links tiles to the explorer route without stale explorer state', async () => {
-    await renderAt(
-      '/promotion-strategies?mock=true&commit=old&env=old',
-      <PromotionStrategiesTiles promotionStrategies={[strategy]} namespace="ns" />,
-    );
+    await renderAt('/promotion-strategies?mock=true&commit=old&env=old');
 
     await click(container.querySelector('.ps-tile'));
 
@@ -253,10 +236,7 @@ describe('PromotionStrategyPage routing', () => {
   });
 
   it('keeps the top bar link free of explorer state', async () => {
-    await renderAt(
-      '/promotion-strategies/ns/my-ps?mock=true&commit=abc123&env=e&node=n',
-      <TopBar />,
-    );
+    await renderAt('/promotion-strategies/ns/my-ps?mock=true&commit=abc123&env=e&node=n');
 
     const brand = container.querySelector('a.topbar__brand') as HTMLAnchorElement;
     expect(brand.getAttribute('href')).toBe('/promotion-strategies?mock=true');
