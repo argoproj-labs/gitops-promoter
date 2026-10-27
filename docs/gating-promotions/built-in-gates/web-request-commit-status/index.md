@@ -339,7 +339,7 @@ spec:
 How it works:
 
 - `success.when.variables` is the single source of truth: it computes `tag`, `runId`, and `ok` once per reconcile.
-- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check.
+- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check. In polling mode with `reportOn: proposed`, a reconcile for a SHA that already succeeded skips the request and is also a carry-forward reconcile.
 - The boolean `expression: 'Variables.ok'` reuses the same value — no duplicate `Response != nil ? ... : ...` ladder.
 - `output: 'Variables'` persists the whole map to `SuccessOutput`, which is what the next carry-forward reconcile reads back as `prev`.
 - `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.

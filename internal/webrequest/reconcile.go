@@ -224,7 +224,8 @@ func successWhenVariables(exprData map[string]any) map[string]any {
 func skippedSuccessVariables(ctx context.Context, evaluator *ExpressionEvaluator, wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) map[string]any {
 	exprData, err := evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, successWhenExprData(td, nil))
 	if err != nil {
-		log.FromContext(ctx).V(4).Info("Could not evaluate success.when.variables without an HTTP response", "branch", td.Branch, "error", err)
+		log.FromContext(ctx).Info("Could not evaluate success.when.variables without an HTTP response; .SuccessVariables is unset in the CommitStatus templates. Guard Response with Response != nil and fall back to SuccessOutput",
+			"branch", td.Branch, "error", err)
 		return nil
 	}
 	return successWhenVariables(exprData)
