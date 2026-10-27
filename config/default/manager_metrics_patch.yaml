@@ -11,9 +11,19 @@ spec:
       containers:
       - name: manager
         image: quay.io/argoprojlabs/gitops-promoter:latest
+        env:
+          # Resolved via the Downward API (not hardcoded) so token minting keeps working
+          # under kustomize namePrefix/nameSuffix customization of the ServiceAccount name.
+          # See internal/metrics/token_minter.go.
+          - name: METRICS_TOKEN_SERVICE_ACCOUNT
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.serviceAccountName
         args:
           - "--health-probe-bind-address=:8081"
+          - "--metrics-secure=true"
           - "--metrics-bind-address=:8443"
+          - "--metrics-token-service-account=$(METRICS_TOKEN_SERVICE_ACCOUNT)"
           - "--leader-elect"
         ports:
           - containerPort: 8443

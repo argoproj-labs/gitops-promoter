@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -38,4 +39,26 @@ type statusCapturingWriter struct {
 func (w *statusCapturingWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// WithScrapeLog wraps the filter from inner in the scrape-logging filter, so requests that inner
+// rejects (e.g. a 401 or 403 from authn/authz) are still logged.
+func WithScrapeLog(inner func(*rest.Config, *http.Client) (metricsserver.Filter, error)) func(*rest.Config, *http.Client) (metricsserver.Filter, error) {
+	return func(c *rest.Config, httpClient *http.Client) (metricsserver.Filter, error) {
+		innerFilter, err := inner(c, httpClient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build inner metrics filter: %w", err)
+		}
+		logFilter, err := ScrapeLogFilterProvider()(c, httpClient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build scrape log filter: %w", err)
+		}
+		return func(log logr.Logger, h http.Handler) (http.Handler, error) {
+			innerHandler, err := innerFilter(log, h)
+			if err != nil {
+				return nil, fmt.Errorf("failed to wrap metrics handler: %w", err)
+			}
+			return logFilter(log, innerHandler)
+		}, nil
+	}
 }

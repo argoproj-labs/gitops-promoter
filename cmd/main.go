@@ -83,6 +83,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var metricsTokenServiceAccount string
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -95,6 +96,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				metricsTokenServiceAccount,
 				clientConfig,
 			)
 		},
@@ -112,6 +114,9 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().StringVar(&metricsTokenServiceAccount, "metrics-token-service-account", "",
+		"ServiceAccount name used to mint the bearer token Prometheus presents to the secure metrics "+
+			"Only used when --metrics-secure=true.")
 
 	return cmd
 }
@@ -124,6 +129,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	metricsTokenServiceAccount string,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -213,14 +219,15 @@ func runController(
 	// In-cluster config binds HTTPS on :8443; FilterProvider enforces kube authn/authz.
 	// More info: https://book.kubebuilder.io/reference/metrics
 	metricsServerOptions := metricsserver.Options{
-		BindAddress:   metricsAddr,
-		SecureServing: secureMetrics,
-		TLSOpts:       tlsOpts,
+		BindAddress:    metricsAddr,
+		SecureServing:  secureMetrics,
+		TLSOpts:        tlsOpts,
+		FilterProvider: metrics.ScrapeLogFilterProvider(),
 	}
 	if secureMetrics {
 		// Only authorized users and service accounts can access /metrics.
 		// RBAC is configured in config/rbac/kustomization.yaml.
-		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
+		metricsServerOptions.FilterProvider = metrics.WithScrapeLog(filters.WithAuthenticationAndAuthorization)
 	}
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
@@ -256,6 +263,19 @@ func runController(
 
 	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
 		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
+	}
+
+	if secureMetrics {
+		// Mints/rotates the bearer token the ServiceMonitor (config/prometheus/monitor.yaml)
+		// presents to this secure metrics endpoint. See internal/metrics/token_minter.go for why.
+		if metricsTokenServiceAccount == "" {
+			setupLog.Info("--metrics-secure=true but --metrics-token-service-account is unset; " +
+				"the metrics-token Secret used by the ServiceMonitor will not be managed")
+		} else if err := metrics.NewMetricsTokenReconciler(
+			localManager.GetClient(), controllerNamespace, metricsTokenServiceAccount,
+		).SetupWithManager(localManager); err != nil {
+			panic(fmt.Errorf("unable to create metrics token controller: %w", err))
+		}
 	}
 
 	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{

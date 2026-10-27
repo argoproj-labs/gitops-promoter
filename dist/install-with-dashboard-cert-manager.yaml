@@ -9180,6 +9180,42 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: metrics-token-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: role
+    app.kubernetes.io/part-of: promoter
+  name: promoter-metrics-token-role
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts/token
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resourceNames:
+  - metrics-token
+  resources:
+  - secrets
+  verbs:
+  - get
+  - update
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
@@ -10083,6 +10119,27 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: metrics-token-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: rolebinding
+    app.kubernetes.io/part-of: promoter
+  name: promoter-metrics-token-rolebinding
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-metrics-token-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
@@ -10131,6 +10188,25 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: promoter-manager-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: metrics-reader-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrolebinding
+    app.kubernetes.io/part-of: promoter
+  name: promoter-metrics-reader-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-metrics-reader
 subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
@@ -10350,13 +10426,20 @@ spec:
       containers:
       - args:
         - --health-probe-bind-address=:8081
+        - --metrics-secure=true
         - --metrics-bind-address=:8443
+        - --metrics-token-service-account=$(METRICS_TOKEN_SERVICE_ACCOUNT)
         - --leader-elect
         command:
         - /usr/bin/tini
         - --
         - /gitops-promoter
         - controller
+        env:
+        - name: METRICS_TOKEN_SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
         image: quay.io/argoprojlabs/gitops-promoter:latest
         livenessProbe:
           httpGet:
@@ -10443,6 +10526,35 @@ metadata:
   namespace: promoter-system
 spec:
   selfSigned: {}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: controller-manager-metrics-monitor
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: servicemonitor
+    app.kubernetes.io/part-of: promoter
+    control-plane: controller-manager
+  name: promoter-controller-manager-metrics-monitor
+  namespace: promoter-system
+spec:
+  endpoints:
+  - authorization:
+      credentials:
+        key: token
+        name: metrics-token
+      type: Bearer
+    path: /metrics
+    port: https
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+  selector:
+    matchLabels:
+      control-plane: controller-manager
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
