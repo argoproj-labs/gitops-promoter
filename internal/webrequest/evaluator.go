@@ -164,7 +164,7 @@ func (e *ExpressionEvaluator) enrichWhenExprEnv(ctx context.Context, whenSpec pr
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]any, len(base)+1)
+	out := make(map[string]any, len(base))
 	maps.Copy(out, base)
 	out["Variables"] = varsResult
 	return out, nil

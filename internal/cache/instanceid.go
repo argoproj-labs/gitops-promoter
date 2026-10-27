@@ -103,7 +103,7 @@ func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cac
 	if !include {
 		return opts, nil
 	}
-	byObject := make(map[client.Object]cache.ByObject, len(opts.ByObject)+1)
+	byObject := make(map[client.Object]cache.ByObject, len(opts.ByObject))
 	maps.Copy(byObject, opts.ByObject)
 	opts.ByObject = byObject
 	opts.ByObject[unpartitionedApplicationObject] = cache.ByObject{Label: labels.Everything()}
