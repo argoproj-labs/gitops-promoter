@@ -133,11 +133,16 @@ func (g *gitCLI) initBare(ctx context.Context, dir, defaultBranch string) error 
 	if _, err := g.run(ctx, "", nil, nil, "init", "--bare", "--initial-branch="+defaultBranch, dir); err != nil {
 		return err
 	}
+	// Automatic gc stays off. receive-pack otherwise starts git gc --auto, and with
+	// gc.autoDetach that process keeps running after the push lock is released. These
+	// repos have no reflogs, so that gc can delete a commit a branch still names.
 	for _, kv := range [][2]string{
 		{"http.receivepack", "true"},
 		{"uploadpack.allowReachableSHA1InWant", "true"},
 		{"uploadpack.allowFilter", "true"},
 		{"receive.advertisePushOptions", "true"},
+		{"gc.auto", "0"},
+		{"receive.autogc", "false"},
 		{"core.logAllRefUpdates", "false"},
 	} {
 		if _, err := g.run(ctx, dir, nil, nil, "config", kv[0], kv[1]); err != nil {
