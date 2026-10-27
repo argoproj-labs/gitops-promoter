@@ -168,19 +168,6 @@ type CommitShaState struct {
 	References []RevisionReference `json:"references,omitempty"`
 }
 
-// DryShaShort returns the first 7 characters of the dry SHA, or the full SHA if it is shorter than 7 characters.
-func (b *CommitBranchState) DryShaShort() string {
-	if b == nil {
-		return ""
-	}
-
-	if len(b.Dry.Sha) < 7 {
-		return b.Dry.Sha
-	}
-
-	return b.Dry.Sha[:7]
-}
-
 // ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
 type ChangeTransferPolicyStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
