@@ -10768,6 +10768,186 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-promotionstrategy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-promotionstrategy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-pullrequest-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-pullrequest-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-restoreactivecommit-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-restoreactivecommit-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
@@ -11273,35 +11453,6 @@ spec:
           type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: promoter
-    app.kubernetes.io/instance: controller-manager-metrics-monitor
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: servicemonitor
-    app.kubernetes.io/part-of: promoter
-    control-plane: controller-manager
-  name: promoter-controller-manager-metrics-monitor
-  namespace: promoter-system
-spec:
-  endpoints:
-  - authorization:
-      credentials:
-        key: token
-        name: metrics-token
-      type: Bearer
-    path: /metrics
-    port: https
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-  selector:
-    matchLabels:
-      control-plane: controller-manager
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration

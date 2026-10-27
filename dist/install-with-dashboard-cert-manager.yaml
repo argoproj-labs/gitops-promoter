@@ -10803,6 +10803,110 @@ metadata:
   name: promoter-metrics-role
 rules:
 - apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-promotionstrategy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-promotionstrategy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+rules:
+- apiGroups:
+  - view.promoter.argoproj.io
+  resources:
+  - promotionstrategydetails
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-pullrequest-editor-role
+rules:
+- apiGroups:
   - promoter.argoproj.io
   resources:
   - pullrequests
@@ -10908,24 +11012,6 @@ rules:
   - restoreactivecommits/status
   verbs:
   - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/component: dashboard-apiserver
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/part-of: promoter
-  name: promoter-promotionstrategydetails-viewer
-rules:
-- apiGroups:
-  - view.promoter.argoproj.io
-  resources:
-  - promotionstrategydetails
-  verbs:
-  - get
-  - list
-  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11656,35 +11742,6 @@ metadata:
   namespace: promoter-system
 spec:
   selfSigned: {}
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: promoter
-    app.kubernetes.io/instance: controller-manager-metrics-monitor
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: servicemonitor
-    app.kubernetes.io/part-of: promoter
-    control-plane: controller-manager
-  name: promoter-controller-manager-metrics-monitor
-  namespace: promoter-system
-spec:
-  endpoints:
-  - authorization:
-      credentials:
-        key: token
-        name: metrics-token
-      type: Bearer
-    path: /metrics
-    port: https
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-  selector:
-    matchLabels:
-      control-plane: controller-manager
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
