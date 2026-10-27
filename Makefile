@@ -338,8 +338,12 @@ SCM_SERVER_LOG ?= $(LOCALBIN)/scm-server.log
 start-scm-server: ## Start the test SCM server in the background (logs to SCM_SERVER_LOG) and wait until it is healthy.
 	mkdir -p $(LOCALBIN)
 	go build -o $(LOCALBIN)/scm-server ./test/scmserver/cmd
-	nohup $(LOCALBIN)/scm-server $(SCM_SERVER_ARGS) > $(SCM_SERVER_LOG) 2>&1 &
-	@for i in $$(seq 1 60); do \
+	@if curl -fsS http://127.0.0.1:$(SCM_SERVER_PORT_BASE)/healthz > /dev/null 2>&1; then \
+		echo "a server is already listening on port $(SCM_SERVER_PORT_BASE); stop it or set SCM_SERVER_PORT_BASE"; exit 1; \
+	fi
+	@nohup $(LOCALBIN)/scm-server $(SCM_SERVER_ARGS) > $(SCM_SERVER_LOG) 2>&1 & pid=$$!; \
+	for i in $$(seq 1 60); do \
+		kill -0 $$pid 2>/dev/null || break; \
 		curl -fsS http://127.0.0.1:$(SCM_SERVER_PORT_BASE)/healthz > /dev/null 2>&1 && exit 0; \
 		sleep 1; \
 	done; echo "scmserver did not become healthy; see $(SCM_SERVER_LOG)"; cat $(SCM_SERVER_LOG); exit 1

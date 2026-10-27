@@ -21,7 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Separate groups so a manual run never cancels a scheduled one.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -82,6 +83,11 @@ jobs:
           title="Scheduled fault-injection run failed"
           label="fault-injection"
           issue=$(gh issue list --state open --label "$label" --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+
+          # A cancelled run says nothing about the providers; leave the issue alone.
+          if [ "$RESULT" = "cancelled" ]; then
+            exit 0
+          fi
 
           if [ "$RESULT" = "success" ]; then
             if [ -n "$issue" ]; then

@@ -405,6 +405,13 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 		It("should emit a WebRequestFailed event when the HTTP request cannot be made", func() {
 			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(webRequestCommitStatus), &fetched)).To(Succeed())
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("failed to make HTTP request"))
+
 				var eventList corev1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
 				expectEventEmitted(g, hasEventWithReason(eventList, name+"-unreachable-url", constants.WebRequestFailedReason))

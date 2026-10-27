@@ -431,11 +431,12 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 	b.RateLimit = 0
 	Expect(admin.SetBehavior(ctx, p, b)).To(Succeed())
 
-	// Every Ginkgo process shares the server, so only the first adds the fault rule. A second rule
-	// would never match (the first match wins), but clearing first keeps reruns against a long-lived
-	// local server from piling up rules.
-	if prob, ok := scmFaultProbabilityFromEnv(); ok && GinkgoParallelProcess() == 1 {
+	// Every Ginkgo process shares the server, so only the first touches the fault rules. It always
+	// clears them first, so a run against a long-lived local server doesn't inherit an earlier run's rule.
+	if GinkgoParallelProcess() == 1 {
 		Expect(admin.ClearFaults(ctx)).To(Succeed())
+	}
+	if prob, ok := scmFaultProbabilityFromEnv(); ok && GinkgoParallelProcess() == 1 {
 		_, err = admin.AddFault(ctx, scmserver.FaultRule{
 			Provider: p, Status: http.StatusInternalServerError, Probability: prob, Message: "injected fault",
 		})
