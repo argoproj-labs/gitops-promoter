@@ -321,7 +321,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestClosedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestClosedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -434,7 +434,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1006,37 +1006,13 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should persist merged status and the SCM-reported merged target sha before deletion via defer", func() {
-				// Start polling for merged status in a goroutine BEFORE we request the merge.
-				// We poll very frequently (1ms) to catch the narrow window where:
+				// Watch for merged status BEFORE we request the merge, to catch the narrow window where:
 				//   1. Status has been persisted as "merged"
 				//   2. But PR hasn't been deleted yet
 				// This proves the two-step process works correctly.
-				mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-				stopPolling := make(chan bool)
-
-				go func() {
-					defer GinkgoRecover()
-					ticker := time.NewTicker(1 * time.Millisecond)
-					defer ticker.Stop()
-					timeout := time.After(constants.EventuallyTimeout)
-					for {
-						select {
-						case <-ticker.C:
-							var currentPR promoterv1alpha1.PullRequest
-							err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-							if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
-								// Success! We observed merged state while PR still exists
-								GinkgoT().Logf("Observed merged status at resourceVersion %s", currentPR.ResourceVersion)
-								mergedStatusObserved <- currentPR.Status
-								return
-							}
-						case <-stopPolling:
-							return
-						case <-timeout:
-							return
-						}
-					}
-				}()
+				mergedStatusObserved := watchPullRequestStatus(ctx, typeNamespacedName, func(pr *promoterv1alpha1.PullRequest) bool {
+					return pr.Status.State == promoterv1alpha1.PullRequestMerged
+				})
 
 				By("Requesting merge by setting spec.state to merged with correct SHA")
 				Eventually(func(g Gomega) {
@@ -1052,14 +1028,12 @@ var _ = Describe("PullRequest Controller", func() {
 				// 1. The merge reconciliation updated status in memory
 				// 2. The deferred HandleReconciliationResult persisted it to etcd
 				// 3. The PR was NOT deleted in that same reconciliation (done=true caused requeue)
-				// 4. Our polling goroutine caught the state between persist and delete
+				// 4. Our watch caught the state between persist and delete
 				// If the old code (inline delete) were active, we'd never observe this state
 				// because the PR would be deleted before the status could be persisted.
 				var observedStatus promoterv1alpha1.PullRequestStatus
 				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 					"Should have observed merged status before deletion")
-
-				close(stopPolling)
 
 				By("Verifying the merged target sha from the merge response was persisted alongside the merged state")
 				// When the provider reports the resulting target-branch commit in its merge response, the
@@ -1114,34 +1088,9 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", Label(fakeSCMOnlyLabel), func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
-			// Get-by-ID persists mergedTargetSha and the NEXT reconcile deletes the object, so the
-			// sha is only observable in a narrow window. Poll from a goroutine started before the
-			// SCM mutation, the same way the other merged-status-before-delete specs do. A post-hoc
-			// Eventually Get races the delete and times out (the object is already gone).
-			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
-
-			go func() {
-				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
-				timeout := time.After(constants.EventuallyTimeout)
-				for {
-					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
-							mergedStatusObserved <- currentPR.Status
-							return
-						}
-					case <-stopPolling:
-						return
-					case <-timeout:
-						return
-					}
-				}
-			}()
+			// Get-by-ID persists mergedTargetSha and the NEXT reconcile releases the finalizer, so without
+			// another finalizer the object is gone almost at once. Retain it so the status can be checked.
+			release := retainPullRequest(ctx, typeNamespacedName)
 
 			By("Marking the PR merged on the fake SCM without going through the merge API (async providers omit CommitSHA from Merge)")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
@@ -1155,13 +1104,8 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying Get-by-ID records mergedTargetSha before the PullRequest is deleted")
-			var observedStatus promoterv1alpha1.PullRequestStatus
-			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
-				"Should have observed merged status with recovered mergedTargetSha before deletion")
-
-			close(stopPolling)
-
-			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+			expectReleasedAsMerged(ctx, typeNamespacedName, mergedTargetSha)
+			release()
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
@@ -1362,7 +1306,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason)).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CTP status preserves unknown SCM outcome after PR deletion")
@@ -1424,33 +1368,10 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should set state merged and mergedTargetSha when externally merged on provider", Label(fakeSCMOnlyLabel), func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
-			// The reconcile that learns about the external merge persists status and the NEXT one deletes the
-			// object, so the merged status is only observable in a narrow window. Poll for it from a goroutine
-			// started before the merge, the same way the controller-initiated merge spec above does.
-			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
-
-			go func() {
-				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
-				timeout := time.After(constants.EventuallyTimeout)
-				for {
-					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
-							mergedStatusObserved <- currentPR.Status
-							return
-						}
-					case <-stopPolling:
-						return
-					case <-timeout:
-						return
-					}
-				}
-			}()
+			// The reconcile that learns about the external merge persists status and the NEXT one releases the
+			// finalizer, so without another finalizer the object is gone almost at once. Retain it so the
+			// status can be checked.
+			release := retainPullRequest(ctx, typeNamespacedName)
 
 			By("Simulating external merge on the fake SCM")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
@@ -1460,15 +1381,10 @@ var _ = Describe("PullRequest Controller", func() {
 			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
 			By("Verifying state merged and the SCM-reported mergedTargetSha were persisted before deletion")
-			var observedStatus promoterv1alpha1.PullRequestStatus
-			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
-				"Should have observed merged status before deletion")
-
-			close(stopPolling)
-
 			// A Get-by-ID that reports the PR merged is authoritative, so the sha is recorded and we
 			// resolve to status.state merged rather than merged-or-closed/unknown.
-			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+			expectReleasedAsMerged(ctx, typeNamespacedName, mergedTargetSha)
+			release()
 
 			By("Verifying the PullRequest is deleted after mergedTargetSha is persisted")
 			Eventually(func(g Gomega) {
@@ -1483,32 +1399,9 @@ var _ = Describe("PullRequest Controller", func() {
 			// only recoverable if deletion finalization asks the SCM before releasing the finalizer.
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
-			// The resource disappears as soon as finalization completes, so sample from a goroutine started
-			// before the delete rather than polling after it.
-			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
-
-			go func() {
-				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
-				timeout := time.After(constants.EventuallyTimeout)
-				for {
-					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
-							mergedStatusObserved <- currentPR.Status
-							return
-						}
-					case <-stopPolling:
-						return
-					case <-timeout:
-						return
-					}
-				}
-			}()
+			// The resource disappears as soon as finalization completes, so retain it to check the status
+			// finalization left.
+			release := retainPullRequest(ctx, typeNamespacedName)
 
 			By("Simulating external merge on the fake SCM without letting the controller observe it")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
@@ -1519,15 +1412,10 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 
 			By("Verifying deletion finalization recorded the merged state and sha before releasing the object")
-			var observedStatus promoterv1alpha1.PullRequestStatus
-			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
-				"deletion finalization must learn the terminal SCM outcome before the resource goes away")
-
-			close(stopPolling)
-
 			// A Get-by-ID that reports the PR merged is authoritative, so the sha is recorded and we
 			// resolve to status.state merged rather than merged-or-closed/unknown.
-			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+			expectReleasedAsMerged(ctx, typeNamespacedName, mergedTargetSha)
+			release()
 
 			By("Verifying the PullRequest is then deleted")
 			Eventually(func(g Gomega) {
@@ -1605,31 +1493,21 @@ var _ = Describe("PullRequest Controller", func() {
 
 			// Status must be persisted as closed before the promoter finalizer is released so the
 			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
-			closedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
-			go func() {
-				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
-				timeout := time.After(constants.EventuallyTimeout)
-				for {
-					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil &&
-							currentPR.Status.State == promoterv1alpha1.PullRequestClosed &&
-							controllerutil.ContainsFinalizer(&currentPR, promoterv1alpha1.PullRequestFinalizer) {
-							closedStatusObserved <- currentPR.Status
-							return
-						}
-					case <-stopPolling:
-						return
-					case <-timeout:
-						return
-					}
-				}
-			}()
+			//
+			// The closed-status-but-finalizer-still-held state is a single, narrow intermediate
+			// resourceVersion: it exists only between the "Closing PullRequest" reconcile that persists
+			// status.state=Closed and the very next reconcile that releases the finalizer, which in this
+			// envtest setup can be under 15ms apart. A fixed-interval Get-poll can straddle that window
+			// under CI load, where any single Get can itself take longer than the window it's trying to
+			// sample -- that's a sampling gap, not evidence the controller skipped persisting the status.
+			// A watch has no such gap: the API server delivers every resourceVersion transition in order,
+			// so the intermediate state can't be missed regardless of how narrow it is or how slow the
+			// test runner is. The watch must start before Delete below so the first relevant event isn't
+			// missed to the same race this is fixing.
+			closedStatusObserved := watchPullRequestStatus(ctx, typeNamespacedName, func(pr *promoterv1alpha1.PullRequest) bool {
+				return pr.Status.State == promoterv1alpha1.PullRequestClosed &&
+					controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
+			})
 
 			By("Deleting the PullRequest (object remains until the blocking finalizer is cleared)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -1641,7 +1519,6 @@ var _ = Describe("PullRequest Controller", func() {
 			var observedStatus promoterv1alpha1.PullRequestStatus
 			Eventually(closedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 				"closed status should be persisted before the promoter finalizer is released")
-			close(stopPolling)
 
 			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
 			Eventually(func(g Gomega) {
@@ -2070,6 +1947,80 @@ func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 		cc.Spec.PullRequest.WorkQueue.RequeueDuration = original
 		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
 	})
+}
+
+// watchPullRequestStatus watches the PullRequest at key and returns a channel that receives its status the first time
+// matches reports true. Use it to check a state that one reconcile persists and the next removes, often within a few
+// milliseconds, while the promoter still holds its finalizer: polling with Get can miss such a state under load, but a
+// watch delivers every resourceVersion in order. Call it before the change that leads to the state.
+func watchPullRequestStatus(ctx context.Context, key types.NamespacedName, matches func(*promoterv1alpha1.PullRequest) bool) <-chan promoterv1alpha1.PullRequestStatus {
+	GinkgoHelper()
+	watchClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+	Expect(err).ToNot(HaveOccurred())
+	watcher, err := watchClient.Watch(ctx, &promoterv1alpha1.PullRequestList{},
+		client.InNamespace(key.Namespace),
+		client.MatchingFields{"metadata.name": key.Name})
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(watcher.Stop)
+
+	observed := make(chan promoterv1alpha1.PullRequestStatus, 1)
+	go func() {
+		defer GinkgoRecover()
+		for event := range watcher.ResultChan() {
+			if pr, ok := event.Object.(*promoterv1alpha1.PullRequest); ok && matches(pr) {
+				observed <- pr.Status
+				return
+			}
+		}
+	}()
+	return observed
+}
+
+// retainPullRequest adds a finalizer that only the test removes, so the PullRequest at key outlives the promoter
+// releasing its own finalizer and the status it left can be checked with an ordinary Eventually. The returned func
+// removes the finalizer so deletion can finish; it also runs at cleanup.
+func retainPullRequest(ctx context.Context, key types.NamespacedName) (release func()) {
+	GinkgoHelper()
+	const retainFinalizer = "promoter.argoproj.io/test-retain"
+	// The optimistic lock keeps these patches from overwriting the promoter's own finalizer changes.
+	patchFinalizers := func(g Gomega, change func(*promoterv1alpha1.PullRequest) bool) {
+		var pr promoterv1alpha1.PullRequest
+		err := k8sClient.Get(ctx, key, &pr)
+		if k8serrors.IsNotFound(err) {
+			return
+		}
+		g.Expect(err).NotTo(HaveOccurred())
+		base := pr.DeepCopy()
+		if !change(&pr) {
+			return
+		}
+		g.Expect(client.IgnoreNotFound(k8sClient.Patch(ctx, &pr, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})))).To(Succeed())
+	}
+	Eventually(func(g Gomega) {
+		patchFinalizers(g, func(pr *promoterv1alpha1.PullRequest) bool { return controllerutil.AddFinalizer(pr, retainFinalizer) })
+	}, constants.EventuallyTimeout).Should(Succeed())
+	release = func() {
+		Eventually(func(g Gomega) {
+			patchFinalizers(g, func(pr *promoterv1alpha1.PullRequest) bool {
+				return controllerutil.RemoveFinalizer(pr, retainFinalizer)
+			})
+		}, constants.EventuallyTimeout).Should(Succeed())
+	}
+	DeferCleanup(release)
+	return release
+}
+
+// expectReleasedAsMerged waits for the promoter to release its finalizer on the PullRequest at key, retained with
+// retainPullRequest, and checks the status it left: merged, with the SCM-reported mergedTargetSha.
+func expectReleasedAsMerged(ctx context.Context, key types.NamespacedName, mergedTargetSha string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var pr promoterv1alpha1.PullRequest
+		g.Expect(k8sClient.Get(ctx, key, &pr)).To(Succeed())
+		g.Expect(pr.Finalizers).NotTo(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+		g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+		g.Expect(pr.Status.MergedTargetSha).To(Equal(mergedTargetSha))
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 func pushEmptyCommit(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, branch, message string) {

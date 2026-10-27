@@ -26,3 +26,6 @@ export type ChangeTransferPolicyHistory = Schemas['ChangeTransferPolicyHistory']
 
 /** Embedded in PromotionStrategyDetails.restoreActiveCommits. */
 export type RestoreActiveCommit = Schemas['RestoreActiveCommit'];
+
+/** Spec of the ScmProvider or ClusterScmProvider embedded in PromotionStrategyDetails. */
+export type ScmProviderSpec = Schemas['ScmProviderSpec'];

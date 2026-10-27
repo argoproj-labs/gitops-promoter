@@ -6,6 +6,7 @@ import type {
   PullRequest,
   ReferenceCommit,
 } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn, RowReference } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
@@ -16,18 +17,21 @@ import { proposedIsBlocked } from '@shared/utils/environments';
  * attaching a resolved `url` per ref (refs are cross-repo, so each carries its own
  * `repoURL`). Empty refs (config-only changes) yield an empty array.
  */
-function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
+function toReferenceCommits(
+  dry: Commit | undefined,
+  scm: ScmProviderSpec | undefined,
+): ReferenceCommit[] {
   return (dry?.references ?? [])
     .map((r) => r.commit)
     .filter((c): c is NonNullable<typeof c> => !!c)
     .map((c) => ({
       ...c,
-      url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha) : undefined,
+      url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha, scm) : undefined,
     }));
 }
 
-function toRowReferences(dry: Commit): RowReference[] {
-  return toReferenceCommits(dry).map((c) => ({
+function toRowReferences(dry: Commit, scm: ScmProviderSpec | undefined): RowReference[] {
+  return toReferenceCommits(dry, scm).map((c) => ({
     shaShort: shortSha(c.sha),
     url: c.url,
     repoName:
@@ -123,6 +127,7 @@ function getRow(
   rowsById: Map<string, CommitRow>,
   commit: Commit | undefined,
   repoUrlFallback: string,
+  scm: ScmProviderSpec | undefined,
   pr?: PullRequest,
   keyOverride?: string,
 ): CommitRow | null {
@@ -139,7 +144,7 @@ function getRow(
       body: commit.body ? extractBodyPreTrailer(commit.body) : undefined,
       prId: pr?.id,
       prUrl: pr?.url,
-      references: toRowReferences(commit),
+      references: toRowReferences(commit, scm),
       repoUrl: commit.repoURL ?? repoUrlFallback,
       freshestAt: 0,
       earliestAt: 0,
@@ -236,7 +241,11 @@ function applyRestoreIdentity(row: CommitRow, entry: HistoryEntry) {
   row.restoredFrom = entry.restoredFrom;
 }
 
-function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
+function processHistory(
+  rowsById: Map<string, CommitRow>,
+  env: StatusEnvironment,
+  scm: ScmProviderSpec | undefined,
+) {
   const branch = env.branch;
   const history = env.history ?? [];
   history.forEach((entry, idx) => {
@@ -262,6 +271,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       rowsById,
       commit,
       '',
+      scm,
       restoreKey ? undefined : entry.pullRequest,
       restoreKey ?? undefined,
     );
@@ -284,7 +294,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       kind,
       commit,
       hydrated: entry.active?.hydrated,
-      references: toReferenceCommits(commit),
+      references: toReferenceCommits(commit, scm),
       commitStatuses: statuses,
       health,
       pullRequest: restoreKey ? undefined : entry.pullRequest,
@@ -394,7 +404,10 @@ function finalizeRow(
   return row;
 }
 
-export function buildMatrix(strategy: PromotionStrategy): {
+export function buildMatrix(
+  strategy: PromotionStrategy,
+  scm?: ScmProviderSpec,
+): {
   envs: EnvColumn[];
   rows: CommitRow[];
 } {
@@ -434,7 +447,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       // The restore commit is written directly onto the active branch, so the policy's current
       // pull request is not its. That pull request stays on the commit it promoted.
       const livePullRequest = activeRestore ? undefined : liveCommitPullRequest(env);
-      const row = getRow(rowsById, env.active.dry, '', livePullRequest, activeRestoreKey);
+      const row = getRow(rowsById, env.active.dry, '', scm, livePullRequest, activeRestoreKey);
       if (row) {
         if (activeRestore) applyRestoreIdentity(row, activeRestore);
         const kind: CellKind = health === 'failure' ? 'failed' : 'live';
@@ -442,7 +455,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           kind,
           commit: env.active.dry,
           hydrated: env.active.hydrated,
-          references: toReferenceCommits(env.active.dry),
+          references: toReferenceCommits(env.active.dry, scm),
           commitStatuses: statuses,
           health,
           pullRequest: livePullRequest,
@@ -465,7 +478,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       // when the active tip is still the restore that moved this dry SHA off.
       const blocked = proposedIsBlocked(env);
       const pullRequest = blockedEnvPullRequest(env);
-      const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
+      const row = getRow(rowsById, env.proposed.dry, '', scm, pullRequest);
       if (row) {
         const kind: CellKind =
           !blockName && !blocked && health === 'failure' ? 'failed' : 'in-flight';
@@ -473,7 +486,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           kind,
           commit: env.proposed.dry,
           hydrated: env.proposed.hydrated,
-          references: toReferenceCommits(env.proposed.dry),
+          references: toReferenceCommits(env.proposed.dry, scm),
           commitStatuses: statuses,
           health,
           pullRequest,
@@ -485,7 +498,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    processHistory(rowsById, env);
+    processHistory(rowsById, env, scm);
   });
 
   const horizons = computeHorizons(envs);

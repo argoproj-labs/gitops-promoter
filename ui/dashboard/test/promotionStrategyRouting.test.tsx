@@ -41,6 +41,7 @@ vi.mock('@lib/components/LiveManifestView', () => ({
 vi.mock('../src/stores/PromotionStrategyStore', () => ({
   PromotionStrategyStore: () => ({
     items: [strategy],
+    scmProviders: {},
     loading: false,
     error: null,
     fetchItems: vi.fn(),
