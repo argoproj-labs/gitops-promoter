@@ -10,6 +10,14 @@ const repoRoot = path.resolve(__dirname, '../..');
 export default defineConfig({
   test: {
     environment: 'jsdom',
+    // JUnit output is uploaded to Codecov Test Analytics by CI (gitignored). Setting reporters
+    // turns off Vitest's implicit github-actions reporter, so add it back for failure annotations.
+    reporters: [
+      'default',
+      'junit',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+    ],
+    outputFile: { junit: './junit.xml' },
     include: ['src/**/*.test.{ts,tsx}'],
     server: {
       deps: {
