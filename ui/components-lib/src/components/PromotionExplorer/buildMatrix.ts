@@ -52,7 +52,7 @@ function toRowReferences(dry: Commit, scm: ScmProviderSpec | undefined): RowRefe
 type StatusEnvironment = Environment;
 
 function envHasContent(env: StatusEnvironment): boolean {
-  return (env.history?.length ?? 0) > 0 || !!env.active?.dry;
+  return (env.history?.length ?? 0) > 0 || !!env.active.dry;
 }
 
 function buildEnvColumn(
@@ -60,12 +60,12 @@ function buildEnvColumn(
   i: number,
   specByBranch: Map<string, { autoMerge?: boolean }>,
 ): EnvColumn {
-  const liveStatuses = env.active?.commitStatuses ?? [];
-  const proposedStatuses = env.proposed?.commitStatuses ?? [];
-  const liveSha = env.active?.dry?.sha;
-  const proposedSha = env.proposed?.dry?.sha;
+  const liveStatuses = env.active.commitStatuses ?? [];
+  const proposedStatuses = env.proposed.commitStatuses ?? [];
+  const liveSha = env.active.dry?.sha;
+  const proposedSha = env.proposed.dry?.sha;
   const proposedDistinct =
-    env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
+    env.proposed.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
   const pr = blockedEnvPullRequest(env);
 
   return {
@@ -74,7 +74,7 @@ function buildEnvColumn(
     instanceId: env.instanceId,
     autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
     color: LANE_COLORS[i % LANE_COLORS.length]!,
-    liveCommit: env.active?.dry,
+    liveCommit: env.active.dry,
     liveStatuses,
     liveHealth: healthFromStatuses(liveStatuses),
     proposedCommit: proposedDistinct,
@@ -108,8 +108,8 @@ function liveCommitPullRequest(env: StatusEnvironment): PullRequest | undefined 
 }
 
 function historyPullRequestForActive(env: StatusEnvironment): PullRequest | undefined {
-  const hydrated = env.active?.hydrated?.sha;
-  const dry = env.active?.dry?.sha;
+  const hydrated = env.active.hydrated?.sha;
+  const dry = env.active.dry?.sha;
   if (!hydrated && !dry) return undefined;
   for (const entry of env.history ?? []) {
     // A restore copies the restored version's pull request; that promotion already has a row.
@@ -181,11 +181,12 @@ function cellAtMs(cell: CellState): number {
 }
 
 function setCell(row: CommitRow, branch: string, next: CellState) {
-  const prev = row.cells[branch];
-  if (!prev) {
+  // The first cell for this branch on this row.
+  if (!(branch in row.cells)) {
     row.cells[branch] = next;
     return;
   }
+  const prev = row.cells[branch];
   const rankDiff = cellRank[next.kind] - cellRank[prev.kind];
   // History is walked newest-first, so an older entry of the same kind must not
   // overwrite a newer one. That happens when one environment restores the same dry
@@ -335,7 +336,7 @@ function computeHorizons(envs: StatusEnvironment[]): Map<string, EnvHorizon> {
       const t = new Date(raw).getTime();
       if (Number.isFinite(t)) times.push(t);
     };
-    push(env.active?.dry?.commitTime);
+    push(env.active.dry?.commitTime);
     for (const h of env.history ?? []) push(h.active?.dry?.commitTime);
     horizons.set(env.branch, {
       oldestKnownAt: times.length ? Math.min(...times) : Infinity,
@@ -352,12 +353,13 @@ function finalizeRow(
 ): CommitRow {
   const times: number[] = [];
   for (const branch of envs.map((e) => e.branch)) {
+    if (!(branch in row.cells)) continue;
     const c = row.cells[branch];
-    if (c?.at) {
+    if (c.at) {
       const t = new Date(c.at).getTime();
       if (Number.isFinite(t)) times.push(t);
     }
-    if (c?.commit?.commitTime) {
+    if (c.commit?.commitTime) {
       const t = new Date(c.commit.commitTime).getTime();
       if (Number.isFinite(t)) times.push(t);
     }
@@ -378,7 +380,7 @@ function finalizeRow(
   const rowCommitAt = row.freshestAt;
 
   for (const e of envs) {
-    if (!row.cells[e.branch]) {
+    if (!(e.branch in row.cells)) {
       const horizon = horizons.get(e.branch);
       const agedOut =
         !!horizon &&
@@ -414,7 +416,7 @@ export function buildMatrix(
   const envs: StatusEnvironment[] = (strategy.status?.environments ?? []).filter(envHasContent);
 
   const specByBranch = new Map<string, { autoMerge?: boolean }>();
-  for (const e of strategy.spec.environments ?? []) specByBranch.set(e.branch, e);
+  for (const e of strategy.spec.environments) specByBranch.set(e.branch, e);
 
   const envColumns: EnvColumn[] = envs.map((env, i) => buildEnvColumn(env, i, specByBranch));
 
@@ -422,8 +424,8 @@ export function buildMatrix(
 
   envs.forEach((env) => {
     const branch = env.branch;
-    const liveSha = env.active?.dry?.sha;
-    const proposedSha = env.proposed?.dry?.sha;
+    const liveSha = env.active.dry?.sha;
+    const proposedSha = env.proposed.dry?.sha;
     const proposedIsDistinct = !!proposedSha && proposedSha !== liveSha;
 
     // When the active tip is itself a restore commit, the live cell belongs on that
@@ -434,14 +436,14 @@ export function buildMatrix(
       const hydratedSha = entry.active?.hydrated?.sha;
       if (restoreRowKey(entry) && hydratedSha) restoreByHydrated.set(hydratedSha, entry);
     }
-    const activeRestore = env.active?.hydrated?.sha
+    const activeRestore = env.active.hydrated?.sha
       ? restoreByHydrated.get(env.active.hydrated.sha)
       : undefined;
     const activeRestoreKey = activeRestore
       ? (restoreRowKey(activeRestore) ?? undefined)
       : undefined;
 
-    if (env.active?.dry) {
+    if (env.active.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       // The restore commit is written directly onto the active branch, so the policy's current
@@ -470,7 +472,7 @@ export function buildMatrix(
       }
     }
 
-    if (proposedIsDistinct && env.proposed?.dry) {
+    if (proposedIsDistinct && env.proposed.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       const blockName = env.restoreActiveCommit?.name;

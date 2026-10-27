@@ -58,14 +58,14 @@ export function makeStrategy(envs: EnvSpec[], name = 'demo'): PromotionStrategy 
               hydrated: { sha: `h${sha(e.active).slice(1)}` },
               commitStatuses: statuses(e.activePhase ?? 'success'),
             }
-          : undefined,
+          : {},
         proposed: e.proposed
           ? {
               dry: dry(e.proposed),
               hydrated: { sha: `p${sha(e.proposed).slice(1)}` },
               commitStatuses: statuses(e.proposedPhase ?? 'pending'),
             }
-          : undefined,
+          : {},
         history: (e.history ?? []).map((c) => ({
           active: {
             dry: dry(c),

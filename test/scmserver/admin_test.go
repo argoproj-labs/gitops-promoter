@@ -231,4 +231,30 @@ var _ = Describe("admin API", func() {
 		_, err = admin.AddFault(ctx, scmserver.FaultRule{Provider: scmserver.GitLab, Path: "(", Status: http.StatusTeapot})
 		Expect(err).To(MatchError(ContainSubstring("invalid path regexp")))
 	})
+
+	It("never faults requests carrying the no-fault header", func(ctx SpecContext) {
+		info, err := admin.Info(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		rule, err := admin.AddFault(ctx, scmserver.FaultRule{Provider: scmserver.GitLab, Status: http.StatusTeapot})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func(ctx SpecContext) { Expect(admin.ClearFaults(ctx)).To(Succeed()) })
+
+		get := func(exempt bool) int {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Providers[scmserver.GitLab].BaseURL+"/api/v4/user", nil)
+			Expect(err).NotTo(HaveOccurred())
+			if exempt {
+				req.Header.Set(scmserver.NoFaultHeader, "1")
+			}
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.Body.Close()).To(Succeed())
+			return resp.StatusCode
+		}
+		Expect(get(false)).To(Equal(http.StatusTeapot))
+		Expect(get(true)).NotTo(Equal(http.StatusTeapot))
+
+		rules, err := admin.Faults(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rules).To(ContainElement(And(HaveField("ID", rule.ID), HaveField("Hits", 1))), "the exempt request is not counted")
+	})
 })

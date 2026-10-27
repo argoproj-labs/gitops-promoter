@@ -17,20 +17,14 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
   const [yamlString, setYamlString] = useState<string>('');
 
   useEffect(() => {
-    if (strategy) {
-      const formatted = yaml.dump(strategy, {
-        indent: 2,
-        lineWidth: -1,
-        quotingType: '"',
-        forceQuotes: false,
-      });
-      setYamlString(formatted);
-    }
+    const formatted = yaml.dump(strategy, {
+      indent: 2,
+      lineWidth: -1,
+      quotingType: '"',
+      forceQuotes: false,
+    });
+    setYamlString(formatted);
   }, [strategy]);
-
-  if (!strategy) {
-    return <div className="strategy-json-editor-empty">No strategy data available</div>;
-  }
 
   return (
     <div className="strategy-json-editor">

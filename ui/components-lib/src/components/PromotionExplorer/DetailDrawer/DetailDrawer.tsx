@@ -26,7 +26,7 @@ import { isEmptyCellKind, safeHttpUrl } from '../helpers';
 import { buildRestoreActiveCommitApplyCommand, canShowRestoreCommand } from '../restoreCommand';
 import { restoreBlockTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
-import { StatusIcon, StatusType } from '../../StatusIcon';
+import { StatusIcon } from '../../StatusIcon';
 
 const CopyCommandButton: React.FC<{ command: string }> = ({ command }) => {
   const [copied, setCopied] = React.useState(false);
@@ -66,15 +66,15 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
         const RowContent = manager ? Plugin?.rowContent : undefined;
         const isExpanded = !!expanded[check.name];
         const panelId = `hp-drawer-check-panel-${check.name}`;
-        const phase: StatusType = HEALTH_LABELS[check.status as HealthKey]
-          ? (check.status as StatusType)
+        const health: HealthKey = HEALTH_LABELS[check.status as HealthKey]
+          ? (check.status as HealthKey)
           : 'unknown';
 
         return (
           <li key={check.name} className="hp-drawer__check-item">
             <div className={`hp-drawer__check hp-drawer__check--${check.status}`}>
               <span className="hp-drawer__check-icon" aria-hidden="true">
-                <StatusIcon phase={phase} type="status" />
+                <StatusIcon phase={health} type="status" />
               </span>
               {RowContent && (
                 <button
@@ -101,9 +101,7 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
                 <Plugin.rowHeader check={check} manager={manager} />
               ) : (
                 <>
-                  <span className="hp-sr-only">
-                    {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
-                  </span>
+                  <span className="hp-sr-only">{HEALTH_LABELS[health]}: </span>
                   <span className="hp-drawer__check-key">{check.name}</span>
                   {check.description && (
                     <span className="hp-drawer__check-desc">{check.description}</span>
@@ -200,7 +198,7 @@ const DetailDrawer: React.FC<{
 
   const [prId, prUrl] = cell.restoreActiveCommit
     ? [cell.pullRequest?.id, cell.pullRequest?.url]
-    : cell.pullRequest?.id && cell.pullRequest?.url
+    : cell.pullRequest?.id && cell.pullRequest.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
 
