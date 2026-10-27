@@ -155,20 +155,58 @@ spec:
                       It must be in the same namespace as the commit status.
                     type: string
                   parameters:
-                    additionalProperties:
-                      type: string
                     description: |-
                       Parameters are the parameters that get passed to the Tekton resource run that is created.
-                      A paramter's value can use the following Go template values to inject information into a paramter.
 
-                      .TargetedSha - The SHA that the pipeline is being run on
-                      .Branch - The name of the branch for the environment
-
-                      So for example you could have parameters like:
+                      Example:
                       params:
-                        - githubUrl: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
-                        - shortSha: "{{ .TargetedSha | trunc 8 }}"
-                    type: object
+                        - name: someParameter
+                          value: "someValue"
+                          type: "string"
+                    items:
+                      description: TektonParameter defines a parameter to a Tekton
+                        Resource.
+                      properties:
+                        name:
+                          description: Name is the name of the paramter
+                          type: string
+                        type:
+                          default: string
+                          description: |-
+                            Type represents the type of the paramater. Tekton Parameters can be either a string, array, or object.
+                            Defaults to string
+                          enum:
+                          - string
+                          - array
+                          - object
+                          type: string
+                        value:
+                          description: |-
+                            Value is what the value of the paramter is. The value must be passed as a string. If you are looking to use an
+                            array or object a json formated string for an array or object must be provided.
+                            A parameter's value can use the following Go template values to inject information into a paramter.
+
+                            .TargetedSha - The SHA that the pipeline is being run on
+                            .Branch - The name of the branch for the environment
+
+                            So some examples would be:
+                            params:
+                              - name: githubUrl
+                                value: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
+                                type: string
+                              - name: shortSha
+                                value: "{{ .TargetedSha | trunc 8 }}"
+                                type: string
+                              - name: architectures
+                                value: |
+                                  ["linux/amd64", "linux/arm64"]
+                                type: array
+                              - name: objectExample
+                                value: |
+                                  { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
+                          type: string
+                      type: object
+                    type: array
                   serviceAccount:
                     default: default
                     description: |-

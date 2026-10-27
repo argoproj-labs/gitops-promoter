@@ -2057,6 +2057,19 @@ var (
     - name: observedGeneration
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonParameter
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: type
+      type:
+        scalar: string
+      default: string
+    - name: value
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonResourceRef
   map:
     fields:
@@ -2068,9 +2081,10 @@ var (
         scalar: string
     - name: parameters
       type:
-        map:
+        list:
           elementType:
-            scalar: string
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonParameter
+          elementRelationship: atomic
     - name: serviceAccount
       type:
         scalar: string
