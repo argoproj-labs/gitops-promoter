@@ -298,11 +298,13 @@ func (e *recordingEmitter) EmitCommitStatus(_ context.Context, _ *promoterv1alph
 	return &promoterv1alpha1.CommitStatus{}, nil
 }
 
-// okExecutor answers every HTTP request with a 200.
-type okExecutor struct{}
+// okExecutor answers every HTTP request with a 200 and body.
+type okExecutor struct {
+	body any
+}
 
-func (okExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
-	return HTTPResponse{StatusCode: 200}, nil
+func (e okExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
+	return HTTPResponse{StatusCode: 200, Body: e.body}, nil
 }
 
 var _ = Describe("Polling mode skip of an already successful SHA", func() {
@@ -366,6 +368,49 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 			Expect(emitter.emitted[1].SuccessVariables).To(Equal(emitter.emitted[0].SuccessVariables),
 				"the skip must evaluate success.when.variables the same way the request did")
+		},
+		Entry("environments context", promoterv1alpha1.ContextEnvironments),
+		Entry("promotionstrategy context", promoterv1alpha1.ContextPromotionStrategy),
+	)
+
+	// The documented pattern: variables read the response when there is one and otherwise fall back to the
+	// SuccessOutput they persisted, so the skip, which has no response, still sees the values from the request.
+	DescribeTable("keeps response-derived success.when.variables that fall back to SuccessOutput",
+		func(context promoterv1alpha1.ContextMode) {
+			ctx := GinkgoT().Context()
+			emitter := &recordingEmitter{}
+			r := NewReconciler(okExecutor{body: map[string]any{"buildTag": "v1.2.3", "buildRunId": "42"}}, emitter)
+			wrcs, ps := newInputs(context)
+			wrcs.Spec.Success.When = promoterv1alpha1.WhenWithOutputSpec{
+				Variables: &promoterv1alpha1.OutputSpec{Expression: `
+					let prev = SuccessOutput ?? { tag: "pending", runId: "", ok: false };
+					Response != nil ? {
+						tag:   Response.Body.buildTag   ?? prev.tag,
+						runId: Response.Body.buildRunId ?? prev.runId,
+						ok:    Response.StatusCode == 200,
+					} : prev`},
+				Expression: `Variables.ok`,
+				Output:     &promoterv1alpha1.OutputSpec{Expression: `Variables`},
+			}
+			reconcile := r.ReconcileWebRequestCommitStatusEnvironments
+			if context == promoterv1alpha1.ContextPromotionStrategy {
+				reconcile = r.ReconcileWebRequestCommitStatusPromotionStrategy
+			}
+
+			By("making the HTTP request and succeeding")
+			_, _, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(1))
+			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("runId", "42"))
+
+			By("skipping the HTTP request on the next reconcile because the SHA already succeeded")
+			_, _, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(2))
+			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			Expect(emitter.emitted[1].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+			Expect(emitter.emitted[1].SuccessVariables).To(HaveKeyWithValue("runId", "42"))
 		},
 		Entry("environments context", promoterv1alpha1.ContextEnvironments),
 		Entry("promotionstrategy context", promoterv1alpha1.ContextPromotionStrategy),
