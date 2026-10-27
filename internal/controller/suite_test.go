@@ -127,7 +127,10 @@ func TestControllers(t *testing.T) {
 	RunSpecs(t, "Controller Suite", c)
 }
 
-var _ = BeforeSuite(func() {
+// Process 1 sets up state shared by every process before any process starts its own setup or specs.
+var _ = SynchronizedBeforeSuite(func() {
+	installSCMFaultRulesFromEnv(context.Background())
+}, func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), zap.Level(zapcore.Level(-4)), func(o *zap.Options) {
 		o.TimeEncoder = zapcore.RFC3339NanoTimeEncoder
 	}))

@@ -431,19 +431,6 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 	b.RateLimit = 0
 	Expect(admin.SetBehavior(ctx, p, b)).To(Succeed())
 
-	// Every Ginkgo process shares the server, so only the first touches the fault rules. It always
-	// clears them first, so a run against a long-lived local server doesn't inherit an earlier run's rule.
-	if GinkgoParallelProcess() == 1 {
-		Expect(admin.ClearFaults(ctx)).To(Succeed())
-	}
-	if prob, ok := scmFaultProbabilityFromEnv(); ok && GinkgoParallelProcess() == 1 {
-		_, err = admin.AddFault(ctx, scmserver.FaultRule{
-			Provider: p, Status: http.StatusInternalServerError, Probability: prob, Message: "injected fault",
-		})
-		Expect(err).NotTo(HaveOccurred())
-		By(fmt.Sprintf("failing %g of %s requests with an injected 500", prob, p))
-	}
-
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	Expect(err).NotTo(HaveOccurred())
 	githubKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
@@ -457,6 +444,27 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 		caFile:       caFile,
 		githubKeyPEM: githubKeyPEM,
 		runID:        strings.ToLower(randomString(6)),
+	}
+}
+
+// installSCMFaultRulesFromEnv replaces the scmserver's fault rules with the one PROMOTER_TEST_SCM_FAULT_PROBABILITY
+// asks for, or none. Every Ginkgo process shares the server, so it runs once, on process 1, before any process runs
+// specs. Clearing first keeps a run against a long-lived local server from inheriting an earlier run's rule.
+func installSCMFaultRulesFromEnv(ctx context.Context) {
+	GinkgoHelper()
+	providerName := strings.TrimSpace(os.Getenv(envSCMProvider))
+	if providerName == "" || providerName == "fake" {
+		return
+	}
+	p := scmserver.Provider(providerName)
+	admin := scmserver.NewAdminClient(envOr(envSCMAdminURL, defaultSCMAdminURL))
+	Expect(admin.ClearFaults(ctx)).To(Succeed())
+	if prob, ok := scmFaultProbabilityFromEnv(); ok {
+		_, err := admin.AddFault(ctx, scmserver.FaultRule{
+			Provider: p, Status: http.StatusInternalServerError, Probability: prob, Message: "injected fault",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		By(fmt.Sprintf("failing %g of %s requests with an injected 500", prob, p))
 	}
 }
 
