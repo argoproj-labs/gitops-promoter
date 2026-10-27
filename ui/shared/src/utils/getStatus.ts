@@ -1,22 +1,5 @@
-import type { Environment, PromotionPhase, PromotionStrategy, Check } from '../types/promotion';
+import type { Environment, PromotionPhase, PromotionStrategy } from '../types/promotion';
 import { proposedIsBlocked } from './environments';
-
-// Health status for proposed/active checks
-export function getHealthStatus(checks: Check[]): 'success' | 'failure' | 'pending' | 'unknown' {
-  if (!Array.isArray(checks) || checks.length === 0) {
-    return 'unknown';
-  }
-  if (checks.some((c) => c.status === 'failure')) {
-    return 'failure';
-  }
-  if (checks.some((c) => c.status === 'pending')) {
-    return 'pending';
-  }
-  if (checks.every((c) => c.status === 'success')) {
-    return 'success';
-  }
-  return 'unknown';
-}
 
 // Determine status of a single environment (promoted/pending/failure/unknown)
 export function getEnvironmentStatus(

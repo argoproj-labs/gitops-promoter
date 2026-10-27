@@ -51,9 +51,7 @@ function renderFlowCell(state: CellState, row?: CommitRow) {
 }
 
 function renderDrawer(state: CellState, row: CommitRow) {
-  const envs = [
-    { branch: BRANCH, autoMerge: false, color: '#000', liveStatuses: [], liveHealth: 'unknown' },
-  ] as unknown as EnvColumn[];
+  const envs = [{ branch: BRANCH, autoMerge: false, color: '#000' }] as unknown as EnvColumn[];
   return render(
     <DetailDrawer
       row={row}

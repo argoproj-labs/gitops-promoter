@@ -60,27 +60,12 @@ function buildEnvColumn(
   i: number,
   specByBranch: Map<string, { autoMerge?: boolean }>,
 ): EnvColumn {
-  const liveStatuses = env.active?.commitStatuses ?? [];
-  const proposedStatuses = env.proposed?.commitStatuses ?? [];
-  const liveSha = env.active?.dry?.sha;
-  const proposedSha = env.proposed?.dry?.sha;
-  const proposedDistinct =
-    env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
-  const pr = blockedEnvPullRequest(env);
-
   return {
     branch: env.branch,
     changeTransferPolicyName: env.changeTransferPolicyName,
     instanceId: env.instanceId,
     autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
     color: LANE_COLORS[i % LANE_COLORS.length]!,
-    liveCommit: env.active?.dry,
-    liveStatuses,
-    liveHealth: healthFromStatuses(liveStatuses),
-    proposedCommit: proposedDistinct,
-    proposedStatuses: proposedDistinct ? proposedStatuses : [],
-    proposedHealth: proposedDistinct ? healthFromStatuses(proposedStatuses) : 'unknown',
-    proposedPR: proposedDistinct ? pr : undefined,
   };
 }
 
