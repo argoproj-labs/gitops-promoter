@@ -62,7 +62,7 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 				resource := &promoterv1alpha1.ClusterScmProvider{
 					Name:      resourceName,
 					Namespace: "default",
-					Spec: promoterv1alpha1.ScmProviderSpec{
+					Spec: promoterv1alpha1.ClusterScmProviderSpec{
 						Fake: &promoterv1alpha1.Fake{},
 					},
 					// TODO(user): Specify other spec details if needed.
@@ -101,7 +101,7 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 			newSecret := &v1.Secret{Name: name + "-new", Namespace: "default"}
 			clusterScmProvider := &promoterv1alpha1.ClusterScmProvider{
 				Name: name,
-				Spec: promoterv1alpha1.ScmProviderSpec{
+				Spec: promoterv1alpha1.ClusterScmProviderSpec{
 					SecretRef: &v1.LocalObjectReference{Name: oldSecret.Name},
 					Fake:      &promoterv1alpha1.Fake{},
 				},
@@ -145,16 +145,16 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", func() {
 	ctx := context.Background()
 
-	newProvider := func(name string, azdo *promoterv1alpha1.AzureDevOps, secretRef *v1.LocalObjectReference) *promoterv1alpha1.ClusterScmProvider {
+	newProvider := func(name string, azdo *promoterv1alpha1.ClusterAzureDevOps, secretRef *v1.LocalObjectReference) *promoterv1alpha1.ClusterScmProvider {
 		return &promoterv1alpha1.ClusterScmProvider{
 			Name: name,
-			Spec: promoterv1alpha1.ScmProviderSpec{SecretRef: secretRef, AzureDevOps: azdo},
+			Spec: promoterv1alpha1.ClusterScmProviderSpec{SecretRef: secretRef, AzureDevOps: azdo},
 		}
 	}
 
 	It("accepts workloadIdentity without a secretRef", func() {
-		provider := newProvider("azdo-wi-valid", &promoterv1alpha1.AzureDevOps{
-			Organization:     "example-org",
+		provider := newProvider("azdo-wi-valid", &promoterv1alpha1.ClusterAzureDevOps{
+			AzureDevOps:      promoterv1alpha1.AzureDevOps{Organization: "example-org"},
 			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
 		}, nil)
 		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
@@ -162,8 +162,8 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 	})
 
 	It("resolves workloadIdentity without a secret", func() {
-		provider := newProvider("azdo-wi-resolve", &promoterv1alpha1.AzureDevOps{
-			Organization:     "example-org",
+		provider := newProvider("azdo-wi-resolve", &promoterv1alpha1.ClusterAzureDevOps{
+			AzureDevOps:      promoterv1alpha1.AzureDevOps{Organization: "example-org"},
 			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
 		}, nil)
 		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
@@ -189,7 +189,7 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 	It("reports a missing secretRef for providers that need a secret", func() {
 		provider := &promoterv1alpha1.ClusterScmProvider{
 			Name: "github-no-secret",
-			Spec: promoterv1alpha1.ScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}},
+			Spec: promoterv1alpha1.ClusterScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}},
 		}
 		Expect(k8sClient.Create(ctx, provider)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, provider)).To(Succeed()) })
@@ -210,8 +210,8 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 	})
 
 	It("rejects workloadIdentity together with a secretRef", func() {
-		provider := newProvider("azdo-wi-with-secret", &promoterv1alpha1.AzureDevOps{
-			Organization:     "example-org",
+		provider := newProvider("azdo-wi-with-secret", &promoterv1alpha1.ClusterAzureDevOps{
+			AzureDevOps:      promoterv1alpha1.AzureDevOps{Organization: "example-org"},
 			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
 		}, &v1.LocalObjectReference{Name: "azdo-token"})
 		err := k8sClient.Create(ctx, provider)
@@ -220,9 +220,8 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 	})
 
 	It("rejects workloadIdentity together with a custom domain", func() {
-		provider := newProvider("azdo-wi-with-domain", &promoterv1alpha1.AzureDevOps{
-			Organization:     "example-org",
-			Domain:           "devops.example.com",
+		provider := newProvider("azdo-wi-with-domain", &promoterv1alpha1.ClusterAzureDevOps{
+			AzureDevOps:      promoterv1alpha1.AzureDevOps{Organization: "example-org", Domain: "devops.example.com"},
 			WorkloadIdentity: &promoterv1alpha1.AzureWorkloadIdentity{},
 		}, nil)
 		err := k8sClient.Create(ctx, provider)

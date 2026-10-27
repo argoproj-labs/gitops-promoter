@@ -35,11 +35,7 @@ func isAzureDevOpsNotFound(err error) bool {
 // ApplyHTTPAuth applies Azure DevOps authentication to the HTTP request. With workload identity it uses
 // a Bearer Microsoft Entra ID access token, otherwise Basic auth with an empty username and the PAT as the password.
 func ApplyHTTPAuth(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, req *http.Request) error {
-	wi, err := workloadIdentityConfig(scmProvider)
-	if err != nil {
-		return err
-	}
-	if wi != nil {
+	if wi := workloadIdentityConfig(scmProvider); wi != nil {
 		token, err := workloadIdentityTokenFunc(ctx, wi)
 		if err != nil {
 			return err

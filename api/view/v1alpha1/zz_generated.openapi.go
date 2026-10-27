@@ -62,8 +62,10 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ChangeTransferPolicyList{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref),
 		apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
 		apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
+		apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterAzureDevOps(ref),
 		apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref),
 		apiv1alpha1.ClusterScmProviderList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref),
+		apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderSpec(ref),
 		apiv1alpha1.CommitBranchState{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref),
 		apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryProposed(ref),
 		apiv1alpha1.CommitConfiguration{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitConfiguration(ref),
@@ -160,6 +162,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ScmProviderList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
 		apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
 		apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref),
+		apiv1alpha1.ScmProviderSpecCommon{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpecCommon(ref),
 		apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
 		apiv1alpha1.SuccessSpec{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
 		apiv1alpha1.TLSAuth{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
@@ -862,18 +865,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref common.Re
 							Format:      "",
 						},
 					},
-					"workloadIdentity": {
-						SchemaProps: spec.SchemaProps{
-							Description: "WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set, secretRef must be omitted.",
-							Ref:         ref(apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()),
-						},
-					},
 				},
 				Required: []string{"organization"},
 			},
 		},
-		Dependencies: []string{
-			apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()},
 	}
 }
 
@@ -1667,6 +1662,43 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterAzureDevOps(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with authentication that is only safe on a cluster-scoped resource, which only cluster admins can create.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"organization": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Organization is the Azure DevOps organization name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain is the Azure DevOps domain, such as \"dev.azure.com\". If using the default Azure DevOps domain, leave this field empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"workloadIdentity": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. When set, secretRef must be omitted.",
+							Ref:         ref(apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"organization"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -1697,7 +1729,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
@@ -1710,7 +1742,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1759,6 +1791,75 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(re
 		},
 		Dependencies: []string{
 			apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can create.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"secretRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecretRef contains the credentials required to auth to a specific provider",
+							Ref:         ref(v1.LocalObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"github": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitHub required configuration for GitHub as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitHub{}.OpenAPIModelName()),
+						},
+					},
+					"gitlab": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitLab required configuration for GitLab as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitLab{}.OpenAPIModelName()),
+						},
+					},
+					"forgejo": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Forgejo required configuration for Forgejo as the SCM provider",
+							Ref:         ref(apiv1alpha1.Forgejo{}.OpenAPIModelName()),
+						},
+					},
+					"gitea": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Gitea required configuration for Gitea as the SCM provider",
+							Ref:         ref(apiv1alpha1.Gitea{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketCloud": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
+						},
+					},
+					"fake": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Fake required configuration for Fake as the SCM provider",
+							Ref:         ref(apiv1alpha1.Fake{}.OpenAPIModelName()),
+						},
+					},
+					"azureDevOps": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
+							Ref:         ref(apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -6259,10 +6360,73 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
 						},
 					},
+					"fake": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Fake required configuration for Fake as the SCM provider",
+							Ref:         ref(apiv1alpha1.Fake{}.OpenAPIModelName()),
+						},
+					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
 							Ref:         ref(apiv1alpha1.AzureDevOps{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpecCommon(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScmProviderSpecCommon holds the ScmProvider and ClusterScmProvider spec fields that have the same type on both kinds.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"secretRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecretRef contains the credentials required to auth to a specific provider",
+							Ref:         ref(v1.LocalObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"github": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitHub required configuration for GitHub as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitHub{}.OpenAPIModelName()),
+						},
+					},
+					"gitlab": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitLab required configuration for GitLab as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitLab{}.OpenAPIModelName()),
+						},
+					},
+					"forgejo": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Forgejo required configuration for Forgejo as the SCM provider",
+							Ref:         ref(apiv1alpha1.Forgejo{}.OpenAPIModelName()),
+						},
+					},
+					"gitea": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Gitea required configuration for Gitea as the SCM provider",
+							Ref:         ref(apiv1alpha1.Gitea{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketCloud": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
 						},
 					},
 					"fake": {
@@ -6275,7 +6439,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 

@@ -79,8 +79,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):
 		return &apiv1alpha1.ChangeTransferPolicyStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterAzureDevOps"):
+		return &apiv1alpha1.ClusterAzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProvider"):
 		return &apiv1alpha1.ClusterScmProviderApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderSpec"):
+		return &apiv1alpha1.ClusterScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchState"):
 		return &apiv1alpha1.CommitBranchStateApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchStateHistoryProposed"):
@@ -249,6 +253,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderObjectReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderSpec"):
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderSpecCommon"):
+		return &apiv1alpha1.ScmProviderSpecCommonApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):

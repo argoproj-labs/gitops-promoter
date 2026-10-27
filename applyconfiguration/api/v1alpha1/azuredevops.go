@@ -26,12 +26,6 @@ type AzureDevOpsApplyConfiguration struct {
 	Organization *string `json:"organization,omitempty"`
 	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty.
 	Domain *string `json:"domain,omitempty"`
-	// WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
-	// The controller pod must be configured for Azure workload identity, which projects a federated service account token
-	// and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
-	// Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set,
-	// secretRef must be omitted.
-	WorkloadIdentity *AzureWorkloadIdentityApplyConfiguration `json:"workloadIdentity,omitempty"`
 }
 
 // AzureDevOpsApplyConfiguration constructs a declarative configuration of the AzureDevOps type for use with
@@ -53,13 +47,5 @@ func (b *AzureDevOpsApplyConfiguration) WithOrganization(value string) *AzureDev
 // If called multiple times, the Domain field is set to the value of the last call.
 func (b *AzureDevOpsApplyConfiguration) WithDomain(value string) *AzureDevOpsApplyConfiguration {
 	b.Domain = &value
-	return b
-}
-
-// WithWorkloadIdentity sets the WorkloadIdentity field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the WorkloadIdentity field is set to the value of the last call.
-func (b *AzureDevOpsApplyConfiguration) WithWorkloadIdentity(value *AzureWorkloadIdentityApplyConfiguration) *AzureDevOpsApplyConfiguration {
-	b.WorkloadIdentity = value
 	return b
 }

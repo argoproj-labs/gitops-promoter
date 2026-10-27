@@ -24,11 +24,8 @@ var _ = Describe("Azure workload identity", func() {
 		ClientID: "00000000-0000-0000-0000-000000000001",
 		TenantID: "00000000-0000-0000-0000-000000000002",
 	}
-	wiProvider := &v1alpha1.ClusterScmProvider{Spec: v1alpha1.ScmProviderSpec{
-		AzureDevOps: &v1alpha1.AzureDevOps{Organization: "myorg", WorkloadIdentity: workloadIdentity},
-	}}
-	namespacedWIProvider := &v1alpha1.ScmProvider{Spec: v1alpha1.ScmProviderSpec{
-		AzureDevOps: &v1alpha1.AzureDevOps{Organization: "myorg", WorkloadIdentity: workloadIdentity},
+	wiProvider := &v1alpha1.ClusterScmProvider{Spec: v1alpha1.ClusterScmProviderSpec{
+		AzureDevOps: &v1alpha1.ClusterAzureDevOps{AzureDevOps: v1alpha1.AzureDevOps{Organization: "myorg"}, WorkloadIdentity: workloadIdentity},
 	}}
 	patProvider := &v1alpha1.ScmProvider{Spec: v1alpha1.ScmProviderSpec{
 		AzureDevOps: &v1alpha1.AzureDevOps{Organization: "myorg"},
@@ -82,30 +79,6 @@ var _ = Describe("Azure workload identity", func() {
 		})
 	})
 
-	Describe("on a namespaced ScmProvider", func() {
-		It("refuses to create a git authentication provider", func() {
-			_, err := azuredevops.NewAzdoGitAuthenticationProvider(namespacedWIProvider, &corev1.Secret{})
-			Expect(err).To(MatchError(ContainSubstring("only supported on ClusterScmProvider")))
-		})
-
-		It("refuses to create a client", func() {
-			_, _, err := azuredevops.GetClient(context.Background(), namespacedWIProvider, corev1.Secret{}, "myorg")
-			Expect(err).To(MatchError(ContainSubstring("only supported on ClusterScmProvider")))
-		})
-
-		It("refuses to apply HTTP auth", func() {
-			req, _ := http.NewRequest(http.MethodGet, "https://example.com", nil)
-			err := azuredevops.ApplyHTTPAuth(context.Background(), namespacedWIProvider, corev1.Secret{}, req)
-			Expect(err).To(MatchError(ContainSubstring("only supported on ClusterScmProvider")))
-			Expect(req.Header.Get("Authorization")).To(BeEmpty())
-		})
-
-		It("never requests a token", func() {
-			_, _ = azuredevops.NewAzdoGitAuthenticationProvider(namespacedWIProvider, &corev1.Secret{})
-			Expect(requested).To(BeNil())
-		})
-	})
-
 	Describe("GetClient", func() {
 		It("creates a Bearer authenticated connection with workload identity", func() {
 			connection, _, err := azuredevops.GetClient(context.Background(), wiProvider, corev1.Secret{}, "myorg")
@@ -143,7 +116,10 @@ var _ = Describe("GetGitHTTPHeader", func() {
 			return "entra-token", nil
 		})
 		defer restore()
-		wi := &v1alpha1.ClusterScmProvider{Spec: v1alpha1.ScmProviderSpec{AzureDevOps: &v1alpha1.AzureDevOps{Organization: "o", WorkloadIdentity: &v1alpha1.AzureWorkloadIdentity{}}}}
+		wi := &v1alpha1.ClusterScmProvider{Spec: v1alpha1.ClusterScmProviderSpec{AzureDevOps: &v1alpha1.ClusterAzureDevOps{
+			AzureDevOps:      v1alpha1.AzureDevOps{Organization: "o"},
+			WorkloadIdentity: &v1alpha1.AzureWorkloadIdentity{},
+		}}}
 		provider, err := azuredevops.NewAzdoGitAuthenticationProvider(wi, &corev1.Secret{})
 		Expect(err).NotTo(HaveOccurred())
 

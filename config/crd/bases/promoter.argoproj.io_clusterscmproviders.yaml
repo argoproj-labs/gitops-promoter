@@ -45,7 +45,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: ScmProviderSpec defines the desired state of ScmProvider
+            description: |-
+              ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that
+              azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can
+              create.
             properties:
               azureDevOps:
                 description: AzureDevOps required configuration for Azure DevOps as
@@ -79,8 +82,7 @@ spec:
                       WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
                       The controller pod must be configured for Azure workload identity, which projects a federated service account token
                       and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
-                      Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set,
-                      secretRef must be omitted.
+                      When set, secretRef must be omitted.
                     properties:
                       clientID:
                         description: |-

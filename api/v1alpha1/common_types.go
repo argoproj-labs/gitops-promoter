@@ -87,7 +87,6 @@ type Gitea struct {
 }
 
 // AzureDevOps is an Azure DevOps SCM provider configuration. It is used to configure the Azure DevOps settings.
-// +kubebuilder:validation:XValidation:rule="!has(self.workloadIdentity) || !has(self.domain)",message="workloadIdentity is only supported for Azure DevOps Services, leave domain empty"
 type AzureDevOps struct {
 	// Organization is the Azure DevOps organization name.
 	// +kubebuilder:validation:Required
@@ -102,11 +101,18 @@ type AzureDevOps struct {
 	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
 	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
+}
+
+// ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with
+// authentication that is only safe on a cluster-scoped resource, which only cluster admins can create.
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadIdentity) || !has(self.domain)",message="workloadIdentity is only supported for Azure DevOps Services, leave domain empty"
+type ClusterAzureDevOps struct {
+	AzureDevOps `json:",inline"`
+
 	// WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
 	// The controller pod must be configured for Azure workload identity, which projects a federated service account token
 	// and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
-	// Only supported on ClusterScmProvider, so namespaced tenants cannot use the controller's identity. When set,
-	// secretRef must be omitted.
+	// When set, secretRef must be omitted.
 	// +optional
 	WorkloadIdentity *AzureWorkloadIdentity `json:"workloadIdentity,omitempty"`
 }

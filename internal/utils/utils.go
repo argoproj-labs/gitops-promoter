@@ -106,9 +106,6 @@ func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient cli
 	if scmProvider.GetSpec().SecretRef == nil {
 		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
 		if azdo := scmProvider.GetSpec().AzureDevOps; azdo != nil && azdo.WorkloadIdentity != nil {
-			if _, ok := scmProvider.(*promoterv1alpha1.ClusterScmProvider); !ok {
-				return nil, nil, fmt.Errorf("azureDevOps.workloadIdentity is only supported on ClusterScmProvider, not on %s %q", kind, scmProvider.GetName())
-			}
 			// Azure DevOps workload identity authenticates with the controller's identity, not a secret.
 			return scmProvider, &v1.Secret{}, nil
 		}

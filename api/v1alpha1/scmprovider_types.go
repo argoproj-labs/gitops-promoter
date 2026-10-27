@@ -30,13 +30,8 @@ import (
 // ScmProviderKind is the kind of the ScmProvider resource.
 var ScmProviderKind = reflect.TypeFor[ScmProvider]().Name()
 
-// ScmProviderSpec defines the desired state of ScmProvider
-// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
-// +kubebuilder:validation:XValidation:rule="!has(self.azureDevOps) || !has(self.azureDevOps.workloadIdentity) || !has(self.secretRef)",message="secretRef must not be set when azureDevOps.workloadIdentity is used"
-type ScmProviderSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
+// ScmProviderSpecCommon holds the ScmProvider and ClusterScmProvider spec fields that have the same type on both kinds.
+type ScmProviderSpecCommon struct {
 	// SecretRef contains the credentials required to auth to a specific provider
 	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 
@@ -58,11 +53,17 @@ type ScmProviderSpec struct {
 	// BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider
 	BitbucketDataCenter *BitbucketDataCenter `json:"bitbucketDataCenter,omitempty"`
 
-	// AzureDevOps required configuration for Azure DevOps as the SCM provider
-	AzureDevOps *AzureDevOps `json:"azureDevOps,omitempty"`
-
 	// Fake required configuration for Fake as the SCM provider
 	Fake *Fake `json:"fake,omitempty"`
+}
+
+// ScmProviderSpec defines the desired state of ScmProvider
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
+type ScmProviderSpec struct {
+	ScmProviderSpecCommon `json:",inline"`
+
+	// AzureDevOps required configuration for Azure DevOps as the SCM provider
+	AzureDevOps *AzureDevOps `json:"azureDevOps,omitempty"`
 }
 
 // ScmProviderStatus defines the observed state of ScmProvider
@@ -100,7 +101,6 @@ type ScmProviderStatus struct {
 //+kubebuilder:subresource:status
 
 // ScmProvider is the Schema for the scmproviders API
-// +kubebuilder:validation:XValidation:rule="!has(self.spec) || !has(self.spec.azureDevOps) || !has(self.spec.azureDevOps.workloadIdentity)",message="azureDevOps.workloadIdentity is only supported on ClusterScmProvider"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -151,7 +151,9 @@ func init() {
 type GenericScmProvider interface {
 	runtime.Object
 	metav1.Object
-	GetSpec() *ScmProviderSpec
+	// GetSpec returns the spec as a ClusterScmProviderSpec, the superset of both kinds' specs, so callers can handle
+	// either kind the same way. Fields only a ClusterScmProvider can set are empty for an ScmProvider.
+	GetSpec() *ClusterScmProviderSpec
 	SCMCallScope
 }
 
@@ -159,7 +161,12 @@ type GenericScmProvider interface {
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ScmProvider{}
 
-// GetSpec returns the ScmProviderSpec for the ScmProvider.
-func (s *ScmProvider) GetSpec() *ScmProviderSpec {
-	return &s.Spec
+// GetSpec returns a copy of the ScmProvider's spec as a ClusterScmProviderSpec. Changes to it are not applied to the
+// ScmProvider.
+func (s *ScmProvider) GetSpec() *ClusterScmProviderSpec {
+	spec := &ClusterScmProviderSpec{ScmProviderSpecCommon: s.Spec.ScmProviderSpecCommon}
+	if s.Spec.AzureDevOps != nil {
+		spec.AzureDevOps = &ClusterAzureDevOps{AzureDevOps: *s.Spec.AzureDevOps}
+	}
+	return spec
 }

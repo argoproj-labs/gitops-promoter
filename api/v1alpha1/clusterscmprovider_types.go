@@ -29,6 +29,18 @@ import (
 // ClusterScmProviderKind is the kind of the ClusterScmProvider resource.
 var ClusterScmProviderKind = reflect.TypeFor[ClusterScmProvider]().Name()
 
+// ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that
+// azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can
+// create.
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
+// +kubebuilder:validation:XValidation:rule="!has(self.azureDevOps) || !has(self.azureDevOps.workloadIdentity) || !has(self.secretRef)",message="secretRef must not be set when azureDevOps.workloadIdentity is used"
+type ClusterScmProviderSpec struct {
+	ScmProviderSpecCommon `json:",inline"`
+
+	// AzureDevOps required configuration for Azure DevOps as the SCM provider
+	AzureDevOps *ClusterAzureDevOps `json:"azureDevOps,omitempty"`
+}
+
 // +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -40,8 +52,8 @@ type ClusterScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ScmProviderSpec   `json:"spec,omitempty"`
-	Status ScmProviderStatus `json:"status,omitempty"`
+	Spec   ClusterScmProviderSpec `json:"spec,omitempty"`
+	Status ScmProviderStatus      `json:"status,omitempty"`
 }
 
 // GetConditions returns the conditions of the ClusterScmProvider.
@@ -79,7 +91,7 @@ func init() {
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ClusterScmProvider{}
 
-// GetSpec returns the ScmProviderSpec for the cluster-scoped SCM provider.
-func (s *ClusterScmProvider) GetSpec() *ScmProviderSpec {
+// GetSpec returns the spec of the cluster-scoped SCM provider.
+func (s *ClusterScmProvider) GetSpec() *ClusterScmProviderSpec {
 	return &s.Spec
 }

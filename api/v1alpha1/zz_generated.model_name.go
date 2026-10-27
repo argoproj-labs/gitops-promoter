@@ -156,6 +156,11 @@ func (in ChangeTransferPolicyStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterAzureDevOps) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterAzureDevOps"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProvider) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProvider"
 }
@@ -163,6 +168,11 @@ func (in ClusterScmProvider) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProviderList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterScmProviderSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderSpec"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -643,6 +653,11 @@ func (in ScmProviderObjectReference) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ScmProviderSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ScmProviderSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScmProviderSpecCommon) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScmProviderSpecCommon"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

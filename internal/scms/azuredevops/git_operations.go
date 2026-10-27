@@ -39,11 +39,7 @@ const (
 // NewAzdoGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Azure DevOps.
 // It supports both Personal Access Token (PAT) and Azure workload identity authentication.
 func NewAzdoGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) (GitAuthenticationProvider, error) {
-	wi, err := workloadIdentityConfig(scmProvider)
-	if err != nil {
-		return GitAuthenticationProvider{}, err
-	}
-	if wi != nil {
+	if wi := workloadIdentityConfig(scmProvider); wi != nil {
 		return GitAuthenticationProvider{
 			scmProvider:      scmProvider,
 			authType:         AuthTypeWorkloadIdentity,
@@ -59,18 +55,12 @@ func NewAzdoGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, s
 }
 
 // workloadIdentityConfig returns the workload identity configuration of the provider, or nil when it uses a PAT.
-// Workload identity uses the controller's own identity, so only cluster-scoped providers, which only admins can
-// create, may use it. The CRD rejects it on ScmProvider too; this guards against a CRD that is out of date.
-func workloadIdentityConfig(scmProvider v1alpha1.GenericScmProvider) (*v1alpha1.AzureWorkloadIdentity, error) {
-	azdo := scmProvider.GetSpec().AzureDevOps
-	if azdo == nil || azdo.WorkloadIdentity == nil {
-		return nil, nil
+// Always nil for an ScmProvider, whose spec has no workloadIdentity field.
+func workloadIdentityConfig(scmProvider v1alpha1.GenericScmProvider) *v1alpha1.AzureWorkloadIdentity {
+	if azdo := scmProvider.GetSpec().AzureDevOps; azdo != nil {
+		return azdo.WorkloadIdentity
 	}
-	if _, ok := scmProvider.(*v1alpha1.ClusterScmProvider); !ok {
-		return nil, fmt.Errorf("azureDevOps.workloadIdentity is only supported on ClusterScmProvider, not on %s %q",
-			v1alpha1.ScmProviderKind, scmProvider.GetName())
-	}
-	return azdo.WorkloadIdentity, nil
+	return nil
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for an Azure DevOps repository.
@@ -139,11 +129,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	var authProvider GitAuthenticationProvider
 	var err error
 
-	wi, err := workloadIdentityConfig(scmProvider)
-	if err != nil {
-		return nil, nil, err
-	}
-	if wi != nil {
+	if wi := workloadIdentityConfig(scmProvider); wi != nil {
 		connection, authProvider, err = createWorkloadIdentityConnection(ctx, scmProvider, wi, organizationUrl)
 	} else {
 		connection, authProvider, err = createPATConnection(scmProvider, secret, organizationUrl)
