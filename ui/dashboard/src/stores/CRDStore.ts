@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
 import { environmentsFromBundle } from '@shared/utils/environments';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import { scmProviderSpecFromBundle, sortStrategyCommitStatuses } from '@shared/utils/util';
 import type { PromotionStrategy, CommitStatusManagerBundle } from '@shared/utils/PSData';
-import type { PromotionStrategyDetails } from '@shared/types/view';
+import type { PromotionStrategyDetails, ScmProviderSpec } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
@@ -45,11 +45,18 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   } as T;
 }
 
+function itemKey(item: { metadata: { namespace?: string; name?: string } }): string {
+  return `${item.metadata.namespace}/${item.metadata.name}`;
+}
+
 export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
   let eventSource: EventSource | null = null;
 
   return create<{
     items: T[];
+    // The SCM provider spec of each item's bundle, keyed by namespace/name. Kept off the items so
+    // they stay the PromotionStrategy the manifest view shows.
+    scmProviders: Record<string, ScmProviderSpec | undefined>;
     loading: boolean;
     error: string | null;
     connectionStatus?: 'connecting' | 'open' | 'error';
@@ -59,6 +66,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     reset: () => void;
   }>((set) => ({
     items: [],
+    scmProviders: {},
     loading: false,
     error: null,
     connectionStatus: 'connecting',
@@ -72,7 +80,14 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
         if (!res.ok) throw new Error(`Error: ${res.status}`);
         const data = (await res.json()) as PromotionStrategyDetails[] | null;
 
-        set({ items: (data ?? []).map((b) => bundleToItem<T>(b)), loading: false });
+        const bundles = data ?? [];
+        set({
+          items: bundles.map((b) => bundleToItem<T>(b)),
+          scmProviders: Object.fromEntries(
+            bundles.map((b) => [itemKey(b), scmProviderSpecFromBundle(b)]),
+          ),
+          loading: false,
+        });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
@@ -101,7 +116,13 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
             } else {
               newItems = [...state.items, updated];
             }
-            return { items: newItems };
+            return {
+              items: newItems,
+              scmProviders: {
+                ...state.scmProviders,
+                [itemKey(bundle)]: scmProviderSpecFromBundle(bundle),
+              },
+            };
           });
         } catch {
           set({ error: 'Failed to parse real-time update' });
@@ -116,6 +137,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       }
     },
 
-    reset: () => set({ items: [] }),
+    reset: () => set({ items: [], scmProviders: {} }),
   }));
 }
