@@ -28,8 +28,10 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/tekton"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -130,6 +132,8 @@ func setTektonRunResults(ctx context.Context, runName, kind string, results map[
 	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
+// setAllEnvironmentsTektonRunCondition is a helper function that waits for the creatino of the Tekton runs in all environments
+// and updates their status to what is passed.
 func setAllEnvironmentsTektonRunCondition(ctx context.Context, tcsName, runType string, condition metav1.ConditionStatus) {
 	devRun := waitForTektonRunCreation(ctx, tcsName, testBranchDevelopment)
 	setTektonRunConditionStatus(ctx, devRun, runType, condition)
@@ -137,6 +141,14 @@ func setAllEnvironmentsTektonRunCondition(ctx context.Context, tcsName, runType 
 	setTektonRunConditionStatus(ctx, stagingRun, runType, condition)
 	productionRun := waitForTektonRunCreation(ctx, tcsName, testBranchProduction)
 	setTektonRunConditionStatus(ctx, productionRun, runType, condition)
+}
+
+// UnmarshalJSONDataToString converts JSON bytes to a string
+func UnmarshalJSONDataToString(data *apiextensionsv1.JSON) string {
+	var s string
+	err := json.Unmarshal(data.Raw, &s)
+	Expect(err).ToNot(HaveOccurred())
+	return s
 }
 
 var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
@@ -150,6 +162,10 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		pipelineTCS                      *promoterv1alpha1.TektonCommitStatus
 		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
 	)
+
+	// Helper functions to be used in table tests
+	getTaskTCS := func() *promoterv1alpha1.TektonCommitStatus { return taskTCS }
+	getPipelineTCS := func() *promoterv1alpha1.TektonCommitStatus { return pipelineTCS }
 
 	BeforeAll(func() {
 		ctx = context.Background()
@@ -195,7 +211,18 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		}
 	})
 
-	Describe("Basic reconciliation for TaskRun/PipelineRuns", func() {
+	AfterEach(func() {
+		if taskTCS != nil {
+			_ = k8sClient.Delete(ctx, taskTCS)
+		}
+		if pipelineTCS != nil {
+			_ = k8sClient.Delete(ctx, pipelineTCS)
+		}
+		Expect(k8sClient.DeleteAllOf(ctx, &tekton.TaskRun{}, client.InNamespace("default"))).To(Succeed())
+		Expect(k8sClient.DeleteAllOf(ctx, &tekton.PipelineRun{}, client.InNamespace("default"))).To(Succeed())
+	})
+
+	Describe("Basic reconciliation with TaskRun/PipelineRuns", func() {
 		taskKey := "tcs-taskrun-basic"
 		pipelineKey := "tcs-pipelinerun-basic"
 
@@ -241,213 +268,460 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(ctx, pipelineTCS)).To(Succeed())
 		})
 
-		AfterEach(func() {
-			if taskTCS != nil {
-				_ = k8sClient.Delete(ctx, taskTCS)
+		DescribeTable("TCS should report the correct phase",
+			func(kind, key string, condition metav1.ConditionStatus, expectedPhase promoterv1alpha1.CommitStatusPhase,
+				expectedTektonPhase string, getTCS func() *promoterv1alpha1.TektonCommitStatus,
+			) {
+				tcs := getTCS()
+				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
+
+				By("Pushing a hydrated commit")
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs basic test", "")
+
+				By("Set conditions for TaskRuns created for all environments")
+				setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
+
+				By("Waiting for TektonCommitStatus to process all environments")
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.TektonCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      tcs.Name,
+						Namespace: "default",
+					}, &updated)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					g.Expect(updated.Status.Environments).To(HaveLen(3))
+
+					for _, env := range updated.Status.Environments {
+						g.Expect(env.Phase).To(Equal(expectedPhase))
+						g.Expect(env.TektonRunPhase).To(Equal(expectedTektonPhase))
+						g.Expect(env.TargetedSha).ToNot(BeEmpty())
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+			},
+			Entry("TCS should report success when TaskRun completes",
+				tekton.TektonKindTask,
+				taskKey,
+				metav1.ConditionTrue,
+				promoterv1alpha1.CommitPhaseSuccess,
+				tekton.TektonRunPhaseSucceeded,
+				getTaskTCS),
+			Entry("TCS should report failure when TaskRun fails",
+				tekton.TektonKindTask,
+				taskKey,
+				metav1.ConditionFalse,
+				promoterv1alpha1.CommitPhaseFailure,
+				tekton.TektonRunPhaseFailed,
+				getTaskTCS),
+			Entry("TCS should report pending when TaskRun is running",
+				tekton.TektonKindTask,
+				taskKey,
+				metav1.ConditionUnknown,
+				promoterv1alpha1.CommitPhasePending,
+				tekton.TektonRunPhaseRunning,
+				getTaskTCS),
+			Entry("TCS should report success when PipelineRun completes",
+				tekton.TektonKindPipeline,
+				pipelineKey,
+				metav1.ConditionTrue,
+				promoterv1alpha1.CommitPhaseSuccess,
+				tekton.TektonRunPhaseSucceeded,
+				getPipelineTCS),
+			Entry("TCS should report failure when PipelineRun fails",
+				tekton.TektonKindPipeline,
+				pipelineKey,
+				metav1.ConditionFalse,
+				promoterv1alpha1.CommitPhaseFailure,
+				tekton.TektonRunPhaseFailed,
+				getPipelineTCS),
+			Entry("TCS should report pending when PipelineRun is running",
+				tekton.TektonKindPipeline,
+				pipelineKey,
+				metav1.ConditionUnknown,
+				promoterv1alpha1.CommitPhasePending,
+				tekton.TektonRunPhaseRunning,
+				getPipelineTCS))
+	})
+
+	Describe("Child CommitStatuses get created by a TektonCommitStatus", func() {
+		key := "tcs-child-commitstatus-test"
+
+		BeforeEach(func() {
+			By("create the TektonCommitStatus")
+			taskTCS = &promoterv1alpha1.TektonCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      name + "-child-commitstatus-test",
+				},
+				Spec: promoterv1alpha1.TektonCommitStatusSpec{
+					Key: key,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					TektonResource: promoterv1alpha1.TektonResourceRef{
+						Kind:           tekton.TektonKindTask,
+						Name:           "test-task",
+						ServiceAccount: "default",
+					},
+				},
 			}
-			if pipelineTCS != nil {
-				_ = k8sClient.Delete(ctx, pipelineTCS)
+			Expect(k8sClient.Create(ctx, taskTCS)).To(Succeed())
+		})
+
+		It("Child CommitStatuses get created by the TektonCommitStatus", func() {
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
+
+			By("Pushing a hydrated commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs test for child commit statuses", "")
+
+			Eventually(func(g Gomega) {
+				var commitStatus promoterv1alpha1.CommitStatus
+				devCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchDevelopment)
+				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devCSName}, &commitStatus)).To(Succeed())
+				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchDevelopment)))
+
+				stageCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchStaging)
+				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stageCSName}, &commitStatus)).To(Succeed())
+				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchStaging)))
+
+				prodCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchProduction)
+				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: prodCSName}, &commitStatus)).To(Succeed())
+				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchProduction)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Passing parameters to a TaskRun/PipelineRun", func() {
+		taskKey := "tcs-taskrun-parameters"
+		pipelineKey := "tcs-pipelinerun-parameters"
+
+		arrayStr := `["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]`
+		templatedArrayStr := `["{{ .TargetedSha }}", "{{ .Branch }}"]`
+		objectStr := `{"timeout": 300, "retries": 3, "verbose": true}`
+		templatedObjectStr := `{"branch": "{{ .Branch }}", "sha": "{{ .TargetedSha }}"}`
+
+		parameters := []promoterv1alpha1.TektonParameter{
+			{Name: "branch", Value: "{{ .Branch }}", Type: tekton.TektonDataTypeString},
+			{Name: "sha", Value: "{{ .TargetedSha }}", Type: tekton.TektonDataTypeString},
+			{Name: "someParam", Value: "value", Type: tekton.TektonDataTypeString},
+			{Name: "simpleArray", Value: arrayStr, Type: tekton.TektonDataTypeArray},
+			{Name: "templatedArray", Value: templatedArrayStr, Type: tekton.TektonDataTypeArray},
+			{Name: "simpleObj", Value: objectStr, Type: tekton.TektonDataTypeObject},
+			{Name: "templatedObj", Value: templatedObjectStr, Type: tekton.TektonDataTypeObject},
+		}
+
+		type SimpleObj struct {
+			Timeout int  `json:"timeout"`
+			Retries int  `json:"retries"`
+			Verbose bool `json:"verbose"`
+		}
+
+		type TemplatedObj struct {
+			Branch string `json:"branch"`
+			Sha    string `json:"sha"`
+		}
+
+		BeforeEach(func() {
+			By("create the TektonCommitStatus for the TaskRun")
+			taskTCS = &promoterv1alpha1.TektonCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      name + "-taskrun-parameters",
+				},
+				Spec: promoterv1alpha1.TektonCommitStatusSpec{
+					Key: taskKey,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					TektonResource: promoterv1alpha1.TektonResourceRef{
+						Kind:           tekton.TektonKindTask,
+						Name:           "test-task",
+						ServiceAccount: "default",
+						Parameters:     parameters,
+					},
+				},
 			}
-			Expect(k8sClient.DeleteAllOf(ctx, &tekton.TaskRun{}, client.InNamespace("default"))).To(Succeed())
-			Expect(k8sClient.DeleteAllOf(ctx, &tekton.PipelineRun{}, client.InNamespace("default"))).To(Succeed())
-		})
+			Expect(k8sClient.Create(ctx, taskTCS)).To(Succeed())
 
-		It("Should create a TaskRun and report success on all environments once the TaskRun is finished", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, taskKey)
-
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs taskrun basic test for success", "")
-
-			By("Set conditions for TaskRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, taskTCS.Name, tekton.TektonKindTask, metav1.ConditionTrue)
-
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      taskTCS.Name,
+			By("create the TektonCommitStatus for the PipelineRun")
+			pipelineTCS = &promoterv1alpha1.TektonCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "Environment "+env.Branch+" should report success")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseSucceeded), "TektonRuns phase should be Succeeded")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
+					Name:      name + "-pipelinerun-parameters",
+				},
+				Spec: promoterv1alpha1.TektonCommitStatusSpec{
+					Key: pipelineKey,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					TektonResource: promoterv1alpha1.TektonResourceRef{
+						Kind:           tekton.TektonKindPipeline,
+						Name:           "test-pipeline",
+						ServiceAccount: "default",
+						Parameters:     parameters,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pipelineTCS)).To(Succeed())
 		})
 
-		It("Should create a TaskRun and report fail on all environments once the TaskRun has failed", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, taskKey)
+		DescribeTable("TCS should populate TektonRun with parameters",
+			func(key, kind string, getTCS func() *promoterv1alpha1.TektonCommitStatus) {
+				tcs := getTCS()
+				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs taskrun basic test for failure", "")
+				By("Pushing a hydrated commit")
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs parameter test", "")
 
-			By("Set conditions for TaskRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, taskTCS.Name, tekton.TektonKindTask, metav1.ConditionFalse)
+				By("Check parameters that are included on the TektonRun")
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.TektonCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      tcs.Name,
+						Namespace: "default",
+					}, &updated)
+					g.Expect(err).NotTo(HaveOccurred())
 
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      taskTCS.Name,
+					g.Expect(updated.Status.Environments).To(HaveLen(3))
+
+					for _, env := range updated.Status.Environments {
+						params := []tekton.Data{}
+						switch kind {
+						case tekton.TektonKindTask:
+							var taskRun tekton.TaskRun
+							err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &taskRun)
+							g.Expect(err).NotTo(HaveOccurred())
+							params = taskRun.Spec.Params
+						case tekton.TektonKindPipeline:
+							var pipelineRun tekton.PipelineRun
+							err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)
+							g.Expect(err).NotTo(HaveOccurred())
+							params = pipelineRun.Spec.Params
+						}
+
+						branchFound := false
+						shaFound := false
+						paramFound := false
+						simpleArrayFound := false
+						templatedArrayFound := false
+						simpleObjFound := false
+						templatedObjFound := false
+						for _, param := range params {
+							switch param.Name {
+							case "branch":
+								branchFound = true
+								g.Expect(UnmarshalJSONDataToString(param.Value)).To(Equal(env.Branch))
+							case "sha":
+								shaFound = true
+								g.Expect(UnmarshalJSONDataToString(param.Value)).To(Equal(env.TargetedSha))
+							case "someParam":
+								paramFound = true
+								g.Expect(UnmarshalJSONDataToString(param.Value)).To(Equal("value"))
+							case "simpleArray":
+								simpleArrayFound = true
+								var array []any
+								g.Expect(json.Unmarshal(param.Value.Raw, &array)).To(Succeed())
+								g.Expect(array).To(HaveLen(4))
+							case "templatedArray":
+								templatedArrayFound = true
+								var array []any
+								g.Expect(json.Unmarshal(param.Value.Raw, &array)).To(Succeed())
+								g.Expect(array).To(HaveLen(2))
+								g.Expect(array).To(ContainElements(env.Branch, env.TargetedSha))
+							case "simpleObj":
+								simpleObjFound = true
+								expectedObj := SimpleObj{Timeout: 300, Retries: 3, Verbose: true}
+								var obj SimpleObj
+								g.Expect(json.Unmarshal(param.Value.Raw, &obj)).To(Succeed())
+								g.Expect(obj).To(Equal(expectedObj))
+							case "templatedObj":
+								templatedObjFound = true
+								expectedObj := TemplatedObj{Branch: env.Branch, Sha: env.TargetedSha}
+								var obj TemplatedObj
+								g.Expect(json.Unmarshal(param.Value.Raw, &obj)).To(Succeed())
+								g.Expect(obj).To(Equal(expectedObj))
+							}
+						}
+						g.Expect(branchFound).To(BeTrue())
+						g.Expect(shaFound).To(BeTrue())
+						g.Expect(paramFound).To(BeTrue())
+						g.Expect(simpleArrayFound).To(BeTrue())
+						g.Expect(templatedArrayFound).To(BeTrue())
+						g.Expect(simpleObjFound).To(BeTrue())
+						g.Expect(templatedObjFound).To(BeTrue())
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+			},
+			Entry("TaskRun should get parameters from TCS",
+				taskKey,
+				tekton.TektonKindTask,
+				getTaskTCS),
+			Entry("PipelineRun should get parameters from TCS",
+				pipelineKey,
+				tekton.TektonKindPipeline,
+				getPipelineTCS))
+	})
+
+	Describe("Tekton Runs get pruned when run is successful and PruneRun is enabled", func() {
+		taskKey := "tcs-taskrun-prune"
+		pipelineKey := "tcs-pipelinerun-prune"
+
+		BeforeEach(func() {
+			By("create the TektonCommitStatus for the TaskRun")
+			taskTCS = &promoterv1alpha1.TektonCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
+					Name:      name + "-taskrun-basic",
+				},
+				Spec: promoterv1alpha1.TektonCommitStatusSpec{
+					Key: taskKey,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					TektonResource: promoterv1alpha1.TektonResourceRef{
+						Kind:           tekton.TektonKindTask,
+						Name:           "test-task",
+						ServiceAccount: "default",
+					},
+					PruneRun: true,
+				},
+			}
+			Expect(k8sClient.Create(ctx, taskTCS)).To(Succeed())
 
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure), "Environment "+env.Branch+" should report failure")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseFailed), "TektonRuns phase should be Failed")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-		})
-
-		It("Should create a TaskRun and report pending on all environments when the TaskRun is running", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, taskKey)
-
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs taskrun basic test for pending", "")
-
-			By("Set conditions for TaskRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, taskTCS.Name, tekton.TektonKindTask, metav1.ConditionUnknown)
-
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      taskTCS.Name,
+			By("create the TektonCommitStatus for the PipelineRun")
+			pipelineTCS = &promoterv1alpha1.TektonCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "Environment "+env.Branch+" should report pending")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseRunning), "TektonRuns phase should be Running")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
+					Name:      name + "-pipelinerun-basic",
+				},
+				Spec: promoterv1alpha1.TektonCommitStatusSpec{
+					Key: pipelineKey,
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					TektonResource: promoterv1alpha1.TektonResourceRef{
+						Kind:           tekton.TektonKindPipeline,
+						Name:           "test-pipeline",
+						ServiceAccount: "default",
+					},
+					PruneRun: true,
+				},
+			}
+			Expect(k8sClient.Create(ctx, pipelineTCS)).To(Succeed())
 		})
 
-		It("Should create a PipelineRun and report success on all environments once their PipelineRun is finished", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, pipelineKey)
+		DescribeTable("Should prune TektonRuns on a successful completion",
+			func(key, kind string, pruned bool, condition metav1.ConditionStatus,
+				getTCS func() *promoterv1alpha1.TektonCommitStatus,
+			) {
+				tcs := getTCS()
+				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs pipelinerun basic test for success", "")
+				By("Pushing a hydrated commit")
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs should prune test", "")
 
-			By("Set conditions for PipelineRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, pipelineTCS.Name, tekton.TektonKindPipeline, metav1.ConditionTrue)
+				By("Make sure TekTon was created")
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.TektonCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      tcs.Name,
+						Namespace: "default",
+					}, &updated)
+					g.Expect(err).NotTo(HaveOccurred())
 
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      pipelineTCS.Name,
-					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
+					// Should have a status for all 3 environments
+					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
+					// Check that each environment is in the phase of succeeded
+					for _, env := range updated.Status.Environments {
+						switch kind {
+						case tekton.TektonKindTask:
+							var taskRun tekton.TaskRun
+							g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &taskRun)).To(Succeed())
+						case tekton.TektonKindPipeline:
+							var pipelineRun tekton.PipelineRun
+							g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)).To(Succeed())
+						}
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
 
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "Environment "+env.Branch+" should report success")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseSucceeded), "TektonRuns phase should be Succeeded")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-		})
+				By("Set all environments to success so the runs get pruned")
+				setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
 
-		It("Should create a PipelineRun and report failed on all environments once their PipelineRun has failed", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, pipelineKey)
+				By("Make sure TektonRuns were deleted")
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.TektonCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      tcs.Name,
+						Namespace: "default",
+					}, &updated)
+					g.Expect(err).NotTo(HaveOccurred())
 
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs pipelinerun basic test for failure", "")
+					// Should have a status for all 3 environments
+					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-			By("Set conditions for PipelineRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, pipelineTCS.Name, tekton.TektonKindPipeline, metav1.ConditionFalse)
+					// Check that each environment is in the phase of succeeded
+					for _, env := range updated.Status.Environments {
+						switch kind {
+						case tekton.TektonKindTask:
+							var taskRun tekton.TaskRun
+							if pruned {
+								err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &taskRun)
+								g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+							} else {
+								g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &taskRun)).To(Succeed())
+							}
 
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      pipelineTCS.Name,
-					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure), "Environment "+env.Branch+" should report failure")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseFailed), "TektonRuns phase should be Failed")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-		})
-
-		It("Should create a PipelineRun and report pending on all environments while the PipelineRun is running", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, pipelineKey)
-
-			By("Pushing a hydrated commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = os.RemoveAll(gitPath) }()
-			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs pipelinerun basic test for pending", "")
-
-			By("Set conditions for PipelineRuns created for all environments")
-			setAllEnvironmentsTektonRunCondition(ctx, pipelineTCS.Name, tekton.TektonKindPipeline, metav1.ConditionUnknown)
-
-			By("Waiting for TektonCommitStatus to process all environments")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TektonCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      pipelineTCS.Name,
-					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Should have a status for all 3 environments
-				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-
-				// Check that each environment is in the phase of succeeded
-				for _, env := range tcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "Environment "+env.Branch+" should report pending")
-					g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseRunning), "TektonRuns phase should be Running")
-					g.Expect(env.TargetedSha).ToNot(BeEmpty(), "TargetedSha should be populated")
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-		})
+						case tekton.TektonKindPipeline:
+							var pipelineRun tekton.PipelineRun
+							if pruned {
+								err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)
+								g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+							} else {
+								g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)).To(Succeed())
+							}
+						}
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+			},
+			Entry("TaskRun created by TCS should get pruned on success",
+				taskKey,
+				tekton.TektonKindTask,
+				true,
+				metav1.ConditionTrue,
+				getTaskTCS),
+			Entry("PipelineRun created by TCS should get pruned on success",
+				pipelineKey,
+				tekton.TektonKindPipeline,
+				true,
+				metav1.ConditionTrue,
+				getPipelineTCS),
+			Entry("TaskRun created by TCS should get pruned on failure",
+				taskKey,
+				tekton.TektonKindTask,
+				false,
+				metav1.ConditionFalse,
+				getTaskTCS),
+			Entry("PipelineRun created by TCS should not get pruned on failure",
+				pipelineKey,
+				tekton.TektonKindPipeline,
+				false,
+				metav1.ConditionFalse,
+				getPipelineTCS))
 	})
 })

@@ -90,11 +90,11 @@ const (
 	TektonKindPipeline = "Pipeline"
 )
 
-// The following constants represent the different kind of types a result can be
+// The following constants represent the different kind of types a parameter/result can be
 const (
-	TektonResultTypeString = "string"
-	TektonResultTypeArray  = "array"
-	TektonResultTypeObject = "object"
+	TektonDataTypeString = "string"
+	TektonDataTypeArray  = "array"
+	TektonDataTypeObject = "object"
 )
 
 // +kubebuilder:object:root=true

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -257,6 +258,9 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			needToCreate = true
 		}
 
+		// TektonRun has been pruned if sha is the same, prune run is enabled, and the run phase is succeeded
+		pruned := prevEnvStatus.TargetedSha == shaToRun && tcs.Spec.PruneRun && prevEnvStatus.TektonRunPhase == tekton.TektonRunPhaseSucceeded
+
 		// Get the currentStatus of the Tekton Resource
 		// If the object does not exist it gets created and the currentStatus will be empty
 		var currentStatus tekton.TektonRunStatus
@@ -264,7 +268,7 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 		// FIXME: need to handle a case where its trying to create something that already exists gracefully
 		if needToCreate {
 			runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
-		} else {
+		} else if !pruned {
 			runName = prevEnvStatus.TektonRunName
 			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
 		}
@@ -272,9 +276,18 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			return nil, nil, err
 		}
 
-		newEnvStatus, description, err := r.calculateNewEnvironmentStatus(tcs, currentStatus, env.Branch, shaToRun, runName)
-		if err != nil {
-			return nil, nil, err
+		var newEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus
+		var description string
+		if pruned {
+			// If TektonRun has been pruned reuse the previous status as we do not have data to calculate and result was already successful
+			newEnvStatus = prevEnvStatus
+			description = fmt.Sprintf("Tekton run %s of kind %s succeeded and all result checks passed on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, env.Branch)
+
+		} else {
+			newEnvStatus, description, err = r.calculateNewEnvironmentStatus(tcs, currentStatus, env.Branch, shaToRun, runName)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 
 		if prevEnvStatus.Phase != promoterv1alpha1.CommitPhaseSuccess && newEnvStatus.Phase == promoterv1alpha1.CommitPhaseSuccess {
@@ -282,13 +295,12 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			logger.Info("Validation transitioned to success", "branch", env.Branch, "sha", shaToRun)
 			if tcs.Spec.PruneRun {
 				// Only prune the Tekton resource on a successful transition to allow users to look at the resource to
-				// figure out what went wrong.
-				// err = r.pruneTektonResource(ctx, tcs.Spec.TektonResource.Kind, tcs.Namespace, runName)
-				// if err != nil {
-				// 	logger.Error(err, "failed to prune Tekton resource, resource will still exist",
-				// 		"kind", tcs.Spec.TektonResource.Kind, "namespace", tcs.Namespace,
-				// 		"name", runName)
-				// }
+				err = r.pruneTektonResource(ctx, tcs.Spec.TektonResource.Kind, tcs.Namespace, runName)
+				if err != nil {
+					logger.Error(err, "failed to prune Tekton resource, resource will still exist",
+						"kind", tcs.Spec.TektonResource.Kind, "namespace", tcs.Namespace,
+						"name", runName)
+				}
 			}
 		}
 
@@ -332,8 +344,8 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 		"Branch":      branch,
 	}
 
-	for name, value := range resourceRef.Parameters {
-		tmpl, err := template.New(name).Parse(value)
+	for _, parameter := range resourceRef.Parameters {
+		tmpl, err := template.New(parameter.Name).Parse(parameter.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -343,7 +355,21 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 			return nil, err
 		}
 
-		params = append(params, tekton.Data{Name: name, Value: &apiextensionsv1.JSON{Raw: writer.Bytes()}})
+		var jsonBytes []byte
+		switch parameter.Type {
+		case tekton.TektonDataTypeString, "":
+			jsonBytes, err = json.Marshal(writer.String())
+			if err != nil {
+				return nil, err
+			}
+		case tekton.TektonDataTypeArray, tekton.TektonDataTypeObject:
+			jsonBytes = []byte(strings.TrimSpace(writer.String()))
+			if !json.Valid(jsonBytes) {
+				return nil, fmt.Errorf("invalid JSON for parameter %s of type %s", parameter.Name, parameter.Type)
+			}
+		}
+
+		params = append(params, tekton.Data{Name: parameter.Name, Value: &apiextensionsv1.JSON{Raw: jsonBytes}, Type: parameter.Type})
 	}
 	return params, nil
 }
