@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "dashboard/src/main.tsx",
+    "extension/index.tsx",
+    "storybook/src/**/*.stories.tsx",
+    "storybook/.storybook/*.ts",
+    "*/test/**/*.{ts,tsx}",
+    "*/**/*.test.{ts,tsx}",
+    "*/{vite,vitest}.config.{ts,mts}",
+    "components-lib/test/setup.ts"
+  ],
+  "project": [
+    "{dashboard,extension,shared,components-lib,storybook}/**/*.{ts,tsx}",
+    "!**/node_modules/**",
+    "!**/dist/**"
+  ],
+  "paths": {
+    "@shared/*": ["shared/src/*"],
+    "@lib/*": ["components-lib/src/*"],
+    "@components-lib/*": ["components-lib/src/*"]
+  },
+  "ignore": ["shared/src/types/generated/**"],
+  "ignoreExportsUsedInFile": { "interface": true, "type": true },
+  "include": ["files", "exports", "types", "nsExports", "nsTypes", "enumMembers", "duplicates"]
+}

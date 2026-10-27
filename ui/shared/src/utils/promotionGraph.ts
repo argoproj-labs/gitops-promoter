@@ -11,9 +11,9 @@
  */
 export const NODE_WIDTH = 154;
 export const NODE_HEIGHT = 60;
-export const COLUMN_GAP = 72;
-export const ROW_GAP = 24;
-export const CANVAS_PADDING = 16;
+const COLUMN_GAP = 72;
+const ROW_GAP = 24;
+const CANVAS_PADDING = 16;
 
 /** The subset of a PromotionStrategy needed to build the graph. */
 export interface PromotionGraphSource {

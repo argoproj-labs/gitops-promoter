@@ -399,8 +399,12 @@ lint-shared: install-ui-deps ## Run shared type-check
 lint-storybook: install-ui-deps ## Run storybook type-check (covers the plugin stories)
 	cd ui/storybook && npm install && npm run type-check
 
+.PHONY: lint-ui-deadcode
+lint-ui-deadcode: ## Find unused UI files and exports (knip)
+	cd ui && npm ci && npm run knip
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-storybook ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-storybook lint-ui-deadcode ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
