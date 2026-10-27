@@ -629,9 +629,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 // AddLabels adds labels to a pull request in the fake provider.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
 	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
-	if len(labelNames) == 0 {
-		return nil
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -657,9 +654,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 // RemoveLabels removes labels from a pull request in the fake provider.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
 	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
-	if len(labelNames) == 0 {
-		return nil
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

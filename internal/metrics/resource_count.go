@@ -49,9 +49,6 @@ func readinessFromObject(obj any) string {
 		return ""
 	}
 	conditions := cg.GetConditions()
-	if conditions == nil {
-		return ""
-	}
 	for _, c := range *conditions {
 		if c.Type == string(promoterConditions.Ready) {
 			return string(c.Status)

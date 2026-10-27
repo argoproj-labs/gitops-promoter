@@ -119,11 +119,8 @@ func phasePerBranchMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusP
 	return m
 }
 
-// sortedStringKeys returns lexicographically sorted map keys (nil when m is empty).
+// sortedStringKeys returns lexicographically sorted map keys.
 func sortedStringKeys[V any](m map[string]V) []string {
-	if len(m) == 0 {
-		return nil
-	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -133,11 +130,7 @@ func sortedStringKeys[V any](m map[string]V) []string {
 }
 
 // phasePerBranchSliceFromMap converts a branch→phase map into a sorted slice of per-branch phase items.
-// Returns nil when the map is empty.
 func phasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem {
-	if len(m) == 0 {
-		return nil
-	}
 	branches := sortedStringKeys(m)
 	out := make([]promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, 0, len(m))
 	for _, b := range branches {
@@ -147,11 +140,7 @@ func phasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase)
 }
 
 // lastSuccessfulShasMapFromSlice converts a slice of last-successful-SHA items into a map keyed by branch.
-// Returns nil when items is empty.
 func lastSuccessfulShasMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem) map[string]string {
-	if len(items) == 0 {
-		return nil
-	}
 	m := make(map[string]string, len(items))
 	for _, it := range items {
 		m[it.Branch] = it.LastSuccessfulSha

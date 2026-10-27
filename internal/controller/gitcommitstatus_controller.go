@@ -183,9 +183,6 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := gcs.Status.DeepCopy()
-	if previousStatus == nil {
-		previousStatus = &promoterv1alpha1.GitCommitStatusStatus{}
-	}
 
 	// Build a map of environment statuses for efficient lookup
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
@@ -311,9 +308,6 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 			envStatus = &ps.Status.Environments[i]
 			break
 		}
-	}
-	if envStatus == nil {
-		return nil, fmt.Errorf("environment status for branch %q not found in PromotionStrategy", branch)
 	}
 
 	// Determine which commit state to use based on the target

@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -311,9 +310,6 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	resp, err := clientToUse.Do(req)
 	if err != nil {
 		return webrequest.HTTPResponse{}, fmt.Errorf("HTTP request failed: %w", err)
-	}
-	if resp == nil {
-		return webrequest.HTTPResponse{}, errors.New("HTTP response is nil")
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
