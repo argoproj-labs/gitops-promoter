@@ -844,6 +844,97 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		Context("When an open PullRequest's Ready condition changes", func() {
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var prNamespacedName types.NamespacedName
+
+			BeforeEach(func() {
+				var name string
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-pr-ready-flip", "default")
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(name+"-ps", testBranchDevelopment)
+				// No auto-merge and no gates: once the PR is open, nothing but the PR itself (or the 5m periodic
+				// requeue) re-enqueues the CTP.
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+				typeNamespacedName = types.NamespacedName{Name: changeTransferPolicy.Name, Namespace: "default"}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName := scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prNamespacedName = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+			})
+
+			AfterEach(func() {
+				deleteRestoreActiveCommitsForPolicy(ctx, changeTransferPolicy.Name, changeTransferPolicy.Namespace)
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			// setPullRequestReady overwrites the PR's Ready condition status, standing in for a PR reconcile that
+			// failed (False) and a later one that recovered (True). The PullRequest controller doesn't reconcile on
+			// its own status changes, so the overwrite sticks.
+			setPullRequestReady := func(status metav1.ConditionStatus) {
+				GinkgoHelper()
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					ready.Status = status
+					ready.Reason = "TestOverride"
+					ready.Message = "set by test"
+					g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			ctpReadyStatus := func(g Gomega) metav1.ConditionStatus {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+				ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				return ready.Status
+			}
+
+			It("becomes Ready again as soon as its PullRequest recovers", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+				By("Opening a PR")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(meta.IsStatusConditionTrue(pr.Status.Conditions, string(promoterConditions.Ready))).To(BeTrue())
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Failing the PR and letting the CTP inherit it")
+				setPullRequestReady(metav1.ConditionFalse)
+				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionFalse))
+					g.Expect(changeTransferPolicy.Status.Conditions).To(ContainElement(
+						HaveField("Reason", string(promoterConditions.PullRequestNotReady))))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Recovering the PR without enqueueing the CTP")
+				setPullRequestReady(metav1.ConditionTrue)
+				// Well inside the CTP's 5m periodic requeue: only the PR update can bring it back this fast.
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, 30*time.Second).Should(Succeed())
+			})
+		})
+
 		Context("When emitting promotion lifecycle events", func() {
 			var name string
 			var scmSecret *v1.Secret
@@ -2056,13 +2147,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
 				Expect(secondDrySha).NotTo(Equal(firstDrySha))
 
-				By("Waiting for the controller to advance the CTP and report Ready=True without an SSA validation error")
+				By("Waiting for the full status apply to record the transition without an SSA validation error")
 				// Without the fix the full status SSA is rejected with 422 and the
-				// fallback writes only Ready=False with reason=ReconciliationError and
-				// the apiserver error in the message. With the fix the controller
-				// successfully applies status and Ready=True. We assert both the
-				// positive end state and the absence of the bug-specific error text in
-				// the Ready condition message.
+				// conditions-only fallback leaves Proposed.Dry on the previous SHA,
+				// leaves Proposed.Note populated, and writes Ready=False with the
+				// apiserver error in the message. The positive signal is that full
+				// status landing: Dry advances and Note is cleared. Ready=True is the
+				// wrong signal here — the CTP inherits PullRequestNotReady whenever
+				// the pull request reconcile is still retrying, which is routine
+				// under SCM or apiserver faults and is unrelated to this apply bug.
 				Eventually(func(g Gomega) {
 					var ctp promoterv1alpha1.ChangeTransferPolicy
 					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
@@ -2073,10 +2166,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
 					g.Expect(ready.Message).NotTo(ContainSubstring("must be of type object"),
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
-					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
-						"Ready should be True after the populated → empty proposed.note transition, got reason=%q message=%q", ready.Reason, ready.Message)
-					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationSuccess)))
-					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+
+					// A conditions-only fallback cannot change these fields, so both
+					// landing means the full status apply was accepted.
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
+						"controller should have advanced Proposed.Dry.Sha to the new dry commit")
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -2727,6 +2823,47 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	readyPR := func(status metav1.ConditionStatus, reason string) *promoterv1alpha1.PullRequest {
+		return &promoterv1alpha1.PullRequest{
+			Generation: 1,
+			Status: promoterv1alpha1.PullRequestStatus{
+				State: promoterv1alpha1.PullRequestOpen,
+				ID:    "1",
+				Conditions: []metav1.Condition{
+					{Type: string(promoterConditions.Ready), Status: status, Reason: reason, ObservedGeneration: 1},
+				},
+			},
+		}
+	}
+
+	It("enqueues when the Ready condition recovers", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition fails", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		newPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition first appears", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Status.Conditions = nil
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores Ready reason and message churn when the status is unchanged", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		oldPR.Status.Conditions[0].Message = "first failure"
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].Message = "second failure"
+		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
 
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
@@ -4474,5 +4611,62 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			err := c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RestoreActiveCommit{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
+	})
+})
+
+var _ = Describe("setPullRequestState with a not-yet-reconciled successor PR", func() {
+	It("clears the last-known PullRequest status instead of overwriting it with an all-empty one", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-ctp",
+				Namespace: "default",
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel: "stale-pr-status-ps",
+				},
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch: "environment/development",
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				// Last-known status from the previous PR, which has since been merged/closed and
+				// replaced by a new PR object below.
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:    "41",
+					State: promoterv1alpha1.PullRequestMerged,
+				},
+			},
+		}
+
+		// A brand new PullRequest was just created for this CTP. Its status hasn't been populated
+		// by the PullRequest controller yet, so Status.ID/State/etc. are all still zero-valued -
+		// this is the race window the bug lives in.
+		pr := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-pr",
+				Namespace: ctp.Namespace,
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+				},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				State: promoterv1alpha1.PullRequestOpen,
+			},
+		}
+
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr).Build()
+		r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+		Expect(r.setPullRequestState(ctx, ctp)).To(Succeed())
+
+		// Regression guard for kubernetes/kubernetes#135841: an all-empty PullRequestCommonStatus
+		// (every field is omitempty) marshals to "{}" in the server-side-apply body, which
+		// structured-merge turns into a JSON null on re-apply. Unlike status.proposed.dry (marked
+		// +nullable), the CRD schema for status.pullRequest rejects a null value, so the apply is
+		// rejected by the API server. The CTP must clear the field to nil - not copy the new PR's
+		// still-empty status over the last-known one - so the apply stays valid until the
+		// PullRequest controller populates the new PR's status (which re-triggers a CTP reconcile).
+		Expect(ctp.Status.PullRequest).To(BeNil())
 	})
 })

@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -821,6 +820,21 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 
 	if len(pr.Items) > 1 {
 		return tooManyPRsError(pr)
+	}
+
+	if pr.Items[0].Status.ID == "" && pr.Items[0].Status.State == "" {
+		// A successor PR object exists (e.g. just created to replace a merged/closed one), but the
+		// PullRequest controller hasn't populated its status yet. Clear any last-known status rather
+		// than copying this empty one over it: an all-empty PullRequestCommonStatus (every field is
+		// omitempty) marshals to "{}" in the server-side-apply body, which structured-merge turns into
+		// a JSON null on re-apply, and unlike status.proposed.dry (+nullable), the CRD schema for
+		// status.pullRequest rejects a null value. This is safe: pullRequestUpdateEnqueuesChangeTransferPolicyPredicate
+		// re-triggers a reconcile once the new PR's status is populated (ID transitions from "" to non-empty),
+		// so the real status is filled in on the very next reconcile instead of being lost.
+		logger.V(4).Info("Successor PR status not yet populated, clearing stale PR status in CTP",
+			"prName", pr.Items[0].Name)
+		ctp.Status.PullRequest = nil
+		return nil
 	}
 
 	if ctp.Status.PullRequest == nil {
@@ -2041,21 +2055,20 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
 
 	if ctp.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(ctp, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
+		if !controllerutil.AddFinalizer(ctp, finalizer) {
+			// Already has the finalizer.
 			return false, nil
 		}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(ctp, finalizer) {
-				return r.Update(ctx, ctp) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
+		// A single attempt, not a Get-retry loop: on conflict Reconcile returns the error and the
+		// standard workqueue rate limiter retries with a fresh top-level Get on the next Reconcile
+		// call. Re-Getting here would overwrite ctp -- including status.conditions, which Reconcile
+		// already reset via RemoveReadyCondition -- with whatever was last persisted, silently
+		// reintroducing a stale Ready condition from an earlier failed reconcile.
+		if err := r.Update(ctx, ctp); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
 	}
 
 	// If we're here, the object is being deleted
@@ -2070,16 +2083,11 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 		return false, fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
 	}
 
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
+	// A single attempt, not a Get-retry loop: see the add-finalizer path above.
+	if controllerutil.RemoveFinalizer(ctp, finalizer) {
+		if err := r.Update(ctx, ctp); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
-		if controllerutil.RemoveFinalizer(ctp, finalizer) {
-			return r.Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
-		}
-		return nil
-	}); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil
 }
@@ -2110,11 +2118,14 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
 //   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
+//   - Update when the Ready condition's status changes (including appearing or disappearing). The CTP
+//     inherits a not-Ready PR's condition, so without this a CTP whose PR recovers from a transient
+//     failure would stay not-Ready until its periodic requeue.
 //
 // Does not enqueue CTP on status-only updates, including:
 //   - status.url (stable or changed)
 //   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
-//   - status.conditions (Ready message, reason, lastTransitionTime)
+//   - other status.conditions changes (Ready message, reason, lastTransitionTime)
 //   - status.observedGeneration
 //   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
@@ -2144,9 +2155,21 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
 				return true
 			}
+			if readyConditionStatus(oldPR) != readyConditionStatus(newPR) {
+				return true
+			}
 			return false
 		},
 	}
+}
+
+// readyConditionStatus returns the status of pr's Ready condition, or "" when it has none.
+func readyConditionStatus(pr *promoterv1alpha1.PullRequest) metav1.ConditionStatus {
+	ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+	if ready == nil {
+		return ""
+	}
+	return ready.Status
 }
 
 // metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time
