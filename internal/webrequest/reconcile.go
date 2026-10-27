@@ -534,11 +534,12 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 				ResponseOutput:         lastState.ResponseData,
 				SuccessOutput:          lastState.SuccessData,
 			}
+			// Evaluate once without a Branch, as the shared request does, so every environment sees the same result.
+			baseTd.SuccessVariables = skippedSuccessVariables(ctx, defaultExpressionEvaluator, wrcs, baseTd)
 			commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 			for _, env := range applicableEnvs {
 				perEnvTd := baseTd
 				perEnvTd.Branch = env.Branch
-				perEnvTd.SuccessVariables = skippedSuccessVariables(ctx, defaultExpressionEvaluator, wrcs, perEnvTd)
 				cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)

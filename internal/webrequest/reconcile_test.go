@@ -316,7 +316,7 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 				DescriptionTemplate: `Build: {{ index .SuccessVariables "tag" }}`,
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{
-						Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"tag": "v1.2.3"}`},
+						Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"tag": "v1.2.3", "branch": Branch}`},
 						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 					},
 				},
@@ -364,7 +364,8 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(emitter.emitted).To(HaveLen(2))
 			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-			Expect(emitter.emitted[1].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+			Expect(emitter.emitted[1].SuccessVariables).To(Equal(emitter.emitted[0].SuccessVariables),
+				"the skip must evaluate success.when.variables the same way the request did")
 		},
 		Entry("environments context", promoterv1alpha1.ContextEnvironments),
 		Entry("promotionstrategy context", promoterv1alpha1.ContextPromotionStrategy),
