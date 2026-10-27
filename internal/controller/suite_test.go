@@ -739,10 +739,9 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	// --short=5 aligns with shipped ControllerConfiguration pullRequest.template (trunc 5 on dry SHA).
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=5", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-	shortSha = strings.TrimSpace(shortSha)
+	// Matches the shipped pullRequest.template's trunc 5 on the dry SHA. Not `git rev-parse --short=5`, which
+	// lengthens the prefix when 5 characters are ambiguous in this clone.
+	shortSha := sha[:5]
 
 	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)

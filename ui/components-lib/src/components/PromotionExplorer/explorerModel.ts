@@ -1,4 +1,5 @@
 import type { PromotionStrategy } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import {
   buildPromotionGraph,
   edgePath,
@@ -122,8 +123,11 @@ function graphSourceFor(
   return { spec: { environments: envs.map((env) => ({ branch: env.branch })) } };
 }
 
-export function buildExplorerModel(strategy: PromotionStrategy): ExplorerModel {
-  const matrix = buildMatrix(strategy);
+export function buildExplorerModel(
+  strategy: PromotionStrategy,
+  scm?: ScmProviderSpec,
+): ExplorerModel {
+  const matrix = buildMatrix(strategy, scm);
   const graph = buildPromotionGraph(graphSourceFor(strategy, matrix.envs));
   const layout = layoutPromotionGraph(graph);
   const columns = new Set(matrix.envs.map((env) => env.branch));
