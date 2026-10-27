@@ -20,8 +20,7 @@ package v1alpha1
 // TektonResourceRefApplyConfiguration represents a declarative configuration of the TektonResourceRef type for use
 // with apply.
 //
-// TektonResourceRef defines a reference to a Tekton resource. It does not assume the same namespace but the ServiceAccount
-// provided must have permissions in the desired namespace.
+// TektonResourceRef defines a reference to a Tekton resource that lives in the same namespace as the TektonCommitStatus.
 type TektonResourceRefApplyConfiguration struct {
 	// Kind is the kind of Tekton resource to target.
 	Kind *string `json:"kind,omitempty"`
@@ -31,17 +30,14 @@ type TektonResourceRefApplyConfiguration struct {
 	// on the targeted Tekton resource
 	ServiceAccount *string `json:"serviceAccount,omitempty"`
 	// Parameters are the parameters that get passed to the Tekton resource run that is created.
-	// A paramter's value can use the following Go template values to inject information into a paramter.
 	//
-	// .TargetedSha - The SHA that the pipeline is being run on
-	// .Branch - The name of the branch for the environment
-	//
-	// So for example you could have parameters like:
+	// Example:
 	// params:
-	// - githubUrl: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
-	// - shortSha: "{{ .TargetedSha | trunc 8 }}"
+	// - name: someParameter
+	// value: "someValue"
+	// type: "string"
 	//
-	Parameters map[string]string `json:"parameters,omitempty"`
+	Parameters []TektonParameterApplyConfiguration `json:"parameters,omitempty"`
 }
 
 // TektonResourceRefApplyConfiguration constructs a declarative configuration of the TektonResourceRef type for use with
@@ -74,16 +70,15 @@ func (b *TektonResourceRefApplyConfiguration) WithServiceAccount(value string) *
 	return b
 }
 
-// WithParameters puts the entries into the Parameters field in the declarative configuration
+// WithParameters adds the given value to the Parameters field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the Parameters field,
-// overwriting an existing map entries in Parameters field with the same key.
-func (b *TektonResourceRefApplyConfiguration) WithParameters(entries map[string]string) *TektonResourceRefApplyConfiguration {
-	if b.Parameters == nil && len(entries) > 0 {
-		b.Parameters = make(map[string]string, len(entries))
-	}
-	for k, v := range entries {
-		b.Parameters[k] = v
+// If called multiple times, values provided by each call will be appended to the Parameters field.
+func (b *TektonResourceRefApplyConfiguration) WithParameters(values ...*TektonParameterApplyConfiguration) *TektonResourceRefApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithParameters")
+		}
+		b.Parameters = append(b.Parameters, *values[i])
 	}
 	return b
 }

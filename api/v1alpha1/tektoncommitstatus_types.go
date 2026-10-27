@@ -87,8 +87,7 @@ type TektonCommitStatusSpec struct {
 	Target string `json:"target,omitempty"`
 }
 
-// TektonResourceRef defines a reference to a Tekton resource. It does not assume the same namespace but the ServiceAccount
-// provided must have permissions in the desired namespace.
+// TektonResourceRef defines a reference to a Tekton resource that lives in the same namespace as the TektonCommitStatus.
 type TektonResourceRef struct {
 	// Kind is the kind of Tekton resource to target.
 	// +kubebuilder:validation:Required
@@ -108,18 +107,52 @@ type TektonResourceRef struct {
 	ServiceAccount string `json:"serviceAccount"`
 
 	// Parameters are the parameters that get passed to the Tekton resource run that is created.
-	// A paramter's value can use the following Go template values to inject information into a paramter.
+	//
+	// Example:
+	// params:
+	//   - name: someParameter
+	//     value: "someValue"
+	//     type: "string"
+	//
+	// +optional
+	Parameters []TektonParameter `json:"parameters,omitempty"`
+}
+
+// TektonParameter defines a parameter to a Tekton Resource.
+type TektonParameter struct {
+	// Name is the name of the paramter
+	// +kubebuilder:validation:required
+	Name string `json:"name,omitempty"`
+	// Value is what the value of the paramter is. The value must be passed as a string. If you are looking to use an
+	// array or object a json formated string for an array or object must be provided.
+	// A parameter's value can use the following Go template values to inject information into a paramter.
 	//
 	// .TargetedSha - The SHA that the pipeline is being run on
 	// .Branch - The name of the branch for the environment
 	//
-	// So for example you could have parameters like:
+	// So some examples would be:
 	// params:
-	//   - githubUrl: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
-	//   - shortSha: "{{ .TargetedSha | trunc 8 }}"
+	//   - name: githubUrl
+	//     value: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
+	//     type: string
+	//   - name: shortSha
+	//     value: "{{ .TargetedSha | trunc 8 }}"
+	//     type: string
+	//   - name: architectures
+	//     value: |
+	//       ["linux/amd64", "linux/arm64"]
+	//     type: array
+	//   - name: objectExample
+	//     value: |
+	//       { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
 	//
-	// +optional
-	Parameters map[string]string `json:"parameters,omitempty"`
+	// +kubebuilder:validation:required
+	Value string `json:"value,omitempty"`
+	// Type represents the type of the paramater. Tekton Parameters can be either a string, array, or object.
+	// Defaults to string
+	// +kubebuilder:validation:Enum=string;array;object
+	// +kubebuilder:default="string"
+	Type string `json:"type,omitempty"`
 }
 
 type ExpectedResult struct {

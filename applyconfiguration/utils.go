@@ -279,6 +279,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TektonCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusStatus"):
 		return &apiv1alpha1.TektonCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonParameter"):
+		return &apiv1alpha1.TektonParameterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TektonResourceRef"):
 		return &apiv1alpha1.TektonResourceRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
