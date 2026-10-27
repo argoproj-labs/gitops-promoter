@@ -198,15 +198,10 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
-	Expect(err).NotTo(HaveOccurred())
 	if _, ok := scmFaultProbabilityFromEnv(); ok {
 		faultsInjected = true
-		// The shipped 5m slow delay would stall a spec whose reconciles hit maxFastAttempts injected
-		// faults in a row; retry well within the specs' timeouts instead.
-		controllerConfiguration = withSlowDelay(controllerConfiguration, "5s")
 	}
-	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
+	Expect(k8sClient.Create(ctx, controllerConfigurationForTests())).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
 	settingsMgr = settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
@@ -818,6 +813,19 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	}
 
 	return sha, shortSha
+}
+
+// controllerConfigurationForTests returns the shipped ControllerConfiguration for a test environment's controllers.
+// With faults injected, the shipped 5m slow delay would stall a spec whose reconciles hit maxFastAttempts errors in a
+// row, so it retries well within the specs' timeouts instead.
+func controllerConfigurationForTests() *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	cc, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
+	Expect(err).NotTo(HaveOccurred())
+	if faultsInjected {
+		cc = withSlowDelay(cc, "5s")
+	}
+	return cc
 }
 
 // withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.
