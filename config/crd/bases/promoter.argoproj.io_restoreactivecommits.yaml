@@ -111,8 +111,9 @@ spec:
                   branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
                   carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
                   restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit
-                  for the same sha is refused until the active branch moves, and that note is left unchanged. The
-                  controller writes a new commit (the commit's tree, or only activePath when the policy sets
+                  for the same sha deletes itself without writing a commit or changing that note, so it does not
+                  stay and block promotion. Otherwise the controller writes a new commit (the commit's tree, or only
+                  activePath when the policy sets
                   one) parented on the current active tip and records a promotion-history note with
                   Promoter-restored-from. When the active branch already has that content, nothing is written.
                   The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
