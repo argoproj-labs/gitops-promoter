@@ -170,7 +170,7 @@ func (r *MetricsTokenReconciler) Reconcile(ctx context.Context, _ ctrl.Request) 
 }
 
 // evaluateTokenRenewal reports whether secret's token should be renewed - when the secret is the
-// wrong type, missing a non-empty token, missing/unparseable expiry metadata (never trust a
+// wrong type, missing a non-empty token, missing/unparsable expiry metadata (never trust a
 // stored expiry we can't actually validate), or within metricsTokenRenewalPercent of expiring.
 // When needsRefresh is false, expiry is the token's parsed expiry time (for scheduling the next check).
 func evaluateTokenRenewal(secret *corev1.Secret, now time.Time) (needsRefresh bool, reason string, expiry time.Time) {
@@ -186,7 +186,7 @@ func evaluateTokenRenewal(secret *corev1.Secret, now time.Time) (needsRefresh bo
 	}
 	parsedExpiry, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
-		return true, "expiry annotation is unparseable", time.Time{}
+		return true, "expiry annotation is unparsable", time.Time{}
 	}
 
 	lifetime := time.Duration(metricsTokenExpirySeconds) * time.Second

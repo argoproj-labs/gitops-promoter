@@ -59,7 +59,7 @@ func TestEvaluateTokenRenewal(t *testing.T) {
 			wantRefresh: true,
 		},
 		{
-			name: "unparseable expiry annotation",
+			name: "unparsable expiry annotation",
 			secret: &corev1.Secret{
 				Type: corev1.SecretTypeOpaque,
 				Data: map[string][]byte{metricsTokenKey: []byte("tok")},
