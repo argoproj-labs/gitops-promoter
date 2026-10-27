@@ -9,8 +9,8 @@
  * Not validated, so handled here: dependsOn entries naming a branch that is not declared in the
  * environments list. Those edges are dropped.
  */
-export const NODE_WIDTH = 154;
-export const NODE_HEIGHT = 60;
+const NODE_WIDTH = 154;
+const NODE_HEIGHT = 60;
 const COLUMN_GAP = 72;
 const ROW_GAP = 24;
 const CANVAS_PADDING = 16;
@@ -116,16 +116,6 @@ export function buildPromotionGraph(source: PromotionGraphSource): PromotionGrap
   return { nodes, edges, parents, children };
 }
 
-/** Direct parents of a branch; empty for unknown branches. */
-export function parentsOf(graph: PromotionGraph, id: string): string[] {
-  return graph.parents[id] ?? [];
-}
-
-/** Direct children of a branch; empty for unknown branches. */
-export function childrenOf(graph: PromotionGraph, id: string): string[] {
-  return graph.children[id] ?? [];
-}
-
 function walk(start: string, next: Record<string, string[]>): Set<string> {
   const visited = new Set<string>();
   const stack = [...(next[start] ?? [])];
@@ -142,11 +132,6 @@ function walk(start: string, next: Record<string, string[]>): Set<string> {
 /** All transitive parents of a branch, excluding the branch itself. Terminates on cycles. */
 export function ancestors(graph: PromotionGraph, id: string): Set<string> {
   return walk(id, graph.parents);
-}
-
-/** All transitive children of a branch, excluding the branch itself. Terminates on cycles. */
-export function descendants(graph: PromotionGraph, id: string): Set<string> {
-  return walk(id, graph.children);
 }
 
 function computeLayers(graph: PromotionGraph): Map<string, number> {

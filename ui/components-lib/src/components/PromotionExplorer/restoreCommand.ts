@@ -31,7 +31,7 @@ function dns1123(value: string): string {
  * environments restoring the same commit, or one environment restored to two commits,
  * do not collide. Stays inside the 253-character DNS-1123 subdomain limit.
  */
-export function restoreActiveCommitResourceName(branch: string, sha: string): string {
+function restoreActiveCommitResourceName(branch: string, sha: string): string {
   const prefix = 'restore-';
   const suffix = `-${sha.slice(0, 7)}`;
   const budget = 253 - prefix.length - suffix.length;

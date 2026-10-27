@@ -48,7 +48,7 @@ export interface ExplorerModel {
   edges: ExplorerEdge[];
 }
 
-export function splitBranch(branch: string): { kicker: string | null; title: string } {
+function splitBranch(branch: string): { kicker: string | null; title: string } {
   const at = branch.lastIndexOf('/');
   return at === -1
     ? { kicker: null, title: branch }
@@ -72,7 +72,7 @@ export function statusFromCellKind(kind: CellKind): NodeStatus | null {
   }
 }
 
-export function deriveNodeStatus(
+function deriveNodeStatus(
   branch: string,
   rows: readonly CommitRow[],
 ): { status: NodeStatus; hash?: string; rowId?: string } {
@@ -101,7 +101,7 @@ export function deriveNodeStatus(
   return was ?? { status: 'not-reached' };
 }
 
-export function orderEnvsByLayout(
+function orderEnvsByLayout(
   envs: readonly EnvColumn[],
   layout: Pick<GraphLayout, 'layers'>,
 ): EnvColumn[] {

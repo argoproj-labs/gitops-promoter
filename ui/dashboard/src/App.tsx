@@ -24,7 +24,7 @@ function LegacyHistoryRedirect() {
   );
 }
 
-export function AppRoutes() {
+function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<RootRedirect />} />

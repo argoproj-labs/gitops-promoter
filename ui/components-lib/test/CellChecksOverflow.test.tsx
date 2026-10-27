@@ -2,10 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FlowCell from '@lib/components/PromotionExplorer/FlowCell/FlowCell';
-import {
-  computeScrollOverflow,
-  hiddenRowsBelow,
-} from '@lib/components/PromotionExplorer/FlowCell/useScrollOverflow';
+import { hiddenRowsBelow } from '@lib/components/PromotionExplorer/FlowCell/useScrollOverflow';
 import type { CellState } from '@lib/components/PromotionExplorer/types';
 
 const ROW = 28;
@@ -105,32 +102,6 @@ describe('hiddenRowsBelow', () => {
     expect(hiddenRowsBelow(m(168), 10)).toBe(0);
     expect(hiddenRowsBelow(m(0, 84, 84), 3)).toBe(0);
     expect(hiddenRowsBelow(m(0), 0)).toBe(0);
-  });
-});
-
-describe('computeScrollOverflow', () => {
-  it('derives overflow and edge flags', () => {
-    expect(
-      computeScrollOverflow({ scrollTop: 0, clientHeight: 112, scrollHeight: 280 }),
-    ).toMatchObject({
-      hasOverflow: true,
-      atTop: true,
-      atBottom: false,
-    });
-    expect(
-      computeScrollOverflow({ scrollTop: 168, clientHeight: 112, scrollHeight: 280 }),
-    ).toMatchObject({
-      hasOverflow: true,
-      atTop: false,
-      atBottom: true,
-    });
-    expect(
-      computeScrollOverflow({ scrollTop: 0, clientHeight: 84, scrollHeight: 84 }),
-    ).toMatchObject({
-      hasOverflow: false,
-      atTop: true,
-      atBottom: true,
-    });
   });
 });
 

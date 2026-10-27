@@ -1,8 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    "dashboard/src/main.tsx",
-    "extension/index.tsx",
+    "dashboard/src/main.tsx!",
+    "extension/index.tsx!",
     "storybook/src/**/*.stories.tsx",
     "storybook/.storybook/*.ts",
     "*/test/**/*.{ts,tsx}",
@@ -11,7 +11,8 @@
     "components-lib/test/setup.ts"
   ],
   "project": [
-    "{dashboard,extension,shared,components-lib,storybook}/**/*.{ts,tsx}",
+    "{dashboard,extension,shared,components-lib}/**/*.{ts,tsx}!",
+    "storybook/**/*.{ts,tsx}",
     "!**/node_modules/**",
     "!**/dist/**"
   ],

@@ -6,12 +6,11 @@ import type { CellState, CommitRow, EnvColumn } from '@lib/components/PromotionE
 import {
   buildRestoreActiveCommitApplyCommand,
   canShowRestoreCommand,
-  restoreActiveCommitResourceName,
 } from '@lib/components/PromotionExplorer/restoreCommand';
 import { cellKindLabel } from '@lib/components/PromotionExplorer/presentation';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import { commitStatusPlugins } from '@shared/components/plugins';
-import type { CommitStatusContext } from '@shared/components/plugins';
+import type { CommitStatusContext } from '@shared/components/plugins/types';
 
 const HYDRATED_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
 
@@ -134,10 +133,13 @@ describe('restoreCommand helpers', () => {
   });
 
   it('keeps the resource name inside the DNS-1123 subdomain limit', () => {
-    const name = restoreActiveCommitResourceName(
-      'environment/'.repeat(40) + 'staging',
-      HYDRATED_SHA,
-    );
+    const cmd = buildRestoreActiveCommitApplyCommand({
+      namespace: 'promoter-system',
+      promotionStrategyName: 'argocon-demo',
+      branch: 'environment/'.repeat(40) + 'staging',
+      sha: HYDRATED_SHA,
+    });
+    const name = cmd.match(/^ {2}name: (.+)$/m)![1];
     expect(name.length).toBeLessThanOrEqual(253);
     expect(name).toMatch(/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/);
     expect(name.endsWith('-abcdef0')).toBe(true);

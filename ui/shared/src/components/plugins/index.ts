@@ -6,4 +6,4 @@ export const commitStatusPlugins: Partial<Record<CommitStatusManagerKind, RowPlu
   TimedCommitStatus,
 };
 
-export type { CommitStatusContext, RowPlugin } from './types';
+export type { RowPlugin } from './types';

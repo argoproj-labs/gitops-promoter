@@ -1,16 +1,3 @@
-import type { PromotionStrategy } from './promotion';
-
-// Extension API types
-export interface ResourceExtensionProps {
-  application: {
-    metadata: {
-      name: string;
-      namespace: string;
-    };
-  };
-  resource: PromotionStrategy;
-}
-
 // ArgoCD types extracted to remove dependency
 
 export interface ApplicationResource {
@@ -63,14 +50,6 @@ export interface StatusPanelProps {
 }
 
 export interface ExtensionsAPI {
-  registerResourceExtension: (
-    component: React.ComponentType<ResourceExtensionProps>,
-    group: string,
-    kind: string,
-    title: string,
-    options?: { icon: string },
-  ) => void;
-
   registerStatusPanelExtension: (
     component: React.ComponentType<StatusPanelProps>,
     title: string,
