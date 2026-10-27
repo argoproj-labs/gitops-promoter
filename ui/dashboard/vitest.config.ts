@@ -14,8 +14,13 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
-      // JUnit output is uploaded to Codecov Test Analytics by CI (gitignored).
-      reporters: ['default', 'junit'],
+      // JUnit output is uploaded to Codecov Test Analytics by CI (gitignored). Setting reporters
+      // turns off Vitest's implicit github-actions reporter, so add it back for failure annotations.
+      reporters: [
+        'default',
+        'junit',
+        ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      ],
       outputFile: { junit: './junit.xml' },
       include: ['test/**/*.test.{ts,tsx}'],
       server: {
