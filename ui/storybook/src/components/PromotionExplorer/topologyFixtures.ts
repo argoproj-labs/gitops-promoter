@@ -80,7 +80,7 @@ export interface DemoEnv {
   failedHistory?: string[];
 }
 
-export function demoStrategy(name: string, envs: DemoEnv[]): PromotionStrategy {
+function demoStrategy(name: string, envs: DemoEnv[]): PromotionStrategy {
   return {
     metadata: { name, namespace: 'default' },
     spec: {

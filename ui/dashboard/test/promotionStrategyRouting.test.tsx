@@ -56,7 +56,7 @@ vi.mock('../src/stores/NamespaceStore', () => {
 });
 
 const { AppRoutes } = await import('../src/App');
-const { PromotionStrategiesTiles } =
+const { default: PromotionStrategiesTiles } =
   await import('../src/components/PromotionStrategySummary/PromotionStrategyTiles');
 const { TopBar } = await import('../src/components/TopBar');
 

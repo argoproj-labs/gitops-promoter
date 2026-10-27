@@ -50,14 +50,6 @@ export interface AppViewComponentProps {
   application: Application;
 }
 
-export interface ApplicationsService {
-  getResource: (name: string, namespace: string, node: TreeNode) => Promise<PromotionStrategy>;
-}
-
-export interface Services {
-  applications: ApplicationsService;
-}
-
 export interface StatusPanelProps {
   application: {
     metadata: {

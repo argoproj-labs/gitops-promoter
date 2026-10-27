@@ -11,7 +11,7 @@ export interface PromotionStrategyTilesProps {
   namespace: string;
 }
 
-export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({
+const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({
   promotionStrategies,
   namespace,
 }) => {

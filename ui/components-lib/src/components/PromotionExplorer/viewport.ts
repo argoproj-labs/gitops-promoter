@@ -1,11 +1,11 @@
 export const ZOOM_MIN = 50;
 export const ZOOM_MAX = 150;
 export const ZOOM_DEFAULT = 100;
-export const ZOOM_STEP = 10;
-export const WHEEL_ZOOM_STEP = 5;
+const ZOOM_STEP = 10;
+const WHEEL_ZOOM_STEP = 5;
 export const DRAG_THRESHOLD = 4;
-export const FIT_MARGIN_X = 96;
-export const FIT_MARGIN_Y = 132;
+const FIT_MARGIN_X = 96;
+const FIT_MARGIN_Y = 132;
 
 export const MAP_COLLAPSED_HEIGHT = 80;
 export const MAP_MIN_HEIGHT = 240;

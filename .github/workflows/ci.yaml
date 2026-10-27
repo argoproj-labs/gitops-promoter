@@ -29,6 +29,7 @@ jobs:
           node-version: '24.22.1'
           cache: 'npm'
           cache-dependency-path: |
+            ui/package-lock.json
             ui/shared/package-lock.json
             ui/dashboard/package-lock.json
             ui/extension/package-lock.json
