@@ -472,7 +472,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

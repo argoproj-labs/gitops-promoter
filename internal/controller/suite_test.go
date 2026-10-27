@@ -107,6 +107,9 @@ var (
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
+	// faultsInjected is true when K8S_FAULT_PROBABILITY is enabled. Specs then stop asserting
+	// best-effort side effects (see expectEventEmitted).
+	faultsInjected bool
 )
 
 func TestControllers(t *testing.T) {
@@ -176,6 +179,7 @@ var _ = BeforeSuite(func() {
 	// clients created afterwards: the reconcilers, and the partitioned manager tests pass the same cfg.
 	if probability, enabled := k8sfault.MaybeWrap(cfg); enabled {
 		GinkgoWriter.Printf("fault injection enabled for reconciler writes to the Kubernetes API: probability=%.3f\n", probability)
+		faultsInjected = true
 	}
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
@@ -193,9 +197,7 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
+	Expect(k8sClient.Create(ctx, controllerConfigurationForTests())).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
 	settingsMgr = settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
@@ -807,6 +809,52 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	}
 
 	return sha, shortSha
+}
+
+// controllerConfigurationForTests returns the shipped ControllerConfiguration for a test environment's controllers.
+// With faults injected, the shipped 5m slow delay would stall a spec whose reconciles hit maxFastAttempts errors in a
+// row, so it retries well within the specs' timeouts instead.
+func controllerConfigurationForTests() *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	cc, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
+	Expect(err).NotTo(HaveOccurred())
+	if faultsInjected {
+		cc = withSlowDelay(cc, "5s")
+	}
+	return cc
+}
+
+// withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.
+func withSlowDelay(cc *promoterv1alpha1.ControllerConfiguration, delay string) *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	data, err := json.Marshal(cc)
+	Expect(err).NotTo(HaveOccurred())
+	var obj map[string]any
+	Expect(json.Unmarshal(data, &obj)).To(Succeed())
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			if _, ok := v["slowDelay"]; ok {
+				v["slowDelay"] = delay
+			}
+			for _, child := range v {
+				walk(child)
+			}
+		case []any:
+			for _, child := range v {
+				walk(child)
+			}
+		default:
+			// Scalars have no children.
+		}
+	}
+	walk(obj)
+	data, err = json.Marshal(obj)
+	Expect(err).NotTo(HaveOccurred())
+	out := &promoterv1alpha1.ControllerConfiguration{}
+	Expect(json.Unmarshal(data, out)).To(Succeed())
+	return out
 }
 
 func runGitCmd(ctx context.Context, directory string, args ...string) (string, error) {
