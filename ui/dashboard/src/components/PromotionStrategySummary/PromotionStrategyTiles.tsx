@@ -3,7 +3,7 @@ import type { PromotionStrategy } from '@shared/utils/PSData';
 import { useNavigateWithParams } from '../../hooks/useNavigateWithParams';
 import { PromotionStrategyTile } from '../PromotionStrategySummary/PromotionStrategyTile';
 import { getLastCommitTime, formatDate, getOverallPromotionStatus } from '@shared/utils/util';
-import { enrichFromCRD } from '@shared/utils/PSData';
+import { getEnvironmentStatus } from '@shared/utils/getStatus';
 import './PromotionStrategyTiles.scss';
 
 export interface PromotionStrategyTilesProps {
@@ -23,8 +23,7 @@ const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({
         const lastCommitTime = getLastCommitTime(ps);
         const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
 
-        const enrichedEnvs = enrichFromCRD(ps);
-        const environmentStatuses = enrichedEnvs.map((env) => env.promotionStatus || 'unknown');
+        const environmentStatuses = (ps.status?.environments ?? []).map(getEnvironmentStatus);
         const borderStatus = getOverallPromotionStatus(environmentStatuses);
 
         return (

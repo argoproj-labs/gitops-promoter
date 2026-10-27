@@ -2,8 +2,7 @@ import { FaGitAlt } from 'react-icons/fa';
 import { StatusIcon } from '@lib/components/StatusIcon';
 import type { StatusType } from '@lib/components/StatusIcon';
 import { getLastCommitTime, formatDate } from '@shared/utils/util';
-import { enrichFromCRD } from '@shared/utils/PSData';
-import { getPromotionStatus } from '@shared/utils/getStatus';
+import { getEnvironmentStatus, getPromotionStatus } from '@shared/utils/getStatus';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyTiles.scss';
 
@@ -22,7 +21,7 @@ export const PromotionStrategyTile = ({
   const lastCommitTime = getLastCommitTime(ps);
   const actualLastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : lastUpdated;
 
-  const enrichedEnvs = enrichFromCRD(ps);
+  const environments = ps.status?.environments ?? [];
   const { overallStatus } = getPromotionStatus(ps);
   const statusIconPhase = overallStatus === 'unknown' ? 'unknown' : overallStatus;
 
@@ -55,8 +54,8 @@ export const PromotionStrategyTile = ({
         <span className="ps-tile__label">Environments:</span>
       </div>
       <div className="ps-tile__envs">
-        {enrichedEnvs.length > 0 &&
-          enrichedEnvs.map((env, idx) => (
+        {environments.length > 0 &&
+          environments.map((env, idx) => (
             <div key={env.branch || idx} className="ps-tile__env-row-grid">
               <span className="ps-tile__env-branch">
                 {env.branch}
@@ -65,7 +64,7 @@ export const PromotionStrategyTile = ({
                 </span>
               </span>
               <span className="ps-tile__env-status">
-                <StatusIcon phase={env.promotionStatus as StatusType} type="status" />
+                <StatusIcon phase={getEnvironmentStatus(env) as StatusType} type="status" />
               </span>
             </div>
           ))}

@@ -262,14 +262,13 @@ describe('buildMatrix restore rows', () => {
     const merged = { id: '3018', url: 'https://github.com/org/repo/pull/3018', state: 'merged' };
     const strategy = heldStrategy(blocked, merged, blocked);
 
-    const { rows, envs } = buildMatrix(strategy);
+    const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === blocked)!.cells[BRANCH]!;
     expect(cell.kind).toBe('in-flight');
     expect(cell.isProposed).toBe(true);
     expect(cell.restoreActiveCommit).toBe('restore-staging');
     expect(cell.blockedByRestoreActiveCommit).toBe(true);
     expect(cell.pullRequest?.id).toBe('3018');
-    expect(envs[0]!.proposedPR?.id).toBe('3018');
 
     const restore = rows.find((r) => r.restoredFrom)!.cells[BRANCH]!;
     expect(restore.kind).toBe('live');
@@ -282,12 +281,11 @@ describe('buildMatrix restore rows', () => {
     const open = { id: '3020', url: 'https://github.com/org/repo/pull/3020', state: 'open' };
     const strategy = heldStrategy(newer, open, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
 
-    const { rows, envs } = buildMatrix(strategy);
+    const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
     expect(cell.restoreActiveCommit).toBe('restore-staging');
     expect(cell.blockedByRestoreActiveCommit).toBeFalsy();
     expect(cell.pullRequest?.id).toBe('3020');
-    expect(envs[0]!.proposedPR?.id).toBe('3020');
     expect(rows.find((r) => r.restoredFrom)!.cells[BRANCH]!.pullRequest).toBeUndefined();
   });
 
@@ -299,11 +297,10 @@ describe('buildMatrix restore rows', () => {
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     );
 
-    const { rows, envs } = buildMatrix(strategy);
+    const { rows } = buildMatrix(strategy);
     const cell = rows.find((r) => r.dryShaFull === newer)!.cells[BRANCH]!;
     expect(cell.blockedByRestoreActiveCommit).toBeFalsy();
     expect(cell.pullRequest).toBeUndefined();
-    expect(envs[0]!.proposedPR).toBeUndefined();
     const restoreRow = rows.find((r) => r.restoredFrom)!;
     expect(restoreRow.cells[BRANCH]!.pullRequest).toBeUndefined();
     expect(restoreRow.prId).toBeUndefined();

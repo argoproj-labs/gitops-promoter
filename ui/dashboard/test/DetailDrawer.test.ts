@@ -67,10 +67,6 @@ const envs: EnvColumn[] = [
     changeTransferPolicyName: 'my-strategy-production-a1b2c3d4',
     autoMerge: false,
     color: '#1f4f5e',
-    liveStatuses: [],
-    liveHealth: 'unknown',
-    proposedStatuses: [],
-    proposedHealth: 'unknown',
   },
 ];
 

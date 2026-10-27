@@ -1,13 +1,11 @@
 import { create } from 'zustand';
-import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
+import { mergeCommitStatusManagers } from '@shared/utils/PSData';
 import { environmentsFromBundle } from '@shared/utils/environments';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import type { PromotionStrategy, CommitStatusManagerBundle } from '@shared/utils/PSData';
 import type { PromotionStrategyDetails } from '@shared/types/view';
 
-interface CRDItem extends PromotionStrategy {
-  enriched?: unknown;
-}
+type CRDItem = PromotionStrategy;
 
 function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
   return {
@@ -38,11 +36,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
     status: { ...ps.status, environments },
   } as PromotionStrategy;
   sortStrategyCommitStatuses(psWithEnvironments);
-  const merged = mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
-  return {
-    ...merged,
-    enriched: enrichFromCRD(merged),
-  } as T;
+  return mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle)) as T;
 }
 
 export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
