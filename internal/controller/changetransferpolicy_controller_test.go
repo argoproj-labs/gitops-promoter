@@ -1436,26 +1436,26 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Marking PR for deletion")
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					g.Expect(err).To(Succeed())
+				// The CTP still has a pending promotion, so once the closed PR is gone it creates a new one
+				// with the same name. Track the closed PR by UID so the steps below never act on its successor.
+				closedPRUID := createdPR.UID
 
-					err = k8sClient.Delete(ctx, &createdPR)
-					g.Expect(err).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Marking PR for deletion")
+				err := k8sClient.Delete(ctx, &createdPR, ctrlclient.Preconditions{UID: &closedPRUID})
+				// NotFound or a UID conflict means the closed PR is already gone.
+				if !errors.IsNotFound(err) && !errors.IsConflict(err) {
+					Expect(err).To(Succeed())
+				}
 
 				By("Verifying finalizer is removed and PR can be deleted")
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					// PR should be deleted (not found)
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					var pr promoterv1alpha1.PullRequest
+					err := k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(&createdPR), &pr)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.UID).NotTo(Equal(closedPRUID), "the closed PullRequest still exists")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
