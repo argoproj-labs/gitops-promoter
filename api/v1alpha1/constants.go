@@ -71,7 +71,28 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
 
+// RestoreActiveCommitFinalizer holds deletion until, when spec.blockEnvironment is false, the controller
+// has stamped Promoter-restore-unblocked-at on the restore commit. A delete while the field is still
+// true (for example garbage collection after the PromotionStrategy is deleted) removes the finalizer
+// without writing the note.
+const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/finalizer"
+
 // InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
 const InstanceIDLabel = "promoter.argoproj.io/instance-id"
+
+// WebRequestCommitStatusAccessLabel grants WebRequestCommitStatuses access to the labeled object. Today the
+// controller requires it on Secrets referenced by httpRequest.authentication secretRefs (basic, bearer, oauth2,
+// tls) and refuses to read a Secret without it set to AccessAllowed, because it sends the credentials to a URL
+// the WebRequestCommitStatus author controls.
+const WebRequestCommitStatusAccessLabel = "promoter.argoproj.io/webrequestcommitstatus-access"
+
+// Access is the value of a <kind>-access label or annotation, such as WebRequestCommitStatusAccessLabel, that
+// grants resources of that kind access to the object it is set on.
+type Access string
+
+const (
+	// AccessAllowed lets every resource of the label's kind in the object's namespace use the object.
+	AccessAllowed Access = "allowed"
+)

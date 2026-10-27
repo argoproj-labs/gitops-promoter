@@ -68,6 +68,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef?: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
              * @default {}
@@ -144,7 +146,10 @@ export type components = {
             secretRef: components["schemas"]["LocalObjectReference"];
         };
         /** @description BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings. */
-        BitbucketCloud: Record<string, never>;
+        BitbucketCloud: {
+            /** @description Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty. */
+            domain?: string;
+        };
         /** @description BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name. */
         BitbucketCloudRepo: {
             /**
@@ -157,6 +162,27 @@ export type components = {
              * @default
              */
             owner: string;
+        };
+        /** @description BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration. */
+        BitbucketDataCenter: {
+            /**
+             * @description Domain is the Bitbucket DataCenter/Server domain, such as "bitbucket.mycompany.com".
+             * @default
+             */
+            domain: string;
+        };
+        /** @description BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug. */
+        BitbucketDataCenterRepo: {
+            /**
+             * @description Name is the repository slug (e.g. "my-repo").
+             * @default
+             */
+            name: string;
+            /**
+             * @description Project is the Bitbucket project key (e.g. "MYPROJ").
+             * @default
+             */
+            project: string;
         };
         /** @description ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy. */
         ChangeRequestPolicyCommitStatusPhase: {
@@ -407,6 +433,8 @@ export type components = {
              * @default
              */
             phase: string;
+            /** @description PublishTo is the set of destinations for this commit status. - "scm": post the status to the SCM provider The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM. Omitting the field uses the default. The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description SHA is the commit SHA to set the status on. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
              * @default
@@ -531,6 +559,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
              * @default {}
@@ -771,6 +801,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description Target specifies which commit SHA to validate with the expression. - "active": Validates the currently active/deployed commit (default behavior) - "proposed": Validates the proposed commit that will be promoted
              *
@@ -870,6 +902,7 @@ export type components = {
         GitRepositorySpec: {
             azureDevOps?: components["schemas"]["AzureDevOpsRepo"];
             bitbucketCloud?: components["schemas"]["BitbucketCloudRepo"];
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenterRepo"];
             fake?: components["schemas"]["FakeRepo"];
             forgejo?: components["schemas"]["ForgejoRepo"];
             gitea?: components["schemas"]["GiteaRepo"];
@@ -960,6 +993,7 @@ export type components = {
          *       - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
          *       - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
          *       - {{ index .TriggerVariables "key" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile
+         *       - {{ index .HTTPRequestVariables "key" }}: result of httpRequest.httpRequestVariables.expression for this reconcile (nil when not configured)
          *
          *     Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
          *
@@ -1010,6 +1044,8 @@ export type components = {
             headerTemplates?: {
                 [key: string]: string;
             };
+            /** @description HTTPRequestVariables optionally holds an expr expression that produces a free-form map of variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate as {{ index .HTTPRequestVariables "key" }}. Evaluated before the HTTP request (same timing as the templates above). Available in both polling and trigger modes. See HTTPRequestVariablesSpec for details. */
+            httpRequestVariables?: components["schemas"]["HTTPRequestVariablesSpec"];
             /**
              * @description Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
              *
@@ -1025,6 +1061,22 @@ export type components = {
              * @default
              */
             urlTemplate: string;
+        };
+        /**
+         * @description HTTPRequestVariablesSpec holds an expr expression that computes a free-form map of variables made available to all httpRequest templates as .HTTPRequestVariables.
+         *
+         *     The expression is evaluated before the HTTP request is made — the same timing as the templates above — so it shares their variable set (see HTTPRequestSpec for the full list). It is available in both polling and trigger modes, unlike TriggerVariables which require trigger mode.
+         *
+         *     The expression must return a map/object. Every key is then accessible in templates via {{ index .HTTPRequestVariables "key" }}.
+         *
+         *     The built-in expr function urlValuesEncode(map) URL-encodes a map of query-parameter key/value pairs and returns a percent-encoded key=value&… string suitable for appending to a URL.
+         */
+        HTTPRequestVariablesSpec: {
+            /**
+             * @description Expression is an expr expression that must return a map/object. The result is exposed to all httpRequest Go templates as .HTTPRequestVariables. Available variables match those documented on HTTPRequestSpec.
+             * @default
+             */
+            expression: string;
         };
         /** @description HealthyDryShas is a list of dry commits that were observed to be healthy in the environment. */
         HealthyDryShas: {
@@ -1052,6 +1104,10 @@ export type components = {
             proposed?: components["schemas"]["CommitBranchStateHistoryProposed"];
             /** @description PullRequest is the state of the pull request that promoted this change. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
+            /** @description RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore moved off of is blocked from opening a pull request. */
+            restoreUnblockedAt?: components["schemas"]["Time"];
+            /** @description RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written. */
+            restoredFrom?: string;
         };
         /** @description HydratorMetadata contains metadata about the hydrated commit. This is extracted from the git note or metadata file. */
         HydratorMetadata: {
@@ -1365,6 +1421,8 @@ export type components = {
             promotionStrategy: components["schemas"]["PromotionStrategy"];
             /** @description PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             pullRequests?: components["schemas"]["PullRequest"][];
+            /** @description RestoreActiveCommits are the RestoreActiveCommits whose spec.promotionStrategyRef names this PromotionStrategy. While one exists for an environment, its promotions are not auto-merged. */
+            restoreActiveCommits?: components["schemas"]["RestoreActiveCommit"][];
             /** @description ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy. */
             scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
             /** @description ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
@@ -1552,6 +1610,57 @@ export type components = {
              */
             output: components["schemas"]["OutputSpec"];
         };
+        /** @description RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records the dry SHA that was on the active branch then, so that dry SHA is not promoted again. Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the strategy's namespace can restore that environment, and the controller's git credentials perform the push. The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores. */
+        RestoreActiveCommit: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /** @default {} */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /** @default {} */
+            spec?: components["schemas"]["RestoreActiveCommitSpec"];
+            /** @default {} */
+            status?: components["schemas"]["RestoreActiveCommitStatus"];
+        };
+        /** @description RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef, branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha, strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new RestoreActiveCommit. blockEnvironment may change. */
+        RestoreActiveCommitSpec: {
+            /** @description BlockEnvironment blocks promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again. */
+            blockEnvironment?: boolean;
+            /**
+             * @description Branch is the environment branch on that PromotionStrategy to restore. The controller resolves it to the ChangeTransferPolicy the strategy created for this branch, which supplies the repository, the active and proposed branches, and activePath.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description PromotionStrategyRef selects the PromotionStrategy that owns the environment to restore.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description Sha is the hydrated commit to restore onto the active branch. It must already be in the active branch's history (the tip or one of its ancestors); any other commit is refused. A commit that carries Promoter-restored-from is itself a restore and is refused. Once the active tip already restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit for the same sha is refused until the active branch moves, and that note is left unchanged. The controller writes a new commit (the commit's tree, or only activePath when the policy sets one) parented on the current active tip and records a promotion-history note with Promoter-restored-from. When the active branch already has that content, nothing is written. The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open a promotion pull request that would put the active branch's dry SHA back. A pull request for a different proposed dry SHA may open, but nothing is auto-merged while this RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the blocked dry SHA again; see status.blockedDrySha. The restore runs once. Later promotions are left alone.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description RestoreActiveCommitStatus defines the observed state of RestoreActiveCommit. */
+        RestoreActiveCommitStatus: {
+            /** @description ActiveSha is the commit on the active branch after a successful restore. */
+            activeSha?: string;
+            /** @description BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore moved off of. The ChangeTransferPolicy does not open a promotion pull request while its proposed dry SHA still equals this value, so the blocked dry SHA is not put back. A different proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment is set to false. That stamps Promoter-restore-unblocked-at and deletes this object. Deleting it while the field is still true does not stamp the trailer, so the block stays. Empty when that active tip had no hydrator.metadata, or when the active branch already had spec.sha's content so nothing was moved off it. A promotion pull request only opens when the proposed branch has a commit the active branch does not already contain. The restore commit is parented on the tip it moved off of, so when that tip already contains the proposed commit (a merge-commit promotion), this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch. */
+            blockedDrySha?: string;
+            /** @description Conditions represent the latest available observations of an object's state. */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+            /** @description RestoredFrom is the spec.sha this status applied. It is written in the same status update as activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha the controller does not restore again, so a later promotion is not overwritten on resync. */
+            restoredFrom?: string;
+        };
         /** @description RevisionReference contains a reference to a some information that is related in some way to another commit. For now, it supports only references to a commit. In the future, it may support other types of references. */
         RevisionReference: {
             /** @description Commit contains metadata about the commit that is related in some way to another commit. */
@@ -1597,6 +1706,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /** @description Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC. */
             timezone?: string;
         };
@@ -1701,6 +1812,8 @@ export type components = {
             azureDevOps?: components["schemas"]["AzureDevOps"];
             /** @description BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider */
             bitbucketCloud?: components["schemas"]["BitbucketCloud"];
+            /** @description BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider */
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenter"];
             /** @description Fake required configuration for Fake as the SCM provider */
             fake?: components["schemas"]["Fake"];
             /** @description Forgejo required configuration for Forgejo as the SCM provider */
@@ -1856,6 +1969,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
         };
         /** @description TimedCommitStatusStatus defines the observed state of TimedCommitStatus. */
         TimedCommitStatusStatus: {
@@ -2056,6 +2171,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description ReportOn specifies which commit SHA to report the CommitStatus on. - "proposed": Reports on the proposed hydrated commit SHA (default) - "active": Reports on the active hydrated commit SHA
              *

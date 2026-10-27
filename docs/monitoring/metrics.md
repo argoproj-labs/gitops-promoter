@@ -13,7 +13,9 @@ A counter of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository_namespace`: Namespace of that GitRepository.
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. A namespaced provider is in the same namespace as the GitRepository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` (namespaced) or `ClusterScmProvider` (cluster-scoped).
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
@@ -25,7 +27,9 @@ A histogram of the duration of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository_namespace`: Namespace of that GitRepository.
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. A namespaced provider is in the same namespace as the GitRepository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
@@ -36,13 +40,16 @@ A counter of SCM API calls.
 
 Labels:
 
-* `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
-* `api`: The SCM API being called (CommitStatus, PullRequest)
+* `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
+* `git_repository_namespace`: Namespace of that GitRepository. Empty when the call is scoped to the SCM provider only.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
+  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -51,13 +58,16 @@ A histogram of the duration of SCM API calls.
 
 Labels:
 
-* `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
-* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
-* `api`: The SCM API being called (CommitStatus, PullRequest)
+* `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
+* `git_repository_namespace`: Namespace of that GitRepository. Empty when the call is scoped to the SCM provider only.
+* `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
+* `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
+  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
@@ -86,34 +96,40 @@ Labels:
 
 A gauge for the rate limit of SCM API calls.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_remaining
 
 A gauge for the remaining rate limit of SCM API calls.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
 A gauge for the remaining seconds until the SCM API rate limit resets.
 
-This metric is currently only produced for GitHub.
+This metric is currently only produced for GitHub calls authenticated with an installation token. GitHub App installation listing does not update it.
 
 Labels:
 
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
+* `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
 ## webhook_processing_duration_seconds
 
@@ -167,5 +183,5 @@ If reading from the informer store fails for a kind, that kind's gauge is set to
 
 Labels:
 
-* `kind`: Kubernetes API kind of the custom resource (matches the root CRDs reconciled by GitOps Promoter except `ControllerConfiguration`, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
+* `kind`: Kubernetes API kind of the custom resource (matches the root CRDs reconciled by GitOps Promoter except `ControllerConfiguration`, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RestoreActiveCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
 * `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).

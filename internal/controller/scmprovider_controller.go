@@ -28,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -52,7 +53,7 @@ type ScmProviderReconciler struct {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders/finalizers,verbs=update
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -74,16 +75,19 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
-	// Remove any existing Ready condition. We want to start fresh.
-	previousReady = utils.RemoveReadyCondition(&scmProvider)
-
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// Finalizer handling runs before RemoveReadyCondition, matching ChangeTransferPolicy and
+	// RestoreActiveCommit: anything that mutates scmProvider ahead of the fresh-status reset below
+	// should run first so it can't reintroduce a condition RemoveReadyCondition already cleared.
 	if deleted, err := r.handleFinalizer(ctx, &scmProvider); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	previousReady = utils.RemoveReadyCondition(&scmProvider)
 
 	// Add finalizer to referenced Secret if it exists
 	if err := r.ensureSecretFinalizer(ctx, &scmProvider); err != nil {
@@ -136,7 +140,22 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 		return dependentRepos, nil
 	}
 
-	deleted, err := handleResourceFinalizerWithDependencies(
+	// Remove the Secret finalizer before releasing the ScmProvider's own finalizer. Once the
+	// ScmProvider's finalizer list is empty the apiserver deletes it immediately, leaving nothing
+	// to retry from; if the Secret update failed by that point its finalizer would be stuck
+	// forever. Removing the Secret finalizer first means a failure here simply returns an error,
+	// the ScmProvider (and its finalizer) is untouched, and the next reconcile retries both steps.
+	if !scmProvider.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(scmProvider, promoterv1alpha1.ScmProviderFinalizer) {
+		if dependents, err := checkDependencies(); err != nil {
+			return false, fmt.Errorf("failed to check for dependent resources: %w", err)
+		} else if len(dependents) == 0 {
+			if err := r.removeSecretFinalizer(ctx, scmProvider); err != nil {
+				return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
+			}
+		}
+	}
+
+	return handleResourceFinalizerWithDependencies(
 		ctx,
 		r.Client,
 		r.Recorder,
@@ -145,15 +164,6 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 		"ScmProvider",
 		checkDependencies,
 	)
-
-	// If we're being deleted and finalizer was removed, also remove Secret finalizer
-	if deleted && err == nil {
-		if err := r.removeSecretFinalizer(ctx, scmProvider); err != nil {
-			return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
-		}
-	}
-
-	return deleted, err
 }
 
 func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) error {

@@ -15,13 +15,15 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `git_repository` | Name of the `GitRepository` resource associated with the call. |
 | `git_repository_namespace` | Namespace of that `GitRepository`. |
 | `scm_provider` | Name from `GitRepository.spec.scmProviderRef.name` (same as metric labels). |
+| `scm_provider_namespace` | Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace. |
 | `scm_provider_kind` | Kind from `GitRepository.spec.scmProviderRef.kind`: `ScmProvider` or `ClusterScmProvider` (defaults to `ScmProvider` when unset). |
-| `api` | `CommitStatus` or `PullRequest`, matching the SCM integration surface. |
-| `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, or `get`, depending on the call. |
+| `scm_account` | Account whose rate-limit bucket the call belongs to. For GitHub this is `spec.github.owner`, lowercased. Empty when the provider credential is the whole bucket. |
+| `api` | `CommitStatus`, `PullRequest`, or `Provider` (provider-specific calls outside those Promoter APIs, such as GitHub App installation listing). |
+| `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, `get`, or `list-installations`, depending on the call. |
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 
-**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit` may still appear at `info` when enabled by that provider.
+**Scope:** only requests that go through the shared metrics hook are logged here, including GitHub App installation listing (`api` `Provider`). Provider-specific messages such as `github rate limit` may still appear at `info` when enabled by that provider.
 
 ## Log Verbosity
 

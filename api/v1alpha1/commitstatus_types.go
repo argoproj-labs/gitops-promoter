@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"slices"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -65,6 +67,17 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+
+	// PublishTo is the set of destinations for this commit status.
+	// - "scm": post the status to the SCM provider
+	// The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM.
+	// Omitting the field uses the default. The controller posts to the SCM when "scm" is present.
+	// Promotion gates use the phase in every case.
+	// +optional
+	// +kubebuilder:default={scm}
+	// +listType=set
+	// +kubebuilder:validation:items:Enum=scm
+	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
@@ -197,3 +210,17 @@ const (
 	// CommitPhasePending indicates that the commit status is still being processed or has not yet been set.
 	CommitPhasePending CommitStatusPhase = "pending"
 )
+
+// CommitStatusPublishTo is one destination a commit status can be published to.
+type CommitStatusPublishTo string
+
+const (
+	// CommitStatusPublishToSCM posts the commit status to the SCM provider. This is the default destination.
+	CommitStatusPublishToSCM CommitStatusPublishTo = "scm"
+)
+
+// PublishesToSCM reports whether targets includes the SCM destination.
+// A nil pointer and an empty list are local-only. The API server defaults an omitted field to ["scm"] before reconcile.
+func PublishesToSCM(targets *[]CommitStatusPublishTo) bool {
+	return targets != nil && slices.Contains(*targets, CommitStatusPublishToSCM)
+}

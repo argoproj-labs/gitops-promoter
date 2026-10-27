@@ -121,6 +121,10 @@ This configuration:
 
 `spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. This field is required -- set it to match the key referenced in your PromotionStrategy.
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. Omitting the field uses the default. See [Where a status is published](../index.md#where-a-status-is-published-publishto).
+
 ### Integrating with PromotionStrategy
 
 Reference the same key in `proposedCommitStatuses` (must match `ScheduledCommitStatus.spec.key`):
@@ -216,7 +220,7 @@ This configuration requires:
 - Development deployments only during business hours (Mon-Fri 09:00-17:00 ET)
 - Staging deployments only on Tuesdays 10:00-16:00 ET
 - A 48-hour deployment freeze over Christmas for all gated environments
-- Production is ungated by the promotion window (not listed), but still gated by health and soak time
+- Production is ungated by the promotion window (not listed), but still blocked by health and soak time
 
 ## Global vs Per-Environment Windows
 

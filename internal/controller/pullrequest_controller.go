@@ -36,6 +36,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/labels"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	bitbucket_datacenter "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
@@ -46,7 +47,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -182,8 +182,12 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //		  if the PR is not found:
 //		    Set status.state to 'unknown' and return.
 //		  if the PR is closed:
+//		    if status.state is 'merged':
+//		      Return an error.
 //		    Set status.state to 'closed' and return.
 //		  if the PR is open:
+//		    if status.state is 'merged' (the SCM hasn't completed the merge yet):
+//		      Return an error.
 //		    Call Close, set status.state to 'closed', and return.
 //		  if the PR is merged:
 //		    Set status.state to 'merged'.
@@ -264,7 +268,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if pullRequestStatusIsFinalized(&pr) {
 			logger.V(4).Info("PullRequest is finalized, releasing finalizer")
 			// Status is Finalized; release the promoter finalizer now so deletion can finish once other finalizers clear.
-			return ctrl.Result{}, r.releaseFinalizer(ctx, &pr)
+			err := r.releaseFinalizer(ctx, &pr)
+			// releaseFinalizer's Update call can restore a stale persisted Ready condition into pr the same
+			// way ensureFinalizer's can (see its comment below); clear it again so that, if other finalizers
+			// still hold the object, HandleReconciliationResult below doesn't persist stale status while it lingers.
+			utils.RemoveReadyCondition(&pr)
+			return ctrl.Result{}, err
 		}
 
 		provider, err := r.getPullRequestProvider(ctx, pr)
@@ -285,10 +294,20 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		switch details.State {
 		case promoterv1alpha1.PullRequestClosed:
+			if pr.Status.State == promoterv1alpha1.PullRequestMerged {
+				// We merged the PR, but the SCM says it was closed without merging. status.state can't move from merged to
+				// closed, so report it instead of failing on the status write.
+				return ctrl.Result{}, fmt.Errorf("pull request %q was merged, but the SCM reports it closed", pr.Status.ID)
+			}
 			pr.Status.State = promoterv1alpha1.PullRequestClosed
 			// Status is now Finalized; persist and the ->Finalized predicate will requeue to release the finalizer.
 			return ctrl.Result{}, nil
 		case promoterv1alpha1.PullRequestOpen:
+			if pr.Status.State == promoterv1alpha1.PullRequestMerged {
+				// We merged the PR, but SCMs that complete merges asynchronously (Azure DevOps) can still report it open.
+				// Closing it now would abandon the pending merge; standard retry re-runs Get until the SCM reports it merged.
+				return ctrl.Result{}, fmt.Errorf("pull request %q was merged, but the SCM still reports it open, waiting for the SCM to complete the merge", pr.Status.ID)
+			}
 			// Still open on the SCM; closing discharges the finalizer's obligation.
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
@@ -313,6 +332,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.ensureFinalizer(ctx, &pr); err != nil {
 		return ctrl.Result{}, err
 	}
+	// ensureFinalizer's Update call decodes the API server's response back into pr, which can restore
+	// whatever Ready condition is currently persisted (stale or not) even though the update itself never
+	// touches status. Clear it again so the deferred HandleReconciliationResult below can't preserve a
+	// stale condition from an earlier failed reconcile. previousReady (captured above) is untouched, so
+	// health-gated event logic further down still sees the condition as it was at the top of Reconcile.
+	utils.RemoveReadyCondition(&pr)
 
 	if pullRequestStatusIsTerminal(&pr) {
 		logger.Info("Deleting terminal PullRequest", "pullRequestID", pr.Status.ID, "statusState", pr.Status.State, "specState", pr.Spec.State)
@@ -610,7 +635,9 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().BitbucketCloud != nil:
-		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck // provider factory returns descriptive errors
+		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().BitbucketCloud.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
+	case scmProvider.GetSpec().BitbucketDataCenter != nil:
+		return bitbucket_datacenter.NewBitbucketDataCenterPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Gitea != nil:
@@ -626,26 +653,37 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 
 // ensureFinalizer adds the PullRequest finalizer to a PullRequest that is not being deleted, so that
 // every deletion is funneled through the terminating Get/Close lane above.
+//
+// This makes one Update attempt using pr as already loaded by Reconcile's top-level Get, rather than
+// re-Getting under retry.RetryOnConflict. A conflict (or any other) error here is returned up through
+// Reconcile like any other failure: the standard workqueue rate limiter retries with a fresh top-level
+// Get on the next Reconcile call. Re-Getting inside this function would overwrite pr -- including
+// status.conditions, which Reconcile already reset via RemoveReadyCondition -- with whatever was last
+// persisted, silently reintroducing a stale Ready condition from an earlier failed reconcile.
+//
+// Even without an explicit Get, the Update call below isn't free of this risk: the API server's response
+// to a plain Update of a status-subresource resource still includes whatever status is currently
+// persisted (the update itself can't change it, but the response reflects it), and client-go decodes that
+// response back into pr, overwriting pr.Status wholesale. So a successful Update here can still silently
+// restore a stale persisted Ready condition into pr even though Reconcile already cleared it. Reconcile
+// clears Ready again immediately after this call returns to guard against that.
 func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
-	finalizer := promoterv1alpha1.PullRequestFinalizer
-
-	if controllerutil.ContainsFinalizer(pr, finalizer) {
+	if !controllerutil.AddFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		// Already has the finalizer.
 		return nil
 	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
-		}
-		if controllerutil.AddFinalizer(pr, finalizer) {
-			return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		}
-		return nil
-	})
+	if err := r.Update(ctx, pr); err != nil {
+		return fmt.Errorf("failed to add finalizer: %w", err)
+	}
+	return nil
 }
 
 // releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no
 // other finalizer retains it.
+//
+// Like ensureFinalizer, a successful Update here can restore a stale persisted Ready condition into pr
+// via the API server's response decode (see ensureFinalizer's comment for why). The caller clears Ready
+// again after this returns.
 func (r *PullRequestReconciler) releaseFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
 	if !controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		return nil

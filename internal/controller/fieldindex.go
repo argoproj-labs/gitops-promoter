@@ -43,11 +43,11 @@ var (
 // GateCommitStatusKinds returns the commit-status gate CRD kinds that reference a
 // PromotionStrategy via spec.promotionStrategyRef.name.
 //
-// Kinds are discovered from the promoter scheme (any non-List type whose Spec has
-// a PromotionStrategyRef field), so adding a new gate CRD automatically includes
-// it here once it is registered with SchemeBuilder. The view aggregation layer
-// still needs a []T field and a buildBundle list; see the view added tests in
-// internal/apiserver/view_added_test.go.
+// Kinds are discovered from the promoter scheme (any non-List type whose name ends
+// with CommitStatus and whose Spec has a PromotionStrategyRef field), so adding a
+// new gate CRD automatically includes it here once it is registered with
+// SchemeBuilder. The view aggregation layer still needs a []T field and a
+// buildBundle list; see the view added tests in internal/apiserver/view_added_test.go.
 func GateCommitStatusKinds() []client.Object {
 	gateCommitStatusKindsOnce.Do(func() {
 		scheme := runtime.NewScheme()
@@ -67,12 +67,17 @@ func GateCommitStatusKinds() []client.Object {
 }
 
 // discoverPromotionStrategyRefGateKinds returns one empty instance per promoter
-// kind whose Spec embeds PromotionStrategyRef (excluding *List types).
+// commit-status kind whose Spec embeds PromotionStrategyRef (excluding *List types).
 func discoverPromotionStrategyRefGateKinds(scheme *runtime.Scheme) []client.Object {
 	known := scheme.KnownTypes(promoterv1alpha1.SchemeGroupVersion)
 	var kindNames []string
 	for kind, t := range known {
 		if strings.HasSuffix(kind, "List") {
+			continue
+		}
+		// RestoreActiveCommit also has Spec.PromotionStrategyRef. Gate discovery is commit-status
+		// managers only; a kind that merely references a strategy is not a gate.
+		if !strings.HasSuffix(kind, "CommitStatus") {
 			continue
 		}
 		if !typeHasPromotionStrategyRef(t) {

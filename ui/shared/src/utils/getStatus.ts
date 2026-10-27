@@ -1,4 +1,5 @@
 import type { Environment, PromotionPhase, PromotionStrategy, Check } from '../types/promotion';
+import { proposedIsBlocked } from './environments';
 
 // Health status for proposed/active checks
 export function getHealthStatus(checks: Check[]): 'success' | 'failure' | 'pending' | 'unknown' {
@@ -33,6 +34,13 @@ export function getEnvironmentStatus(
   }
 
   if (proposedSha === activeSha) {
+    return 'promoted';
+  }
+
+  // After a restore, the proposed branch can still point at the dry SHA that was moved off active.
+  // That is not a new change waiting to promote; the environment is settled until a newer commit
+  // arrives. blockedDrySha comes from a live RestoreActiveCommit, or from history once that CR is gone.
+  if (proposedIsBlocked(env)) {
     return 'promoted';
   }
 

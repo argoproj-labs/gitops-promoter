@@ -23,7 +23,7 @@ RUN npx vite build
 RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
 
 # Build the gitops-promoter binary
-FROM golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa AS builder
+FROM golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -51,12 +51,21 @@ COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gitops-promoter cmd/main.go
+# COVER=1 instruments the binary for an e2e coverage upload. Building the package (./cmd) is required for
+# that: building the file cmd/main.go does not instrument main. The release image leaves COVER at 0.
+ARG COVER=0
+RUN set -eu; \
+    extra=""; target="cmd/main.go"; \
+    if [ "$COVER" = "1" ]; then \
+      extra="-cover -covermode=atomic -coverpkg=github.com/argoproj-labs/gitops-promoter/..."; \
+      target="./cmd"; \
+    fi; \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a $extra -o gitops-promoter $target
 
 # Use distroless as minimal base image to package the gitops-promoter binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 #FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
-FROM golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
+FROM golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8
 WORKDIR /
 
 # Install tini to handle process management and prevent process leaks

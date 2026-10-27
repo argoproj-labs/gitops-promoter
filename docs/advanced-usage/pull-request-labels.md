@@ -127,16 +127,17 @@ Invalid expression output causes the ChangeTransferPolicy Ready condition to bec
 | GitHub, GitLab, Gitea, Forgejo | Supported; missing labels are created on add | Supported |
 | Azure DevOps | Supported; missing labels are created on add | Not supported (open-PR list responses do not reliably include PR labels) |
 | Bitbucket Cloud | Not supported (no PR labels API) | Not supported |
+| Bitbucket DataCenter/Server | Not supported (no PR labels API) | Not supported |
 
 Supported providers create repository or project labels automatically when labels are first added, using the default navy color (`#00254a`). Pre-create labels only when you need a different color or description.
 
 ## API load and drift
 
-Using pull request labels increases SCM API traffic: each label change can trigger `create-label`, `add-labels`, and/or `remove-labels` calls on the PullRequest API. Monitor [`scm_calls_total` and `scm_calls_duration_seconds`](../monitoring/metrics.md#scm_calls_total) filtered by `api="PullRequest"` and `operation` in (`create-label`, `add-labels`, `remove-labels`).
+Using pull request labels increases SCM API traffic: each label change can trigger `create-label`, `add-labels`, and/or `remove-labels` calls on the PullRequest API. On GitHub, adding a label also lists repository labels first (`list-labels`, one call per page), and those responses update the rate-limit gauges. Monitor [`scm_calls_total` and `scm_calls_duration_seconds`](../monitoring/metrics.md#scm_calls_total) filtered by `api="PullRequest"` and `operation` in (`list-labels`, `create-label`, `add-labels`, `remove-labels`).
 
 - **Zero SCM label calls when idle**: if `spec.labels` equals `status.appliedLabels`, the PullRequest controller skips SCM label add/remove.
 - **Drift repair (supported providers)**: on each reconcile, the controller reads PR labels from the routine open-PR check. It refreshes `status.appliedLabels` for managed labels (the union of `spec.labels` and the previous `appliedLabels`, intersected with what is on the SCM). If that differs from `spec.labels`, it adds or removes labels as usual. Third-party labels on the PR (for example from Tide) are ignored.
-- **Drift repair limitations**: Azure DevOps and Bitbucket Cloud do not participate — those providers do not expose PR labels in that check, so externally removed labels are not re-applied until `spec.labels` changes. This drift resolution behavior may change in a future release.
+- **Drift repair limitations**: Azure DevOps, Bitbucket Cloud and Bitbucket DataCenter/Server do not participate — those providers do not expose PR labels in that check, so externally removed labels are not re-applied until `spec.labels` changes. This drift resolution behavior may change in a future release.
 - The promoter only removes labels it previously applied (`status.appliedLabels`).
 
 ## Prow / Tide example

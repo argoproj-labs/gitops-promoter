@@ -4,3 +4,4 @@ Advanced configuration topics for GitOps Promoter:
 * [Dynamic Pull Request Labels](pull-request-labels.md)
 * [Configuring Multi-Tenancy](multi-tenancy.md)
 * [Dashboard Aggregation API](dashboard-apiserver.md)
+* [Rolling Back an Environment](rolling-back.md)

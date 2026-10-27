@@ -93,6 +93,22 @@ const (
 	// PromotionCompletedMessage is the message for a completed promotion.
 	PromotionCompletedMessage = "Environment branch %s promoted to dry sha %s (previously %s)"
 
+	// RestoreSupersededReason indicates that a RestoreActiveCommit was deleted because its restore commit
+	// is behind the active tip. The delete does not stamp Promoter-restore-unblocked-at; the new tip
+	// stays blocked until its own spec.blockEnvironment is set to false.
+	RestoreSupersededReason = "RestoreSuperseded"
+	// RestoreSupersededMessage is the message for a superseded RestoreActiveCommit.
+	// Args: RestoreActiveCommit name, its status.activeSha, the active tip.
+	RestoreSupersededMessage = "Deleted RestoreActiveCommit %s; its restore %s is behind active tip %s"
+
+	// RestoreAdoptedReason indicates that a RestoreActiveCommit was created because the active tip is
+	// already a blocked restore commit (Promoter-restored-from without Promoter-restore-unblocked-at)
+	// and no RestoreActiveCommit existed for the policy — typically a restore written by hand.
+	RestoreAdoptedReason = "RestoreAdopted"
+	// RestoreAdoptedMessage is the message for an adopted restore tip.
+	// Args: RestoreActiveCommit name, the Promoter-restored-from SHA, the active tip.
+	RestoreAdoptedMessage = "Created RestoreActiveCommit %s for restore of %s at tip %s"
+
 	// CommitStatusPhaseChangedReason indicates that the phase computed by a commit status gate
 	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) changed for an environment.
 	CommitStatusPhaseChangedReason = "CommitStatusPhaseChanged"

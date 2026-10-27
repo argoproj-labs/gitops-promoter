@@ -67,6 +67,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		(repositoryRef.Spec.Forgejo != nil && provider.GetSpec().Forgejo == nil) ||
 		(repositoryRef.Spec.Gitea != nil && provider.GetSpec().Gitea == nil) ||
 		(repositoryRef.Spec.BitbucketCloud != nil && provider.GetSpec().BitbucketCloud == nil) ||
+		(repositoryRef.Spec.BitbucketDataCenter != nil && provider.GetSpec().BitbucketDataCenter == nil) ||
 		(repositoryRef.Spec.AzureDevOps != nil && provider.GetSpec().AzureDevOps == nil) ||
 		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
@@ -190,6 +191,12 @@ func GetPullRequestName(repoOwner, repoName, pcProposedBranch, pcActiveBranch st
 // GetChangeTransferPolicyName returns a name for the ChangeTransferPolicy based on the promotion strategy name and environment branch.
 func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string) string {
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
+}
+
+// ChangeTransferPolicyNameForEnvironment is the object name the PromotionStrategy controller
+// assigns to the ChangeTransferPolicy for one environment branch.
+func ChangeTransferPolicyNameForEnvironment(promotionStrategyName, environmentBranch string) string {
+	return KubeSafeUniqueName(GetChangeTransferPolicyName(promotionStrategyName, environmentBranch))
 }
 
 const changeTransferPolicyHistoryNameSuffix = "-history"

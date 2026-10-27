@@ -1,0 +1,133 @@
+@use 'sass:color';
+@use '../../styles/colors' as *;
+
+$bg-page: #eef1f6;
+$bg-surface: #ffffff;
+$bg-soft: #f9fafb;
+$bg-softer: #f3f5f8;
+// Text colors tuned for WCAG 2.2 AA (4.5:1 on white/soft surfaces).
+// The shared $argo-color-gray-5/6 are too light (2.1:1 / 3.5:1) for text.
+$text-primary: $argo-color-gray-7; // #4b4b4b — 8.7:1 on white
+$text-secondary: #586773; // 5.8:1 on white (was gray-6 3.5:1)
+$text-muted: #677483; // 4.8:1 on white (was gray-5 2.1:1)
+$stroke: rgba(15, 35, 60, 0.14);
+$stroke-strong: rgba(15, 35, 60, 0.5); // 3.19:1 vs white — UI/control boundaries (1.4.11)
+$accent: #1f4f5e;
+$selection: $argo-color-gray-7;
+
+$success: $argo-success;
+$failure: $argo-failed;
+$pending: $argo-running;
+
+// Accessible text/solid-fill variants — meet 4.5:1 for white-on-fill pill
+// labels and colored-text-on-tint. Keep separate from brand hues so other
+// components are unaffected.
+$success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
+$failure-ink: #c0392b; // white-on 5.4:1
+$pending-ink: #0b78a6; // white-on 4.9:1
+
+// Manual restore (a human moved the branch, no promotion PR). Amber reads as an
+// unusual event without implying failure. 5.5:1 both on white and white-on-fill.
+$restored-ink: #9a5a0f;
+
+$success-soft: rgba(45, 153, 96, 0.12);
+$success-border: rgba(18, 128, 90, 0.55);
+$failure-soft: rgba(220, 67, 67, 0.1);
+$failure-border: rgba(192, 57, 43, 0.55);
+$pending-soft: rgba(13, 173, 234, 0.14);
+$pending-border: rgba(11, 120, 166, 0.55);
+$neutral-rail: #7a8aa0;
+$restored-soft: rgba(154, 90, 15, 0.12);
+$restored-border: rgba(154, 90, 15, 0.55);
+
+// Blocked mark inside a blue pill for a proposed commit a RestoreActiveCommit is holding. Bright
+// enough to read on the pending fill with no backing disc.
+$held-stop: #ff5a4e;
+
+$cell-live-bg: #e4efeb;
+$cell-live-border: #79ad99;
+$cell-live-rail: #3d916f;
+$cell-live-pill: #328765;
+$cell-proposed-bg: #e8f0f3;
+$cell-proposed-border: #a9c3cf;
+$cell-proposed-rail: #668fa1;
+$cell-proposed-pill: #527f91;
+$cell-failed-bg: #f3e8ea;
+$cell-failed-border: #cfa0a8;
+$cell-failed-rail: #b5636f;
+$cell-failed-pill: #a64f5d;
+$cell-prev-bg: #edf1f2;
+$cell-prev-border: #aebbc2;
+$cell-prev-rail: #8198a2;
+$cell-prev-label: #52616d;
+$cell-prev-link: #667784;
+$cell-empty-bg: #f5f6f8;
+$cell-empty-border: #c6d0d5;
+$cell-empty-text: #7b8791;
+$cell-divider: #bdcec7;
+$cell-chip-bg: #e8eef0;
+$cell-chip-ink: #315565;
+$cell-link-ink: #315c6c;
+$cell-time-ink: #64748b;
+$cell-check-name: #344b55;
+$cell-more-bg: #315565;
+$cell-more-ink: #f2f7f8;
+$cell-more-shadow: rgba(21, 48, 60, 0.35);
+$cell-scroll-thumb: #8fa9b3;
+$cell-scroll-track: rgba(49, 85, 101, 0.1);
+$cell-checks-fade: 16px;
+$cell-run-ring: #38a7e5;
+$cell-run-track: #d9eef9;
+$cell-pass-ring: #49b98a;
+$cell-pass-mark: #2da875;
+$cell-fail-ring: #dc6676;
+$cell-fail-mark: #c94759;
+$app-ink: #1d5fa8;
+$app-soft: rgba(29, 95, 168, 0.1);
+$app-soft-strong: rgba(29, 95, 168, 0.2);
+$row-border: #cbd4d9;
+$row-bg: rgba(255, 255, 255, 0.72);
+
+$radius-sm: 4px;
+$radius-md: 6px;
+$radius-lg: 8px;
+
+/* Visible keyboard focus for the page's custom controls (buttons styled as
+   cards/chips, SHA/PR links). Uses :focus-visible so it only shows for
+   keyboard/AT navigation, not mouse clicks. WCAG 2.4.7. */
+.hp {
+  :focus-visible {
+    outline: 2px solid $accent;
+    outline-offset: 2px;
+    border-radius: $radius-sm;
+  }
+}
+
+/* Respect the user's reduced-motion preference: stop the pulsing filter dot
+   and neutralize transitions. WCAG 2.3.3. */
+@media (prefers-reduced-motion: reduce) {
+  .hp {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Visually hidden but available to screen readers (for live-region
+   announcements and supplemental labels). */
+.hp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -62,6 +62,10 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to the SCM. Omitting the field uses the default. See [Where a status is published](../../index.md#where-a-status-is-published-publishto).
+
 ### Shared trigger and success expr (`when.variables`)
 
 Optional **`when.variables`** (same shape as `when.output`: an `expression` string) runs **once per evaluation** of that `when` block, **before** `when.expression` and optional `when.output.expression`. It must return a **JSON object** (expr map). The result is injected as top-level binding **`Variables`** for those two expressions only.
@@ -84,6 +88,50 @@ Both are `map[string]any`. They are `nil` when the corresponding `when.variables
 **Not in scope:** `Variables` is **not** passed to `response.output.expression` (that program only receives `Response`).
 
 The same field exists on **`spec.success.when`**: variables run before the success boolean (and optional `success.when.output`), with `Response` included when an HTTP response exists for that reconcile.
+
+### HTTP request variables (`httpRequestVariables`)
+
+**`spec.httpRequest.httpRequestVariables`** holds an optional expr expression that runs **once per HTTP request, before any template is rendered**. It must return a map/object; every key is then available in `urlTemplate`, `methodTemplate`, `headerTemplates`, and `bodyTemplate` as `{{ index .HTTPRequestVariables "key" }}`.
+
+Use it to centralise branching logic that would otherwise be duplicated across multiple templates, or to build URL-encoded query strings without hand-writing `%xx` sequences.
+
+**Available variables:** the same set as `httpRequest` Go templates.
+
+**Built-in helper — `urlValuesEncode(map)`:** encodes a string→any map as a percent-encoded `key=value&key2=value2` query string (`url.Values.Encode` — keys sorted alphabetically, values percent-encoded). Pass it to build clean query strings; append the result with `?{{ index .HTTPRequestVariables "qs" }}`.
+
+```yaml
+httpRequest:
+  httpRequestVariables:
+    expression: |
+      {
+        "qs": urlValuesEncode({
+          "query":  "Namespace:petclinic-" + Branch + "+Violation State:ACTIVE",
+          "limit":  "50"
+        })
+      }
+  urlTemplate: >-
+    https://api.example.com/alerts
+    {{- $qs := index .HTTPRequestVariables "qs" -}}
+    {{- if $qs }}?{{ $qs }}{{ end -}}
+  methodTemplate: GET
+```
+
+When combined with trigger mode, `TriggerVariables` lets the expression branch on values already computed by `trigger.when.variables`:
+
+```yaml
+httpRequest:
+  httpRequestVariables:
+    expression: |
+      let close = TriggerVariables["inCloseMode"] ?? false;
+      {
+        "pathSuffix": close ? "/change/close/" + (TriggerVariables["changeId"] ?? "") : "/changes/search",
+        "method":     close ? "POST" : "GET"
+      }
+  urlTemplate: 'https://api.example.com{{ index .HTTPRequestVariables "pathSuffix" }}'
+  methodTemplate: '{{ index .HTTPRequestVariables "method" }}'
+```
+
+Expr owns all branching; templates contain no conditionals.
 
 ## Request scope: environments vs promotionstrategy
 
@@ -447,6 +495,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: api-token-secret
+  labels:
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   token: "your-bearer-token-here"
@@ -637,6 +687,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: compliance-api-creds
+  labels:
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   username: "service-account"
@@ -677,6 +729,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: oauth-credentials
+  labels:
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: Opaque
 stringData:
   clientID: "your-client-id"
@@ -715,12 +769,51 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: mtls-client-cert
+  labels:
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
 type: kubernetes.io/tls
 data:
   tls.crt: <base64-encoded-certificate>
   tls.key: <base64-encoded-private-key>
   ca.crt: <base64-encoded-ca-cert>  # Optional, for custom CA
 ```
+
+### Opting Secrets in with a label
+
+The controller sends the credentials from a `basic`, `bearer`, `oauth2`, or `tls` `secretRef` to the request URL
+you template (for `oauth2`, also to `tokenURL`). Because a WebRequestCommitStatus author chooses that URL, the
+controller only reads a referenced Secret that carries the label `promoter.argoproj.io/webrequestcommitstatus-access: allowed`.
+Without it the reconcile fails with a `Ready=False` condition naming the label, and no request is made.
+
+The label is the only check. The controller does not check whether the WebRequestCommitStatus author can read the
+Secret. Adding the label is an explicit grant by someone who can write the Secret: any user who can create a
+WebRequestCommitStatus in the Secret's namespace can then reference it and have its credentials sent to a URL they
+choose. Only label a Secret if everyone with WebRequestCommitStatus create access in that namespace may use its
+credentials.
+
+A WebRequestCommitStatus can only reference Secrets in its own namespace. To limit who can use a labeled Secret,
+restrict WebRequestCommitStatus create permissions in that namespace, or keep the Secret in a namespace where only
+trusted users can create WebRequestCommitStatuses.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: deployments-api-token
+  labels:
+    promoter.argoproj.io/webrequestcommitstatus-access: allowed
+type: Opaque
+stringData:
+  token: your-api-token
+```
+
+Label an existing Secret in place:
+
+```bash
+kubectl label secret deployments-api-token promoter.argoproj.io/webrequestcommitstatus-access=allowed
+```
+
+`authentication.scm` does not use this label: it uses the ScmProvider's Secret and is limited to the provider's host.
 
 ### SCM Provider Credentials
 
@@ -731,6 +824,8 @@ Instead of creating separate secrets, you can reuse the SCM provider credentials
 - You want to avoid duplicating secrets
 
 Set `authentication.scm: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+
+Because the SCM credentials travel with the request, the rendered URL must point at the SCM provider's host (the provider's `domain`, or the vendor's API host when none is set), and the controller only follows a redirect whose target stays on that host. A redirect to any other host, or from `https` to plain `http`, fails the request with a `Ready=False` condition instead of forwarding the credentials.
 
 
 **Example — Gate on GitHub branch protection rules being satisfied:**
@@ -910,6 +1005,51 @@ spec:
 ```
 
 After each `response.output` evaluation, `ResponseOutput.changeId` is either populated from a search hit (next reconcile sends `POST`) or carried forward (continued action), so the next reconcile naturally renders the matching method, URL, and body.
+
+### HTTP request variables — clean query strings with `urlValuesEncode`
+
+`httpRequestVariables.expression` computes a map before any template is rendered. The `urlValuesEncode` helper builds percent-encoded query strings without hand-writing `%xx` sequences.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: rhacs-alert-gate
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: rhacs-alert-gate
+  reportOn: proposed
+  descriptionTemplate: "RHACS alert gate ({{ .Phase }}) — {{ .Branch }}"
+  httpRequest:
+    httpRequestVariables:
+      expression: |
+        {
+          "qs": urlValuesEncode({
+            "query":            "Namespace:petclinic-" + Branch + "+Platform Component:false+Entity Type:DEPLOYMENT+Violation State:ACTIVE",
+            "pagination.limit":  "50",
+            "pagination.offset": "0"
+          })
+        }
+    urlTemplate: >-
+      https://central-rhacs.example.com/v1/alerts
+      {{- $qs := index .HTTPRequestVariables "qs" -}}
+      {{- if $qs }}?{{ $qs }}{{ end -}}
+    methodTemplate: GET
+    authentication:
+      bearer:
+        secretRef:
+          name: rhacs-api-token
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? Response.StatusCode == 200 && len(Response.Body.alerts) == 0
+          : Phase == "success"
+  mode:
+    polling:
+      interval: 2m
+```
 
 ### Integrating with PromotionStrategy
 

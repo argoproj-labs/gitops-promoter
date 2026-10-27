@@ -53,6 +53,27 @@ promotions. PullRequests carry promotion-strategy, change-transfer-policy, and e
 {!internal/controller/testdata/PullRequest.yaml!}
 ```
 
+### RestoreActiveCommit
+
+A RestoreActiveCommit restores one environment's active branch to a previously promoted hydrated commit and blocks promotion
+for that environment while `spec.blockEnvironment` is true (the default). `spec.promotionStrategyRef` names the PromotionStrategy and `spec.branch`
+names the environment; the controller resolves those to the environment's ChangeTransferPolicy, which supplies the
+repository, branches, and `activePath`. `spec.sha` is the hydrated commit to restore. `promotionStrategyRef`, `branch`,
+and `sha` are immutable, so restoring something else means creating a new RestoreActiveCommit. Once the active tip moves past the restore commit an
+object recorded, the ChangeTransferPolicy deletes that object. The controller makes the ChangeTransferPolicy its owner,
+so deleting the policy removes its RestoreActiveCommits without stamping `Promoter-restore-unblocked-at`.
+
+The restore is a new commit on top of the active branch, not a force-push, and runs once. `status.blockedDrySha`
+records the dry SHA that was live before the restore; the ChangeTransferPolicy will not open a pull request for it. No
+promotion is auto-merged while `spec.blockEnvironment` is true. Set it to `false` to stamp `Promoter-restore-unblocked-at`,
+delete the RestoreActiveCommit, and resume. A commit that carries `Promoter-restored-from` cannot
+be restored to. That trailer is on the restore commit only. See [Rolling Back an Environment](advanced-usage/rolling-back.md)
+for the full workflow.
+
+```yaml
+{!internal/controller/testdata/RestoreActiveCommit.yaml!}
+```
+
 ### CommitStatus
 
 A CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for

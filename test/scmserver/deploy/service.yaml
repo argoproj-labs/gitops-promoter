@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scm-server
+spec:
+  selector:
+    app.kubernetes.io/name: scm-server
+  ports:
+    - name: admin
+      port: 9000
+      targetPort: admin
+    - name: github
+      port: 9001
+      targetPort: github
+    - name: gitlab
+      port: 9002
+      targetPort: gitlab
+    - name: azuredevops
+      port: 9003
+      targetPort: azuredevops
+    - name: bitbucket
+      port: 9004
+      targetPort: bitbucket
+    - name: gitea
+      port: 9005
+      targetPort: gitea
+    - name: forgejo
+      port: 9006
+      targetPort: forgejo
+    - name: bitbucketdc
+      port: 9007
+      targetPort: bitbucketdc

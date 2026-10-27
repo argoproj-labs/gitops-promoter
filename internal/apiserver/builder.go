@@ -55,6 +55,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ps); err != nil {
 		if apierrors.IsNotFound(err) {
+			//nolint:wrapcheck // StatusError must be returned unwrapped for apiserver recognition
 			return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
 		}
 		return nil, fmt.Errorf("failed to get PromotionStrategy %s/%s: %w", namespace, name, err)
@@ -95,6 +96,19 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		return nil, fmt.Errorf("failed to list ChangeTransferPolicyHistories: %w", err)
 	}
 	bundle.ChangeTransferPolicyHistories = nilIfEmpty(ctphList.Items)
+
+	// RestoreActiveCommits name the PromotionStrategy directly.
+	rcList := &promoterv1alpha1.RestoreActiveCommitList{}
+	if err := reader.List(ctx, rcList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list RestoreActiveCommits: %w", err)
+	}
+	var restoreActiveCommits []promoterv1alpha1.RestoreActiveCommit
+	for i := range rcList.Items {
+		if rcList.Items[i].Spec.PromotionStrategyRef.Name == name {
+			restoreActiveCommits = append(restoreActiveCommits, rcList.Items[i])
+		}
+	}
+	bundle.RestoreActiveCommits = nilIfEmpty(restoreActiveCommits)
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {

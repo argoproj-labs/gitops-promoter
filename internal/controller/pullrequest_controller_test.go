@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -113,7 +112,7 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Reconciling merging of the PullRequest")
-				mergeSha := getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
+				mergeSha := getGitBranchSHA(ctx, gitRepo, pullRequest.Spec.SourceBranch)
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					pullRequest.Spec.MergeSha = mergeSha
@@ -166,7 +165,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 			})
 
-			It("should not repeat SCM Update calls on every periodic requeue once synced", func() {
+			It("should not repeat SCM Update calls on every periodic requeue once synced", Label(fakeSCMOnlyLabel), func() {
 				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				By("Waiting for several periodic reconciles to occur (proven via FindOpen, which must always run)")
@@ -216,7 +215,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 			})
 
-			It("should not hit SCM when only spec.commit.message changes", func() {
+			It("should not hit SCM when only spec.commit.message changes", Label(fakeSCMOnlyLabel), func() {
 				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
@@ -240,7 +239,7 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("should not hit SCM when only spec.mergeSha changes while open", func() {
+			It("should not hit SCM when only spec.mergeSha changes while open", Label(fakeSCMOnlyLabel), func() {
 				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
@@ -264,7 +263,7 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("should still hit SCM when spec.title changes", func() {
+			It("should still hit SCM when spec.title changes", Label(fakeSCMOnlyLabel), func() {
 				fake.ResetPullRequestCallCounts(pullRequest.UID)
 				baselineFindOpen := fake.FindOpenCallCount(pullRequest.UID)
 				baselineUpdate := fake.UpdateCallCount(pullRequest.UID)
@@ -369,6 +368,10 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When merge SHA is invalid", func() {
 			BeforeEach(func() {
+				if !scmTarget.mergeGuardsHeadSha() {
+					Skip("provider merges regardless of the expected head SHA")
+				}
+
 				By("Creating test resources with invalid merge SHA")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-error-message-test")
 
@@ -394,6 +397,9 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			AfterEach(func() {
+				if !scmTarget.mergeGuardsHeadSha() {
+					return
+				}
 				By("Cleaning up the PullRequest")
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 			})
@@ -996,7 +1002,7 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				// Get the actual SHA of the source branch for the merge
-				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
+				mergeSha = getGitBranchSHA(ctx, gitRepo, pullRequest.Spec.SourceBranch)
 			})
 
 			It("should persist merged status and the SCM-reported merged target sha before deletion via defer", func() {
@@ -1056,10 +1062,12 @@ var _ = Describe("PullRequest Controller", func() {
 				close(stopPolling)
 
 				By("Verifying the merged target sha from the merge response was persisted alongside the merged state")
-				// The fake provider reports the resulting target-branch commit in its merge response, so the
+				// When the provider reports the resulting target-branch commit in its merge response, the
 				// sha must land in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
-				Expect(observedStatus.MergedTargetSha).To(Equal(
-					getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.TargetBranch)))
+				if scmTarget.mergeReportsTargetSha() {
+					Expect(observedStatus.MergedTargetSha).To(Equal(
+						getGitBranchSHA(ctx, gitRepo, pullRequest.Spec.TargetBranch)))
+				}
 
 				By("Verifying the PullRequest is then deleted on next reconciliation")
 				// Now that we've proven the status was persisted, the NEXT reconciliation
@@ -1103,7 +1111,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", func() {
+		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", Label(fakeSCMOnlyLabel), func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
 			// Get-by-ID persists mergedTargetSha and the NEXT reconcile deletes the object, so the
@@ -1161,7 +1169,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should recover and delete the PR when spec.state=closed but the PR is already gone from the provider", func() {
+		It("should recover and delete the PR when spec.state=closed but the PR is already gone from the provider", Label(fakeSCMOnlyLabel), func() {
 			By("Removing the PR from the fake provider to simulate it was already closed on the SCM (e.g. close happened but status update was lost)")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
@@ -1179,6 +1187,73 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When the SCM completes a merge asynchronously", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "async-merge")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should not close the PR while the SCM still reports it open after the merge", Label(fakeSCMOnlyLabel), func() {
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Recording status.state merged while the SCM still reports the PR open, like an accepted Azure DevOps completion")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PR stays open on the SCM and the PullRequest keeps waiting while terminating")
+			Consistently(func(g Gomega) {
+				_, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(state).To(Equal(promoterv1alpha1.PullRequestOpen))
+
+				var current promoterv1alpha1.PullRequest
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &current)).To(Succeed())
+				g.Expect(current.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+			By("Completing the merge on the SCM")
+			mergedTargetSha := pullRequest.Spec.MergeSha
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Verifying the PullRequest is released once the SCM reports it merged")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(state).To(Equal(promoterv1alpha1.PullRequestMerged))
 		})
 	})
 
@@ -1212,7 +1287,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should set merged-or-closed then resolve to unknown and delete the PR when not found on provider", func() {
+		It("should set merged-or-closed then resolve to unknown and delete the PR when not found on provider", Label(fakeSCMOnlyLabel), func() {
 			By("Simulating external deletion by removing PR from fake provider")
 			// Get the fake provider and delete the PR from its internal map.
 			// This simulates the PR being merged/closed externally on the SCM provider.
@@ -1311,7 +1386,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 		})
 
-		It("should close the PullRequest when FindOpen misses but Get confirms it is still open during deletion", func() {
+		It("should close the PullRequest when FindOpen misses but Get confirms it is still open during deletion", Label(fakeSCMOnlyLabel), func() {
 			By("Simulating SCM list lag: Get-by-ID finds the PR open but FindOpen does not")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
@@ -1346,7 +1421,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should set state merged and mergedTargetSha when externally merged on provider", func() {
+		It("should set state merged and mergedTargetSha when externally merged on provider", Label(fakeSCMOnlyLabel), func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
 			// The reconcile that learns about the external merge persists status and the NEXT one deletes the
@@ -1403,7 +1478,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should record the merge sha when the resource is deleted before the external merge is observed", func() {
+		It("should record the merge sha when the resource is deleted before the external merge is observed", Label(fakeSCMOnlyLabel), func() {
 			// The deletion reconcile is the first one to run after the external merge, so the merge sha is
 			// only recoverable if deletion finalization asks the SCM before releasing the finalizer.
 			mergedTargetSha := pullRequest.Spec.MergeSha
@@ -1525,30 +1600,49 @@ var _ = Describe("PullRequest Controller", func() {
 			_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
 		})
 
-		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
+		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", Label(fakeSCMOnlyLabel), func() {
 			fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 			// Status must be persisted as closed before the promoter finalizer is released so the
 			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
+			//
+			// The closed-status-but-finalizer-still-held state is a single, narrow intermediate
+			// resourceVersion: it exists only between the "Closing PullRequest" reconcile that persists
+			// status.state=Closed and the very next reconcile that releases the finalizer, which in this
+			// envtest setup can be under 15ms apart. A fixed-interval Get-poll can straddle that window
+			// under CI load, where any single Get can itself take longer than the window it's trying to
+			// sample -- that's a sampling gap, not evidence the controller skipped persisting the status.
+			// A watch has no such gap: the API server delivers every resourceVersion transition in order,
+			// so the intermediate state can't be missed regardless of how narrow it is or how slow the
+			// test runner is. The watch must start before Delete below so the first relevant event isn't
+			// missed to the same race this is fixing.
+			watchClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).ToNot(HaveOccurred())
+			watcher, err := watchClient.Watch(ctx, &promoterv1alpha1.PullRequestList{},
+				client.InNamespace(pullRequest.Namespace),
+				client.MatchingFields{"metadata.name": pullRequest.Name})
+			Expect(err).ToNot(HaveOccurred())
+			defer watcher.Stop()
+
 			closedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
-			stopPolling := make(chan bool)
+			stopWatching := make(chan bool)
 			go func() {
 				defer GinkgoRecover()
-				ticker := time.NewTicker(1 * time.Millisecond)
-				defer ticker.Stop()
 				timeout := time.After(constants.EventuallyTimeout)
 				for {
 					select {
-					case <-ticker.C:
-						var currentPR promoterv1alpha1.PullRequest
-						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
-						if err == nil &&
+					case event, ok := <-watcher.ResultChan():
+						if !ok {
+							return
+						}
+						currentPR, ok := event.Object.(*promoterv1alpha1.PullRequest)
+						if ok &&
 							currentPR.Status.State == promoterv1alpha1.PullRequestClosed &&
-							controllerutil.ContainsFinalizer(&currentPR, promoterv1alpha1.PullRequestFinalizer) {
+							controllerutil.ContainsFinalizer(currentPR, promoterv1alpha1.PullRequestFinalizer) {
 							closedStatusObserved <- currentPR.Status
 							return
 						}
-					case <-stopPolling:
+					case <-stopWatching:
 						return
 					case <-timeout:
 						return
@@ -1566,7 +1660,7 @@ var _ = Describe("PullRequest Controller", func() {
 			var observedStatus promoterv1alpha1.PullRequestStatus
 			Eventually(closedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 				"closed status should be persisted before the promoter finalizer is released")
-			close(stopPolling)
+			close(stopWatching)
 
 			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
 			Eventually(func(g Gomega) {
@@ -1613,7 +1707,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			base := pullRequest.DeepCopy()
 			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
-			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			err = k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
 			Consistently(func(g Gomega) {
@@ -1908,38 +2002,32 @@ var _ = Describe("shouldSkipSCMSync", func() {
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
+	repo := scmTarget.newRepo(ctx, name)
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: name,
+		}),
 	}
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
+	// SCMs refuse to open a PR when the source branch has no commits the target lacks.
+	pushEmptyCommit(ctx, gitRepo, testBranchDevelopmentNext, "diverge from "+testBranchDevelopment)
 
 	scmSecret := &v1.Secret{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: "default",
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
-		Status: promoterv1alpha1.ScmProviderStatus{},
+		Spec:      scmTarget.scmProviderSpec(repo, name),
+		Status:    promoterv1alpha1.ScmProviderStatus{},
 	}
 
 	pullRequest := &promoterv1alpha1.PullRequest{
@@ -1950,9 +2038,11 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Title:        "Initial Title",
-			TargetBranch: "development",
-			SourceBranch: "development-next",
+			Title: "Initial Title",
+			// Use the environment branches setupInitialTestGitRepoOnServer creates so real
+			// scmserver providers (which reject PRs against missing branches) work too.
+			TargetBranch: testBranchDevelopment,
+			SourceBranch: testBranchDevelopmentNext,
 			Description:  "Initial Description",
 			MergeSha:     "abc123def456789012345678901234567890abcd", // Dummy SHA for testing
 			State:        "open",
@@ -2001,9 +2091,23 @@ func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 	})
 }
 
-func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
-	gitServerPort := 5000 + GinkgoParallelProcess()
-	repoURL := fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name)
+func pushEmptyCommit(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, branch, message string) {
+	GinkgoHelper()
+	gitPath := GinkgoT().TempDir()
+	_, err := runGitCmd(ctx, gitPath, "clone", "--single-branch", "--branch", branch, testGitRepoCloneURL(gitRepo), ".")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", message)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", branch)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func getGitBranchSHA(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, branch string) string {
+	repoURL := testGitRepoCloneURL(gitRepo)
 
 	output, err := runGitCmd(ctx, "", "ls-remote", repoURL, "refs/heads/"+branch)
 	Expect(err).NotTo(HaveOccurred())

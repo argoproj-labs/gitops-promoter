@@ -266,7 +266,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment, orderGateKey string) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
+	ctpName := utils.ChangeTransferPolicyNameForEnvironment(ps.Name, environment.Branch)
 
 	// Build owner reference
 	kind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()

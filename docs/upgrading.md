@@ -2,6 +2,26 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
+
+> [!IMPORTANT]
+> Every WebRequestCommitStatus that uses `httpRequest.authentication.basic`, `.bearer`, `.oauth2`, or `.tls` stops
+> making requests after upgrading until the referenced Secret carries the label
+> `promoter.argoproj.io/webrequestcommitstatus-access: allowed`. The gate reports `Ready=False` with a message naming the label.
+> `authentication.scm` is unaffected.
+
+The controller sends those credentials to the request URL the WebRequestCommitStatus author templates (and, for
+`oauth2`, to `tokenURL`). Previously any Secret in the namespace could be referenced, so a user who could create a
+WebRequestCommitStatus could read Secrets they had no RBAC for. The label is an opt-in that only a Secret writer can grant.
+
+Migration: label each Secret referenced by a WebRequestCommitStatus `secretRef`:
+
+```bash
+kubectl -n <namespace> label secret <name> promoter.argoproj.io/webrequestcommitstatus-access=allowed
+```
+
+See [Opting Secrets in with a label](gating-promotions/built-in-gates/web-request-commit-status/index.md#opting-secrets-in-with-a-label).
+
 ## 0.41 — Promotion history moves to ChangeTransferPolicyHistory
 
 Starting in 0.41.0, promotion history no longer lives on `ChangeTransferPolicy.status.history` or

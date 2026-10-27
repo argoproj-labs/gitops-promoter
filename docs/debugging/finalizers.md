@@ -57,7 +57,7 @@ Check `status.history[].mergeCommitSnapshotMismatch` on the environment's Change
 `status.history[].active.dry` and `status.history[].active.hydrated` are read back from the merge commit itself, so they describe what actually merged either way. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
 
 > [!TIP]
-> Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow--tide-example) and the mismatch caveats below.
+> Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow-tide-example) and the mismatch caveats below.
 
 ### How the merge commit is identified
 

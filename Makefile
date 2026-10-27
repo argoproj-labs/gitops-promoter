@@ -5,7 +5,7 @@ ENVTEST_K8S_VERSION = 1.37.0
 
 CURRENT_DIR=$(shell pwd)
 
-MKDOCS_DOCKER_IMAGE?=python:3.14-alpine
+MKDOCS_DOCKER_IMAGE?=python:3.15-alpine
 MKDOCS_RUN_ARGS?=
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -188,18 +188,38 @@ test: manifests generate fmt vet envtest ## Run tests.
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	go test ./test/e2e/ -v
+	go test ./test/e2e/ -v -timeout 30m -ginkgo.v
 
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/ test/scmserver/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/ test/scmserver/
+
+# Local-only: run controller integration tests against an externally running scmserver provider.
+# Requires `make run-scm-server` in another terminal. Not used by CI.
+# Example: make test-scm-provider SCM_PROVIDER=gitea
+# hack/git goes on PATH because git authenticates to the server through promoter_askpass.sh (see internal/git).
+SCM_PROVIDER ?=
+# Admin API listens on this port; the seven providers use the next seven. Override if 9000 is taken (e.g. by Zscaler).
+SCM_SERVER_PORT_BASE ?= 9000
+# debug logs every provider API request (not git traffic); info logs only startup and errors.
+SCM_SERVER_LOG_LEVEL ?= debug
+.PHONY: test-scm-provider
+test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
+	@if [ -z "$(SCM_PROVIDER)" ]; then echo "SCM_PROVIDER is required (e.g. SCM_PROVIDER=gitea)"; exit 1; fi
+	PATH="$(CURDIR)/hack/git:$$PATH" \
+	PROMOTER_TEST_SCM_PROVIDER="$(SCM_PROVIDER)" \
+	PROMOTER_TEST_SCM_ADMIN_URL="$${PROMOTER_TEST_SCM_ADMIN_URL:-http://127.0.0.1:$(SCM_SERVER_PORT_BASE)}" \
+	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \
+	PROMOTER_TEST_SCM_TOKEN="$${PROMOTER_TEST_SCM_TOKEN:-dev-token}" \
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
+	go tool ginkgo -p -procs=4 -r -v --label-filter='!fake-scm-only' --timeout 30m internal/controller/
 
 ##@ Fuzzing
 
@@ -296,6 +316,16 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-scm-server
+run-scm-server: ## Run the test SCM server on localhost (admin API :SCM_SERVER_PORT_BASE, providers on the next 7 ports). See docs/contributing/test-scm-server.md.
+	mkdir -p $(LOCALBIN)
+	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token --log-level $(SCM_SERVER_LOG_LEVEL) \
+		--admin-addr 127.0.0.1:$(SCM_SERVER_PORT_BASE) --github-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+1))) \
+		--gitlab-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+2))) --azuredevops-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+3))) \
+		--bitbucket-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+4))) --gitea-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+5))) \
+		--forgejo-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+6))) \
+		--bitbucketdatacenter-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+7)))
+
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 
 	cd ui/dashboard && npm install && npm run dev &
@@ -348,6 +378,14 @@ lint-extension: install-ui-deps ## Run extension type-check, lint and audit chec
 test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
+.PHONY: test-ui-test-components-lib
+test-ui-test-components-lib: ## Run components-lib unit tests (with coverage)
+	cd ui/components-lib && npm test
+
+.PHONY: test-ui-test-shared
+test-ui-test-shared: ## Run shared unit tests (with coverage)
+	cd ui/shared && npm test
+
 .PHONY: lint-components-lib
 lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
 	cd ui/components-lib && npm run type-check && npm run format:check
@@ -368,12 +406,24 @@ lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-stor
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
 
+.PHONY: test-ui
+test-ui: test-ui-test-shared test-ui-test-components-lib test-unit-test-extension test-ui-test-dashboard ## Run all UI unit tests (with coverage)
+
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/build/buildkit/
+# COVER=1 instruments the manager binary so an e2e run can write a go coverage profile. The release image leaves it at 0.
+COVER ?= 0
+
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg COVER=$(COVER) -t ${IMG} .
+
+SCM_SERVER_IMG ?= scm-server:e2e
+
+.PHONY: docker-build-scm-server
+docker-build-scm-server: ## Build the test SCM server image used by the e2e tests.
+	$(CONTAINER_TOOL) build -f test/scmserver/Dockerfile -t ${SCM_SERVER_IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -428,7 +478,8 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+# Set the image where the auth proxy patch has already been applied, so the patch's :latest does not win.
+	cd config/default && $(KUSTOMIZE) edit set image quay.io/argoprojlabs/gitops-promoter=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
@@ -454,15 +505,15 @@ NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.8.2
-CONTROLLER_TOOLS_VERSION ?= v0.22.0
+KUSTOMIZE_VERSION ?= v5.8.3
+CONTROLLER_TOOLS_VERSION ?= v0.23.0
 ENVTEST_VERSION ?= release-0.25
-GOLANGCI_LINT_VERSION ?= v2.14.0
-DEADCODE_VERSION ?= v0.51.0
+GOLANGCI_LINT_VERSION ?= v2.15.0
+DEADCODE_VERSION ?= v0.52.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v3.8.0
+MOCKERY_VERSION ?= v3.8.1
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.18.2
+GORELEASER_VERSION ?= v2.19.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -514,7 +565,7 @@ serve-docs:
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings
-	@DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
+	@NO_MKDOCS_2_WARNING=1 DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
 	@if grep -q 'WARNING' mkdocs-lint.log; then \
 	  echo "MkDocs build produced warnings!"; \
 	  cat mkdocs-lint.log; \

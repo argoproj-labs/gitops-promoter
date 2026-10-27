@@ -23,6 +23,11 @@ spec:
 
   # Optional URL to link to more information about the commit status.
   url: https://argocd.example.com/applications/example-app
+
+  # Optional. Destinations for this status. Default is [scm], which posts it to the SCM.
+  # An empty list keeps it in Kubernetes only. Omitting the field uses the default.
+  publishTo:
+    - scm
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

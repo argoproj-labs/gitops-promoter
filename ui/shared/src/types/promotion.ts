@@ -17,13 +17,34 @@ export type RelativeTimeAgo = string;
 export type PromotionStrategy = PromotionStrategyResource;
 
 /**
- * Per-environment status assembled for Card/PSData (from CTP status + spec branch).
+ * Per-environment status assembled for PSData (from CTP status + spec branch).
  * `history` is not part of the EnvironmentStatus CRD schema; it is re-projected onto the
  * environment from the per-environment ChangeTransferPolicyHistory resource in the bundle.
  */
 export type Environment = components['schemas']['EnvironmentStatus'] & {
   history?: History[];
+  /** metadata.name of the ChangeTransferPolicy for this environment, when the bundle has one. */
+  changeTransferPolicyName?: string;
+  /**
+   * The ChangeTransferPolicy's promoter.argoproj.io/instance-id label. Resources created for this
+   * environment need the same label, or a non-default install's controller never sees them.
+   */
+  instanceId?: string;
+  /** RestoreActiveCommit blocking this environment, from the bundle. */
+  restoreActiveCommit?: EnvironmentRestoreActiveCommit;
 };
+
+/** The parts of a RestoreActiveCommit the UI needs to explain why a promotion is held. */
+export interface EnvironmentRestoreActiveCommit {
+  name: string;
+  /**
+   * Hydrated SHA of the restore commit this RestoreActiveCommit wrote (`status.activeSha`).
+   * `blockedDrySha` applies only while this is still the environment's active hydrated SHA.
+   */
+  activeSha?: string;
+  /** Dry SHA the RestoreActiveCommit moved off the active branch. */
+  blockedDrySha?: string;
+}
 
 export type History = components['schemas']['History'];
 
@@ -64,14 +85,16 @@ export type CommitStatusManagerKind =
   | 'GitCommitStatus'
   | 'ScheduledCommitStatus'
   | 'ArgoCDCommitStatus'
-  | 'WebRequestCommitStatus';
+  | 'WebRequestCommitStatus'
+  | 'DependentsSuccessfulCommitStatus';
 
 export type CommitStatusManager =
   | components['schemas']['TimedCommitStatus']
   | components['schemas']['GitCommitStatus']
   | components['schemas']['ScheduledCommitStatus']
   | components['schemas']['ArgoCDCommitStatus']
-  | components['schemas']['WebRequestCommitStatus'];
+  | components['schemas']['WebRequestCommitStatus']
+  | components['schemas']['DependentsSuccessfulCommitStatus'];
 
 /** {@link BranchCommitStatus} stamped with the manager join computed by `mergeCommitStatusManagers`. */
 export interface EnrichedBranchCommitStatus extends BranchCommitStatus {
@@ -93,14 +116,6 @@ export interface HealthSummaryResult {
   successCount: number;
   totalCount: number;
   shouldDisplay: boolean;
-}
-
-export interface DeploymentCommit {
-  sha: string;
-  author: string;
-  subject: string;
-  body: string;
-  date: Rfc3339DateTime | '';
 }
 
 export interface PrTooltip {
@@ -149,6 +164,10 @@ export interface EnrichedEnvDetails {
   proposedChecks: Check[];
   proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
+  /** RestoreActiveCommit holding the environment; unset in history views. */
+  restoreActiveCommit?: string;
+  /** True when the proposed commit is the one that RestoreActiveCommit blocked. */
+  proposedIsBlocked?: boolean;
 
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;

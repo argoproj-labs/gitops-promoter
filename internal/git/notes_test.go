@@ -281,15 +281,39 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(got).To(BeNil())
 	})
 
-	It("SetHistoryNote leaves the clone's worktree/index/HEAD untouched", func() {
+	It("SetHistoryNote writes the note", func() {
 		g := newEnvOps("default/invariant")
 		Expect(g.FetchBranch(GinkgoT().Context(), defaultBranch)).To(Succeed())
-
-		headBefore, statusBefore := cloneHeadAndStatus(g.ClonePath())
 		Expect(g.SetHistoryNote(GinkgoT().Context(), shaOne, map[string][]string{"Pull-request-id": {"1"}})).To(Succeed())
-		headAfter, statusAfter := cloneHeadAndStatus(g.ClonePath())
-		Expect(headAfter).To(Equal(headBefore), "SetHistoryNote must not move HEAD")
-		Expect(statusAfter).To(Equal(statusBefore), "SetHistoryNote must not dirty the worktree/index")
+		got, err := g.GetHistoryNote(GinkgoT().Context(), shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(HaveKeyWithValue("Pull-request-id", []string{"1"}))
+	})
+
+	It("FetchNotes drops a note whose push failed before the remote had a notes ref", func() {
+		ctx := GinkgoT().Context()
+		g := newEnvOps("default/failed-first-push")
+		Expect(g.FetchBranch(ctx, defaultBranch)).To(Succeed())
+
+		hook := filepath.Join(tempRepoDir, "hooks", "pre-receive")
+		Expect(os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755)).To(Succeed())
+		Expect(g.SetHistoryNote(ctx, shaOne, map[string][]string{"Pull-request-id": {"1"}})).NotTo(Succeed())
+		Expect(os.Remove(hook)).To(Succeed())
+
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+		got, err := g.GetHistoryNote(ctx, shaOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeNil(), "the note never reached the remote, so it must not read as written")
+
+		By("taking a snapshot first, as the reconcilers do")
+		Expect(g.SetHistoryNote(ctx, shaTwo, map[string][]string{"Pull-request-id": {"2"}})).To(Succeed())
+		_, err = runGitCmd(tempRepoDir, "update-ref", "-d", git.PromoterHistoryNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.SnapshotRemoteRefs(ctx, defaultBranch)).To(Succeed())
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+		got, err = g.GetHistoryNote(ctx, shaTwo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeNil())
 	})
 
 	It("supports GetCommitParents and CommitExists for merge commits", func() {

@@ -1,9 +1,9 @@
 name: test
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'release-*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'release-*' ]
 
 permissions:
   contents: read
@@ -22,11 +22,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.1'
           cache: 'npm'
           cache-dependency-path: |
             ui/shared/package-lock.json
@@ -43,7 +43,7 @@ jobs:
       - name: UI Checks
         run: make lint-ui
       - name: Set up Python and venv for docs
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Create venv and install MkDocs requirements
@@ -72,35 +72,62 @@ jobs:
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
-      - name: Frontend Extension Unit Tests
+      - name: Frontend shared unit tests
+        run: make test-ui-test-shared
+      - name: Frontend components-lib unit tests
+        run: make test-ui-test-components-lib
+      - name: Frontend extension unit tests
         run: make test-unit-test-extension
-      - name: Frontend Dashboard Unit Tests
+      - name: Frontend dashboard unit tests
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
         run: make test-parallel
+        env:
+          # 2% of reconciler writes to the envtest API server fail with a synthetic 500. Reads, watches,
+          # and lease writes are exempt. See internal/k8sfault.
+          K8S_FAULT_PROBABILITY: "0.02"
       - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
         run: make fuzz-replay
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: code-coverage
           path: |
             cover.out
+            ui/shared/coverage/lcov.info
+            ui/components-lib/coverage/lcov.info
             ui/dashboard/coverage/lcov.info
             ui/extension/coverage/lcov.info
-      - name: Upload code coverage information to codecov.io
+      - name: Upload Go coverage to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
-          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          # Ginkgo profile from make test-parallel. disable_search keeps this upload from also
+          # picking up the Vitest lcov files, which go up under the ui flag.
+          files: cover.out
+          flags: integration
+          name: integration
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload UI coverage to codecov.io
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          # Vitest lcov (repo-root SF: via lcov projectRoot). One flag for the whole UI upload:
+          # Codecov applies a flag to every file in that upload, so a second flag here would
+          # duplicate the same hits.
+          files: ui/shared/coverage/lcov.info,ui/components-lib/coverage/lcov.info,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
+          flags: ui
+          name: ui
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload test results to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           report_type: test_results
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -114,11 +141,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.14.0
+          version: v2.15.0
           args: --timeout=5m
           skip-cache: false
           cache-invalidation-interval: 1 # day, default 7
@@ -132,7 +159,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: go mod tidy
         run: |
           go mod tidy
@@ -165,7 +192,7 @@ jobs:
             exit 1
           fi
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -189,7 +216,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: Run Nilaway
         run: make nilaway-no-test
   deadcode:
@@ -202,6 +229,6 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: Run deadcode
         run: make deadcode

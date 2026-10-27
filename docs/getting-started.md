@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide will help you get started installing and setting up the GitOps Promoter. We currently support
-GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
+GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, Bitbucket DataCenter/Server, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
 
 ## Requirements
 
@@ -23,7 +23,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -35,7 +35,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -46,10 +46,15 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-without-ui.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-without-ui.yaml
 ```
 
 ///
+
+The install bundles include `view`, `edit`, and `admin` ClusterRoles for the
+Promoter custom resources. These roles aggregate into Kubernetes' built-in
+`view`, `edit`, and `admin` roles, so granting users one of those standard roles
+also grants the corresponding Promoter custom-resource permissions.
 
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
 
@@ -418,6 +423,10 @@ spec:
   secretRef:
     name: <your-secret-name>
   bitbucketCloud: {}
+  # To reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible host, set the domain.
+  # API requests then go to https://<domain>/2.0 and git/web URLs use https://<domain>.
+  # bitbucketCloud:
+  #   domain: bitbucket.example.com
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository
@@ -433,6 +442,134 @@ spec:
 
 > [!NOTE]
 > The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
+
+///
+
+/// tab | Bitbucket DataCenter/Server
+
+To configure the GitOps Promoter with Bitbucket DataCenter or Bitbucket Server, you will need to create either an HTTP access token or use HTTP Basic Auth credentials.
+
+> [!NOTE]
+> Bitbucket DataCenter/Server 7.4 or later is required. The GitOps Promoter reports commit statuses through the
+> repository builds API (`/rest/api/1.0/projects/{projectKey}/repos/{repositorySlug}/commits/{commitId}/builds`),
+> which was added in 7.4.
+
+**Creating a Bitbucket DataCenter/Server HTTP access token**
+
+The GitOps Promoter opens and merges pull requests and sets commit statuses as the owner of the token, so consider
+creating the token for a dedicated service user. That user needs an email address, because Bitbucket DataCenter/Server
+cannot create merge commits for a user without one.
+
+1. Log in to your Bitbucket DataCenter/Server instance as that user
+2. Navigate to your user profile → **Manage account** → **HTTP access tokens**
+3. Click **Create token**
+4. Give it a name (e.g., "GitOps Promoter")
+5. Select the following permissions:
+   * **Project permissions**: Read
+   * **Repository permissions**: Write
+6. Click **Create** and save the token value
+
+**ScmProvider**
+
+Create a Kubernetes Secret with either an HTTP access token or username/password credentials:
+
+```yaml
+# Option 1: HTTP access token (recommended)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-http-access-token>
+---
+# Option 2: HTTP Basic Auth (username/password)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  username: <your-username>
+  password: <your-password>
+```
+
+The token is sent as an `Authorization: Bearer` header for both REST API calls and git operations over HTTPS, so no
+username is needed.
+
+Create a ScmProvider referencing the secret and your Bitbucket DataCenter/Server hostname:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  bitbucketDataCenter:
+    domain: <your-bitbucket-server-hostname>
+```
+
+**GitRepository**
+
+Create a GitRepository referencing the ScmProvider. The `project` field is the Bitbucket project key (e.g. `MYPROJ`) and `name` is the repository slug (e.g. `my-repo`):
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  bitbucketDataCenter:
+    project: <your-project-key>
+    name: <your-repository-slug>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+```
+
+**Repository settings**
+
+Check the following settings of every repository the GitOps Promoter manages:
+
+* **Branch permissions**: Add a *Prevent deletion* restriction for the environment branches (e.g. the pattern
+  `environment/*`). The proposed `-next` branches are permanent; if a promotion pull request is merged by hand with
+  *Delete source branch after merging* ticked, the promotion of that environment fails until the branch is recreated.
+* **Merge checks**: The GitOps Promoter's commit statuses appear as builds on the pull requests. Merge checks such as
+  required approvals or builds also apply to merges by the GitOps Promoter; a vetoed merge is retried until the checks
+  pass, so required approvals effectively disable `autoMerge`.
+* **Required builds**: To block merges until the GitOps Promoter's commit statuses pass, add a *Required builds*
+  merge check (Bitbucket DataCenter 7.14+) under **Repository settings** → **Merge checks**. Bitbucket matches required
+  builds by their parent key, which the GitOps Promoter sets to the commit status name, so enter the names exactly as
+  they appear on the builds of a pull request. Commit statuses created by the GitOps Promoter's own gates are named
+  `<key>/<environment branch>`, for example `argocd-health/environment/production`.
+* **Ref name restrictions**: The GitOps Promoter stores promotion history in git notes (`refs/notes/promoter.history`),
+  and hydrators such as the Argo CD source hydrator do the same (`refs/notes/hydrator.metadata`). If your instance
+  restricts ref names, for example with a pre-receive hook or a branch naming plugin, allow `refs/notes/*`.
+* **Merge strategies**: The GitOps Promoter merges pull requests with the **Merge commit (`--no-ff`)** strategy, so
+  enable it under **Repository settings** → **Merge strategies**; it does not have to be the default. Pull requests
+  merged by hand with another strategy, such as squash, are handled as well.
+
+**Webhooks (Optional - but highly recommended)**
+
+Bitbucket DataCenter/Server can send webhook events to the GitOps Promoter to trigger PR creation on push without waiting for the reconciliation interval.
+
+> [!NOTE]
+> You will need to configure an ingress or load balancer to allow Bitbucket DataCenter/Server to reach the GitOps Promoter
+> webhook receiver service (`promoter-webhook-receiver`) on port `3333`. If you do not use webhooks you might want to
+> adjust the auto-reconciliation interval using the `promotionStrategyRequeueDuration` and
+> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+
+To configure a Bitbucket DataCenter/Server webhook:
+
+1. Navigate to your repository in Bitbucket DataCenter/Server
+2. Go to **Repository settings** → **Webhooks**
+3. Click **Create webhook**
+4. Configure the webhook:
+   * **Name**: GitOps Promoter
+   * **URL**: `https://<your-webhook-receiver-hostname>/` (the GitOps Promoter webhook receiver hostname; the service listens on port `3333`)
+   * **Events**: Select **Repository: Push**
+5. Click **Save**
 
 ///
 
@@ -574,7 +711,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -585,7 +722,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
@@ -627,4 +764,4 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
 
-![Animation of the GitOps Promoter dashboard: a change with its deployment and code commits is promoted through development, staging, and production, then the history view shows the promotion timeline and the referenced code commit](assets/demo.gif)
+![Animation of the GitOps Promoter dashboard: a change with its deployment and code commits is promoted through development, staging, and production, then the promotion explorer shows the promotion timeline and the referenced code commit](assets/demo.gif)

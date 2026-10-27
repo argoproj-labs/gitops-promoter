@@ -8,7 +8,11 @@ import (
 type GitHub struct {
 	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
 	// empty.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule=`self != "github.com"`, message="Instead of setting the domain to github.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
 	// AppID is the GitHub App ID.
 	// +kubebuilder:validation:Required
@@ -26,12 +30,37 @@ type GitHub struct {
 type GitLab struct {
 	// Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
 	// empty.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule=`self != "gitlab.com"`, message="Instead of setting the domain to gitlab.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
 }
 
 // BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
-type BitbucketCloud struct{}
+type BitbucketCloud struct {
+	// Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+	// Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+	// and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "bitbucket.org"`, message="Instead of setting the domain to bitbucket.org, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	Domain string `json:"domain,omitempty"`
+}
+
+// BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration.
+type BitbucketDataCenter struct {
+	// Domain is the Bitbucket DataCenter/Server domain, such as "bitbucket.mycompany.com".
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
+	Domain string `json:"domain"`
+}
 
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
@@ -40,6 +69,8 @@ type Forgejo struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain"`
 }
 
@@ -49,6 +80,9 @@ type Gitea struct {
 	// There is no default domain since Gitea is self-hosted.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain"`
 }
 
@@ -61,7 +95,11 @@ type AzureDevOps struct {
 	// +kubebuilder:validation:Pattern=^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
 	Organization string `json:"organization"`
 	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule=`self != "dev.azure.com"`, message="Instead of setting the domain to dev.azure.com, leave the field blank"
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -70,6 +108,8 @@ type Fake struct {
 	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="isURL('https://' + self) && url('https://' + self).getHost() == self",message="domain must be a host or host:port, with no userinfo, path, query, or fragment"
+	// +kubebuilder:validation:XValidation:rule="!isURL('https://' + self) || url('https://' + self).getHostname() != ''",message="domain must include a hostname"
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -179,6 +219,20 @@ type BitbucketCloudRepo struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=62
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
+	Name string `json:"name"`
+}
+
+// BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug.
+type BitbucketDataCenterRepo struct {
+	// Project is the Bitbucket project key (e.g. "MYPROJ").
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	Project string `json:"project"`
+	// Name is the repository slug (e.g. "my-repo").
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
 	Name string `json:"name"`
 }
 

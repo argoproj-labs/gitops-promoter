@@ -16,6 +16,7 @@ function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManag
     scheduledCommitStatuses: bundle.scheduledCommitStatuses,
     argoCDCommitStatuses: bundle.argoCDCommitStatuses,
     webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+    dependentsSuccessfulCommitStatuses: bundle.dependentsSuccessfulCommitStatuses,
   };
 }
 
@@ -25,6 +26,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
     ps.spec,
     bundle.changeTransferPolicies ?? [],
     bundle.changeTransferPolicyHistories ?? [],
+    bundle.restoreActiveCommits ?? [],
   );
   const psWithEnvironments = {
     ...ps,

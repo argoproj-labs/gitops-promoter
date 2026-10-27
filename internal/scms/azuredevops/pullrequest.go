@@ -246,7 +246,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		statusCode = 500
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
-		return scms.MergeResult{}, fmt.Errorf("failed to merge pull request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to complete pull request: %w", err)
 	}
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)

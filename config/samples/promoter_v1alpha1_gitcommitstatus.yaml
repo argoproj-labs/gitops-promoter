@@ -6,7 +6,7 @@ spec:
   promotionStrategyRef:
     name: promotionstrategy-sample
   key: revert-check
-  description: "Revert commit validation on active deployment"
+  description: "Block promotions if active commit is a revert"
   # Default: validates the ACTIVE (currently deployed) commit
   # Omitting target defaults to "active"
   target: active

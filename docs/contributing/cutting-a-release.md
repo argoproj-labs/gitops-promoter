@@ -2,10 +2,13 @@
 
 This page describes how to publish a new GitOps Promoter release. The process is mostly automated — you trigger it, review the draft, and publish.
 
+Each minor series has its own `release-X.Y` branch. Minor releases (`X.Y.0`) are cut from `main`; patch releases (`X.Y.Z` with `Z > 0`) are cut from the matching release branch. Having a release branch does not imply any particular support window. See [Backporting fixes](backporting-fixes.md) for getting fixes onto a release branch.
+
 ## Prerequisites
 
-- Maintainer access to the repository (merge to `main`).
+- Maintainer access to the repository (merge to `main` and `release-*`).
 - Repository secrets `QUAY_USERNAME` and `QUAY_TOKEN` configured for the Quay.io container registry.
+- A `release` environment with variable `RELEASE_APP_ID` and secret `RELEASE_APP_PRIVATE_KEY`. The GitHub App needs Contents and Workflows write permission so it can create a `release-*` branch. Leave required reviewers off so branch creation is not paused.
 
 ## Steps
 
@@ -15,23 +18,29 @@ Go to the [**Bump Docs Manifests**](https://github.com/argoproj-labs/gitops-prom
 
 This updates manifest version references in the docs and opens a pull request titled **`docs: bump manifest versions to v1.2.3`**.
 
+The workflow picks the PR's base branch from the version:
+
+- **Minor release** (e.g. `1.3.0`): the PR targets `main`. The workflow rejects the version if it is not newer than the latest release or if `release-1.3` already exists.
+- **Patch release** (e.g. `1.2.4`): the PR targets `release-1.2`. The patch number must be greater than the latest `v1.2.Z` tag. If `release-1.2` does not exist yet (for a minor released before release branches were introduced), the workflow creates it from the latest `v1.2.Z` tag and creates the `cherry-pick/1.2` label.
+
 ### 2. Merge the version-bump PR
 
-Review and merge the PR to `main`. The commit message must contain `docs: bump manifest versions to v<version>` — the automated PR already sets this.
+Review and merge the PR to its base branch (`main` or `release-X.Y`). The commit message must contain `docs: bump manifest versions to v<version>` — the automated PR already sets this.
 
 ### 3. Automated tag creation and release dispatch
 
 Merging triggers [`create-release-tag.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/create-release-tag.yaml), which:
 
-1. Extracts the version from the commit message.
-2. Creates and pushes the git tag (e.g. `v1.2.3`).
-3. Dispatches the [`release.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/release.yaml) workflow **on the tag ref**, so the Sigstore OIDC signing identity is `refs/tags/v1.2.3`.
+1. Extracts the version from the commit message and verifies it matches the branch (minor releases on `main`, patch releases on `release-X.Y`).
+2. For a minor release, creates the `release-X.Y` branch at the release commit and the `cherry-pick/X.Y` label.
+3. Creates and pushes the git tag (e.g. `v1.2.3`).
+4. Dispatches the [`release.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/release.yaml) workflow **on the tag ref**, so the Sigstore OIDC signing identity is `refs/tags/v1.2.3`.
 
 ### 4. GoReleaser builds the release
 
 The release workflow runs [GoReleaser](https://goreleaser.com/), which:
 
-- Builds multi-arch binaries (linux/darwin, amd64/arm64).
+- Builds multi-arch binaries (linux/darwin/windows, amd64/arm64).
 - Builds and pushes multi-arch Docker images to `quay.io/argoprojlabs/gitops-promoter:<tag>`.
 - Signs container images and checksums with [cosign](https://docs.sigstore.dev/cosign/overview/) (keyless / Sigstore).
 - Creates a **draft** GitHub Release with binaries, checksums, install manifest, and the Argo CD extension archive.
@@ -62,9 +71,11 @@ gh workflow run release.yaml --ref v1.2.3
 
 The draft release is mutable until published, so GoReleaser can overwrite partial artifacts.
 
+If the generated changelog for a patch release uses the wrong starting point, set the repository variable `GORELEASER_PREVIOUS_TAG` to the previous release on that line (e.g. `v1.2.3`), re-run the workflow, then clear the variable.
+
 ## `latest` images
 
-The [`release-latest.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/release-latest.yaml) workflow runs on every push to `main` (independently of the release process) and pushes `quay.io/argoprojlabs/gitops-promoter:latest`. These images are signed with a certificate identity of `refs/heads/main`.
+The [`release-latest.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/release-latest.yaml) workflow runs on every push to `main` (independently of the release process) and pushes `quay.io/argoprojlabs/gitops-promoter:latest`. These images are signed with a certificate identity of `refs/heads/main`. Release branches never publish `latest`.
 
 ## Verifying a release
 

@@ -539,6 +539,43 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 
+	Describe("publishTo: empty", func() {
+		It("should set publishTo on the child CommitStatus", func() {
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-skip-scm")
+
+			By("Creating a GitCommitStatus with an empty publishTo")
+			gcs := &promoterv1alpha1.GitCommitStatus{
+				Name:      name + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:        "gcs-skip-scm",
+					Expression: `true`,
+					PublishTo:  &[]promoterv1alpha1.CommitStatusPublishTo{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, gcs)
+			}()
+
+			By("Verifying the CommitStatus has an empty publishTo and a phase")
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.CommitStatusResourceName(ctx, gcs, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.PublishTo).To(HaveValue(BeEmpty()))
+				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("Active vs Proposed SHA Validation", func() {
 		It("should give different validation results when active and proposed commits have different properties", func() {
 			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-active-proposed")

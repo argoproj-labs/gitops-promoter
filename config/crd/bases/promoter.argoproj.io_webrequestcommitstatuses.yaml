@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -255,6 +255,23 @@ spec:
                       The map key is the header name and the value is the header value (supports Go templates).
                       See HTTPRequestSpec for available template variables.
                     type: object
+                  httpRequestVariables:
+                    description: |-
+                      HTTPRequestVariables optionally holds an expr expression that produces a free-form map of
+                      variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate
+                      as {{ index .HTTPRequestVariables "key" }}.
+                      Evaluated before the HTTP request (same timing as the templates above). Available in both
+                      polling and trigger modes. See HTTPRequestVariablesSpec for details.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that must return a map/object.
+                          The result is exposed to all httpRequest Go templates as .HTTPRequestVariables.
+                          Available variables match those documented on HTTPRequestSpec.
+                        type: string
+                    required:
+                    - expression
+                    type: object
                   method:
                     description: |-
                       Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
@@ -480,6 +497,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               reportOn:
                 default: proposed
                 description: |-

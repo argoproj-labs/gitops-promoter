@@ -49,6 +49,7 @@ import (
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/k8sfault"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -103,6 +104,9 @@ var (
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
 	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	// settingsMgr is the manager the suite's reconcilers use. It reads
+	// ControllerConfiguration from the informer cache, not the API.
+	settingsMgr *settings.Manager
 )
 
 func TestControllers(t *testing.T) {
@@ -152,6 +156,7 @@ var _ = BeforeSuite(func() {
 		ClusterOptions: []cluster.Option{
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
+				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
 			},
 		},
 	})
@@ -166,6 +171,12 @@ var _ = BeforeSuite(func() {
 
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
+
+	// k8sClient is already built from cfg, and client.New copies the config, so wrapping here reaches only
+	// clients created afterwards: the reconcilers, and the partitioned manager tests pass the same cfg.
+	if probability, enabled := k8sfault.MaybeWrap(cfg); enabled {
+		GinkgoWriter.Printf("fault injection enabled for reconciler writes to the Kubernetes API: probability=%.3f\n", probability)
+	}
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
@@ -187,7 +198,7 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
-	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
+	settingsMgr = settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
 
@@ -262,10 +273,11 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&RevertCommitReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorder("RevertCommit"),
+	err = (&RestoreActiveCommitReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("RestoreActiveCommit"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -335,6 +347,9 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
+	By("configuring SCM test target")
+	scmTarget = initSCMTargetFromEnv(ctx)
+
 	go func() {
 		defer GinkgoRecover()
 		err = multiClusterManager.Start(ctx)
@@ -384,6 +399,10 @@ var _ = BeforeSuite(func() {
 		return multiClusterManager.GetLocalManager().GetClient().List(ctx, list)
 	}, constants.EventuallyTimeout, 100*time.Millisecond).Should(Succeed(),
 		"ArgoCDCommitStatus informer should be ready before tests run")
+})
+
+var _ = BeforeEach(func() {
+	skipIfFakeSCMOnly()
 })
 
 var _ = AfterSuite(func() {
@@ -453,9 +472,10 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+// testGitRepoCloneURL is the clone URL for the test repository. In fake mode it points at the
+// in-process gitkit server; in scmserver mode it is an authenticated HTTPS URL for the selected provider.
 func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
-	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+	return scmTarget.cloneURL(repo)
 }
 
 func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
@@ -800,6 +820,12 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
 	}
+	if ca := os.Getenv("GIT_SSL_CAINFO"); ca != "" {
+		cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO="+ca)
+	}
+	if ca := os.Getenv("SSL_CERT_FILE"); ca != "" {
+		cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+ca)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("failed to start git command: %w", err)
@@ -843,8 +869,13 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 	return string(payloadBytes)
 }
 
-// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior
+// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior.
+// When the suite targets scmserver, the server already delivers real provider-shaped push
+// webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	if scmTarget.sendsOwnWebhooks() {
+		return
+	}
 	// Build GitHub-style webhook payload
 	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
 
@@ -1385,6 +1416,79 @@ func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
 		return fmt.Errorf("failed to push git notes: %w", err)
 	}
 	return nil
+}
+
+// restoreActiveBranchViaGit writes a restore commit the same way RestoreActiveBranch does, but
+// only with git CLI: a new commit parented on the current active tip whose tree matches restoreTo,
+// Promoter-restored-from in the message and promotion-history note, then note push + branch push.
+// Fires a webhook with the pre-restore tip so CTP reconciles. Returns the restore commit SHA.
+func restoreActiveBranchViaGit(ctx context.Context, gitPath, activeBranch, restoreTo string) string {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+	Expect(err).NotTo(HaveOccurred())
+	activeTip = strings.TrimSpace(activeTip)
+
+	tree, err := runGitCmd(ctx, gitPath, "rev-parse", restoreTo+"^{tree}")
+	Expect(err).NotTo(HaveOccurred())
+	tree = strings.TrimSpace(tree)
+
+	short := restoreTo
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	message := fmt.Sprintf("Restore %s to %s\n\n%s: %s\n", activeBranch, short, constants.TrailerRestoredFrom, restoreTo)
+	restoreSha, err := runGitCmd(ctx, gitPath, "commit-tree", tree, "-p", activeTip, "-m", message)
+	Expect(err).NotTo(HaveOccurred())
+	restoreSha = strings.TrimSpace(restoreSha)
+
+	notePayload, err := json.Marshal(map[string][]string{
+		constants.TrailerRestoredFrom: {restoreTo},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	if err != nil && !strings.Contains(err.Error(), "couldn't find remote ref") {
+		Expect(err).NotTo(HaveOccurred())
+	}
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(notePayload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	lease := "refs/heads/" + activeBranch + ":" + activeTip
+	refspec := restoreSha + ":refs/heads/" + activeBranch
+	_, err = runGitCmd(ctx, gitPath, "push", "--force-with-lease="+lease, "origin", refspec)
+	Expect(err).NotTo(HaveOccurred())
+
+	sendWebhookForPush(ctx, activeTip, activeBranch)
+	return restoreSha
+}
+
+// unblockRestoreViaGit stamps Promoter-restore-unblocked-at on restoreSha's promotion-history note
+// via git notes only (no RestoreActiveCommit, no UnblockRestore Go helper). Callers should enqueue
+// CTP afterward: SCMs do not webhook on notes pushes.
+func unblockRestoreViaGit(ctx context.Context, gitPath, restoreSha string, at time.Time) {
+	GinkgoHelper()
+
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
+
+	trailers := map[string][]string{}
+	raw, showErr := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
+	if showErr == nil && strings.TrimSpace(raw) != "" {
+		Expect(json.Unmarshal([]byte(raw), &trailers)).To(Succeed())
+	}
+	trailers[constants.TrailerRestoreUnblockedAt] = []string{at.UTC().Format(time.RFC3339)}
+	payload, err := json.Marshal(trailers)
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(payload), restoreSha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
 }
 
 // fetchNotesRef force-fetches the hydrator notes ref from origin into the

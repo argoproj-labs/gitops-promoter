@@ -126,7 +126,7 @@ make test-e2e          # Run end-to-end tests
 6. **CommitStatus** - Commit status tracking
 7. **ArgoCDCommitStatus** - Argo CD-specific commit status
 8. **ChangeTransferPolicy** - Controls how changes are transferred between branches
-9. **RevertCommit** - Represents a revert operation
+9. **RestoreActiveCommit** - Restores an environment's active branch to a previously hydrated commit and blocks promotion
 10. **ControllerConfiguration** - Configuration for the GitOps Promoter controller
 
 ### Resource Relationships

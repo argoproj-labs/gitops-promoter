@@ -16,7 +16,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -134,6 +134,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               url:
                 description: URL generates the URL to use in the CommitStatus, for
                   example a link to the Argo CD UI.
@@ -322,7 +338,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1223,7 +1239,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: changetransferpolicyhistories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1881,6 +1897,26 @@ spec:
                           - message: must be a valid URL
                             rule: self == '' || isURL(self)
                       type: object
+                    restoreUnblockedAt:
+                      description: |-
+                        RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
+                        has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).
+                        While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore
+                        moved off of is blocked from opening a pull request.
+                      format: date-time
+                      type: string
+                    restoredFrom:
+                      description: |-
+                        RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
+                        pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
+                        tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
+                        pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
+                        version and describe the original promotion, not the restore. active.hydrated is the restore commit
+                        itself, so active.hydrated.commitTime is when the restore was written.
+                      maxLength: 64
+                      minLength: 40
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
                   type: object
                 maxItems: 20
                 type: array
@@ -1914,7 +1950,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1965,11 +2001,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -1982,6 +2027,46 @@ spec:
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+                      Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+                      and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+                    maxLength: 253
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to bitbucket.org, leave
+                        the field blank
+                      rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                required:
+                - domain
                 type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
@@ -1992,6 +2077,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -2004,6 +2097,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2014,8 +2115,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -2031,11 +2141,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -2054,11 +2173,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -2078,8 +2206,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
@@ -2173,7 +2301,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2263,6 +2391,23 @@ spec:
                 - success
                 - failure
                 type: string
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is the set of destinations for this commit status.
+                  - "scm": post the status to the SCM provider
+                  The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM.
+                  Omitting the field uses the default. The controller posts to the SCM when "scm" is present.
+                  Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               sha:
                 description: |-
                   SHA is the commit SHA to set the status on.
@@ -2399,7 +2544,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4158,6 +4303,215 @@ spec:
                 - template
                 - workQueue
                 type: object
+              restoreActiveCommit:
+                description: |-
+                  RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the RestoreActiveCommit controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               scheduledCommitStatus:
                 description: |-
                   ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
@@ -4794,6 +5148,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
+            - restoreActiveCommit
             - scheduledCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus
@@ -4891,7 +5246,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: dependentssuccessfulcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4955,6 +5310,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
@@ -5201,7 +5572,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: gitcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5338,6 +5709,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               target:
                 default: active
                 description: |-
@@ -5531,7 +5918,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5614,6 +6001,25 @@ spec:
                 required:
                 - name
                 - owner
+                type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenterRepo is a repository in Bitbucket
+                  DataCenter/Server, identified by its project key and repository
+                  slug.
+                properties:
+                  name:
+                    description: Name is the repository slug (e.g. "my-repo").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the Bitbucket project key (e.g. "MYPROJ").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - project
                 type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
@@ -5733,8 +6139,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
@@ -5828,7 +6234,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6910,7 +7316,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7255,21 +7661,44 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
-  name: revertcommits.promoter.argoproj.io
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: restoreactivecommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: RevertCommit
-    listKind: RevertCommitList
-    plural: revertcommits
-    singular: revertcommit
+    kind: RestoreActiveCommit
+    listKind: RestoreActiveCommitList
+    plural: restoreactivecommits
+    singular: restoreactivecommit
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .spec.branch
+      name: Branch
+      type: string
+    - jsonPath: .spec.sha
+      name: Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.activeSha
+      name: Active Sha
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RevertCommit is the Schema for the revertcommits API
+        description: |-
+          RestoreActiveCommit restores one environment's active branch to a previously hydrated commit and records
+          the dry SHA that was on the active branch then, so that dry SHA is not promoted again.
+          Creating the resource is the authorization boundary: whoever can create a RestoreActiveCommit in the
+          strategy's namespace can restore that environment, and the controller's git credentials perform the push.
+          The controller sets the environment's ChangeTransferPolicy as owner, so deleting the policy removes its restores.
         properties:
           apiVersion:
             description: |-
@@ -7289,15 +7718,197 @@ spec:
           metadata:
             type: object
           spec:
-            description: RevertCommitSpec defines the desired state of RevertCommit
+            description: |-
+              RestoreActiveCommitSpec defines the desired state of RestoreActiveCommit. promotionStrategyRef,
+              branch, and sha are immutable: the restore runs once, and status.blockedDrySha is read from the
+              active tip it moved off of, so pointing an existing RestoreActiveCommit at a different sha,
+              strategy, or branch would lose track of what dry SHA it moved off. To restore something else, create a new
+              RestoreActiveCommit. blockEnvironment may change.
             properties:
-              foo:
-                description: Foo is an example field of RevertCommit. Edit revertcommit_types.go
-                  to remove/update
+              blockEnvironment:
+                default: true
+                description: |-
+                  BlockEnvironment blocks promotion for this environment while true. It defaults to true.
+                  Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history
+                  note and delete this object. Deleting it while the field is still true does not stamp that
+                  trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is
+                  still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true)
+                  so the field can be set false again.
+                type: boolean
+              branch:
+                description: |-
+                  Branch is the environment branch on that PromotionStrategy to restore. The controller resolves
+                  it to the ChangeTransferPolicy the strategy created for this branch, which supplies the
+                  repository, the active and proposed branches, and activePath.
+                maxLength: 100
+                minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
+              promotionStrategyRef:
+                description: PromotionStrategyRef selects the PromotionStrategy that
+                  owns the environment to restore.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              sha:
+                description: |-
+                  Sha is the hydrated commit to restore onto the active branch. It must already be in the active
+                  branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
+                  carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
+                  restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit
+                  for the same sha is refused until the active branch moves, and that note is left unchanged. The
+                  controller writes a new commit (the commit's tree, or only activePath when the policy sets
+                  one) parented on the current active tip and records a promotion-history note with
+                  Promoter-restored-from. When the active branch already has that content, nothing is written.
+                  The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
+                  a promotion pull request that would put the active branch's dry SHA back. A pull request
+                  for a different proposed dry SHA may open, but nothing is auto-merged while this
+                  RestoreActiveCommit exists. Deleting it lifts that block but does not by itself propose the
+                  blocked dry SHA again; see status.blockedDrySha.
+                  The restore runs once. Later promotions are left alone.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+            required:
+            - branch
+            - promotionStrategyRef
+            - sha
             type: object
+            x-kubernetes-validations:
+            - message: promotionStrategyRef, branch, and sha are immutable; create
+                a new RestoreActiveCommit to restore a different commit, strategy,
+                or branch
+              rule: self.promotionStrategyRef == oldSelf.promotionStrategyRef && self.branch
+                == oldSelf.branch && self.sha == oldSelf.sha
           status:
-            description: RevertCommitStatus defines the observed state of RevertCommit
+            description: RestoreActiveCommitStatus defines the observed state of RestoreActiveCommit.
+            properties:
+              activeSha:
+                description: ActiveSha is the commit on the active branch after a
+                  successful restore.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              blockedDrySha:
+                description: |-
+                  BlockedDrySha is the dry SHA read from hydrator.metadata on the active tip that this restore
+                  moved off of. The ChangeTransferPolicy does not open a promotion pull request while its
+                  proposed dry SHA still equals this value, so the blocked dry SHA is not put back. A different
+                  proposed dry SHA may open a pull request, but nothing is auto-merged until spec.blockEnvironment
+                  is set to false. That stamps Promoter-restore-unblocked-at and deletes this object. Deleting it
+                  while the field is still true does not stamp the trailer, so the block stays. Empty when that
+                  active tip had no hydrator.metadata, or when the active branch already had spec.sha's content
+                  so nothing was moved off it. A
+                  promotion pull request only opens when the proposed branch has a commit the
+                  active branch does not already contain. The restore commit is parented on the tip it moved
+                  off of, so when that tip already contains the proposed commit (a merge-commit promotion),
+                  this dry SHA is not proposed again until the hydrator writes a new commit to the proposed branch.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+              restoredFrom:
+                description: |-
+                  RestoredFrom is the spec.sha this status applied. It is written in the same status update as
+                  activeSha and blockedDrySha, so it alone marks the restore as done. While it matches spec.sha
+                  the controller does not restore again, so a later promotion is not overwritten on resync.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                type: string
             type: object
         type: object
     served: true
@@ -7309,7 +7920,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: scheduledcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7574,6 +8185,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               timezone:
                 default: UTC
                 description: |-
@@ -7761,7 +8388,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7811,11 +8438,20 @@ spec:
                   domain:
                     description: Domain is the Azure DevOps domain, such as "dev.azure.com".
                       If using the default Azure DevOps domain, leave this field empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to dev.azure.com, leave
                         the field blank
                       rule: self != "dev.azure.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   organization:
                     description: Organization is the Azure DevOps organization name.
                     maxLength: 50
@@ -7828,6 +8464,46 @@ spec:
               bitbucketCloud:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a
+                      Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git
+                      and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.
+                    maxLength: 253
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to bitbucket.org, leave
+                        the field blank
+                      rule: self != "bitbucket.org"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
+                required:
+                - domain
                 type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
@@ -7838,6 +8514,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -7850,6 +8534,14 @@ spec:
                     maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -7860,8 +8552,17 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    maxLength: 253
                     minLength: 1
                     type: string
+                    x-kubernetes-validations:
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 required:
                 - domain
                 type: object
@@ -7877,11 +8578,20 @@ spec:
                     description: |-
                       Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to github.com, leave
                         the field blank
                       rule: self != "github.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                   installationID:
                     description: |-
                       InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
@@ -7900,11 +8610,20 @@ spec:
                     description: |-
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                     x-kubernetes-validations:
                     - message: Instead of setting the domain to gitlab.com, leave
                         the field blank
                       rule: self != "gitlab.com"
+                    - message: domain must be a host or host:port, with no userinfo,
+                        path, query, or fragment
+                      rule: isURL('https://' + self) && url('https://' + self).getHost()
+                        == self
+                    - message: domain must include a hostname
+                      rule: '!isURL(''https://'' + self) || url(''https://'' + self).getHostname()
+                        != '''''
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -7924,8 +8643,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.bitbucketDataCenter)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
                 == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
@@ -8019,7 +8738,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8108,6 +8827,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
             required:
             - environments
             - promotionStrategyRef
@@ -8259,7 +8994,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.22.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8511,6 +9246,23 @@ spec:
                       The map key is the header name and the value is the header value (supports Go templates).
                       See HTTPRequestSpec for available template variables.
                     type: object
+                  httpRequestVariables:
+                    description: |-
+                      HTTPRequestVariables optionally holds an expr expression that produces a free-form map of
+                      variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate
+                      as {{ index .HTTPRequestVariables "key" }}.
+                      Evaluated before the HTTP request (same timing as the templates above). Available in both
+                      polling and trigger modes. See HTTPRequestVariablesSpec for details.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that must return a map/object.
+                          The result is exposed to all httpRequest Go templates as .HTTPRequestVariables.
+                          Available variables match those documented on HTTPRequestSpec.
+                        type: string
+                    required:
+                    - expression
+                    type: object
                   method:
                     description: |-
                       Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
@@ -8736,6 +9488,22 @@ spec:
                 required:
                 - name
                 type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               reportOn:
                 default: proposed
                 description: |-
@@ -9230,6 +9998,7 @@ rules:
   - promotionstrategies
   - changetransferpolicyhistories
   - changetransferpolicies
+  - restoreactivecommits
   - pullrequests
   - commitstatuses
   - argocdcommitstatuses
@@ -9260,6 +10029,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-argocdcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9287,6 +10057,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-argocdcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9308,8 +10079,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: changetransferpolicy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-changetransferpolicy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: changetransferpolicy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-changetransferpolicy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-changetransferpolicyhistory-admin-role
 rules:
 - apiGroups:
@@ -9331,6 +10163,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-changetransferpolicyhistory-editor-role
 rules:
 - apiGroups:
@@ -9358,6 +10191,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-changetransferpolicyhistory-viewer-role
 rules:
 - apiGroups:
@@ -9381,6 +10215,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-clusterscmprovider-admin-role
 rules:
 - apiGroups:
@@ -9402,6 +10237,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-clusterscmprovider-editor-role
 rules:
 - apiGroups:
@@ -9429,6 +10265,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-clusterscmprovider-viewer-role
 rules:
 - apiGroups:
@@ -9450,8 +10287,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: commitstatus-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-commitstatus-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: commitstatus-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-commitstatus-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-controllerconfiguration-admin-role
 rules:
 - apiGroups:
@@ -9473,6 +10371,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-controllerconfiguration-editor-role
 rules:
 - apiGroups:
@@ -9500,6 +10399,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-controllerconfiguration-viewer-role
 rules:
 - apiGroups:
@@ -9523,6 +10423,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-dependentssuccessfulcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9544,6 +10445,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-dependentssuccessfulcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9571,6 +10473,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-dependentssuccessfulcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9594,6 +10497,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-gitcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9615,6 +10519,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-gitcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9642,6 +10547,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-gitcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9656,6 +10562,66 @@ rules:
   - promoter.argoproj.io
   resources:
   - gitcommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: gitrepository-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-gitrepository-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: gitrepository-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-gitrepository-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - gitrepositories/status
   verbs:
   - get
 ---
@@ -9679,7 +10645,7 @@ rules:
   verbs:
   - get
   - list
-  - update
+  - patch
   - watch
 - apiGroups:
   - ""
@@ -9704,7 +10670,6 @@ rules:
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
-  - revertcommits
   - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
@@ -9743,6 +10708,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - restoreactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -9757,6 +10723,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - pullrequests
+  - restoreactivecommits
   verbs:
   - create
   - delete
@@ -9852,6 +10819,66 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-promotionstrategy-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: promotionstrategy-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-promotionstrategy-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/component: dashboard-apiserver
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/part-of: promoter
@@ -9870,8 +10897,129 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-pullrequest-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: pullrequest-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-pullrequest-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - pullrequests/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-restoreactivecommit-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: restoreactivecommit-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-restoreactivecommit-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - restoreactivecommits/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-scheduledcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9893,6 +11041,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-scheduledcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9920,6 +11069,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-scheduledcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -9941,8 +11091,69 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: scmprovider-editor-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-scmprovider-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: scmprovider-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-scmprovider-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-timedcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -9964,6 +11175,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-timedcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -9991,6 +11203,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-timedcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10014,6 +11227,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: promoter-webrequestcommitstatus-admin-role
 rules:
 - apiGroups:
@@ -10035,6 +11249,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: promoter-webrequestcommitstatus-editor-role
 rules:
 - apiGroups:
@@ -10062,6 +11277,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: promoter-webrequestcommitstatus-viewer-role
 rules:
 - apiGroups:
@@ -10353,11 +11569,11 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 2
+            memory: 2048Mi
           requests:
-            cpu: 10m
-            memory: 64Mi
+            cpu: 1
+            memory: 1024Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -10460,11 +11676,11 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 500m
-            memory: 128Mi
+            cpu: 2
+            memory: 2048Mi
           requests:
-            cpu: 10m
-            memory: 64Mi
+            cpu: 1
+            memory: 1024Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -10495,35 +11711,6 @@ spec:
     port: 443
   version: v1alpha1
   versionPriority: 15
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: promoter
-    app.kubernetes.io/instance: controller-manager-metrics-monitor
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: servicemonitor
-    app.kubernetes.io/part-of: promoter
-    control-plane: controller-manager
-  name: promoter-controller-manager-metrics-monitor
-  namespace: promoter-system
-spec:
-  endpoints:
-  - authorization:
-      credentials:
-        key: token
-        name: metrics-token
-      type: Bearer
-    path: /metrics
-    port: https
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-  selector:
-    matchLabels:
-      control-plane: controller-manager
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
@@ -10679,6 +11866,19 @@ spec:
       title: Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{
         end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{
         .ChangeTransferPolicy.Spec.ActiveBranch }}`
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  restoreActiveCommit:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
