@@ -53,13 +53,19 @@ spec:
     name: shop
   activeCommitStatuses:
     - key: soak
+  # A diamond: both staging regions wait on development, and production waits on both.
   environments:
     - branch: environment/development
       autoMerge: true
-    - branch: environment/staging
+    - branch: environment/staging-us
       autoMerge: true
+      dependsOn: [environment/development]
+    - branch: environment/staging-eu
+      autoMerge: true
+      dependsOn: [environment/development]
     - branch: environment/production
       autoMerge: true
+      dependsOn: [environment/staging-us, environment/staging-eu]
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: DependentsSuccessfulCommitStatus
@@ -72,7 +78,8 @@ spec:
     name: shop
 ---
 # A short soak time per environment so the GIF shows the gate flipping from
-# pending to success before the next environment is promoted.
+# pending to success before the next environment is promoted. staging-eu soaks
+# longer than staging-us, so production visibly waits for the slower branch.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: TimedCommitStatus
 metadata:
@@ -85,7 +92,9 @@ spec:
   environments:
     - branch: environment/development
       duration: 12s
-    - branch: environment/staging
+    - branch: environment/staging-us
       duration: 12s
+    - branch: environment/staging-eu
+      duration: 24s
     - branch: environment/production
       duration: 12s

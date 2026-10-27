@@ -764,4 +764,4 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
 
-![Animation of the GitOps Promoter dashboard: a change with its deployment and code commits is promoted through development, staging, and production, then the promotion explorer shows the promotion timeline and the referenced code commit](assets/demo.gif)
+![Animation of the GitOps Promoter dashboard: the Promotion Explorer opens a promotion map where development fans out to two staging regions that both feed production, a new change is promoted through that graph while production waits for the slower staging soak, then the details panel shows the production deployment, its code commit, and where the change is live](assets/demo.gif)

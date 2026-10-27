@@ -8,7 +8,7 @@ DEMO_ROOT="${DEMO_ROOT:-/tmp/promoter-ui-demo}"
 DEMO_GIT_URL="${DEMO_GIT_URL:-http://localhost:5001/acme/gitops-config}"
 DEMO_WORKTREE="${DEMO_WORKTREE:-${DEMO_ROOT}/work}"
 DEMO_NAMESPACE="${DEMO_NAMESPACE:-promoter-demo}"
-DEMO_ENVS=(development staging production)
+DEMO_ENVS=(development staging-us staging-eu production)
 CONFIG_REPO_URL="${CONFIG_REPO_URL:-https://github.com/acme/gitops-config}"
 CODE_REPO_URL="${CODE_REPO_URL:-https://github.com/acme/shop}"
 DRY_AUTHOR="Priya Natarajan <priya@acme.dev>"
@@ -65,7 +65,7 @@ ensure_worktree() {
 }
 
 # Writes hydrator.metadata (what the dashboard shows) plus a short per-environment
-# manifest so the three branches are distinct.
+# manifest so the environment branches are distinct.
 write_hydrated_tree() {
   local env="$1"
   rm -rf "${DEMO_WORKTREE:?}/manifests"
@@ -96,7 +96,8 @@ hydrate_branch() {
   local branch="$1"
   local bootstrap="${2:-}"
   local env
-  env="$(printf '%s' "${branch}" | sed -E 's#^environment/([a-z]+).*$#\1#')"
+  env="${branch#environment/}"
+  env="${env%-next}"
 
   git -C "${DEMO_WORKTREE}" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null || true
 

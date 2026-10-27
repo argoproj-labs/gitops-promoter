@@ -25,10 +25,12 @@ const changes = JSON.parse(readFileSync(path.join(here, 'changes.json'), 'utf8')
 const SUBJECT = args.subject ?? changes[Number(CHANGE)]?.subject;
 if (!SUBJECT) throw new Error(`no subject for change ${CHANGE} in changes.json`);
 
-// The three-column overview layout needs > 1600 CSS px; zoom keeps text legible
-// after the GIF is scaled down.
-const VIEWPORT = { width: 1640, height: 920 };
-const ZOOM = 1.2;
+// The Explorer matrix needs about 1600 CSS px, with gaps and padding, to fit the
+// commit column and all four environment columns (350 + 4 x 286). 1800 / 1.1
+// leaves no horizontal scroll; the zoom keeps text legible after the GIF is
+// scaled down.
+const VIEWPORT = { width: 1800, height: 1000 };
+const ZOOM = 1.1;
 
 const FRAMES = path.join(OUT, 'frames');
 await rm(OUT, { recursive: true, force: true });
@@ -121,15 +123,18 @@ async function glideClick(locator) {
   await page.mouse.up();
 }
 
-const column = (i) => page.locator('.env-card-column').nth(i);
-async function waitForActive(i, subject, timeout) {
+// The new change's row in the Explorer matrix, and its cell for one environment.
+// Environment columns follow spec.environments order.
+const changeRow = () => page.locator('.hp-row', { hasText: SUBJECT }).first();
+const changeCell = (i) => changeRow().locator('.hp-row__env-slot').nth(i);
+async function waitForLive(indexes, timeout) {
   await page.waitForFunction(
-    ([idx, text]) => {
-      const col = document.querySelectorAll('.env-card-column')[idx];
-      const el = col?.querySelector('.active-card .commit-deployment .commit-subject');
-      return el?.textContent?.trim() === text;
+    ([idxs, text]) => {
+      const row = [...document.querySelectorAll('.hp-row')].find((r) => r.textContent?.includes(text));
+      const slots = row?.querySelectorAll('.hp-row__env-slot');
+      return !!slots && idxs.every((i) => slots[i]?.querySelector('.cell__pill--live'));
     },
-    [i, subject],
+    [indexes, SUBJECT],
     { timeout },
   );
 }
@@ -150,47 +155,38 @@ try {
   await tile.waitFor({ timeout: 15000 });
   await sleep(1200);
   await glideClick(tile);
-  await page.waitForSelector('.env-card-column');
+  await page.waitForSelector('.hp-row');
 
-  // ---- 2. overview, new change arrives -----------------------------------
-  mark('overview', 3);
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 120, { steps: 20 });
-  await sleep(1500);
+  // ---- 2. Explorer, open the promotion map -------------------------------
+  mark('explorer', 4);
+  await sleep(1200);
+  await glideClick(page.locator('.hp-map__thumb'));
+  await page.waitForSelector('.hp-map--expanded .hp-node');
+  await sleep(1800);
 
+  // ---- 3. a new change arrives and flows through the diamond -------------
+  // development has no upstream, so its pull request merges at once: the new row
+  // usually appears with development already live.
+  mark('promote-development', 3);
+  await page.mouse.move(VIEWPORT.width * 0.7, VIEWPORT.height - 80, { steps: 20 });
   const promote = spawn('bash', [path.join(here, 'demo.sh'), 'promote', CHANGE], { stdio: 'inherit' });
   promote.on('exit', (code) => code && console.error(`demo.sh promote exited with ${code}`));
-
-  const proposed = column(0).locator('.proposed-changes-card');
-  await proposed.waitFor({ timeout: 120000 });
-  mark('proposed', 5);
-  await sleep(700);
-  const codeSubject = proposed.locator('.commit-code .commit-subject').first();
-  await codeSubject.waitFor({ timeout: 30000 });
-  await glideTo(codeSubject);
-  await sleep(2600);
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 60, { steps: 20 });
-
-  // ---- 3. promotion through the environments -----------------------------
-  mark('promote-development', 3);
-  await waitForActive(0, SUBJECT, 180000);
+  await waitForLive([0], 180000);
+  // Both staging regions merge together once development's soak passes.
   mark('promote-staging', 3);
-  await waitForActive(1, SUBJECT, 180000);
-  mark('promote-production', 3);
-  await waitForActive(2, SUBJECT, 180000);
+  await waitForLive([1, 2], 180000);
+  // production waits for both soaks, and staging-eu's is twice as long.
+  mark('promote-production', 3.5);
+  await waitForLive([3], 180000);
   mark('settled', 2.5);
   await sleep(2500);
 
-  // ---- 4. history --------------------------------------------------------
-  mark('history', 4);
-  await glideClick(page.locator('.strategy-page-tab', { hasText: 'History' }));
-  const row = page.locator('.cell').first();
-  await row.waitFor({ timeout: 30000 });
-  await sleep(2200);
-  mark('history-drawer', 5);
-  await glideClick(row);
-  await page.waitForSelector('text=Referenced commits', { timeout: 15000 }).catch(() => {});
-  await page.mouse.move(VIEWPORT.width * 0.42, VIEWPORT.height * 0.75, { steps: 25 });
-  await sleep(4000);
+  // ---- 4. detail drawer for production -----------------------------------
+  mark('drawer', 6);
+  await glideClick(changeCell(3));
+  await page.waitForSelector('.hp-drawer--open', { timeout: 15000 });
+  await page.mouse.move(VIEWPORT.width * 0.45, VIEWPORT.height * 0.8, { steps: 25 });
+  await sleep(4500);
   mark('end', 0);
 } finally {
   await cdp.send('Page.stopScreencast').catch(() => {});
