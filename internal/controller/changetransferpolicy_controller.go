@@ -200,12 +200,13 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	// Snapshot the persisted status (from the Get above) before calculateStatus overwrites it,
 	// so promotion lifecycle events can be emitted only on actual state transitions.
-	prevStatus := ctp.Status.DeepCopy()
+	var prevStatus promoterv1alpha1.ChangeTransferPolicyStatus
+	ctp.Status.DeepCopyInto(&prevStatus)
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
-	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
+	r.emitPromotionLifecycleEvents(&ctp, &prevStatus)
 
 	if err := r.deleteSupersededRestoreActiveCommits(ctx, &ctp, gitOperations); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RestoreActiveCommits: %w", err)

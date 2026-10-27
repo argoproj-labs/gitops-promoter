@@ -349,9 +349,11 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) (commitStatuses []*promoterv1alpha1.CommitStatus, transitionedBranches []string, requeueAfter time.Duration, err error) {
 	logger := log.FromContext(ctx)
 
-	wrcsSnapshot := wrcs.DeepCopy()
+	wrcsSnapshot := &promoterv1alpha1.WebRequestCommitStatus{}
+	wrcs.DeepCopyInto(wrcsSnapshot)
 
-	lastReconciledStatus := wrcsSnapshot.Status.DeepCopy()
+	var lastReconciledStatus promoterv1alpha1.WebRequestCommitStatusStatus
+	wrcsSnapshot.Status.DeepCopyInto(&lastReconciledStatus)
 	statusByEnv := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(lastReconciledStatus.Environments))
 	for i := range lastReconciledStatus.Environments {
 		statusByEnv[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
@@ -483,7 +485,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		return nil, nil, 0, nil
 	}
 
-	wrcsSnapshot := wrcs.DeepCopy()
+	wrcsSnapshot := &promoterv1alpha1.WebRequestCommitStatus{}
+	wrcs.DeepCopyInto(wrcsSnapshot)
 
 	psEnvStatusMap := getEnvsByBranch(ps)
 	currentShaPerBranch, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)

@@ -176,7 +176,8 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(tcs.Spec.Environments))
 
 	// Save the previous status before clearing it, so we can detect transitions
-	previousStatus := tcs.Status.DeepCopy()
+	var previousStatus promoterv1alpha1.TimedCommitStatusStatus
+	tcs.Status.DeepCopyInto(&previousStatus)
 
 	// Build a map of environments from PromotionStrategy for efficient lookup
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
