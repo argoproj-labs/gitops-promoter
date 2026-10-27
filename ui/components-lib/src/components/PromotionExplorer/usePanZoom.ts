@@ -131,6 +131,8 @@ export function usePanZoom({
       if (!exceedsDragThreshold(dx, dy)) return;
       d.moved = true;
       setPanning(true);
+      // jsdom (used by the unit tests) does not implement setPointerCapture.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       event.currentTarget.setPointerCapture?.(event.pointerId);
     }
     setOffset(panOffset(d.origin, dx, dy));
