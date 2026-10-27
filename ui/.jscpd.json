@@ -1,0 +1,18 @@
+{
+  "path": ["dashboard", "extension", "shared", "components-lib"],
+  "format": ["tsx"],
+  "formatsExts": { "tsx": ["ts", "tsx"] },
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/types/generated/**",
+    "**/test/**",
+    "**/*.test.{ts,tsx}",
+    "**/*.config.{ts,mts,mjs,js}"
+  ],
+  "reporters": ["console"],
+  "absolute": false,
+  "gitignore": true,
+  "threshold": 0
+}

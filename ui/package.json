@@ -4,9 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "knip": "knip && knip --production"
+    "knip": "knip && knip --production",
+    "jscpd": "jscpd"
   },
   "devDependencies": {
+    "jscpd": "^5.4.2",
     "knip": "^6.43.0"
   }
 }

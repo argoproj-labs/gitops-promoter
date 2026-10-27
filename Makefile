@@ -400,8 +400,8 @@ lint-storybook: install-ui-deps ## Run storybook type-check (covers the plugin s
 	cd ui/storybook && npm install && npm run type-check
 
 .PHONY: lint-ui-deadcode
-lint-ui-deadcode: ## Find unused UI files and exports (knip)
-	cd ui && npm ci && npm run knip
+lint-ui-deadcode: ## Find unused UI files and exports (knip) and copy-pasted UI code (jscpd)
+	cd ui && npm ci && npm run knip && npm run jscpd
 
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-storybook lint-ui-deadcode ## Run all UI checks
