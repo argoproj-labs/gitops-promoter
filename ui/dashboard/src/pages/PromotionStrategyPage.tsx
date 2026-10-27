@@ -41,7 +41,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
 
-  const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
+  const { items, scmProviders, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
   const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
 
@@ -189,6 +189,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
           <PromotionExplorer
             key={`${namespace}/${strategyName}`}
             strategy={selectedStrategy}
+            scmProvider={scmProviders[`${namespace}/${strategyName}`]}
             name={strategyName}
             namespace={namespace}
             initialSelection={initialSelection}

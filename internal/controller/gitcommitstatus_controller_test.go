@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
 
 // This Ordered suite shares one PromotionStrategy. Each spec must use a distinct
@@ -174,7 +176,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -818,6 +820,17 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
 			Expect(err).NotTo(HaveOccurred())
 
+			// The check above reads ChangeTransferPolicy status, which can lag the repository: a newer dry SHA
+			// may already be on staging's proposed branch, and its promotion would then merge on top of the
+			// revert pushed below. Wait until the repository itself has nothing left to promote to staging.
+			By("Waiting until staging's active branch has the proposed branch's dry SHA")
+			Eventually(func(g Gomega) {
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(branchDrySha(ctx, gitPath, "origin/"+testBranchStaging)).To(
+					Equal(branchDrySha(ctx, gitPath, "origin/"+testBranchStaging+"-next")))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Checkout the staging active branch
 			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchStaging, "origin/"+testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
@@ -1399,3 +1412,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 })
+
+// branchDrySha returns the dry SHA in hydrator.metadata at ref in the clone at gitPath.
+func branchDrySha(ctx context.Context, gitPath, ref string) string {
+	GinkgoHelper()
+	raw, err := runGitCmd(ctx, gitPath, "show", ref+":hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	var metadata git.HydratorMetadata
+	Expect(json.Unmarshal([]byte(raw), &metadata)).To(Succeed())
+	return metadata.DrySha
+}
