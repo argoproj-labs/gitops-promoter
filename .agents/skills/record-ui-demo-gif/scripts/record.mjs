@@ -25,8 +25,8 @@ const changes = JSON.parse(readFileSync(path.join(here, 'changes.json'), 'utf8')
 const SUBJECT = args.subject ?? changes[Number(CHANGE)]?.subject;
 if (!SUBJECT) throw new Error(`no subject for change ${CHANGE} in changes.json`);
 
-// The three-column overview layout needs > 1600 CSS px; zoom keeps text legible
-// after the GIF is scaled down.
+// The explorer matrix is a commit column plus one column per environment.
+// That needs > 1600 CSS px; zoom keeps text legible after the GIF is scaled down.
 const VIEWPORT = { width: 1640, height: 920 };
 const ZOOM = 1.2;
 
@@ -121,15 +121,33 @@ async function glideClick(locator) {
   await page.mouse.up();
 }
 
-const column = (i) => page.locator('.env-card-column').nth(i);
-async function waitForActive(i, subject, timeout) {
+// Environment branches, in promotion order. Cell aria-labels are
+// "<Kind> in <branch>", e.g. "Proposed in environment/development".
+const ENVS = ['environment/development', 'environment/staging', 'environment/production'];
+
+function rowBySubject(subject) {
+  return page.locator('.hp-row').filter({
+    has: page.locator('.hp-row__commit > .hp-commit .hp-commit__title', { hasText: subject }),
+  });
+}
+
+// Resolves once the dry-commit row exists and its cell for `branch` has one of
+// `labels` ("Live", "Proposed", "PR open"). The long wait sits in the previous
+// mark so make-gif.sh time-lapses it.
+async function waitForCell(subject, branch, labels, timeout) {
   await page.waitForFunction(
-    ([idx, text]) => {
-      const col = document.querySelectorAll('.env-card-column')[idx];
-      const el = col?.querySelector('.active-card .commit-deployment .commit-subject');
-      return el?.textContent?.trim() === text;
+    ([subj, br, accepted]) => {
+      const rows = [...document.querySelectorAll('.hp-row')];
+      const row = rows.find((r) => {
+        const title = r.querySelector('.hp-row__commit > .hp-commit .hp-commit__title');
+        return title?.textContent?.trim() === subj;
+      });
+      if (!row) return false;
+      return [...row.querySelectorAll('.cell[aria-label]')].some((el) =>
+        accepted.some((label) => el.getAttribute('aria-label') === `${label} in ${br}`),
+      );
     },
-    [i, subject],
+    [subject, branch, labels],
     { timeout },
   );
 }
@@ -150,47 +168,53 @@ try {
   await tile.waitFor({ timeout: 15000 });
   await sleep(1200);
   await glideClick(tile);
-  await page.waitForSelector('.env-card-column');
+  await page.waitForSelector('.hp-matrix');
 
-  // ---- 2. overview, new change arrives -----------------------------------
+  // ---- 2. explorer, then the promotion map -------------------------------
   mark('overview', 3);
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 120, { steps: 20 });
+  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 160, { steps: 20 });
   await sleep(1500);
 
+  mark('map', 6);
+  await glideClick(page.getByRole('button', { name: 'Open promotion map' }));
+  await page.waitForSelector('.hp-map--expanded');
+  await sleep(2200);
+  await glideClick(page.getByRole('button', { name: 'Collapse promotion map' }));
+  await page.waitForSelector('.hp-map--collapsed');
+  await sleep(500);
+
+  // ---- 3. a new change is proposed, then goes live per environment ------
   const promote = spawn('bash', [path.join(here, 'demo.sh'), 'promote', CHANGE], { stdio: 'inherit' });
   promote.on('exit', (code) => code && console.error(`demo.sh promote exited with ${code}`));
 
-  const proposed = column(0).locator('.proposed-changes-card');
-  await proposed.waitFor({ timeout: 120000 });
+  mark('arriving', 3);
+  await waitForCell(SUBJECT, ENVS[0], ['Proposed', 'PR open', 'Live'], 120000);
+  const row = rowBySubject(SUBJECT);
   mark('proposed', 5);
   await sleep(700);
-  const codeSubject = proposed.locator('.commit-code .commit-subject').first();
+  const codeSubject = row.locator('.hp-row__app .hp-commit__title').first();
   await codeSubject.waitFor({ timeout: 30000 });
   await glideTo(codeSubject);
   await sleep(2600);
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 60, { steps: 20 });
+  // Leave the cursor on the last environment so the time-lapse watches that cell flip to Live.
+  await glideTo(row.locator(`.cell[aria-label$="in ${ENVS[ENVS.length - 1]}"]`));
 
-  // ---- 3. promotion through the environments -----------------------------
   mark('promote-development', 3);
-  await waitForActive(0, SUBJECT, 180000);
+  await waitForCell(SUBJECT, ENVS[0], ['Live'], 180000);
   mark('promote-staging', 3);
-  await waitForActive(1, SUBJECT, 180000);
+  await waitForCell(SUBJECT, ENVS[1], ['Live'], 180000);
   mark('promote-production', 3);
-  await waitForActive(2, SUBJECT, 180000);
+  await waitForCell(SUBJECT, ENVS[2], ['Live'], 180000);
   mark('settled', 2.5);
   await sleep(2500);
 
-  // ---- 4. history --------------------------------------------------------
-  mark('history', 4);
-  await glideClick(page.locator('.strategy-page-tab', { hasText: 'History' }));
-  const row = page.locator('.cell').first();
-  await row.waitFor({ timeout: 30000 });
-  await sleep(2200);
-  mark('history-drawer', 5);
-  await glideClick(row);
-  await page.waitForSelector('text=Referenced commits', { timeout: 15000 }).catch(() => {});
-  await page.mouse.move(VIEWPORT.width * 0.42, VIEWPORT.height * 0.75, { steps: 25 });
-  await sleep(4000);
+  // ---- 4. detail drawer: the referenced app commit -----------------------
+  mark('drawer', 6);
+  await glideClick(row.locator('.cell[aria-label="Live in environment/development"]'));
+  await page.waitForSelector('.hp-drawer__ref-subject', { timeout: 15000 });
+  await sleep(600);
+  await glideTo(page.locator('.hp-drawer__ref-subject').first());
+  await sleep(3500);
   mark('end', 0);
 } finally {
   await cdp.send('Page.stopScreencast').catch(() => {});

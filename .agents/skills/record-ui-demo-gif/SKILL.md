@@ -5,7 +5,7 @@ description: Re-record the GitOps Promoter dashboard demo GIF (docs/assets/demo.
 
 # Record the dashboard demo GIF
 
-The GIF shows one change promoted through development, staging, and production, the code-reference tooltip, and the history drawer. Scripts live in `.agents/skills/record-ui-demo-gif/scripts/`. Run commands below from the repo root. `$S` is that directory:
+The GIF shows one change promoted through development, staging, and production on the promotion explorer, a look at the promotion map, and the detail drawer with the referenced app commit. Scripts live in `.agents/skills/record-ui-demo-gif/scripts/`. Run commands below from the repo root. `$S` is that directory:
 
 ```bash
 S=.agents/skills/record-ui-demo-gif/scripts
@@ -52,7 +52,7 @@ These look removable and are not:
 - The controller runs on the host, not in Tilt or the cluster. The fake SCM provider clones `http://localhost:5001/<owner>/<name>`. `cluster.sh up` scales an in-cluster `promoter-controller-manager` to 0; `down` restores the replica count.
 - Requeue is 3s. The fake provider posts its webhook to port 3334, which nothing serves outside tests, so merges are noticed only on requeue.
 - `TimedCommitStatus` soaks for 12s per environment. That pending-to-success beat is in the GIF.
-- Frames are lossless CDP PNGs, and the browser context sets `reducedMotion: 'reduce'`. Playwright's webm recording made the GIF about ten times larger. The viewport is 1640x920 at CSS zoom 1.2 because three columns only appear above 1600 CSS px; the fake cursor's own zoom is `1/zoom` so it tracks the pointer.
+- Frames are lossless CDP PNGs, and the browser context sets `reducedMotion: 'reduce'`. Playwright's webm recording made the GIF about ten times larger. The viewport is 1640x920 at CSS zoom 1.2 because the commit column plus three environment columns need more than 1600 CSS px; the fake cursor's own zoom is `1/zoom` so it tracks the pointer.
 - `marks.json` `maxDuration` is what turns controller waits into time-lapse. Clicks and the code-reference hover stay real time.
 - `demo.sh reset` deletes the namespace while the controller is running, so the controller drops finalizers. `cluster.sh down` strips them itself, because the host processes are already stopped.
 
@@ -83,11 +83,13 @@ The GIF is referenced by `README.md` (`docs/assets/demo.gif`) and `docs/getting-
 | mark | on screen | max seconds |
 |---|---|---|
 | `namespace` | pick `promoter-demo`, click the `shop` tile | 5 |
-| `overview` | steady state; `demo.sh promote` starts | 3 |
-| `proposed` | proposed card; hover the code commit | real time |
-| `promote-*` | one environment, until its active card shows the new subject | 3 each |
-| `settled` | all environments on the new change | 2.5 |
-| `history` / `history-drawer` | History tab; newest cell; drawer with "Referenced commits" | real time |
+| `overview` | promotion explorer, previous change already live | 3 |
+| `map` | open the promotion map, then collapse it | real time |
+| `arriving` | `demo.sh promote` runs until the new row is proposed in development | 3 |
+| `proposed` | hover the app commit on that row | real time |
+| `promote-*` | one environment, until its cell for the new dry commit is Live | 3 each |
+| `settled` | all environments live on the new change | 2.5 |
+| `drawer` | development cell; drawer open on the app commit | real time |
 
 Edit `mark(name, maxDuration)` in `record.mjs` to change pacing. Edit `changes.json` to change subjects, bodies, and the code commit.
 
