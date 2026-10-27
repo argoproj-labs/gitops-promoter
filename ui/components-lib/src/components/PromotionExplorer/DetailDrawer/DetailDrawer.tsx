@@ -13,6 +13,7 @@ import {
 import { getChecks } from '@shared/utils/PSData';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
 import {
   DRAWER_MIN_WIDTH,
@@ -141,6 +142,7 @@ const DetailDrawer: React.FC<{
   promotionStrategyName?: string;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
+  scmProvider?: ScmProviderSpec;
   width: number;
   isResizing: boolean;
   onResizeStart: (e: React.PointerEvent) => void;
@@ -157,6 +159,7 @@ const DetailDrawer: React.FC<{
   promotionStrategyName,
   envs,
   rowsById,
+  scmProvider,
   width,
   isResizing,
   onResizeStart,
@@ -202,9 +205,9 @@ const DetailDrawer: React.FC<{
       : [row.prId, row.prUrl];
 
   const safePrUrl = safeHttpUrl(prUrl);
-  const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull));
+  const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull, scmProvider));
   const hydratedCommitUrl = hydrated?.sha
-    ? safeHttpUrl(getCommitUrl(hydratedRepoURL, hydrated.sha))
+    ? safeHttpUrl(getCommitUrl(hydratedRepoURL, hydrated.sha, scmProvider))
     : undefined;
 
   const env = envs.find((e) => e.branch === branch);

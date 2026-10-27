@@ -247,6 +247,39 @@ describe('getCommitUrl', () => {
     );
   });
 
+  it('uses the GitLab path on gitlab.com', () => {
+    expect(getCommitUrl('https://gitlab.com/group/sub/repo.git', sha)).toBe(
+      'https://gitlab.com/group/sub/repo/-/commit/abc123',
+    );
+  });
+
+  it('uses the Bitbucket Cloud path on bitbucket.org', () => {
+    expect(getCommitUrl('https://bitbucket.org/team/repo', sha)).toBe(
+      'https://bitbucket.org/team/repo/commits/abc123',
+    );
+  });
+
+  it("uses the GitLab path on the SCM provider's self-hosted domain", () => {
+    const scm = { gitlab: { domain: 'GitLab.Example.com' } };
+    expect(getCommitUrl('https://gitlab.example.com/group/repo', sha, scm)).toBe(
+      'https://gitlab.example.com/group/repo/-/commit/abc123',
+    );
+  });
+
+  it("uses the Bitbucket Cloud path on the SCM provider's domain override", () => {
+    const scm = { bitbucketCloud: { domain: 'bitbucket.proxy.example.com' } };
+    expect(getCommitUrl('https://bitbucket.proxy.example.com/team/repo', sha, scm)).toBe(
+      'https://bitbucket.proxy.example.com/team/repo/commits/abc123',
+    );
+  });
+
+  it("keeps the generic form on hosts other than the SCM provider's", () => {
+    const scm = { gitlab: { domain: 'gitlab.example.com' } };
+    expect(getCommitUrl('https://github.com/org/repo', sha, scm)).toBe(
+      'https://github.com/org/repo/commit/abc123',
+    );
+  });
+
   it('returns an empty string without repo URL or sha', () => {
     expect(getCommitUrl('', sha)).toBe('');
     expect(getCommitUrl('https://github.com/org/repo', '')).toBe('');
