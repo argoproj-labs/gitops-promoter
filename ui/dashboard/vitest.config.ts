@@ -14,6 +14,9 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
+      // JUnit output is uploaded to Codecov Test Analytics by CI (gitignored).
+      reporters: ['default', 'junit'],
+      outputFile: { junit: './junit.xml' },
       include: ['test/**/*.test.{ts,tsx}'],
       server: {
         deps: {

@@ -40,6 +40,7 @@ secret.yaml
 /install-with-dashboard-byo-cert.yaml
 
 junit.xml
+e2e-junit.xml
 
 release_dist
 

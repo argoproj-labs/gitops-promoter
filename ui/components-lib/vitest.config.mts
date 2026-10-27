@@ -17,6 +17,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // JUnit output is uploaded to Codecov Test Analytics by CI (gitignored).
+    reporters: ['default', 'junit'],
+    outputFile: { junit: './junit.xml' },
     css: false,
     passWithNoTests: true,
     include: ['test/**/*.test.{ts,tsx}'],

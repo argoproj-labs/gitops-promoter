@@ -188,7 +188,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	go test ./test/e2e/ -v -timeout 30m -ginkgo.v
+	go test ./test/e2e/ -v -timeout 30m -ginkgo.v -ginkgo.junit-report=$(CURDIR)/e2e-junit.xml
 
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
