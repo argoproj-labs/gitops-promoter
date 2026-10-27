@@ -316,6 +316,14 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Verify the duration requirement has NOT been met (time remaining should be > 0)
 				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0),
 					"AtMostDurationRemaining must be > 0 for pending phase")
+
+				// The status can land before the CommitStatus when a write to the CommitStatus fails, so wait for it
+				// too before checking that it stays pending.
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment),
+					Namespace: "default",
+				}, &cs)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying phase stays pending for 10 seconds (doesn't incorrectly switch to success)")
