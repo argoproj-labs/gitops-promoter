@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1446,3 +1448,48 @@ func (f *fakeGitProvider) GetUser(ctx context.Context) (string, error) {
 }
 
 func (f *fakeGitProvider) GetToken(ctx context.Context) (string, error) { return "token", nil }
+
+type headerGitAuthProvider struct {
+	urlPrefix string
+}
+
+func (headerGitAuthProvider) GetGitHttpsRepoUrl(v1alpha1.GitRepository) string { return "" }
+func (headerGitAuthProvider) GetToken(context.Context) (string, error)         { return "the-token", nil }
+func (headerGitAuthProvider) GetUser(context.Context) (string, error)          { return "git", nil }
+func (p headerGitAuthProvider) GetGitHTTPHeader(context.Context) (string, string, error) {
+	if p.urlPrefix == "" {
+		return "", "", nil
+	}
+	return p.urlPrefix, "Authorization: Bearer the-token", nil
+}
+
+var _ = Describe("git HTTP header auth", func() {
+	var (
+		server  *httptest.Server
+		headers chan string
+	)
+
+	BeforeEach(func() {
+		headers = make(chan string, 10)
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			headers <- r.Header.Get("Authorization")
+			w.WriteHeader(http.StatusNotFound)
+		}))
+	})
+
+	AfterEach(func() {
+		server.Close()
+	})
+
+	It("sends the header from the provider to the matching URL", func() {
+		_, _, err := git.RunCmdWithEnv(context.Background(), headerGitAuthProvider{urlPrefix: server.URL + "/"}, GinkgoT().TempDir(), nil, "ls-remote", server.URL+"/repo")
+		Expect(err).To(HaveOccurred())
+		Expect(headers).To(Receive(Equal("Bearer the-token")))
+	})
+
+	It("does not send a header when the provider returns none", func() {
+		_, _, err := git.RunCmdWithEnv(context.Background(), headerGitAuthProvider{}, GinkgoT().TempDir(), nil, "ls-remote", server.URL+"/repo")
+		Expect(err).To(HaveOccurred())
+		Expect(headers).To(Receive(BeEmpty()))
+	})
+})

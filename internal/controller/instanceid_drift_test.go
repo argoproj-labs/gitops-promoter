@@ -147,7 +147,7 @@ func setupInstanceIDDriftClusterScmProvider(ctx context.Context) (utils.Promoter
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	csp := &promoterv1alpha1.ClusterScmProvider{
 		Name: name, Namespace: "default",
-		Spec: promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
+		Spec: promoterv1alpha1.ClusterScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
 	}
 	Expect(k8sClient.Create(ctx, csp)).To(Succeed())
 	return csp, key, func() { deleteIgnoringNotFound(ctx, csp) }

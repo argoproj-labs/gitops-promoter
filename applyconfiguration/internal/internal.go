@@ -155,6 +155,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: project
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
+  map:
+    fields:
+    - name: clientID
+      type:
+        scalar: string
+    - name: tenantID
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BasicAuth
   map:
     fields:
@@ -368,6 +377,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestCommonStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterAzureDevOps
+  map:
+    fields:
+    - name: domain
+      type:
+        scalar: string
+    - name: organization
+      type:
+        scalar: string
+    - name: workloadIdentity
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProvider
   map:
     fields:
@@ -382,10 +403,40 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProviderSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderSpec
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProviderStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderSpec
+  map:
+    fields:
+    - name: azureDevOps
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterAzureDevOps
+    - name: bitbucketCloud
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloud
+    - name: bitbucketDataCenter
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenter
+    - name: fake
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Fake
+    - name: forgejo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Forgejo
+    - name: gitea
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Gitea
+    - name: github
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitHub
+    - name: gitlab
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitLab
+    - name: secretRef
+      type:
+        namedType: io.k8s.api.core.v1.LocalObjectReference
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitBranchState
   map:
     fields:
