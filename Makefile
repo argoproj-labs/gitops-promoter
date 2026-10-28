@@ -270,7 +270,19 @@ lint: golangci-lint ## Run golangci-lint linter & yamllint
 
 .PHONY: deadcode
 deadcode: ## Report functions production code cannot reach, including test-only and reflection-only functions.
-	GOMEMLIMIT=6GiB go -C hack/deadcode run . -root $(CURDIR)
+	GOMEMLIMIT=6GiB go -C hack/deadcode run . \
+		-dir $(CURDIR) \
+		-reflection \
+		-fail \
+		-allow $(CURDIR)/hack/deadcode/allowlist.txt \
+		-canary github.com/argoproj-labs/gitops-promoter/internal/controller.ChangeTransferPolicyReconciler.Reconcile \
+		-entry github.com/argoproj-labs/gitops-promoter/webrequestsimulator.Simulate \
+		-skip /test/ \
+		-skip /tmp/ \
+		-skip /node_modules/ \
+		-ignore-suffix ForTest \
+		-ignore-suffix ForTests \
+		./...
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes

@@ -5,6 +5,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const modulePath = "github.com/argoproj-labs/gitops-promoter"
+
+var (
+	testSkips    = []string{"/test/", "/tmp/", "/node_modules/"}
+	testSuffixes = []string{"ForTest", "ForTests"}
+)
+
 var _ = Describe("deadcode", func() {
 	Describe("parseAllowlist", func() {
 		It("records the entry and its line, skipping comments", func() {
@@ -24,13 +31,13 @@ github.com/argoproj-labs/gitops-promoter/internal/settings.SetControllerInstance
 		})
 	})
 
-	DescribeTable("ignoredByName",
+	DescribeTable("ignoredSuffix",
 		func(name string, want bool) {
-			Expect(ignoredByName(name)).To(Equal(want))
+			Expect(ignoredSuffix(name, testSuffixes)).To(Equal(want))
 		},
-		Entry("ForTest suffix", "github.com/argoproj-labs/gitops-promoter/internal/settings.SetControllerInstanceIDForTest", true),
-		Entry("ForTests suffix", "github.com/argoproj-labs/gitops-promoter/internal/controller.loadShippedControllerConfigurationForTests", true),
-		Entry("ordinary name", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Environment.GetAutoMerge", false),
+		Entry("ForTest suffix", modulePath+"/internal/settings.SetControllerInstanceIDForTest", true),
+		Entry("ForTests suffix", modulePath+"/internal/controller.loadShippedControllerConfigurationForTests", true),
+		Entry("ordinary name", modulePath+"/api/v1alpha1.Environment.GetAutoMerge", false),
 	)
 
 	DescribeTable("kindOf",
@@ -42,62 +49,30 @@ github.com/argoproj-labs/gitops-promoter/internal/settings.SetControllerInstance
 		Entry("live", true, true, ""),
 	)
 
-	DescribeTable("skippedPackage",
+	DescribeTable("skippedPath",
 		func(path string, skip bool) {
-			Expect(skippedPackage(path)).To(Equal(skip))
+			Expect(skippedPath(path, testSkips)).To(Equal(skip))
 		},
 		Entry("test helpers", modulePath+"/test/scmserver", true),
 		Entry("npm Go files", modulePath+"/ui/dashboard/node_modules/flatted/golang/pkg/flatted", true),
 		Entry("scratch mains", modulePath+"/tmp/wrcscheck", true),
 		Entry("internal packages", modulePath+"/internal/utils/httpauth", false),
 		Entry("cmd", modulePath+"/cmd/demo", false),
-	)
-
-	DescribeTable("scratchPackage",
-		func(path string, scratch bool) {
-			Expect(scratchPackage(path)).To(Equal(scratch))
-		},
-		Entry("tmp main", modulePath+"/tmp/wrcscheck", true),
 		Entry("simulator library", modulePath+"/webrequestsimulator", false),
 	)
 
-	DescribeTable("isLibraryEntry",
-		func(name string, entry bool) {
-			Expect(isLibraryEntry(name)).To(Equal(entry))
-		},
-		Entry("public Simulate", modulePath+"/webrequestsimulator.Simulate", true),
-		Entry("internal Simulate", modulePath+"/webrequestsimulator/internal/simulate.Simulate", false),
-	)
-
-	Describe("packagePath", func() {
-		It("splits the package path from the selector", func() {
-			got := packagePath("github.com/argoproj-labs/gitops-promoter/internal/controller.ChangeTransferPolicyReconciler.Reconcile")
-			Expect(got).To(Equal("github.com/argoproj-labs/gitops-promoter/internal/controller"))
-			Expect(inModule(got)).To(BeTrue())
-			Expect(inModule("golang.org/x/tools/go/ssa")).To(BeFalse())
-		})
-	})
-
 	Describe("finding format", func() {
 		It("marks an unused function with func:", func() {
-			unused := finding{
-				file: "api/v1alpha1/promotionstrategy_types.go",
-				line: 144,
-				col:  1,
-				kind: "reflection-only",
-				name: "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Environment.GetAutoMerge",
-			}.String()
+			unused := formatDeadFunc(jsonPosition{
+				File: "api/v1alpha1/promotionstrategy_types.go",
+				Line: 144,
+				Col:  1,
+			}, "reflection-only", modulePath+"/api/v1alpha1.Environment.GetAutoMerge")
 			Expect(unused).To(ContainSubstring("reflection-only func: "))
 		})
 
 		It("omits func: from an allowlist problem", func() {
-			stale := finding{
-				file: "hack/deadcode/allowlist.txt",
-				line: 3,
-				col:  1,
-				kind: "stale allowlist entry",
-				name: "pkg.Old",
-			}.String()
+			stale := formatAllowProblem("hack/deadcode/allowlist.txt", 3, "stale allowlist entry", "pkg.Old")
 			Expect(stale).NotTo(ContainSubstring(" func:"))
 		})
 	})

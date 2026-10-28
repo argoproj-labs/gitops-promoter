@@ -7,6 +7,7 @@ go 1.27.0
 require (
 	github.com/onsi/ginkgo/v2 v2.31.0
 	github.com/onsi/gomega v1.42.0
+	golang.org/x/telemetry v0.0.0-20261009151841-97e8ea77aa2a
 	golang.org/x/tools v0.52.0
 )
 
