@@ -180,7 +180,7 @@ func installationIDFromTokenPath(path string) (int64, error) {
 func testClusterScmProvider(domain string) *v1alpha1.ClusterScmProvider {
 	return &v1alpha1.ClusterScmProvider{
 		Name: "github-scm-provider",
-		Spec: v1alpha1.ScmProviderSpec{
+		Spec: v1alpha1.ClusterScmProviderSpec{
 			GitHub: &v1alpha1.GitHub{
 				Domain: domain,
 				AppID:  testAppID,

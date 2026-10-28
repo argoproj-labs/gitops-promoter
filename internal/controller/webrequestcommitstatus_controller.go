@@ -538,7 +538,7 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 // allowedHostsForScmProvider returns the URL hostname permitted for the given ScmProviderSpec.
 // It may include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips the port from both
 // the configured value and the request URL so that standard-port URLs always match.
-func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) string {
+func allowedHostsForScmProvider(spec *promoterv1alpha1.ClusterScmProviderSpec) string {
 	switch {
 	case spec.GitHub != nil:
 		if spec.GitHub.Domain != "" {

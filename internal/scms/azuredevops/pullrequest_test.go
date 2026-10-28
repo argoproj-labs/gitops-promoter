@@ -104,7 +104,7 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 
 			objects := []client.Object{scmProvider, secret, gitRepo}
 			if tc.clusterScoped {
-				clusterScmProvider := &v1alpha1.ClusterScmProvider{Name: resourceName, Spec: scmProvider.Spec}
+				clusterScmProvider := &v1alpha1.ClusterScmProvider{Name: resourceName, Spec: *scmProvider.GetSpec()}
 				// The Secret is in the controller's namespace, not the GitRepository's.
 				secret.Namespace = "promoter-system"
 				gitRepo.Spec.ScmProviderRef.Kind = v1alpha1.ClusterScmProviderKind

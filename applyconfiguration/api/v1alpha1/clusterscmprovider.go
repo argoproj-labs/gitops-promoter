@@ -33,8 +33,8 @@ import (
 type ClusterScmProviderApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *ScmProviderSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *ScmProviderStatusApplyConfiguration `json:"status,omitempty"`
+	Spec                             *ClusterScmProviderSpecApplyConfiguration `json:"spec,omitempty"`
+	Status                           *ScmProviderStatusApplyConfiguration      `json:"status,omitempty"`
 }
 
 // ClusterScmProvider constructs a declarative configuration of the ClusterScmProvider type for use with
@@ -250,7 +250,7 @@ func (b *ClusterScmProviderApplyConfiguration) ensureObjectMetaApplyConfiguratio
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *ClusterScmProviderApplyConfiguration) WithSpec(value *ScmProviderSpecApplyConfiguration) *ClusterScmProviderApplyConfiguration {
+func (b *ClusterScmProviderApplyConfiguration) WithSpec(value *ClusterScmProviderSpecApplyConfiguration) *ClusterScmProviderApplyConfiguration {
 	b.Spec = value
 	return b
 }

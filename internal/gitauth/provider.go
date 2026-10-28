@@ -95,7 +95,11 @@ func CreateGitOperationsProvider(
 
 	case scmProvider.GetSpec().AzureDevOps != nil:
 		logger.V(4).Info("Creating Azure DevOps git authentication provider")
-		return azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret), nil
+		provider, err := azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Azure DevOps Auth Provider: %w", err)
+		}
+		return provider, nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}

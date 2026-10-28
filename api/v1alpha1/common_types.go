@@ -103,6 +103,35 @@ type AzureDevOps struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+// ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with
+// authentication that is only safe on a cluster-scoped resource, which only cluster admins can create.
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadIdentity) || !has(self.domain)",message="workloadIdentity is only supported for Azure DevOps Services, leave domain empty"
+type ClusterAzureDevOps struct {
+	AzureDevOps `json:",inline"`
+
+	// WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token.
+	// The controller pod must be configured for Azure workload identity, which projects a federated service account token
+	// and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables.
+	// When set, secretRef must be omitted.
+	// +optional
+	WorkloadIdentity *AzureWorkloadIdentity `json:"workloadIdentity,omitempty"`
+}
+
+// AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on
+// ClusterScmProvider.
+type AzureWorkloadIdentity struct {
+	// ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as.
+	// Defaults to the AZURE_CLIENT_ID environment variable of the controller.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	ClientID string `json:"clientID,omitempty"`
+	// TenantID is the Microsoft Entra tenant ID of the identity.
+	// Defaults to the AZURE_TENANT_ID environment variable of the controller.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	TenantID string `json:"tenantID,omitempty"`
+}
+
 // Fake is a placeholder for a fake SCM provider, used for testing purposes.
 type Fake struct {
 	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
