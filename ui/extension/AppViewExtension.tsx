@@ -7,12 +7,12 @@ import {
   parseEnvSelection,
 } from '@components-lib/components/PromotionExplorer/helpers';
 import { PromotionStrategy } from '@shared/types/promotion';
-import type { PromotionStrategyDetails } from '@shared/types/view';
+import type { PromotionStrategyDetails, ScmProviderSpec } from '@shared/types/view';
 import { mergeCommitStatusManagers } from '@shared/utils/PSData';
 import { environmentsFromBundle } from '@shared/utils/environments';
 import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import { scmProviderSpecFromBundle, sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 const GROUP = 'view.promoter.argoproj.io';
@@ -22,6 +22,7 @@ const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface StrategyItem {
   promotionStrategy: PromotionStrategy;
+  scmProvider?: ScmProviderSpec;
 }
 
 function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
@@ -55,6 +56,7 @@ function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
   sortStrategyCommitStatuses(promotionStrategy);
   return {
     promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
+    scmProvider: scmProviderSpecFromBundle(bundle),
   };
 }
 
@@ -265,6 +267,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           <PromotionExplorer
             key={selectedKey}
             strategy={selected.promotionStrategy}
+            scmProvider={selected.scmProvider}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}
             initialSelectedEnvs={getSelectedEnvsFromUrl()}

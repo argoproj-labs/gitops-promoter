@@ -486,6 +486,7 @@ describe('buildMatrix cell commit statuses', () => {
         hydrated: {},
         commitStatuses: [],
       },
+      proposed: {},
       history: [],
     } as unknown as Environment);
     const { rows } = buildMatrix(strategy);

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Encode a recording to docs/assets/demo.gif. See .agents/skills/record-ui-demo-gif/SKILL.md.
 # Usage: make-gif.sh [recording-dir] [output.gif]
-# Env: GIF_WIDTH (1100), GIF_FPS (10), GIF_TIMELAPSE_FPS (8), GIF_COLORS (128), GIF_LOSSY (40)
+# Env: GIF_WIDTH (1300), GIF_FPS (10), GIF_TIMELAPSE_FPS (8), GIF_COLORS (128), GIF_LOSSY (40)
 set -euo pipefail
 
 REC="${1:-/tmp/promoter-ui-demo/recording}"
 OUT="${2:-$(git rev-parse --show-toplevel)/docs/assets/demo.gif}"
-WIDTH="${GIF_WIDTH:-1100}"
+WIDTH="${GIF_WIDTH:-1300}"
 FPS="${GIF_FPS:-10}"
 TIMELAPSE_FPS="${GIF_TIMELAPSE_FPS:-8}"
 COLORS="${GIF_COLORS:-128}"

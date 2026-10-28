@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,6 +47,10 @@ const (
 	envSCMAdminURL = "PROMOTER_TEST_SCM_ADMIN_URL"
 	envSCMCAFile   = "PROMOTER_TEST_SCM_CA_FILE"
 	envSCMToken    = "PROMOTER_TEST_SCM_TOKEN"
+	// envSCMFaultProbability, a fraction in (0, 1], fails that fraction of the provider's API and git
+	// requests with a 500. Fixture git commands send scmserver.NoFaultHeader, so only the controllers
+	// see the faults.
+	envSCMFaultProbability = "PROMOTER_TEST_SCM_FAULT_PROBABILITY"
 
 	defaultSCMAdminURL = "http://127.0.0.1:9000"
 	defaultSCMCAFile   = "bin/scm-server-ca.pem"
@@ -440,6 +445,43 @@ func initSCMTargetFromEnv(ctx context.Context) *scmTestTarget {
 		githubKeyPEM: githubKeyPEM,
 		runID:        strings.ToLower(randomString(6)),
 	}
+}
+
+// installSCMFaultRulesFromEnv replaces the scmserver's fault rules with the one PROMOTER_TEST_SCM_FAULT_PROBABILITY
+// asks for, or none. Every Ginkgo process shares the server, so it runs once, on process 1, before any process runs
+// specs. Clearing first keeps a run against a long-lived local server from inheriting an earlier run's rule.
+func installSCMFaultRulesFromEnv(ctx context.Context) {
+	GinkgoHelper()
+	providerName := strings.TrimSpace(os.Getenv(envSCMProvider))
+	if providerName == "" || providerName == "fake" {
+		return
+	}
+	p := scmserver.Provider(providerName)
+	admin := scmserver.NewAdminClient(envOr(envSCMAdminURL, defaultSCMAdminURL))
+	Expect(admin.ClearFaults(ctx)).To(Succeed())
+	if prob, ok := scmFaultProbabilityFromEnv(); ok {
+		_, err := admin.AddFault(ctx, scmserver.FaultRule{
+			Provider: p, Status: http.StatusInternalServerError, Probability: prob, Message: "injected fault",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		By(fmt.Sprintf("failing %g of %s requests with an injected 500", prob, p))
+	}
+}
+
+// scmFaultProbabilityFromEnv parses envSCMFaultProbability. Unset or empty means no faults; any other
+// value outside (0, 1] fails the suite rather than silently running without faults.
+func scmFaultProbabilityFromEnv() (float64, bool) {
+	GinkgoHelper()
+	raw := strings.TrimSpace(os.Getenv(envSCMFaultProbability))
+	if raw == "" {
+		return 0, false
+	}
+	prob, err := strconv.ParseFloat(raw, 64)
+	// Written as a negated range check so NaN, which compares false to everything, is rejected too.
+	if err != nil || !(prob > 0 && prob <= 1) {
+		Fail(fmt.Sprintf("%s=%q must be a number in (0, 1]", envSCMFaultProbability, raw))
+	}
+	return prob, true
 }
 
 func envOr(key, fallback string) string {

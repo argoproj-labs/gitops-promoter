@@ -57,6 +57,20 @@ jobs:
           # the version list, so a Renovate bump of a kindest/node patch does not drop the upload. The other legs
           # run the release-shaped image.
           E2E_COVERAGE: ${{ strategy.job-index == 1 && '1' || '0' }}
+      - name: Upload e2e test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          # Ginkgo JUnit report from make test-e2e. Every matrix leg uploads, flagged by Kubernetes version,
+          # so a flake on one version is not hidden by a pass on another.
+          report_type: test_results
+          files: e2e-junit.xml
+          flags: e2e-k8s-${{ matrix.kubernetes-minor-version }}
+          name: e2e-k8s-${{ matrix.kubernetes-minor-version }}
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Convert e2e coverage
         id: e2e-coverage
         if: ${{ !cancelled() && strategy.job-index == 1 }}
