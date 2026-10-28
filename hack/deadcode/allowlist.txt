@@ -29,3 +29,6 @@ github.com/argoproj-labs/gitops-promoter/internal/k8sfault.faultyTransport.shoul
 
 # Smaller compile cache for evaluator tests.
 github.com/argoproj-labs/gitops-promoter/internal/webrequest.newExpressionEvaluatorWithCompileCacheMax
+
+# Kubebuilder GroupKind helper. Resource() is what this module calls.
+github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1.Kind
