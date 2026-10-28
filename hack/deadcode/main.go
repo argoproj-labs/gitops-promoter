@@ -10,8 +10,10 @@
 //     with no call-graph edge
 //
 // This command loads the operator module once, without tests, and reports both
-// unreachable functions and reflection-only functions. Run it from the repo
-// root with `make deadcode`.
+// unreachable functions and reflection-only functions. Exported APIs that only
+// out-of-repo callers and tests use (webrequestsimulator.Simulate) are roots,
+// so the implementation they reach stays live. Mains under tmp/ are not roots.
+// Run it from the repo root with `make deadcode`.
 package main
 
 import (
@@ -37,6 +39,13 @@ const modulePath = "github.com/argoproj-labs/gitops-promoter"
 // canary is a method production code reaches through an interface. If the
 // analysis reports it unused, the result cannot be trusted.
 const canary = modulePath + "/internal/controller.ChangeTransferPolicyReconciler.Reconcile"
+
+// libraryEntryPoints are exported APIs that out-of-repo callers use. This
+// module's tests call them too, but no operator binary does, so a no-test
+// analysis would otherwise report the whole implementation unreachable.
+var libraryEntryPoints = []string{
+	modulePath + "/webrequestsimulator.Simulate",
+}
 
 func main() {
 	root := flag.String("root", "", "path to the operator module root")
@@ -182,8 +191,9 @@ func analyze(root, allowPath string, allow *allowlist) ([]finding, error) {
 	}
 
 	var (
-		facts     = map[token.Position]*funcFact{}
-		generated = map[string]bool{}
+		facts      = map[token.Position]*funcFact{}
+		generated  = map[string]bool{}
+		libraryFns = map[string]*ssa.Function{}
 	)
 	packages.Visit(initial, nil, func(p *packages.Package) {
 		if !inModule(p.PkgPath) || skippedPackage(p.PkgPath) {
@@ -223,11 +233,15 @@ func analyze(root, allowPath string, allow *allowlist) ([]finding, error) {
 				if !pos.IsValid() {
 					continue
 				}
+				name := qualifiedName(fn)
+				if isLibraryEntry(name) {
+					libraryFns[name] = fn
+				}
 				if _, ok := facts[pos]; ok {
 					continue
 				}
 				facts[pos] = &funcFact{
-					name:      qualifiedName(fn),
+					name:      name,
 					pos:       pos,
 					generated: generated[filename],
 					marker:    isMarkerMethod(fnDecl, fn, ifaces),
@@ -242,6 +256,11 @@ func analyze(root, allowPath string, allow *allowlist) ([]finding, error) {
 	var roots []*ssa.Function
 	rootPos := map[token.Position]bool{}
 	for _, main := range mains {
+		// Scratch programs under tmp/ are not part of the committed tree.
+		// Treating them as roots makes a local run disagree with CI.
+		if main.Pkg != nil && scratchPackage(main.Pkg.Path()) {
+			continue
+		}
 		for _, name := range []string{"init", "main"} {
 			fn := main.Func(name)
 			if fn == nil {
@@ -251,6 +270,19 @@ func analyze(root, allowPath string, allow *allowlist) ([]finding, error) {
 			if fn.Pos().IsValid() {
 				rootPos[fset.Position(fn.Pos())] = true
 			}
+		}
+	}
+	if len(roots) == 0 {
+		return nil, fmt.Errorf("no main packages")
+	}
+	for _, name := range libraryEntryPoints {
+		fn := libraryFns[name]
+		if fn == nil {
+			return nil, fmt.Errorf("library entry %s is not in the program", name)
+		}
+		roots = append(roots, fn)
+		if fn.Pos().IsValid() {
+			rootPos[fset.Position(fn.Pos())] = true
 		}
 	}
 
@@ -381,9 +413,19 @@ func hasInEdge(n *callgraph.Node) bool {
 }
 
 // skippedPackage reports paths that are not part of the operator binary:
-// test helpers, and Go files that npm packages happen to ship.
+// test helpers, scratch programs, and Go files that npm packages happen to ship.
 func skippedPackage(path string) bool {
-	return strings.HasPrefix(path, modulePath+"/test/") || strings.Contains(path, "/node_modules/")
+	return strings.HasPrefix(path, modulePath+"/test/") || strings.Contains(path, "/node_modules/") || scratchPackage(path)
+}
+
+// scratchPackage is a main that lives only in a local checkout (tmp/wrcscheck
+// and similar). It must not become a reachability root.
+func scratchPackage(path string) bool {
+	return path == modulePath+"/tmp" || strings.HasPrefix(path, modulePath+"/tmp/")
+}
+
+func isLibraryEntry(name string) bool {
+	return slices.Contains(libraryEntryPoints, name)
 }
 
 func qualifiedName(fn *ssa.Function) string {
