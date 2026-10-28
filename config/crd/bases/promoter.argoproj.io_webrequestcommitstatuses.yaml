@@ -67,6 +67,11 @@ spec:
                     - {{ index .TriggerVariables "key" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)
                     - {{ index .SuccessVariables "key" }}: result of success.when.variables.expression this reconcile (nil if not configured)
 
+                  In polling mode with reportOn: proposed, a reconcile for a SHA that already succeeded skips the HTTP request and
+                  evaluates success.when.variables.expression with Response nil. Guard reads of Response with Response != nil and
+                  fall back to SuccessOutput, so .SuccessVariables keeps the values from the request. A fixed fallback value replaces
+                  them, and an expression that fails without a Response leaves .SuccessVariables unset.
+
                   Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 
                   If not specified, defaults to empty string.
