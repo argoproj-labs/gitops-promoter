@@ -152,12 +152,7 @@ func reconcileOutcomeFromHTTPResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
-	var successVars map[string]any
-	if v, ok := exprData["Variables"]; ok {
-		if vm, ok := v.(map[string]any); ok {
-			successVars = vm
-		}
-	}
+	successVars := successWhenVariables(exprData)
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
@@ -194,12 +189,7 @@ func reconcileOutcomeWithoutNewResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
-	var successVars map[string]any
-	if v, ok := exprData["Variables"]; ok {
-		if vm, ok := v.(map[string]any); ok {
-			successVars = vm
-		}
-	}
+	successVars := successWhenVariables(exprData)
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
@@ -219,6 +209,26 @@ func reconcileOutcomeWithoutNewResponse(
 		SuccessDataJSON:        successDataJSON,
 		SuccessVariables:       successVars,
 	}, nil
+}
+
+// successWhenVariables returns the success.when.variables result that enrichWhenExprEnv added to exprData,
+// or nil when success.when.variables is not configured.
+func successWhenVariables(exprData map[string]any) map[string]any {
+	vars, _ := exprData["Variables"].(map[string]any)
+	return vars
+}
+
+// skippedSuccessVariables evaluates success.when.variables for an environment whose HTTP request is skipped
+// because its SHA already succeeded, so the CommitStatus description and URL templates still see
+// .SuccessVariables. There is no response to evaluate against: an expression that needs one is left unset.
+func skippedSuccessVariables(ctx context.Context, evaluator *ExpressionEvaluator, wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) map[string]any {
+	exprData, err := evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, successWhenExprData(td, nil))
+	if err != nil {
+		log.FromContext(ctx).Info("Could not evaluate success.when.variables without an HTTP response; .SuccessVariables is unset in the CommitStatus templates. Guard Response with Response != nil and fall back to SuccessOutput",
+			"branch", td.Branch, "error", err)
+		return nil
+	}
+	return successWhenVariables(exprData)
 }
 
 // applyHTTPExecutionDecision runs the HTTP executor when decision.ShouldFire; otherwise reconciles
@@ -413,6 +423,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 			if lastReconciledEnvStatus != nil && lastState.Phase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *lastReconciledEnvStatus)
+				td.SuccessVariables = skippedSuccessVariables(ctx, defaultExpressionEvaluator, wrcs, td)
 				cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
@@ -532,6 +543,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 				ResponseOutput:         lastState.ResponseData,
 				SuccessOutput:          lastState.SuccessData,
 			}
+			// Evaluate once without a Branch, as the shared request does, so every environment sees the same result.
+			baseTd.SuccessVariables = skippedSuccessVariables(ctx, defaultExpressionEvaluator, wrcs, baseTd)
 			commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 			for _, env := range applicableEnvs {
 				perEnvTd := baseTd
