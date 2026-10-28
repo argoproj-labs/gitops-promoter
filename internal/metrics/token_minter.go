@@ -56,7 +56,7 @@ func requestServiceAccountToken(ctx context.Context, c client.Client, namespace,
 	return tr.Status.Token, tr.Status.ExpirationTimestamp.Time, nil
 }
 
-// MetricsTokenReconciler mints and keeps fresh the bearer token that the ServiceMonitor
+// TokenReconciler mints and keeps fresh the bearer token that the ServiceMonitor
 // (config/prometheus/monitor.yaml) presents to the manager's own secure /metrics endpoint.
 //
 // Why this exists: Prometheus Operator's ServiceMonitor can only source a bearer token from a
@@ -68,8 +68,7 @@ func requestServiceAccountToken(ctx context.Context, c client.Client, namespace,
 // kubernetes.io/service-account.name annotation the way it used to - and even where it still
 // does, that token never expires, which is exactly what we're trying to avoid. So something has
 // to call the TokenRequest API and keep the Secret's token fresh; this does that in-process, for
-// the manager's own ServiceAccount, which is also the principal config/rbac/metrics_reader_role_binding.yaml
-// authorizes to read /metrics.
+// a dedicated, minimally-privileged ServiceAccount (config/rbac/metrics_reader_service_account.yaml).
 //
 // It reacts to two independent triggers, rather than polling the secret's contents on a timer:
 //   - a Watch on that specific Secret (SetupWithManager), so an external delete/edit is corrected
@@ -77,7 +76,7 @@ func requestServiceAccountToken(ctx context.Context, c client.Client, namespace,
 //     exponential backoff on failure) - not on the next poll.
 //   - ctrl.Result.RequeueAfter, scheduled for exactly when the current token will cross its
 //     renewal threshold, so there is no busy-checking in between.
-type MetricsTokenReconciler struct {
+type TokenReconciler struct {
 	client.Client
 	requestToken tokenRequestFunc
 
@@ -87,8 +86,8 @@ type MetricsTokenReconciler struct {
 
 // NewMetricsTokenReconciler returns a reconciler that mints/rotates the metrics-token Secret in
 // namespace for serviceAccountName. Call SetupWithManager to register it.
-func NewMetricsTokenReconciler(c client.Client, namespace, serviceAccountName string) *MetricsTokenReconciler {
-	return &MetricsTokenReconciler{
+func NewMetricsTokenReconciler(c client.Client, namespace, serviceAccountName string) *TokenReconciler {
+	return &TokenReconciler{
 		Client:             c,
 		requestToken:       requestServiceAccountToken,
 		Namespace:          namespace,
@@ -99,7 +98,7 @@ func NewMetricsTokenReconciler(c client.Client, namespace, serviceAccountName st
 // SetupWithManager registers the reconciler, watching only the metrics-token Secret in
 // r.Namespace, plus a one-shot bootstrap event so the Secret is created
 // even on a brand new cluster where it has never existed yet.
-func (r *MetricsTokenReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *TokenReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
 		WatchesRawSource(source.Channel(newBootstrapEvent(r.Namespace), &handler.EnqueueRequestForObject{})).
@@ -136,7 +135,7 @@ func metricsTokenSecretPredicate(namespace string) predicate.Predicate {
 // expiring, mints a fresh token and writes it back. The returned RequeueAfter schedules the next
 // routine check for exactly when the (possibly just-minted) token will need renewing; on error,
 // controller-runtime retries with its normal exponential backoff instead.
-func (r *MetricsTokenReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+func (r *TokenReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	key := types.NamespacedName{Namespace: r.Namespace, Name: MetricsTokenSecretName}
 
@@ -213,7 +212,7 @@ func requeueAfterFor(expiry, now time.Time) time.Duration {
 // immutable, so migrating away from a differently-typed secret (e.g. the legacy
 // kubernetes.io/service-account-token annotation secret) requires Delete+Create; every other
 // path - the common case - is a single atomic Create or Update.
-func (r *MetricsTokenReconciler) applySecret(ctx context.Context, key types.NamespacedName, token string, expiry time.Time) error {
+func (r *TokenReconciler) applySecret(ctx context.Context, key types.NamespacedName, token string, expiry time.Time) error {
 	desiredAnnotations := map[string]string{metricsTokenExpiryAnnotation: expiry.UTC().Format(time.RFC3339)}
 	desiredData := map[string][]byte{metricsTokenKey: []byte(token)}
 
@@ -246,7 +245,7 @@ func (r *MetricsTokenReconciler) applySecret(ctx context.Context, key types.Name
 	return nil
 }
 
-func (r *MetricsTokenReconciler) createSecret(ctx context.Context, key types.NamespacedName, annotations map[string]string, data map[string][]byte) error {
+func (r *TokenReconciler) createSecret(ctx context.Context, key types.NamespacedName, annotations map[string]string, data map[string][]byte) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        key.Name,

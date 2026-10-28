@@ -161,18 +161,18 @@ func TestRequeueAfterFor(t *testing.T) {
 	}
 }
 
-// newTestReconciler returns a MetricsTokenReconciler backed by a fake client seeded with objs,
+// newTestReconciler returns a TokenReconciler backed by a fake client seeded with objs,
 // along with that same client for assertions.
-func newTestReconciler(objs ...client.Object) (*MetricsTokenReconciler, client.Client) {
+func newTestReconciler(objs ...client.Object) (*TokenReconciler, client.Client) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(objs...).Build()
-	return &MetricsTokenReconciler{
+	return &TokenReconciler{
 		Client:             fakeClient,
 		Namespace:          testNamespace,
 		ServiceAccountName: testServiceAccountName,
 	}, fakeClient
 }
 
-func TestMetricsTokenReconciler_Reconcile(t *testing.T) {
+func TestTokenReconciler_Reconcile(t *testing.T) {
 	t.Parallel()
 	secretKey := types.NamespacedName{Namespace: testNamespace, Name: MetricsTokenSecretName}
 	req := ctrl.Request{NamespacedName: secretKey}

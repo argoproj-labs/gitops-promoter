@@ -12,13 +12,11 @@ spec:
       - name: manager
         image: quay.io/argoprojlabs/gitops-promoter:latest
         env:
-          # Resolved via the Downward API (not hardcoded) so token minting keeps working
-          # under kustomize namePrefix/nameSuffix customization of the ServiceAccount name.
-          # See internal/metrics/token_minter.go.
+          # Must match the metrics-reader ServiceAccount's actual metadata.name
+          # (config/rbac/metrics_reader_service_account.yaml) after this file's own
+          # namePrefix/nameSuffix is applied - "promoter-" per this kustomization's namePrefix.
           - name: METRICS_TOKEN_SERVICE_ACCOUNT
-            valueFrom:
-              fieldRef:
-                fieldPath: spec.serviceAccountName
+            value: promoter-metrics-reader
         args:
           - "--health-probe-bind-address=:8081"
           - "--metrics-secure=true"

@@ -114,7 +114,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	cmd.Flags().StringVar(&metricsTokenServiceAccount, "metrics-token-service-account", "",
-		"ServiceAccount name used to mint the bearer token Prometheus presents to the secure metrics endpoint."+
+		"ServiceAccount name used to mint the bearer token Prometheus presents to the secure metrics endpoint. "+
 			"Only used when --metrics-secure=true.")
 
 	return cmd

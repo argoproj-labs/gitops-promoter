@@ -17,6 +17,7 @@ resources:
 - metrics_role.yaml
 - metrics_role_binding.yaml
 - metrics_reader_clusterrole.yaml
+- metrics_reader_service_account.yaml
 - metrics_reader_role_binding.yaml
 - metrics_token_role.yaml
 - metrics_token_role_binding.yaml

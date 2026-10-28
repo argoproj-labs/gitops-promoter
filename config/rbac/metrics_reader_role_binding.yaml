@@ -14,5 +14,5 @@ roleRef:
   name: metrics-reader
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
+  name: metrics-reader
   namespace: system

@@ -1,6 +1,7 @@
 # Permissions for internal/metrics/token_minter.go: mint a bound, time-limited token for the
-# manager's own ServiceAccount and keep it stored in the "metrics-token" Secret that the
-# ServiceMonitor (config/prometheus/monitor.yaml) presents to the secure /metrics endpoint.
+# dedicated metrics-reader ServiceAccount (metrics_reader_service_account.yaml) and keep it
+# stored in the "metrics-token" Secret that the ServiceMonitor (config/prometheus/monitor.yaml)
+# presents to the secure /metrics endpoint.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -20,7 +21,7 @@ rules:
   verbs:
   - create
   # Not restricted by resourceNames: kustomize's namePrefix/nameSuffix transformer does not
-  # rewrite resourceNames entries, so a literal "controller-manager" here would mismatch the
+  # rewrite resourceNames entries, so a literal here would mismatch the
   # actual (possibly renamed) ServiceAccount. Scoped to this namespace via the RoleBinding instead.
 - apiGroups:
   - ""

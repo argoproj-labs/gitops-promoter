@@ -9891,6 +9891,19 @@ metadata:
   name: promoter-controller-manager
   namespace: promoter-system
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: metrics-reader
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: serviceaccount
+    app.kubernetes.io/part-of: promoter
+  name: promoter-metrics-reader
+  namespace: promoter-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -11304,7 +11317,7 @@ roleRef:
   name: promoter-metrics-reader
 subjects:
 - kind: ServiceAccount
-  name: promoter-controller-manager
+  name: promoter-metrics-reader
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -11414,9 +11427,7 @@ spec:
         - controller
         env:
         - name: METRICS_TOKEN_SERVICE_ACCOUNT
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.serviceAccountName
+          value: promoter-metrics-reader
         image: quay.io/argoprojlabs/gitops-promoter:latest
         livenessProbe:
           httpGet:

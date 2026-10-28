@@ -17,8 +17,8 @@ limitations under the License.
 package e2e
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
