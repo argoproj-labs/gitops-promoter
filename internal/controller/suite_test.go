@@ -54,6 +54,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -107,8 +108,8 @@ var (
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
-	// faultsInjected is true when K8S_FAULT_PROBABILITY is enabled. Specs then stop asserting
-	// best-effort side effects (see expectEventEmitted).
+	// faultsInjected is true when K8S_FAULT_PROBABILITY or PROMOTER_TEST_SCM_FAULT_PROBABILITY is
+	// enabled. Specs then stop asserting best-effort side effects (see expectEventEmitted).
 	faultsInjected bool
 )
 
@@ -126,7 +127,10 @@ func TestControllers(t *testing.T) {
 	RunSpecs(t, "Controller Suite", c)
 }
 
-var _ = BeforeSuite(func() {
+// Process 1 sets up state shared by every process before any process starts its own setup or specs.
+var _ = SynchronizedBeforeSuite(func() {
+	installSCMFaultRulesFromEnv(context.Background())
+}, func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), zap.Level(zapcore.Level(-4)), func(o *zap.Options) {
 		o.TimeEncoder = zapcore.RFC3339NanoTimeEncoder
 	}))
@@ -197,6 +201,9 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
+	if _, ok := scmFaultProbabilityFromEnv(); ok {
+		faultsInjected = true
+	}
 	Expect(k8sClient.Create(ctx, controllerConfigurationForTests())).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
@@ -866,6 +873,10 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
+		// Exempt fixture traffic from scmserver fault rules, which are meant for the controllers.
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=" + scmserver.NoFaultHeader + ": 1",
 	}
 	if ca := os.Getenv("GIT_SSL_CAINFO"); ca != "" {
 		cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO="+ca)

@@ -66,7 +66,6 @@ export const Dropdown: React.FC<{
         <FaChevronDown className="hp-dd__caret" aria-hidden="true" />
       </button>
       {open &&
-        coords &&
         createPortal(
           <div
             id="hp-dropdown-menu"

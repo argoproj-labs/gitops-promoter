@@ -388,6 +388,14 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 	wrcs.Status.PromotionStrategyContext = nil
 	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
 	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+	// The status is written even when this reconcile fails partway. Keep the last reconciled status of the
+	// environments it did not reach, or their HTTP dedupe state is lost and the next reconcile re-sends
+	// their requests.
+	defer func() {
+		if err != nil {
+			wrcs.Status.Environments = withUnreachedEnvironments(wrcs.Status.Environments, applicableEnvs, statusByEnv)
+		}
+	}()
 
 	for _, env := range applicableEnvs {
 		branch := env.Branch
@@ -606,6 +614,11 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		LastSuccessfulShas:     lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
 	}
 
+	// Record the result before emitting CommitStatuses: the status is written even when an emit fails, and
+	// the request this reconcile may have sent must not be sent again.
+	wrcs.Status.Environments = nil
+	wrcs.Status.PromotionStrategyContext = psc
+
 	commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 	commitTd.TriggerVariables = decision.TriggerVariables
 	commitTd.SuccessVariables = result.SuccessVariables
@@ -623,7 +636,24 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		commitStatuses = append(commitStatuses, cs)
 	}
 
-	wrcs.Status.Environments = nil
-	wrcs.Status.PromotionStrategyContext = psc
 	return commitStatuses, transitionedBranches, requeueDurationForMode(wrcs.Spec.Mode), nil
+}
+
+// withUnreachedEnvironments appends to reconciled the last reconciled status of each applicable environment that
+// reconciled does not include, in applicable order.
+func withUnreachedEnvironments(
+	reconciled []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
+	applicableEnvs []promoterv1alpha1.Environment,
+	lastByBranch map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
+) []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus {
+	reached := make(map[string]bool, len(reconciled))
+	for _, env := range reconciled {
+		reached[env.Branch] = true
+	}
+	for _, env := range applicableEnvs {
+		if last, ok := lastByBranch[env.Branch]; ok && !reached[env.Branch] {
+			reconciled = append(reconciled, *last)
+		}
+	}
+	return reconciled
 }

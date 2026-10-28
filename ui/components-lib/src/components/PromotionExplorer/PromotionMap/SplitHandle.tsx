@@ -34,6 +34,8 @@ const SplitHandle: React.FC<{
       tabIndex={0}
       onPointerDown={(event) => {
         start.current = { y: event.clientY, height: currentHeight() };
+        // jsdom (used by the unit tests) does not implement setPointerCapture.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         event.currentTarget.setPointerCapture?.(event.pointerId);
       }}
       onPointerMove={(event) => {

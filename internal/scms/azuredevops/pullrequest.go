@@ -401,7 +401,9 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, pr.k8sClient, "", prObj.Spec.RepositoryReference, &prObj)
+	// Only the provider's spec is needed. Resolving the Secret too would need the controller namespace, which a
+	// ClusterScmProvider's Secret lives in and this provider doesn't know.
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, pr.k8sClient, gitRepo, &prObj)
 	if err != nil {
 		return "", fmt.Errorf("failed to get SCM provider: %w", err)
 	}
