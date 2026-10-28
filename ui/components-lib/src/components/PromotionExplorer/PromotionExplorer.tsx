@@ -2,6 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaRocket } from 'react-icons/fa';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import type { CommitRow, FilterId, SortId } from './types';
 import { isEmptyCellKind, safeHttpUrl } from './helpers';
 import { buildExplorerModel, type ExplorerModel } from './explorerModel';
@@ -23,6 +24,9 @@ export interface CellSelection {
 
 export interface PromotionExplorerProps {
   strategy?: PromotionStrategy;
+  // The strategy's SCM provider, used to link commits on hosts like GitLab that don't use
+  // <repo>/commit/<sha>.
+  scmProvider?: ScmProviderSpec;
   name?: string;
   namespace?: string;
   onBack?: () => void;
@@ -40,6 +44,7 @@ export interface PromotionExplorerProps {
 
 const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   strategy,
+  scmProvider,
   name: nameProp,
   namespace: namespaceProp,
   onBack,
@@ -51,12 +56,12 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   defaultMapExpanded = false,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
-  const name = nameProp ?? strategy?.metadata?.name;
-  const namespace = namespaceProp ?? strategy?.metadata?.namespace;
+  const name = nameProp ?? strategy?.metadata.name;
+  const namespace = namespaceProp ?? strategy?.metadata.namespace;
 
   const model = useMemo<ExplorerModel | null>(
-    () => (strategy ? buildExplorerModel(strategy) : null),
-    [strategy],
+    () => (strategy ? buildExplorerModel(strategy, scmProvider) : null),
+    [strategy, scmProvider],
   );
   const envs = useMemo(() => model?.envs ?? [], [model]);
   const rows = useMemo(() => model?.rows ?? [], [model]);
@@ -191,7 +196,10 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
   const envScopedRows = useMemo(
     () =>
       envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
+        ? rows.filter((r) =>
+            // envFilter can name a branch that is no longer a column until it is revalidated.
+            envFilter.some((b) => !(b in r.cells) || !isEmptyCellKind(r.cells[b].kind)),
+          )
         : rows,
     [rows, envFilter],
   );
@@ -357,7 +365,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                   </DropdownItem>
                   {envs.map((env) => {
                     const envCount = rows.filter(
-                      (r) => !isEmptyCellKind(r.cells[env.branch]?.kind),
+                      (r) => !isEmptyCellKind(r.cells[env.branch].kind),
                     ).length;
                     return (
                       <DropdownItem
@@ -460,7 +468,9 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
               </div>
             ) : (
               filteredRows.map((row) => {
-                const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull));
+                const dryCommitUrl = safeHttpUrl(
+                  getCommitUrl(row.repoUrl, row.dryShaFull, scmProvider),
+                );
                 return (
                   <div
                     key={row.id}
@@ -533,10 +543,11 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                             cell={row.cells[env.branch]}
                             branch={env.branch}
                             isSelected={
-                              selected?.rowId === row.id && selected?.branch === env.branch
+                              selected?.rowId === row.id && selected.branch === env.branch
                             }
                             onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
                             rowsById={rowsById}
+                            scmProvider={scmProvider}
                             onJumpToRow={handleJumpToRow}
                           />
                         </div>
@@ -557,6 +568,7 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
           promotionStrategyName={name}
           envs={envs}
           rowsById={rowsById}
+          scmProvider={scmProvider}
           width={drawer.width}
           isResizing={drawer.isResizing}
           onResizeStart={drawer.onResizeStart}

@@ -13,6 +13,7 @@ import {
 import { getChecks } from '@shared/utils/PSData';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
 import {
   DRAWER_MIN_WIDTH,
@@ -25,7 +26,7 @@ import { isEmptyCellKind, safeHttpUrl } from '../helpers';
 import { buildRestoreActiveCommitApplyCommand, canShowRestoreCommand } from '../restoreCommand';
 import { restoreBlockTooltip } from '@shared/utils/environments';
 import Tooltip from '../Tooltip/Tooltip';
-import { StatusIcon, StatusType } from '../../StatusIcon';
+import { StatusIcon } from '../../StatusIcon';
 
 const CopyCommandButton: React.FC<{ command: string }> = ({ command }) => {
   const [copied, setCopied] = React.useState(false);
@@ -65,15 +66,15 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
         const RowContent = manager ? Plugin?.rowContent : undefined;
         const isExpanded = !!expanded[check.name];
         const panelId = `hp-drawer-check-panel-${check.name}`;
-        const phase: StatusType = HEALTH_LABELS[check.status as HealthKey]
-          ? (check.status as StatusType)
+        const health: HealthKey = HEALTH_LABELS[check.status as HealthKey]
+          ? (check.status as HealthKey)
           : 'unknown';
 
         return (
           <li key={check.name} className="hp-drawer__check-item">
             <div className={`hp-drawer__check hp-drawer__check--${check.status}`}>
               <span className="hp-drawer__check-icon" aria-hidden="true">
-                <StatusIcon phase={phase} type="status" />
+                <StatusIcon phase={health} type="status" />
               </span>
               {RowContent && (
                 <button
@@ -100,9 +101,7 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
                 <Plugin.rowHeader check={check} manager={manager} />
               ) : (
                 <>
-                  <span className="hp-sr-only">
-                    {HEALTH_LABELS[check.status as HealthKey] ?? HEALTH_LABELS.unknown}:{' '}
-                  </span>
+                  <span className="hp-sr-only">{HEALTH_LABELS[health]}: </span>
                   <span className="hp-drawer__check-key">{check.name}</span>
                   {check.description && (
                     <span className="hp-drawer__check-desc">{check.description}</span>
@@ -141,6 +140,7 @@ const DetailDrawer: React.FC<{
   promotionStrategyName?: string;
   envs: EnvColumn[];
   rowsById: Map<string, CommitRow>;
+  scmProvider?: ScmProviderSpec;
   width: number;
   isResizing: boolean;
   onResizeStart: (e: React.PointerEvent) => void;
@@ -157,6 +157,7 @@ const DetailDrawer: React.FC<{
   promotionStrategyName,
   envs,
   rowsById,
+  scmProvider,
   width,
   isResizing,
   onResizeStart,
@@ -197,14 +198,14 @@ const DetailDrawer: React.FC<{
 
   const [prId, prUrl] = cell.restoreActiveCommit
     ? [cell.pullRequest?.id, cell.pullRequest?.url]
-    : cell.pullRequest?.id && cell.pullRequest?.url
+    : cell.pullRequest?.id && cell.pullRequest.url
       ? [cell.pullRequest.id, cell.pullRequest.url]
       : [row.prId, row.prUrl];
 
   const safePrUrl = safeHttpUrl(prUrl);
-  const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull));
+  const dryCommitUrl = safeHttpUrl(getCommitUrl(row.repoUrl, row.dryShaFull, scmProvider));
   const hydratedCommitUrl = hydrated?.sha
-    ? safeHttpUrl(getCommitUrl(hydratedRepoURL, hydrated.sha))
+    ? safeHttpUrl(getCommitUrl(hydratedRepoURL, hydrated.sha, scmProvider))
     : undefined;
 
   const env = envs.find((e) => e.branch === branch);

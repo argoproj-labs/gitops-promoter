@@ -42,11 +42,11 @@ const CommitMessageModal: React.FC<ModalProps> = ({
   trailers,
   children,
 }) => {
-  if (!isOpen) {
-    return null;
-  }
-
   React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
@@ -57,7 +57,11 @@ const CommitMessageModal: React.FC<ModalProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
 
   const mainMessage = removeTrailerBody(message, trailers);
 

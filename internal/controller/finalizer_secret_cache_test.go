@@ -78,7 +78,10 @@ var _ = Describe("Secret finalizer writes through the key-filtered cache", func(
 	It("adds the finalizer without dropping non-promoter data keys", func() {
 		secret := createSecret()
 
-		Expect(ensureSecretFinalizerForProvider(ctx, cachedClient, secret.Namespace, secret.Name, finalizer)).To(Succeed())
+		// The write goes through cfg, which K8S_FAULT_PROBABILITY may fault, so retry it like a reconcile would.
+		Eventually(func() error {
+			return ensureSecretFinalizerForProvider(ctx, cachedClient, secret.Namespace, secret.Name, finalizer)
+		}).Should(Succeed())
 
 		var after v1.Secret
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), &after)).To(Succeed())
@@ -90,8 +93,10 @@ var _ = Describe("Secret finalizer writes through the key-filtered cache", func(
 	It("removes the finalizer without dropping non-promoter data keys", func() {
 		secret := createSecret(finalizer)
 
-		Expect(removeSecretFinalizerForProvider(ctx, cachedClient, secret.Namespace, secret.Name, finalizer,
-			func() (bool, error) { return false, nil })).To(Succeed())
+		Eventually(func() error {
+			return removeSecretFinalizerForProvider(ctx, cachedClient, secret.Namespace, secret.Name, finalizer,
+				func() (bool, error) { return false, nil })
+		}).Should(Succeed())
 
 		var after v1.Secret
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), &after)).To(Succeed())

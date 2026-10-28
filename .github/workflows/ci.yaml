@@ -70,23 +70,32 @@ jobs:
           fi
           echo "ui/web/static directory exists ✓"
       - name: Build
+        id: build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
+      # The test steps below run even when an earlier check or test step failed, so every suite
+      # still reports its results and coverage to Codecov. Only a failed Build skips them.
       - name: Frontend shared unit tests
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make test-ui-test-shared
       - name: Frontend components-lib unit tests
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make test-ui-test-components-lib
       - name: Frontend extension unit tests
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make test-unit-test-extension
       - name: Frontend dashboard unit tests
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make test-parallel
         env:
           # 2% of reconciler writes to the envtest API server fail with a synthetic 500. Reads, watches,
           # and lease writes are exempt. See internal/k8sfault.
           K8S_FAULT_PROBABILITY: "0.02"
       - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
+        if: ${{ !cancelled() && steps.build.outcome != 'failure' }}
         run: make fuzz-replay
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
@@ -113,6 +122,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload UI coverage to codecov.io
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           # Vitest lcov (repo-root SF: via lcov projectRoot). One flag for the whole UI upload:
@@ -125,12 +135,32 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Upload test results to codecov.io
+      - name: Upload Go test results to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
+          # Ginkgo JUnit report from make test-parallel.
           report_type: test_results
-          token: ${{ secrets.CODECOV_TOKEN }}
+          files: junit.xml
+          flags: integration
+          name: integration
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload UI test results to codecov.io
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          # Vitest JUnit reports (reporters in each vitest.config).
+          report_type: test_results
+          files: ui/shared/junit.xml,ui/components-lib/junit.xml,ui/dashboard/junit.xml,ui/extension/junit.xml
+          flags: ui
+          name: ui
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   lint:
     name: Lint
     runs-on: ubuntu-latest

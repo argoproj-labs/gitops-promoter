@@ -1000,8 +1000,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionStartedReason)).To(BeTrue())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionBlockedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionStartedReason))
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionBlockedReason))
 					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeFalse())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1023,7 +1023,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionCompletedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1436,26 +1436,26 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Marking PR for deletion")
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					g.Expect(err).To(Succeed())
+				// The CTP still has a pending promotion, so once the closed PR is gone it creates a new one
+				// with the same name. Track the closed PR by UID so the steps below never act on its successor.
+				closedPRUID := createdPR.UID
 
-					err = k8sClient.Delete(ctx, &createdPR)
-					g.Expect(err).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Marking PR for deletion")
+				err := k8sClient.Delete(ctx, &createdPR, ctrlclient.Preconditions{UID: &closedPRUID})
+				// NotFound or a UID conflict means the closed PR is already gone.
+				if !errors.IsNotFound(err) && !errors.IsConflict(err) {
+					Expect(err).To(Succeed())
+				}
 
 				By("Verifying finalizer is removed and PR can be deleted")
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					// PR should be deleted (not found)
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					var pr promoterv1alpha1.PullRequest
+					err := k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(&createdPR), &pr)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.UID).NotTo(Equal(closedPRUID), "the closed PullRequest still exists")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
@@ -3157,11 +3157,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3212,11 +3212,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3322,11 +3322,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3425,6 +3425,17 @@ func deleteRestoreActiveCommitsForPolicy(ctx context.Context, ctpName, namespace
 		}
 		_ = k8sClient.Delete(ctx, rc)
 	}
+}
+
+// expectEventEmitted asserts found, which says whether a spec's expected event is present. Events are
+// best-effort, so with faults injected it asserts nothing: a faulted Event write is dropped for good, and an
+// injected failure can change which events a controller emits (one sent only on a healthy-to-failed
+// transition, for example, is skipped when an injected fault already failed the object).
+func expectEventEmitted(g Gomega, found bool) {
+	if faultsInjected {
+		return
+	}
+	g.Expect(found).To(BeTrue(), "expected event was not emitted")
 }
 
 // hasEventWithReason reports whether eventList contains an event for the named involved object

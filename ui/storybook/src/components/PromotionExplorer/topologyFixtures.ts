@@ -98,14 +98,14 @@ export function demoStrategy(name: string, envs: DemoEnv[]): PromotionStrategy {
               hydrated: { sha: `a${sha(env.active).slice(1)}` },
               commitStatuses: checks(env.activePhase ?? 'success', ['ci/build', 'health/smoke']),
             }
-          : undefined,
+          : {},
         proposed: env.proposed
           ? {
               dry: dry(env.proposed),
               hydrated: { sha: `b${sha(env.proposed).slice(1)}` },
               commitStatuses: checks(env.proposedPhase ?? 'pending', ['test/browser-suite']),
             }
-          : undefined,
+          : {},
         history: (env.history ?? []).map((key) => ({
           active: {
             dry: dry(key),
