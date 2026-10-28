@@ -17,10 +17,16 @@ limitations under the License.
 package webrequest
 
 import (
+	"context"
+	"errors"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
 const (
@@ -280,5 +286,123 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to render method template"))
 		})
+	})
+})
+
+// failingEmitter accepts every CommitStatus except failBranch's, which it rejects as the API server can.
+type failingEmitter struct {
+	failBranch string
+}
+
+func (e *failingEmitter) EmitCommitStatus(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, _, branch, _ string, _ promoterv1alpha1.CommitStatusPhase, _ TemplateData) (*promoterv1alpha1.CommitStatus, error) {
+	if branch == e.failBranch {
+		return nil, errors.New("injected CommitStatus write failure")
+	}
+	return &promoterv1alpha1.CommitStatus{}, nil
+}
+
+// countingExecutor answers every HTTP request with a 200 and counts them.
+type countingExecutor struct {
+	requests int
+}
+
+func (e *countingExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
+	e.requests++
+	return HTTPResponse{StatusCode: 200}, nil
+}
+
+var _ = Describe("A CommitStatus write failure", func() {
+	branches := []string{"environment/development", "environment/staging", "environment/production"}
+
+	newPromotionStrategy := func() *promoterv1alpha1.PromotionStrategy {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				RepositoryReference:    promoterv1alpha1.ObjectReference{Name: "repo"},
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "external-approval"}},
+			},
+		}
+		for _, b := range branches {
+			ps.Spec.Environments = append(ps.Spec.Environments, promoterv1alpha1.Environment{Branch: b})
+			ps.Status.Environments = append(ps.Status.Environments, promoterv1alpha1.EnvironmentStatus{
+				Branch:   b,
+				Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc123"}},
+			})
+		}
+		return ps
+	}
+
+	It("keeps the trigger state of the environments the failed reconcile did not reach", func() {
+		ctx := GinkgoT().Context()
+		exec := &countingExecutor{}
+		emitter := &failingEmitter{}
+		r := NewReconciler(exec, emitter)
+		wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				Key:      "external-approval",
+				ReportOn: constants.CommitRefProposed,
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Trigger: &promoterv1alpha1.TriggerModeSpec{
+						RequeueDuration: metav1.Duration{Duration: time.Minute},
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `(TriggerOutput["trackedSha"] ?? "") != "abc123"`,
+							Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: "abc123" }`},
+						},
+					},
+				},
+			},
+		}
+		ps := newPromotionStrategy()
+
+		By("requesting once per environment")
+		_, _, _, err := r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exec.requests).To(Equal(3))
+
+		By("failing the staging CommitStatus write on a reconcile that sends no requests")
+		emitter.failBranch = "environment/staging"
+		_, _, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		Expect(err).To(HaveOccurred())
+		Expect(wrcs.Status.Environments).To(HaveLen(3), "production's status must survive the failed reconcile")
+
+		By("not re-sending any request once the write succeeds")
+		emitter.failBranch = ""
+		_, _, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exec.requests).To(Equal(3))
+	})
+
+	It("keeps the promotionstrategy context result of a request that was already sent", func() {
+		ctx := GinkgoT().Context()
+		exec := &countingExecutor{}
+		emitter := &failingEmitter{failBranch: "environment/staging"}
+		r := NewReconciler(exec, emitter)
+		wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				Key:      "external-approval",
+				ReportOn: constants.CommitRefProposed,
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: time.Minute}},
+				},
+			},
+		}
+		ps := newPromotionStrategy()
+
+		By("sending the request and then failing the staging CommitStatus write")
+		_, _, _, err := r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
+		Expect(err).To(HaveOccurred())
+		Expect(exec.requests).To(Equal(1))
+
+		By("not re-sending the request once the write succeeds")
+		emitter.failBranch = ""
+		_, _, _, err = r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exec.requests).To(Equal(1))
 	})
 })
