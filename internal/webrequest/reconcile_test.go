@@ -17,10 +17,15 @@ limitations under the License.
 package webrequest
 
 import (
+	"context"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
 const (
@@ -281,4 +286,133 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Expect(err.Error()).To(ContainSubstring("failed to render method template"))
 		})
 	})
+})
+
+// recordingEmitter records the TemplateData each CommitStatus is emitted with.
+type recordingEmitter struct {
+	emitted []TemplateData
+}
+
+func (e *recordingEmitter) EmitCommitStatus(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, _, _, _ string, _ promoterv1alpha1.CommitStatusPhase, td TemplateData) (*promoterv1alpha1.CommitStatus, error) {
+	e.emitted = append(e.emitted, td)
+	return &promoterv1alpha1.CommitStatus{}, nil
+}
+
+// okExecutor answers every HTTP request with a 200 and body.
+type okExecutor struct {
+	body any
+}
+
+func (e okExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
+	return HTTPResponse{StatusCode: 200, Body: e.body}, nil
+}
+
+var _ = Describe("Polling mode skip of an already successful SHA", func() {
+	const branch = "environment/development"
+
+	newInputs := func(context promoterv1alpha1.ContextMode) (*promoterv1alpha1.WebRequestCommitStatus, *promoterv1alpha1.PromotionStrategy) {
+		wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				Key:                 "external-approval",
+				ReportOn:            constants.CommitRefProposed,
+				DescriptionTemplate: `Build: {{ index .SuccessVariables "tag" }}`,
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
+						Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"tag": "v1.2.3", "branch": Branch}`},
+						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+					},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Context: context,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: time.Minute}},
+				},
+			},
+		}
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				RepositoryReference:    promoterv1alpha1.ObjectReference{Name: "repo"},
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "external-approval"}},
+				Environments:           []promoterv1alpha1.Environment{{Branch: branch}},
+			},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{{
+					Branch:   branch,
+					Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc123"}},
+				}},
+			},
+		}
+		return wrcs, ps
+	}
+
+	DescribeTable("still exposes success.when.variables to the CommitStatus templates",
+		func(context promoterv1alpha1.ContextMode) {
+			ctx := GinkgoT().Context()
+			emitter := &recordingEmitter{}
+			r := NewReconciler(okExecutor{}, emitter)
+			wrcs, ps := newInputs(context)
+			reconcile := r.ReconcileWebRequestCommitStatusEnvironments
+			if context == promoterv1alpha1.ContextPromotionStrategy {
+				reconcile = r.ReconcileWebRequestCommitStatusPromotionStrategy
+			}
+
+			By("making the HTTP request and succeeding")
+			_, _, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(1))
+			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+
+			By("skipping the HTTP request on the next reconcile because the SHA already succeeded")
+			_, _, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(2))
+			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			Expect(emitter.emitted[1].SuccessVariables).To(Equal(emitter.emitted[0].SuccessVariables),
+				"the skip must evaluate success.when.variables the same way the request did")
+		},
+		Entry("environments context", promoterv1alpha1.ContextEnvironments),
+		Entry("promotionstrategy context", promoterv1alpha1.ContextPromotionStrategy),
+	)
+
+	// The documented pattern: variables read the response when there is one and otherwise fall back to the
+	// SuccessOutput they persisted, so the skip, which has no response, still sees the values from the request.
+	DescribeTable("keeps response-derived success.when.variables that fall back to SuccessOutput",
+		func(context promoterv1alpha1.ContextMode) {
+			ctx := GinkgoT().Context()
+			emitter := &recordingEmitter{}
+			r := NewReconciler(okExecutor{body: map[string]any{"buildTag": "v1.2.3", "buildRunId": "42"}}, emitter)
+			wrcs, ps := newInputs(context)
+			wrcs.Spec.Success.When = promoterv1alpha1.WhenWithOutputSpec{
+				Variables: &promoterv1alpha1.OutputSpec{Expression: `
+					let prev = SuccessOutput ?? { tag: "pending", runId: "", ok: false };
+					Response != nil ? {
+						tag:   Response.Body.buildTag   ?? prev.tag,
+						runId: Response.Body.buildRunId ?? prev.runId,
+						ok:    Response.StatusCode == 200,
+					} : prev`},
+				Expression: `Variables.ok`,
+				Output:     &promoterv1alpha1.OutputSpec{Expression: `Variables`},
+			}
+			reconcile := r.ReconcileWebRequestCommitStatusEnvironments
+			if context == promoterv1alpha1.ContextPromotionStrategy {
+				reconcile = r.ReconcileWebRequestCommitStatusPromotionStrategy
+			}
+
+			By("making the HTTP request and succeeding")
+			_, _, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(1))
+			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("runId", "42"))
+
+			By("skipping the HTTP request on the next reconcile because the SHA already succeeded")
+			_, _, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(emitter.emitted).To(HaveLen(2))
+			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			Expect(emitter.emitted[1].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
+			Expect(emitter.emitted[1].SuccessVariables).To(HaveKeyWithValue("runId", "42"))
+		},
+		Entry("environments context", promoterv1alpha1.ContextEnvironments),
+		Entry("promotionstrategy context", promoterv1alpha1.ContextPromotionStrategy),
+	)
 })
