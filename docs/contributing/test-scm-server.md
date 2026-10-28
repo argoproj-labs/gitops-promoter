@@ -16,7 +16,7 @@ It is used in three places:
 
 - **The contract suite** (`test/scmserver/*_test.go`, Ginkgo). It runs in `make test-parallel` and drives the real provider implementations against an in-process server.
 - **The e2e suite** (`test/e2e/scm_providers_test.go`). It deploys the server into Kind and promotes a hydrated change through every provider with the deployed controller.
-- **Controller integration tests** (`internal/controller`, opt-in, local only). By default those tests still use the in-process fake provider. Locally you can point them at a running scmserver provider (see [Controller integration tests against scmserver](#controller-integration-tests-against-scmserver)).
+- **Controller integration tests** (`internal/controller`, opt-in). By default those tests still use the in-process fake provider. You can point them at a running scmserver provider, and a weekly workflow does that for every provider with faults injected (see [Controller integration tests against scmserver](#controller-integration-tests-against-scmserver)).
 
 > [!WARNING]
 > The server is not hardened. Run it only in tests and on your own machine.
@@ -150,9 +150,9 @@ A `FaultRule` makes matching requests fail. It matches on provider, method and p
 
 ## Controller integration tests against scmserver
 
-CI and `make test-parallel` always use the fake provider. To exercise the real provider implementations from the envtest suite locally:
+PR CI and `make test-parallel` always use the fake provider. To exercise the real provider implementations from the envtest suite locally:
 
-1. Start the server in one terminal:
+1. Start the server in one terminal (or run `make start-scm-server` to start it in the background and log to `bin/scm-server.log`):
 
     ```shell
     make run-scm-server
@@ -172,8 +172,14 @@ CI and `make test-parallel` always use the fake provider. To exercise the real p
 | `PROMOTER_TEST_SCM_ADMIN_URL` | `http://127.0.0.1:9000` | Admin API base URL |
 | `PROMOTER_TEST_SCM_CA_FILE` | `bin/scm-server-ca.pem` | CA written by `make run-scm-server` |
 | `PROMOTER_TEST_SCM_TOKEN` | `dev-token` | Token accepted by every provider |
+| `PROMOTER_TEST_SCM_FAULT_PROBABILITY` | unset (no faults) | Fraction in (0, 1] of the provider's API and git requests to fail with a 500 |
+| `K8S_FAULT_PROBABILITY` | unset (no faults) | Fraction in (0, 1] of the controllers' Kubernetes writes to fail (see `internal/k8sfault`) |
 
 The suite creates a fresh repository on the server for each test factory call, registers a webhook to the in-process webhook receiver, and trusts the CA via `SSL_CERT_FILE` / `GIT_SSL_CAINFO`. It also turns off the server's rate limiting, since every spec shares one token. The Makefile target puts `hack/git` on `PATH` so git can authenticate through `promoter_askpass.sh`; add it yourself if you run ginkgo directly.
+
+Before any Ginkgo process runs specs, the first one clears the server's fault rules. With `PROMOTER_TEST_SCM_FAULT_PROBABILITY` set, it then adds one rule for the selected provider. With either kind of fault enabled, the suite shortens every rate limiter's slow delay to 5s, so a reconcile that fails several times in a row retries within the specs' timeouts. The specs' own git commands send the `X-Scmserver-No-Fault` header, which exempts a request from every fault rule, so only the controllers see the faults. With either kind of fault enabled, specs stop asserting that Kubernetes Events were emitted: events are best-effort, client-go drops a faulted Event write, and an injected failure can change which events a controller sends.
+
+The `fault injection scheduled` workflow (`.github/workflows/fault-injection-scheduled.yaml`) runs `make test-scm-provider` for every provider each Monday with both kinds of faults at 2%. When a scheduled run fails, it opens an issue labelled `fault-injection`, or comments on the open one, and it closes that issue after a run that passes. Run it by hand from the Actions tab to try other providers or rates; manual runs don't touch the issue.
 
 If port 9000 is already taken on your machine (Zscaler, for example, listens on `127.0.0.1:9000`), set `SCM_SERVER_PORT_BASE`. The admin API listens on that port and the seven providers on the next seven, in the order of the table above. Pass the same value to both targets:
 

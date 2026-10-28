@@ -9,6 +9,10 @@ import (
 	"sync"
 )
 
+// NoFaultHeader exempts a request from every fault rule. Test fixtures send it so that faults only hit the system under
+// test, e.g. with `git -c http.extraHeader="X-Scmserver-No-Fault: 1"`.
+const NoFaultHeader = "X-Scmserver-No-Fault"
+
 // FaultRule injects a failure or delay into matching requests. Rules are evaluated in creation order and the first
 // match applies.
 type FaultRule struct {
@@ -92,8 +96,12 @@ func (f *faultSet) list() []FaultRule {
 	return out
 }
 
-// match returns a copy of the first rule matching the request and records the hit, or nil.
+// match returns a copy of the first rule matching the request and records the hit, or nil. Requests carrying
+// NoFaultHeader never match.
 func (f *faultSet) match(p Provider, r *http.Request) *FaultRule {
+	if r.Header.Get(NoFaultHeader) != "" {
+		return nil
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for i, rule := range f.rules {

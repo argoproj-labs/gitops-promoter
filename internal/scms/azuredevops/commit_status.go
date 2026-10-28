@@ -65,15 +65,10 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(
-		ctx,
-		cs.k8sClient,
-		commitStatus.Namespace,
-		commitStatus.Spec.RepositoryReference,
-		commitStatus,
-	)
+	// Only the provider's spec is needed; see generatePullRequestUrl.
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, cs.k8sClient, gitRepo, commitStatus)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
+		return nil, fmt.Errorf("failed to get SCM provider: %w", err)
 	}
 
 	// Get Git client from Azure DevOps connection

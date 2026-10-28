@@ -8,7 +8,7 @@
 # touch go.mod, go.sum, the Makefile tool versions, or the UI package files
 # reuses the module cache, envtest binaries, and node_modules.
 
-FROM node:24.20.0-bullseye-slim@sha256:f7818cba7c85740e6f9dd31553636131d01e9992fb7d112b9b0893afd884d1d6 AS node
+FROM node:26.8.1-bullseye-slim@sha256:ce69d6017624735163d253581f6bfa3c8bf6c1eb1640ca71393be122c0716838 AS node
 
 # Same image the repository's Dockerfile pins.
 FROM golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8 AS base

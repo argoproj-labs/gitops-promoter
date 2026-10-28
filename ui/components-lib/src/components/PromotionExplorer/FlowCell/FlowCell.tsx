@@ -2,6 +2,7 @@ import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoBlocked, GoGitMerge } from 'react-icons/go';
 import { timeAgo, formatDate, formatDuration, getCommitUrl } from '@shared/utils/util';
+import type { ScmProviderSpec } from '@shared/types/view';
 import type { CellState, CommitRow } from '../types';
 import { commitKey, safeHttpUrl, shortSha } from '../helpers';
 import {
@@ -21,8 +22,9 @@ const FlowCell: React.FC<{
   isSelected: boolean;
   onSelect?: () => void;
   rowsById: Map<string, CommitRow>;
+  scmProvider?: ScmProviderSpec;
   onJumpToRow?: (rowId: string) => void;
-}> = ({ cell, branch, isSelected, onSelect, rowsById, onJumpToRow }) => {
+}> = ({ cell, branch, isSelected, onSelect, rowsById, scmProvider, onJumpToRow }) => {
   if (cell.kind === 'no-changes') {
     return (
       <div className="cell cell--no-changes" aria-label={`No changes in ${branch}`}>
@@ -67,7 +69,7 @@ const FlowCell: React.FC<{
   const hydratedRepoUrl =
     cell.hydrated?.repoURL || cell.commit?.repoURL || rowForCell?.repoUrl || '';
   const hydratedUrl = hydratedSha
-    ? safeHttpUrl(getCommitUrl(hydratedRepoUrl, hydratedSha))
+    ? safeHttpUrl(getCommitUrl(hydratedRepoUrl, hydratedSha, scmProvider))
     : undefined;
   const safePrUrl = safeHttpUrl(prUrl);
   const pillTooltip = blockedEnv

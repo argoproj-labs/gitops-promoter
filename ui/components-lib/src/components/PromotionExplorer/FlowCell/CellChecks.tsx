@@ -8,7 +8,7 @@ type CheckTone = 'pass' | 'fail' | 'run';
 const TONE_LABEL: Record<CheckTone, string> = { pass: 'passed', fail: 'failed', run: 'running' };
 const TONE_ORDER: Record<CheckTone, number> = { fail: 0, run: 1, pass: 2 };
 
-export function checkTone(phase: string): CheckTone {
+function checkTone(phase: string): CheckTone {
   if (phase === 'success') return 'pass';
   if (phase === 'failure') return 'fail';
   return 'run';

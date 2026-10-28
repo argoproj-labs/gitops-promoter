@@ -8,7 +8,7 @@ import {
 } from '@lib/components/PromotionExplorer/explorerModel';
 import { buildMatrix } from '@lib/components/PromotionExplorer/buildMatrix';
 import type { CellKind } from '@lib/components/PromotionExplorer/types';
-import { dagStrategy, linearStrategy, makeStrategy, rowId } from './fixtures';
+import { dagStrategy, linearStrategy, makeStrategy, rowId, sha } from './fixtures';
 
 const B = (name: string) => `environments/${name}`;
 
@@ -194,6 +194,17 @@ describe('buildExplorerModel (edge cases)', () => {
     expect(model.nodes).toHaveLength(1);
     expect(model.envs.map((e) => e.branch)[0]).toBe(B('dev'));
     expect(model.envs).toHaveLength(3);
+  });
+
+  it("links references on the SCM provider's self-hosted GitLab with the GitLab path", () => {
+    const strategy = makeStrategy([{ branch: 'solo', active: '1' }]);
+    strategy.status!.environments![0]!.active!.dry!.references = [
+      { commit: { sha: sha('2'), repoURL: 'https://gitlab.example.com/acme/code' } },
+    ];
+    const { rows } = buildMatrix(strategy, { gitlab: { domain: 'gitlab.example.com' } });
+    expect(rows[0]!.references[0]!.url).toBe(
+      `https://gitlab.example.com/acme/code/-/commit/${sha('2')}`,
+    );
   });
 
   it('handles a single environment', () => {
