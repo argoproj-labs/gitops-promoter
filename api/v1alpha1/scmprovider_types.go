@@ -60,6 +60,9 @@ type ScmProviderSpecCommon struct {
 // ScmProviderSpec defines the desired state of ScmProvider
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
 type ScmProviderSpec struct {
+	// ExactlyOneOf names azureDevOps, which has a different type on each kind, so it is declared on both
+	// ScmProviderSpec and ClusterScmProviderSpec. Add a new provider to both lists.
+
 	ScmProviderSpecCommon `json:",inline"`
 
 	// AzureDevOps required configuration for Azure DevOps as the SCM provider
@@ -161,8 +164,8 @@ type GenericScmProvider interface {
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ScmProvider{}
 
-// GetSpec returns a copy of the ScmProvider's spec as a ClusterScmProviderSpec. Changes to it are not applied to the
-// ScmProvider.
+// GetSpec returns the ScmProvider's spec converted to a ClusterScmProviderSpec. The conversion is shallow: pointer
+// fields such as secretRef and github are shared with the ScmProvider, so treat the result as read-only.
 func (s *ScmProvider) GetSpec() *ClusterScmProviderSpec {
 	spec := &ClusterScmProviderSpec{ScmProviderSpecCommon: s.Spec.ScmProviderSpecCommon}
 	if s.Spec.AzureDevOps != nil {

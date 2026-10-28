@@ -35,6 +35,8 @@ var ClusterScmProviderKind = reflect.TypeFor[ClusterScmProvider]().Name()
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
 // +kubebuilder:validation:XValidation:rule="!has(self.azureDevOps) || !has(self.azureDevOps.workloadIdentity) || !has(self.secretRef)",message="secretRef must not be set when azureDevOps.workloadIdentity is used"
 type ClusterScmProviderSpec struct {
+	// ExactlyOneOf must list the same providers as the one on ScmProviderSpec.
+
 	ScmProviderSpecCommon `json:",inline"`
 
 	// AzureDevOps required configuration for Azure DevOps as the SCM provider
