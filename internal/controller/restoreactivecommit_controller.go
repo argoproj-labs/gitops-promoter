@@ -380,9 +380,6 @@ func (r *RestoreActiveCommitReconciler) SetupWithManager(ctx context.Context, mg
 			// stamps Promoter-restore-unblocked-at when spec.blockEnvironment is false.
 			predicate.Funcs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					if e.ObjectOld == nil || e.ObjectNew == nil {
-						return false
-					}
 					return e.ObjectOld.GetDeletionTimestamp().IsZero() && !e.ObjectNew.GetDeletionTimestamp().IsZero()
 				},
 			},

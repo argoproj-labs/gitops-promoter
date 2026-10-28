@@ -429,10 +429,6 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 
 // AddLabels adds labels to a pull request on Azure DevOps, creating missing pull request labels when needed.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
@@ -476,10 +472,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 
 // RemoveLabels removes labels from a pull request on Azure DevOps.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)

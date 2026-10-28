@@ -483,9 +483,6 @@ func pullRequestStatusIsFinalized(pr *promoterv1alpha1.PullRequest) bool {
 func pullRequestStatusTransitionPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
-				return false
-			}
 			oldPR, okOld := e.ObjectOld.(*promoterv1alpha1.PullRequest)
 			newPR, okNew := e.ObjectNew.(*promoterv1alpha1.PullRequest)
 			if !okOld || !okNew {
@@ -563,9 +560,6 @@ func (r *PullRequestReconciler) pullRequestRequeueResult(ctx context.Context) (c
 func pullRequestDeletionFinalizerLengthChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
-				return false
-			}
 			if e.ObjectNew.GetDeletionTimestamp().IsZero() {
 				return false
 			}

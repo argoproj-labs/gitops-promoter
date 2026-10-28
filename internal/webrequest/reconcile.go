@@ -19,7 +19,6 @@ package webrequest
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -360,19 +359,11 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) (commitStatuses []*promoterv1alpha1.CommitStatus, transitionedBranches []string, requeueAfter time.Duration, err error) {
 	logger := log.FromContext(ctx)
 
-	if wrcs == nil {
-		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
-	}
+	wrcsSnapshot := &promoterv1alpha1.WebRequestCommitStatus{}
+	wrcs.DeepCopyInto(wrcsSnapshot)
 
-	wrcsSnapshot := wrcs.DeepCopy()
-	if wrcsSnapshot == nil {
-		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
-	}
-
-	lastReconciledStatus := wrcsSnapshot.Status.DeepCopy()
-	if lastReconciledStatus == nil {
-		lastReconciledStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
-	}
+	var lastReconciledStatus promoterv1alpha1.WebRequestCommitStatusStatus
+	wrcsSnapshot.Status.DeepCopyInto(&lastReconciledStatus)
 	statusByEnv := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(lastReconciledStatus.Environments))
 	for i := range lastReconciledStatus.Environments {
 		statusByEnv[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
@@ -504,10 +495,6 @@ func requeueDurationForMode(mode promoterv1alpha1.ModeSpec) time.Duration {
 func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) (commitStatuses []*promoterv1alpha1.CommitStatus, transitionedBranches []string, requeueAfter time.Duration, err error) {
 	logger := log.FromContext(ctx)
 
-	if wrcs == nil {
-		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
-	}
-
 	applicableEnvs := utils.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
 		// RequeueAfter 0: do not schedule a timed requeue; the reconciler runs again on watch events
@@ -517,10 +504,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		return nil, nil, 0, nil
 	}
 
-	wrcsSnapshot := wrcs.DeepCopy()
-	if wrcsSnapshot == nil {
-		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
-	}
+	wrcsSnapshot := &promoterv1alpha1.WebRequestCommitStatus{}
+	wrcs.DeepCopyInto(wrcsSnapshot)
 
 	psEnvStatusMap := getEnvsByBranch(ps)
 	currentShaPerBranch, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)

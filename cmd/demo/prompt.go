@@ -12,7 +12,6 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
-	"github.com/goccy/go-yaml"
 )
 
 // Credentials holds all user-provided authentication info
@@ -21,11 +20,6 @@ type Credentials struct {
 	AppID          string
 	PrivateKey     string
 	PrivateKeyPath string
-}
-
-// CredentialsProvider defines the interface for obtaining credentials
-type CredentialsProvider interface {
-	GetCredentials() (*Credentials, error)
 }
 
 // InteractivePrompter prompts the user for credentials via terminal
@@ -42,19 +36,7 @@ func NewInteractivePrompter() *InteractivePrompter {
 	}
 }
 
-// WithReader sets a custom reader (useful for testing)
-func (p *InteractivePrompter) WithReader(r io.Reader) *InteractivePrompter {
-	p.reader = r
-	return p
-}
-
-// WithWriter sets a custom writer (useful for testing)
-func (p *InteractivePrompter) WithWriter(w io.Writer) *InteractivePrompter {
-	p.writer = w
-	return p
-}
-
-// GetCredentials implements CredentialsProvider
+// GetCredentials prompts for the credentials the demo needs.
 func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
 	_, _ = p.prompt("Press Enter to continue...")
 	printTokenInformation()
@@ -130,22 +112,6 @@ func (p *InteractivePrompter) promptHidden(message string) (string, error) {
 	return password, nil
 }
 
-// FileCredentialsProvider loads credentials from a config file
-type FileCredentialsProvider struct {
-	configPath string
-}
-
-// NewFileCredentialsProvider creates a provider that loads from a file
-func NewFileCredentialsProvider(path string) *FileCredentialsProvider {
-	return &FileCredentialsProvider{configPath: path}
-}
-
-// GetCredentials implements CredentialsProvider
-func (p *FileCredentialsProvider) GetCredentials() (*Credentials, error) {
-	// Load from YAML file (implement based on your config format)
-	return loadCredentialsFromFile(p.configPath)
-}
-
 // PEMValidator validates PEM files
 type PEMValidator struct{}
 
@@ -177,20 +143,6 @@ func (v *PEMValidator) Validate(path string) error {
 	}
 
 	return nil
-}
-
-func loadCredentialsFromFile(path string) (*Credentials, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var credentials Credentials
-	if err := yaml.Unmarshal(content, &credentials); err != nil {
-		return nil, fmt.Errorf("failed to parse credentials: %w", err)
-	}
-
-	return &credentials, nil
 }
 
 // printTokenInformation prints information about creating a GitHub personal access token
