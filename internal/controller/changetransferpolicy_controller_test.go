@@ -1474,6 +1474,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
 					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(createdPR.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+					g.Expect(createdPR.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
