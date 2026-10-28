@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import AceEditor from 'react-ace';
 import yaml from 'js-yaml';
 import type { PromotionStrategy } from '@shared/utils/PSData';
+import { useDarkTheme } from './useDarkTheme';
 import './LiveManifestView.scss';
 
 // Import ace editor modes and themes
 import 'ace-builds/src-noconflict/mode-yaml';
 import 'ace-builds/src-noconflict/theme-textmate';
+import 'ace-builds/src-noconflict/theme-tomorrow_night';
 import 'ace-builds/src-noconflict/ext-language_tools';
 
 interface LiveManifestViewProps {
@@ -15,6 +17,7 @@ interface LiveManifestViewProps {
 
 export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) => {
   const [yamlString, setYamlString] = useState<string>('');
+  const dark = useDarkTheme();
 
   useEffect(() => {
     const formatted = yaml.dump(strategy, {
@@ -31,7 +34,7 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
       <div className="strategy-json-editor-content">
         <AceEditor
           mode="yaml"
-          theme="textmate"
+          theme={dark ? 'tomorrow_night' : 'textmate'}
           value={yamlString}
           readOnly={true}
           showPrintMargin={false}

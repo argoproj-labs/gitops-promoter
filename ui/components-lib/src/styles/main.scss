@@ -1,4 +1,4 @@
-@use './_colors.scss' as *;
+@use './palette' as p;
 // @import url('https://fonts.googleapis.com/css?family=Heebo:400,500,600,700&display=swap');
 
 html,
@@ -7,12 +7,16 @@ body,
   height: 100%;
 }
 
+html {
+  color-scheme: p.ref(scheme);
+}
+
 body {
-  background: $background-light;
+  background: p.ref(app-bg);
   font-family: 'Heebo', sans-serif;
   margin: 0;
   padding: 0;
-  color: #222;
+  color: p.ref(app-text);
 }
 
 #root {
