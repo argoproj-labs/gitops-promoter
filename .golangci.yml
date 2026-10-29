@@ -14,6 +14,7 @@ linters:
     - errname
     - errorlint
     - fatcontext
+    - forbidigo
     - forcetypeassert
     - gocheckcompilerdirectives
     - goconst
@@ -48,6 +49,16 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    forbidigo:
+      # status.active.hydrated is the active branch tip. Several ChangeTransferPolicies can share one active branch
+      # (spec.activePath), so the tip moves whenever any of them merges. Anything that decides something about one
+      # environment must use CommitBranchState.EffectiveHydrated() or PathHydrated. Reads that genuinely need the tip
+      # (reporting a CommitStatus on it, indexing by it, comparing branch tips, fetching the branch) carry a
+      # //nolint:forbidigo with the reason. See docs/contributing/index.md "Shared active branches".
+      analyze-types: false
+      forbid:
+        - pattern: '\.Active\.Hydrated\.(Sha|CommitTime)$'
+          msg: "status.active.hydrated is the shared branch tip; use EffectiveHydrated() or PathHydrated for this environment's commit, or justify the tip read with //nolint:forbidigo"
     goconst:
       ignore-tests: true
       ignore-string-values:
@@ -163,6 +174,10 @@ linters:
         path: test/scmserver/.*
       - linters:
           - dupl
+        path: .*_test.go
+      # Specs assert on the branch tip deliberately; the rule is for reconciler code.
+      - linters:
+          - forbidigo
         path: .*_test.go
       # Test structs are laid out for readability. fieldalignment reorders fields for GC scan size.
       - linters:

@@ -353,7 +353,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
-		return []string{ctp.Status.Active.Hydrated.Sha}
+		return []string{ctp.Status.Active.Hydrated.Sha} //nolint:forbidigo // field index: webhook and CommitStatus lookups are keyed by the branch tip
 	}); err != nil {
 		return fmt.Errorf("failed to set field index for .status.active.hydrated.sha: %w", err)
 	}
@@ -484,7 +484,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
-	activeSha, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha)
+	activeSha, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha) //nolint:forbidigo // last-seen branch tip lets GetBranchSha skip the fetch
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
@@ -555,7 +555,7 @@ func validateProposedDryMetadata(ctp *promoterv1alpha1.ChangeTransferPolicy) err
 
 	proposedHydratedSha := ctp.Status.Proposed.Hydrated.Sha
 
-	if proposedHydratedSha == ctp.Status.Active.Hydrated.Sha {
+	if proposedHydratedSha == ctp.Status.Active.Hydrated.Sha { //nolint:forbidigo // comparing the proposed tip with the active branch tip
 		return nil
 	}
 
@@ -1080,7 +1080,7 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 	// writePromotionHistoryNote reads from origin/<activeBranch>, and the blob-less clone may not hold
 	// the merge commit yet: calculateStatus only fetches the branch later in this reconcile. GetBranchSha
 	// skips the fetch when the clone already has the remote tip, so calculateStatus does not fetch it again.
-	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil {
+	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil { //nolint:forbidigo // last-seen branch tip lets GetBranchSha skip the fetch
 		return fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
 	}
 	if err := r.writePromotionHistoryNote(ctx, ctp, gitOperations, livePR); err != nil {
@@ -1724,14 +1724,14 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 		logger.Info("Restore commit blocks promotion of this dry SHA; not opening a pull request",
 			"branch", ctp.Spec.ActiveBranch,
 			"drySha", ctp.Status.Proposed.Dry.Sha,
-			"active", ctp.Status.Active.Hydrated.Sha)
+			"active", ctp.Status.Active.Hydrated.Sha) //nolint:forbidigo // branch containment is about the tip
 		return true, nil
 	}
 
 	if !gate.isRestoreTip {
 		return false, nil
 	}
-	contained, err := gitOperations.CommitIsAncestor(ctx, ctp.Status.Proposed.Hydrated.Sha, ctp.Status.Active.Hydrated.Sha)
+	contained, err := gitOperations.CommitIsAncestor(ctx, ctp.Status.Proposed.Hydrated.Sha, ctp.Status.Active.Hydrated.Sha) //nolint:forbidigo // branch containment is about the tip
 	if err != nil {
 		return false, fmt.Errorf("failed to check whether proposed commit is contained in active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
@@ -1739,7 +1739,7 @@ func (r *ChangeTransferPolicyReconciler) skipPullRequestAfterRevert(ctx context.
 		logger.Info("Proposed commit is already contained in the active branch; not opening a pull request",
 			"branch", ctp.Spec.ActiveBranch,
 			"proposed", ctp.Status.Proposed.Hydrated.Sha,
-			"active", ctp.Status.Active.Hydrated.Sha)
+			"active", ctp.Status.Active.Hydrated.Sha) //nolint:forbidigo // branch containment is about the tip
 	}
 	return contained, nil
 }
@@ -1999,7 +1999,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	if gate.isRestoreTip && !gate.unblocked {
 		logger.Info("Restore commit blocks auto-merge until Promoter-restore-unblocked-at is stamped",
 			"branch", ctp.Spec.ActiveBranch,
-			"active", ctp.Status.Active.Hydrated.Sha,
+			"active", ctp.Status.Active.EffectiveHydrated().Sha,
 			"drySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil
 	}
@@ -2087,7 +2087,7 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	logger := log.FromContext(ctx)
 
 	proposedSha := ctp.Status.Proposed.Hydrated.Sha
-	activeSha := ctp.Status.Active.Hydrated.Sha
+	activeSha := ctp.Status.Active.Hydrated.Sha //nolint:forbidigo // conflict resolution merges branch tips
 	if proposedSha != "" && proposedSha == activeSha {
 		logger.V(4).Info("Skipping conflict check, proposed and active hydrated tips are the same commit", "sha", proposedSha)
 		return false, nil

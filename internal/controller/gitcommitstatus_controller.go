@@ -210,7 +210,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 		// Get the proposed and active hydrated SHAs for this environment
 		proposedSha := envStatus.Proposed.Hydrated.Sha
-		activeHydratedSha := envStatus.Active.Hydrated.Sha
+		activeHydratedSha := envStatus.Active.Hydrated.Sha //nolint:forbidigo // the signature check reports on the branch tip
 
 		// Determine which commit SHA to validate based on the Target field
 		// The field is defaulted to "active" by the API server and validated to be "active" or "proposed"
