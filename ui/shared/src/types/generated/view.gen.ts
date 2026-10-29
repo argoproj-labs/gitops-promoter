@@ -385,6 +385,8 @@ export type components = {
             hydrated?: components["schemas"]["CommitShaState"];
             /** @description Note is the hydrator metadata from the git note attached to the hydrated commit. */
             note?: components["schemas"]["HydratorMetadata"];
+            /** @description PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is only set when spec.activePath is set, and is nil when no commit on the branch has touched that path. On an active branch shared by several policies it stays put while sibling policies merge, whereas Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any promoter conflict-resolution merges. */
+            pathHydrated?: components["schemas"]["CommitShaState"];
         };
         /** @description CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as the proposed dry side at merge becomes the Active. */
         CommitBranchStateHistoryProposed: {

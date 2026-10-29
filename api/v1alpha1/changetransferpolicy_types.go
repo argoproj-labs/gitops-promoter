@@ -111,6 +111,13 @@ type CommitBranchState struct {
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+	// only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+	// On an active branch shared by several policies it stays put while sibling policies merge, whereas
+	// Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+	// promoter conflict-resolution merges.
+	// +optional
+	PathHydrated *CommitShaState `json:"pathHydrated,omitempty"`
 	// Note is the hydrator metadata from the git note attached to the hydrated commit.
 	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
@@ -119,6 +126,15 @@ type CommitBranchState struct {
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
+}
+
+// EffectiveHydrated returns the commit that last changed this environment: PathHydrated when the policy
+// scopes itself to an activePath and a commit touched that path, otherwise the branch tip (Hydrated).
+func (b *CommitBranchState) EffectiveHydrated() CommitShaState {
+	if b.PathHydrated != nil {
+		return *b.PathHydrated
+	}
+	return b.Hydrated
 }
 
 // HydratorMetadata contains metadata about the hydrated commit.

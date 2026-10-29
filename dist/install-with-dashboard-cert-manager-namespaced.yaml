@@ -804,6 +804,91 @@ spec:
                           that was used to hydrate the branch.
                         type: string
                     type: object
+                  pathHydrated:
+                    description: |-
+                      PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+                      only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+                      On an active branch shared by several policies it stays put while sibling policies merge, whereas
+                      Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+                      promoter conflict-resolution merges.
+                    properties:
+                      author:
+                        description: Author is the author of the commit
+                        type: string
+                      body:
+                        description: Body is the body of the commit message without
+                          the subject line
+                        type: string
+                      commitTime:
+                        description: CommitTime is the time the commit was made
+                        format: date-time
+                        type: string
+                      references:
+                        description: References are the references to other commits,
+                          that went into the hydration of the branch
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  format: date-time
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  pattern: ^(https?://.*)?$
+                                  type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
+                                sha:
+                                  description: |-
+                                    Sha is the commit hash.
+                                    Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                  maxLength: 64
+                                  pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                              type: object
+                          type: object
+                        maxItems: 100
+                        type: array
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located
+                        pattern: ^(https?://.*)?$
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
+                      sha:
+                        description: |-
+                          Sha is the SHA of the commit in the branch
+                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                        maxLength: 64
+                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                        type: string
+                      subject:
+                        description: Subject is the subject line of the commit message
+                        type: string
+                    type: object
                 type: object
               conditions:
                 description: Conditions Represents the observations of the current
@@ -1167,6 +1252,91 @@ spec:
                       subject:
                         description: Subject is the subject line of the dry commit
                           that was used to hydrate the branch.
+                        type: string
+                    type: object
+                  pathHydrated:
+                    description: |-
+                      PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+                      only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+                      On an active branch shared by several policies it stays put while sibling policies merge, whereas
+                      Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+                      promoter conflict-resolution merges.
+                    properties:
+                      author:
+                        description: Author is the author of the commit
+                        type: string
+                      body:
+                        description: Body is the body of the commit message without
+                          the subject line
+                        type: string
+                      commitTime:
+                        description: CommitTime is the time the commit was made
+                        format: date-time
+                        type: string
+                      references:
+                        description: References are the references to other commits,
+                          that went into the hydration of the branch
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  format: date-time
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  pattern: ^(https?://.*)?$
+                                  type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
+                                sha:
+                                  description: |-
+                                    Sha is the commit hash.
+                                    Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                  maxLength: 64
+                                  pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                              type: object
+                          type: object
+                        maxItems: 100
+                        type: array
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located
+                        pattern: ^(https?://.*)?$
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
+                      sha:
+                        description: |-
+                          Sha is the SHA of the commit in the branch
+                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                        maxLength: 64
+                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                        type: string
+                      subject:
+                        description: Subject is the subject line of the commit message
                         type: string
                     type: object
                 type: object
@@ -1695,6 +1865,94 @@ spec:
                             subject:
                               description: Subject is the subject line of the dry
                                 commit that was used to hydrate the branch.
+                              type: string
+                          type: object
+                        pathHydrated:
+                          description: |-
+                            PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+                            only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+                            On an active branch shared by several policies it stays put while sibling policies merge, whereas
+                            Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+                            promoter conflict-resolution merges.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
                               type: string
                           type: object
                       type: object
@@ -6957,6 +7215,94 @@ spec:
                                 commit that was used to hydrate the branch.
                               type: string
                           type: object
+                        pathHydrated:
+                          description: |-
+                            PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+                            only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+                            On an active branch shared by several policies it stays put while sibling policies merge, whereas
+                            Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+                            promoter conflict-resolution merges.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
                       type: object
                     branch:
                       description: Branch is the name of the active branch for the
@@ -7280,6 +7626,94 @@ spec:
                             subject:
                               description: Subject is the subject line of the dry
                                 commit that was used to hydrate the branch.
+                              type: string
+                          type: object
+                        pathHydrated:
+                          description: |-
+                            PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+                            only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+                            On an active branch shared by several policies it stays put while sibling policies merge, whereas
+                            Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+                            promoter conflict-resolution merges.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: |-
+                                          Sha is the commit hash.
+                                          Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                                        maxLength: 64
+                                        pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              maxItems: 100
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: |-
+                                Sha is the SHA of the commit in the branch
+                                Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                              maxLength: 64
+                              pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
                               type: string
                           type: object
                       type: object
