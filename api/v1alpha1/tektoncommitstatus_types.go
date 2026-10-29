@@ -46,7 +46,7 @@ type TektonCommitStatusSpec struct {
 	ExpectedResults []ExpectedResult `json:"expectedResults,omitempty"`
 
 	// Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean.
-	// The results values can be accessed through the map variable Result.
+	// The results values can be accessed through the map variable Results.
 	// If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of
 	// the Tekton run.
 	// +optional
@@ -163,7 +163,7 @@ type ExpectedResult struct {
 	// Expression is an expr expression to be used with the result. Must return a boolean.
 	// The result can be accessed through the string variable Result.
 	// For example:
-	// expectedResult:
+	// expectedResults:
 	//   - key: testCoverage
 	//     expression: "Result >= 80"
 	//
