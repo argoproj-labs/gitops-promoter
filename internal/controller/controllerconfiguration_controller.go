@@ -84,7 +84,7 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&cc)
 
-	metrics.SetRepositoryLabels(cc.Spec.Metrics.RepositoryLabels)
+	metrics.SetGitRepositoryLabels(cc.Spec.Metrics.Labels.GitRepository)
 
 	if ptr.Equal(r.StartupInstanceID, cc.Spec.InstanceID) {
 		return ctrl.Result{}, nil

@@ -218,4 +218,5 @@ spec:
     mode: Enabled
   scope: Cluster
   metrics:
-    repositoryLabels: All
+    labels:
+      gitRepository: All

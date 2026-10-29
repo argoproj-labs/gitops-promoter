@@ -17,25 +17,13 @@ limitations under the License.
 
 package v1alpha1
 
-import (
-	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-)
-
 // MetricsConfigurationApplyConfiguration represents a declarative configuration of the MetricsConfiguration type for use
 // with apply.
 //
 // MetricsConfiguration defines the configuration for the controller's Prometheus metrics.
 type MetricsConfigurationApplyConfiguration struct {
-	// RepositoryLabels controls which git_operations_* and scm_calls_* metrics carry the
-	// git_repository and git_repository_namespace labels. Repository labels multiply series by the
-	// number of GitRepositories, and histograms multiply them again by their bucket count.
-	// All: every metric carries the labels.
-	// Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated
-	// across repositories (the labels are present but empty), so percentiles stay available at much
-	// lower cardinality.
-	// None: no metric carries them.
-	// Changing this value resets the affected metrics.
-	RepositoryLabels *apiv1alpha1.MetricsRepositoryLabels `json:"repositoryLabels,omitempty"`
+	// Labels controls which metrics carry selected Prometheus labels (not Kubernetes labels).
+	Labels *MetricsLabelsConfigurationApplyConfiguration `json:"labels,omitempty"`
 }
 
 // MetricsConfigurationApplyConfiguration constructs a declarative configuration of the MetricsConfiguration type for use with
@@ -44,10 +32,10 @@ func MetricsConfiguration() *MetricsConfigurationApplyConfiguration {
 	return &MetricsConfigurationApplyConfiguration{}
 }
 
-// WithRepositoryLabels sets the RepositoryLabels field in the declarative configuration to the given value
+// WithLabels sets the Labels field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the RepositoryLabels field is set to the value of the last call.
-func (b *MetricsConfigurationApplyConfiguration) WithRepositoryLabels(value apiv1alpha1.MetricsRepositoryLabels) *MetricsConfigurationApplyConfiguration {
-	b.RepositoryLabels = &value
+// If called multiple times, the Labels field is set to the value of the last call.
+func (b *MetricsConfigurationApplyConfiguration) WithLabels(value *MetricsLabelsConfigurationApplyConfiguration) *MetricsConfigurationApplyConfiguration {
+	b.Labels = value
 	return b
 }

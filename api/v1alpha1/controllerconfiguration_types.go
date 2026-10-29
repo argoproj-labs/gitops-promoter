@@ -122,8 +122,16 @@ type ControllerConfigurationSpec struct {
 
 // MetricsConfiguration defines the configuration for the controller's Prometheus metrics.
 type MetricsConfiguration struct {
-	// RepositoryLabels controls which git_operations_* and scm_calls_* metrics carry the
-	// git_repository and git_repository_namespace labels. Repository labels multiply series by the
+	// Labels controls which metrics carry selected Prometheus labels (not Kubernetes labels).
+	// +optional
+	// +kubebuilder:default={}
+	Labels MetricsLabelsConfiguration `json:"labels,omitzero"`
+}
+
+// MetricsLabelsConfiguration selects which metrics carry each configurable Prometheus label.
+type MetricsLabelsConfiguration struct {
+	// GitRepository controls which git_operations_* and scm_calls_* metrics carry the
+	// git_repository and git_repository_namespace labels. These labels multiply series by the
 	// number of GitRepositories, and histograms multiply them again by their bucket count.
 	// All: every metric carries the labels.
 	// Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated
@@ -133,20 +141,20 @@ type MetricsConfiguration struct {
 	// Changing this value resets the affected metrics.
 	// +optional
 	// +kubebuilder:default=All
-	RepositoryLabels MetricsRepositoryLabels `json:"repositoryLabels,omitempty"`
+	GitRepository MetricLabelMode `json:"gitRepository,omitempty"`
 }
 
-// MetricsRepositoryLabels selects which metrics carry repository labels.
+// MetricLabelMode selects which metrics carry a Prometheus label.
 // +kubebuilder:validation:Enum=All;Counters;None
-type MetricsRepositoryLabels string
+type MetricLabelMode string
 
 const (
-	// MetricsRepositoryLabelsAll keeps repository labels on every metric.
-	MetricsRepositoryLabelsAll MetricsRepositoryLabels = "All"
-	// MetricsRepositoryLabelsCounters keeps repository labels only on counters.
-	MetricsRepositoryLabelsCounters MetricsRepositoryLabels = "Counters"
-	// MetricsRepositoryLabelsNone removes repository labels from every metric.
-	MetricsRepositoryLabelsNone MetricsRepositoryLabels = "None"
+	// MetricLabelModeAll keeps the label on every metric.
+	MetricLabelModeAll MetricLabelMode = "All"
+	// MetricLabelModeCounters keeps the label only on counters.
+	MetricLabelModeCounters MetricLabelMode = "Counters"
+	// MetricLabelModeNone removes the label from every metric.
+	MetricLabelModeNone MetricLabelMode = "None"
 )
 
 // ControllerScope is the scope of namespaced resources the controller watches.

@@ -461,6 +461,11 @@ func (in MetricsConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in MetricsLabelsConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.MetricsLabelsConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ModeSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ModeSpec"
 }

@@ -274,22 +274,22 @@ func init() {
 }
 
 var (
-	// repositoryLabelsMu is held for reading while recording, so SetRepositoryLabels cannot reset the
+	// gitRepositoryLabelsMu is held for reading while recording, so SetGitRepositoryLabels cannot reset the
 	// metrics between a recorder reading the mode and writing a series under the old mode.
-	repositoryLabelsMu sync.RWMutex
-	repositoryLabels   = v1alpha1.MetricsRepositoryLabelsAll
+	gitRepositoryLabelsMu  sync.RWMutex
+	gitRepositoryLabelMode = v1alpha1.MetricLabelModeAll
 )
 
-// SetRepositoryLabels sets which git_operations_* and scm_calls_* metrics carry the git_repository
-// and git_repository_namespace labels (ControllerConfiguration spec.metrics.repositoryLabels).
+// SetGitRepositoryLabels sets which git_operations_* and scm_calls_* metrics carry the git_repository
+// and git_repository_namespace labels (ControllerConfiguration spec.metrics.labels.gitRepository).
 // When the value changes, metrics whose labels change are reset so series recorded under the old
 // value don't linger.
-func SetRepositoryLabels(mode v1alpha1.MetricsRepositoryLabels) {
-	repositoryLabelsMu.Lock()
-	defer repositoryLabelsMu.Unlock()
+func SetGitRepositoryLabels(mode v1alpha1.MetricLabelMode) {
+	gitRepositoryLabelsMu.Lock()
+	defer gitRepositoryLabelsMu.Unlock()
 
-	previous := repositoryLabels
-	repositoryLabels = mode
+	previous := gitRepositoryLabelMode
+	gitRepositoryLabelMode = mode
 	if countersKeepRepository(previous) != countersKeepRepository(mode) {
 		gitOperationsTotal.Reset()
 		scmCallsTotal.Reset()
@@ -300,12 +300,12 @@ func SetRepositoryLabels(mode v1alpha1.MetricsRepositoryLabels) {
 	}
 }
 
-func countersKeepRepository(mode v1alpha1.MetricsRepositoryLabels) bool {
-	return mode != v1alpha1.MetricsRepositoryLabelsNone
+func countersKeepRepository(mode v1alpha1.MetricLabelMode) bool {
+	return mode != v1alpha1.MetricLabelModeNone
 }
 
-func histogramsKeepRepository(mode v1alpha1.MetricsRepositoryLabels) bool {
-	return mode != v1alpha1.MetricsRepositoryLabelsCounters && mode != v1alpha1.MetricsRepositoryLabelsNone
+func histogramsKeepRepository(mode v1alpha1.MetricLabelMode) bool {
+	return mode != v1alpha1.MetricLabelModeCounters && mode != v1alpha1.MetricLabelModeNone
 }
 
 // withRepositoryLabels returns labels unchanged when keep is true, otherwise a copy with the
@@ -331,10 +331,10 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 		"operation":                string(operation),
 		"result":                   string(result),
 	}
-	repositoryLabelsMu.RLock()
-	defer repositoryLabelsMu.RUnlock()
-	gitOperationsTotal.With(withRepositoryLabels(labels, countersKeepRepository(repositoryLabels))).Inc()
-	gitOperationsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(repositoryLabels))).Observe(duration.Seconds())
+	gitRepositoryLabelsMu.RLock()
+	defer gitRepositoryLabelsMu.RUnlock()
+	gitOperationsTotal.With(withRepositoryLabels(labels, countersKeepRepository(gitRepositoryLabelMode))).Inc()
+	gitOperationsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(gitRepositoryLabelMode))).Observe(duration.Seconds())
 }
 
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
@@ -359,10 +359,10 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		"operation":                string(operation),
 		"response_code":            strconv.Itoa(responseCode),
 	}
-	repositoryLabelsMu.RLock()
-	scmCallsTotal.With(withRepositoryLabels(labels, countersKeepRepository(repositoryLabels))).Inc()
-	scmCallsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(repositoryLabels))).Observe(duration.Seconds())
-	repositoryLabelsMu.RUnlock()
+	gitRepositoryLabelsMu.RLock()
+	scmCallsTotal.With(withRepositoryLabels(labels, countersKeepRepository(gitRepositoryLabelMode))).Inc()
+	scmCallsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(gitRepositoryLabelMode))).Observe(duration.Seconds())
+	gitRepositoryLabelsMu.RUnlock()
 
 	log.FromContext(ctx).V(1).Info("SCM API call",
 		"git_repository", gitRepository,

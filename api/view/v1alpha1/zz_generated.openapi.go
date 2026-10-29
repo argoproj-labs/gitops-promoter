@@ -123,6 +123,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
 		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
 		apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsConfiguration(ref),
+		apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguration(ref),
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
 		apiv1alpha1.OAuth2Auth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
@@ -4518,9 +4519,31 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsConfiguration(ref 
 				Description: "MetricsConfiguration defines the configuration for the controller's Prometheus metrics.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
-					"repositoryLabels": {
+					"labels": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RepositoryLabels controls which git_operations_* and scm_calls_* metrics carry the git_repository and git_repository_namespace labels. Repository labels multiply series by the number of GitRepositories, and histograms multiply them again by their bucket count. All: every metric carries the labels. Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated across repositories (the labels are present but empty), so percentiles stay available at much lower cardinality. None: no metric carries them. Changing this value resets the affected metrics.",
+							Description: "Labels controls which metrics carry selected Prometheus labels (not Kubernetes labels).",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "MetricsLabelsConfiguration selects which metrics carry each configurable Prometheus label.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"gitRepository": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitRepository controls which git_operations_* and scm_calls_* metrics carry the git_repository and git_repository_namespace labels. These labels multiply series by the number of GitRepositories, and histograms multiply them again by their bucket count. All: every metric carries the labels. Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated across repositories (the labels are present but empty), so percentiles stay available at much lower cardinality. None: no metric carries them. Changing this value resets the affected metrics.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

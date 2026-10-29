@@ -277,7 +277,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		})
 	})
 
-	Context("When spec.metrics.repositoryLabels is set", func() {
+	Context("When spec.metrics.labels.gitRepository is set", func() {
 		const resourceName = settings.ControllerConfigurationName
 
 		ctx := context.Background()
@@ -293,11 +293,11 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				ControllerNamespace: "default",
 			}
 		}
-		setRepositoryLabels := func(mode promoterv1alpha1.MetricsRepositoryLabels) {
+		setGitRepositoryLabels := func(mode promoterv1alpha1.MetricLabelMode) {
 			cc := &promoterv1alpha1.ControllerConfiguration{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
 			base := cc.DeepCopy()
-			cc.Spec.Metrics.RepositoryLabels = mode
+			cc.Spec.Metrics.Labels.GitRepository = mode
 			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
 			_, err := reconciler().Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -330,11 +330,11 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Expect(loadErr).NotTo(HaveOccurred())
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
-			DeferCleanup(setRepositoryLabels, promoterv1alpha1.MetricsRepositoryLabelsAll)
+			DeferCleanup(setGitRepositoryLabels, promoterv1alpha1.MetricLabelModeAll)
 		})
 
 		It("applies the setting to recorded metrics", func() {
-			setRepositoryLabels(promoterv1alpha1.MetricsRepositoryLabelsCounters)
+			setGitRepositoryLabels(promoterv1alpha1.MetricLabelModeCounters)
 
 			repo := &promoterv1alpha1.GitRepository{
 				Name: "repository-labels-test", Namespace: "default",

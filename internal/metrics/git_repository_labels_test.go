@@ -22,7 +22,7 @@ func histogramSampleCount(vec *prometheus.HistogramVec, labelValues ...string) u
 	return m.GetHistogram().GetSampleCount()
 }
 
-var _ = Describe("SetRepositoryLabels", func() {
+var _ = Describe("SetGitRepositoryLabels", func() {
 	repo := func(name string) *promoterv1alpha1.GitRepository {
 		return &promoterv1alpha1.GitRepository{
 			Name: name, Namespace: "repo-labels-test",
@@ -49,11 +49,11 @@ var _ = Describe("SetRepositoryLabels", func() {
 		gitOperationsDurationSeconds.Reset()
 		scmCallsTotal.Reset()
 		scmCallsDurationSeconds.Reset()
-		DeferCleanup(SetRepositoryLabels, promoterv1alpha1.MetricsRepositoryLabelsAll)
+		DeferCleanup(SetGitRepositoryLabels, promoterv1alpha1.MetricLabelModeAll)
 	})
 
 	It("keeps repository labels on counters and aggregates histograms with Counters", func() {
-		SetRepositoryLabels(promoterv1alpha1.MetricsRepositoryLabelsCounters)
+		SetGitRepositoryLabels(promoterv1alpha1.MetricLabelModeCounters)
 		record()
 
 		Expect(testutil.ToFloat64(gitOperationsTotal.WithLabelValues(gitLabels("repo-a", "repo-labels-test")...))).To(Equal(1.0))
@@ -68,7 +68,7 @@ var _ = Describe("SetRepositoryLabels", func() {
 	})
 
 	It("aggregates counters and histograms with None", func() {
-		SetRepositoryLabels(promoterv1alpha1.MetricsRepositoryLabelsNone)
+		SetGitRepositoryLabels(promoterv1alpha1.MetricLabelModeNone)
 		record()
 
 		Expect(testutil.CollectAndCount(gitOperationsTotal)).To(Equal(1))
@@ -80,10 +80,10 @@ var _ = Describe("SetRepositoryLabels", func() {
 	})
 
 	It("resets only the metrics whose labels change", func() {
-		SetRepositoryLabels(promoterv1alpha1.MetricsRepositoryLabelsCounters)
+		SetGitRepositoryLabels(promoterv1alpha1.MetricLabelModeCounters)
 		record()
 
-		SetRepositoryLabels(promoterv1alpha1.MetricsRepositoryLabelsAll)
+		SetGitRepositoryLabels(promoterv1alpha1.MetricLabelModeAll)
 
 		Expect(testutil.CollectAndCount(gitOperationsDurationSeconds)).To(Equal(0))
 		Expect(testutil.CollectAndCount(scmCallsDurationSeconds)).To(Equal(0))
