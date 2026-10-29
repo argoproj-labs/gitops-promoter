@@ -244,6 +244,71 @@ var _ = Describe("ChangeTransferPolicyHistory Controller", func() {
 		),
 	)
 
+	Context("When two PromotionStrategies share an active branch with activePath", func() {
+		historyFor := func(ctx context.Context, g Gomega, s sharedActivePathStrategies, ps *promoterv1alpha1.PromotionStrategy) []promoterv1alpha1.History {
+			var ctph promoterv1alpha1.ChangeTransferPolicyHistory
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.GetChangeTransferPolicyHistoryName(s.ctpKey(ps).Name), Namespace: ps.Namespace}, &ctph)).To(Succeed())
+			return ctph.Status.History
+		}
+		dryShas := func(history []promoterv1alpha1.History) []string {
+			shas := make([]string, 0, len(history))
+			for _, entry := range history {
+				shas = append(shas, entry.Active.Dry.Sha)
+			}
+			return shas
+		}
+		mergeShas := func(history []promoterv1alpha1.History) []string {
+			shas := make([]string, 0, len(history))
+			for _, entry := range history {
+				shas = append(shas, entry.Active.Hydrated.Sha)
+			}
+			return shas
+		}
+
+		It("records only its own environment's promotions and restores", func() {
+			ctx := context.Background()
+			s := setupSharedActivePathStrategies(ctx)
+
+			By("Promoting app-one and app-two alternately onto the shared active branch")
+			dryOneFirst, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one first")
+			dryTwoFirst, twoFirstMerge := s.promote(ctx, s.psTwo, sharedActivePathTwo, "app-two first")
+			dryOneSecond, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one second")
+			dryTwoSecond, _ := s.promote(ctx, s.psTwo, sharedActivePathTwo, "app-two second")
+
+			By("Verifying each history lists exactly its own promotions, newest first")
+			Eventually(func(g Gomega) {
+				one := historyFor(ctx, g, s, s.psOne)
+				two := historyFor(ctx, g, s, s.psTwo)
+				g.Expect(dryShas(one)).To(Equal([]string{dryOneSecond, dryOneFirst}), "app-one's history must hold only app-one's promotions")
+				g.Expect(dryShas(two)).To(Equal([]string{dryTwoSecond, dryTwoFirst}), "app-two's history must hold only app-two's promotions")
+				for _, entry := range one {
+					// The fake SCM reuses pull request numbers once a pull request merges, so entries are told
+					// apart by their merge commits rather than by pull request id.
+					g.Expect(mergeShas(two)).NotTo(ContainElement(entry.Active.Hydrated.Sha), "app-one's history must not carry app-two's merges")
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Restoring app-two to its first promotion and verifying only app-two's history records the restore")
+			rc := s.restore(ctx, s.psTwo, twoFirstMerge)
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rc.Name, Namespace: rc.Namespace}, rc)).To(Succeed())
+				g.Expect(rc.Status.RestoredFrom).To(Equal(twoFirstMerge))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				two := historyFor(ctx, g, s, s.psTwo)
+				g.Expect(two).NotTo(BeEmpty())
+				g.Expect(two[0].RestoredFrom).To(Equal(twoFirstMerge), "app-two's newest entry is its restore")
+				g.Expect(two[0].Active.Dry.Sha).To(Equal(dryTwoFirst))
+
+				one := historyFor(ctx, g, s, s.psOne)
+				g.Expect(dryShas(one)).To(Equal([]string{dryOneSecond, dryOneFirst}), "app-one's history must be unchanged by the sibling's restore")
+				for _, entry := range one {
+					g.Expect(entry.RestoredFrom).To(BeEmpty(), "a sibling's restore is not this environment's")
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate", func() {
 		p := restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate()
 
