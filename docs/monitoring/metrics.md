@@ -6,6 +6,29 @@ GitOps Promoter produces metrics counter and histogram metrics for all network-b
 > The metrics produced by GitOps Promoter are subject to change as the project evolves until the 1.0 release. 
 > Please refer to this document for the latest metrics.
 
+## Reducing cardinality
+
+`git_operations_total`, `git_operations_duration_seconds`, `scm_calls_total`, and `scm_calls_duration_seconds` carry
+`git_repository` and `git_repository_namespace` labels, so their series count grows with the number of GitRepositories.
+The `_duration_seconds` histograms multiply that again by their bucket count. Use `spec.metrics.labels.gitRepository`
+in the ControllerConfiguration to choose which of these four metrics set those labels:
+
+```yaml
+spec:
+  metrics:
+    labels:
+      gitRepository: Counters
+```
+
+* `All` (default): all four metrics set the GitRepository labels.
+* `Counters`: only `git_operations_total` and `scm_calls_total` set them. The `_duration_seconds` histograms are
+  aggregated across repositories, so per-repository rates and errors and overall latency percentiles stay available.
+* `None`: none of the four metrics set them.
+
+Where a metric doesn't set the GitRepository labels, the label names remain but their values are empty, so a selector
+such as `git_repository=""` matches the aggregated series. The `scm_calls_rate_limit_*` gauges never carry these labels.
+Changing the setting resets the metrics whose labels change.
+
 ## git_operations_total
 
 A counter of git clone operations.

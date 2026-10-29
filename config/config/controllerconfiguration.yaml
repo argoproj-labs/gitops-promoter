@@ -217,3 +217,6 @@ spec:
   clusterScmProvider:
     mode: Enabled
   scope: Cluster
+  metrics:
+    labels:
+      gitRepository: All
