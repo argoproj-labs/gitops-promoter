@@ -666,6 +666,13 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 	}
 	ctp.Status.Proposed.Dry = proposedCommitMetadata
 
+	// For an activePath policy, Hydrated is the branch tip, which on a shared active branch moves whenever a
+	// sibling policy merges. PathHydrated is the commit that last changed this policy's path, so consumers
+	// that care about when this environment last changed (timed gates, history trailers) use it.
+	if err := r.setPathHydrated(ctx, ctp, gitOperations, activeHydratedSha, proposedHydratedSha); err != nil {
+		return err
+	}
+
 	activeCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, activeHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeHydratedSha, err)
@@ -687,6 +694,18 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 	proposedNote, err := gitOperations.FindMatchingHydratorNote(ctx, proposedHydratedSha, ctp.Status.Proposed.Dry.Sha, git.MaxHydratorNoteFirstParentWalk)
 	if err != nil {
 		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
+	}
+	if proposedNote == nil && ctp.Status.Proposed.PathHydrated != nil && ctp.Status.Proposed.Dry.Sha != "" {
+		// The walk is bounded, and on a shared active branch the promoter's conflict-resolution merges can
+		// stack past it while a promotion waits on its gates. The commit that last changed the path is the
+		// hydrator's own commit, so read its note directly.
+		pathNote, noteErr := gitOperations.GetHydratorNote(ctx, ctp.Status.Proposed.PathHydrated.Sha)
+		if noteErr != nil {
+			return fmt.Errorf("failed to get hydrator note for proposed path hydrated SHA %q: %w", ctp.Status.Proposed.PathHydrated.Sha, noteErr)
+		}
+		if pathNote != nil && pathNote.DrySha == ctp.Status.Proposed.Dry.Sha {
+			proposedNote = pathNote
+		}
 	}
 	var drySha string
 	if proposedNote != nil {
@@ -710,6 +729,56 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		"noteDrySha", drySha)
 
 	return nil
+}
+
+// setPathHydrated sets Status.Active.PathHydrated and Status.Proposed.PathHydrated to the commit that last changed
+// spec.activePath on each branch, or clears both when the policy has no activePath. It must run before
+// setCommitMetadata overwrites Status.*.Hydrated, because it reuses the previous value when the tip is unchanged.
+func (r *ChangeTransferPolicyReconciler) setPathHydrated(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
+	if ctp.Spec.ActivePath == "" {
+		ctp.Status.Active.PathHydrated = nil
+		ctp.Status.Proposed.PathHydrated = nil
+		return nil
+	}
+
+	// A spec change may have moved activePath, which invalidates the cached values.
+	specChanged := ctp.Status.ObservedGeneration != ctp.Generation
+
+	active, err := r.pathHydrated(ctx, gitOperations, ctp.Spec.ActivePath, activeHydratedSha, &ctp.Status.Active, specChanged)
+	if err != nil {
+		return fmt.Errorf("failed to get path hydrated commit for active branch %q: %w", ctp.Spec.ActiveBranch, err)
+	}
+	if active != nil {
+		active.Body = removeKnownTrailers(active.Body)
+	}
+	proposed, err := r.pathHydrated(ctx, gitOperations, ctp.Spec.ActivePath, proposedHydratedSha, &ctp.Status.Proposed, specChanged)
+	if err != nil {
+		return fmt.Errorf("failed to get path hydrated commit for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
+	}
+	ctp.Status.Active.PathHydrated = active
+	ctp.Status.Proposed.PathHydrated = proposed
+	return nil
+}
+
+// pathHydrated returns the state of the commit that last changed activePath on the branch whose tip is tip, or nil
+// when no commit on the branch touched the path. When the tip is the one the previous reconcile recorded in
+// prev.Hydrated and the spec is unchanged, the previous PathHydrated is reused without a git call.
+func (r *ChangeTransferPolicyReconciler) pathHydrated(ctx context.Context, gitOperations *git.EnvironmentOperations, activePath, tip string, prev *promoterv1alpha1.CommitBranchState, specChanged bool) (*promoterv1alpha1.CommitShaState, error) {
+	if prev.PathHydrated != nil && prev.Hydrated.Sha == tip && !specChanged {
+		return prev.PathHydrated, nil
+	}
+	sha, err := gitOperations.PathTip(ctx, tip, activePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find the last commit that changed %q: %w", activePath, err)
+	}
+	if sha == "" {
+		return nil, nil
+	}
+	state, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit metadata for path hydrated SHA %q: %w", sha, err)
+	}
+	return &state, nil
 }
 
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
@@ -1507,7 +1576,8 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		if err := addCommitStatusTrailers(commitTrailers, constants.TrailerCommitStatusProposedPrefix, ctp.Status.Proposed.CommitStatuses); err != nil {
 			return nil, err
 		}
-		commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
+		// For an activePath policy this is the commit that last changed the path, not the shared branch tip.
+		commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.EffectiveHydrated().Sha
 		commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha

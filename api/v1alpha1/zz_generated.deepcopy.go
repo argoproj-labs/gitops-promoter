@@ -752,6 +752,11 @@ func (in *CommitBranchState) DeepCopyInto(out *CommitBranchState) {
 	*out = *in
 	in.Dry.DeepCopyInto(&out.Dry)
 	in.Hydrated.DeepCopyInto(&out.Hydrated)
+	if in.PathHydrated != nil {
+		in, out := &in.PathHydrated, &out.PathHydrated
+		*out = new(CommitShaState)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Note != nil {
 		in, out := &in.Note, &out.Note
 		*out = new(HydratorMetadata)
