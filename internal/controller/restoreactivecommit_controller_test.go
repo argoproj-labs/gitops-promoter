@@ -523,14 +523,20 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			_, err = time.Parse(time.RFC3339, got[constants.TrailerRestoreUnblockedAt][0])
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Leaving no RestoreActiveCommit for the policy, because the tip is already unblocked")
-			Consistently(func(g Gomega) {
-				var list promoterv1alpha1.RestoreActiveCommitList
-				g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace("default"))).To(Succeed())
-				for i := range list.Items {
-					g.Expect(changeTransferPolicyNameForRevert(&list.Items[i])).NotTo(Equal(ctp.Name))
-				}
-			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			// A ChangeTransferPolicy reconcile that snapshotted notes before the unblock stamp
+			// can adopt a RestoreActiveCommit once the original is deleting. That object
+			// deletes itself when the tip is already unblocked, and it stays in the list
+			// until its finalizer finishes. The policy must end with none, and stay that way.
+			By("Leaving no RestoreActiveCommit for the policy once the tip is unblocked")
+			Eventually(func(g Gomega) {
+				g.Consistently(func(g Gomega) {
+					var list promoterv1alpha1.RestoreActiveCommitList
+					g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace("default"))).To(Succeed())
+					for i := range list.Items {
+						g.Expect(changeTransferPolicyNameForRevert(&list.Items[i])).NotTo(Equal(ctp.Name))
+					}
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("releases the finalizer when the ChangeTransferPolicy is already gone", func() {
