@@ -204,6 +204,16 @@ func (e *enqueueRecorder) count() int {
 	return len(e.calls)
 }
 
+func (e *enqueueRecorder) names() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	names := make([]string, 0, len(e.calls))
+	for _, c := range e.calls {
+		names = append(names, c[1])
+	}
+	return names
+}
+
 func (e *enqueueRecorder) last() (namespace, name string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -341,30 +351,42 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		}, time.Second, 10*time.Millisecond).Should(Equal(0.0))
 	})
 
-	It("does not enqueue or async-retry when multiple CTPs match the same sha", func() {
+	// Policies with activePath on a shared active branch all record the same active hydrated
+	// sha, so a push to that branch must wake every one of them.
+	It("enqueues every CTP whose active hydrated sha matches the push before sha", func() {
 		ctp1 := newCTP("ctp-one")
-		ctp1.Status.Active.Hydrated.Sha = testShaB
+		ctp1.Status.Proposed.Hydrated.Sha = testShaB
 		ctp2 := newCTP("ctp-two")
-		ctp2.Status.Active.Hydrated.Sha = testShaB
+		ctp2.Status.Proposed.Hydrated.Sha = testShaB
 		enqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			baseCtx:        lc.ctx,
-			k8sClient:      newFakeClient(ctp1, ctp2),
-			enqueueCTP:     enqueues.enqueue,
-			retryTimeout:   200 * time.Millisecond,
-			retryBaseDelay: 20 * time.Millisecond,
-			retryMaxDelay:  40 * time.Millisecond,
-			retryFactor:    2.0,
+			baseCtx:    lc.ctx,
+			k8sClient:  newFakeClient(ctp1, ctp2),
+			enqueueCTP: enqueues.enqueue,
 		}
 
 		rec := postGitHubPush(wr, testShaA)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(enqueues.count()).To(Equal(0))
+		Expect(enqueues.names()).To(ConsistOf("ctp-one", "ctp-two"))
 		Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(0.0))
+	})
 
-		Consistently(func() int {
-			return enqueues.count()
-		}, 150*time.Millisecond, 20*time.Millisecond).Should(Equal(0))
+	It("enqueues CTPs matched via proposed and via active sha once each", func() {
+		// ctp-one matches on both indexes; ctp-two only on the active index.
+		ctp1 := newCTP("ctp-one")
+		ctp2 := newCTP("ctp-two")
+		ctp2.Status.Proposed.Hydrated.Sha = testShaB
+		enqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			baseCtx:    lc.ctx,
+			k8sClient:  newFakeClient(ctp1, ctp2),
+			enqueueCTP: enqueues.enqueue,
+		}
+
+		rec := postGitHubPush(wr, testShaA)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(enqueues.names()).To(ConsistOf("ctp-one", "ctp-two"))
+		Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(0.0))
 	})
 
 	It("retries after transient list failures and enqueues when lookup succeeds", func() {
