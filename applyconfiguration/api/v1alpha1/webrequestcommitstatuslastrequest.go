@@ -30,7 +30,7 @@ import (
 // reconcile that skips the request (polling interval not elapsed, trigger expression false, or
 // already-successful SHA fast path). All fields are empty until the first request is made.
 type WebRequestCommitStatusLastRequestApplyConfiguration struct {
-	// Method is the static HTTP method.
+	// Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
 	Method *string `json:"method,omitempty"`
 	// URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
 	// for the last HTTP request attempt for this environment (empty when no request has been made yet).

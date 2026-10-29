@@ -731,7 +731,8 @@ spec:
                         Populated on the first request; values carry forward on reconciles that skip the request.
                       properties:
                         method:
-                          description: Method is the static HTTP method.
+                          description: Method is the resolved HTTP method (rendered
+                            from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
                           type: string
                         responseStatusCode:
                           description: ResponseStatusCode is the HTTP status code
@@ -827,7 +828,8 @@ spec:
                       Populated on the first request; values carry forward on reconciles that skip the request.
                     properties:
                       method:
-                        description: Method is the static HTTP method.
+                        description: Method is the resolved HTTP method (rendered
+                          from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
                         type: string
                       responseStatusCode:
                         description: ResponseStatusCode is the HTTP status code from

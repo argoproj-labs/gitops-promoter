@@ -7148,7 +7148,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLas
 				Properties: map[string]spec.Schema{
 					"method": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Method is the static HTTP method.",
+							Description: "Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).",
 							Type:        []string{"string"},
 							Format:      "",
 						},

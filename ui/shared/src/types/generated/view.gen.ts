@@ -2126,7 +2126,7 @@ export type components = {
         };
         /** @description WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made. */
         WebRequestCommitStatusLastRequest: {
-            /** @description Method is the static HTTP method. */
+            /** @description Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method). */
             method?: string;
             /**
              * Format: int32

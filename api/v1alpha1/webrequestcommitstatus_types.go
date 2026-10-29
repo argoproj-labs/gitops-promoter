@@ -566,7 +566,7 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 // reconcile that skips the request (polling interval not elapsed, trigger expression false, or
 // already-successful SHA fast path). All fields are empty until the first request is made.
 type WebRequestCommitStatusLastRequest struct {
-	// Method is the static HTTP method.
+	// Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
 	// +optional
 	Method string `json:"method,omitempty"`
 
