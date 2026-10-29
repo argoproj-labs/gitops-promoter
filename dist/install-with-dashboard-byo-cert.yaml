@@ -3911,6 +3911,29 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
+              metrics:
+                default: {}
+                description: Metrics contains the configuration for the controller's
+                  Prometheus metrics.
+                properties:
+                  repositoryLabels:
+                    default: All
+                    description: |-
+                      RepositoryLabels controls which git_operations_* and scm_calls_* metrics carry the
+                      git_repository and git_repository_namespace labels. Repository labels multiply series by the
+                      number of GitRepositories, and histograms multiply them again by their bucket count.
+                      All: every metric carries the labels.
+                      Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated
+                      across repositories (the labels are present but empty), so percentiles stay available at much
+                      lower cardinality.
+                      None: no metric carries them.
+                      Changing this value resets the affected metrics.
+                    enum:
+                    - All
+                    - Counters
+                    - None
+                    type: string
+                type: object
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -11822,6 +11845,8 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  metrics:
+    repositoryLabels: All
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10

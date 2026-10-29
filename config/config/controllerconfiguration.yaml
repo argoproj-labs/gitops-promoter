@@ -217,3 +217,5 @@ spec:
   clusterScmProvider:
     mode: Enabled
   scope: Cluster
+  metrics:
+    repositoryLabels: All

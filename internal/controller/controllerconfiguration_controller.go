@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -52,8 +53,8 @@ type ControllerConfigurationReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,resourceNames=promoter-controller-configuration,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,resourceNames=promoter-controller-configuration,verbs=get;update;patch
 
-// Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
-// controller so the informer cache partition is rebuilt on restart.
+// Reconcile applies spec.metrics, and detects spec.instanceID drift from the startup bootstrap
+// value and shuts down the controller so the informer cache partition is rebuilt on restart.
 func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ControllerConfiguration")
@@ -82,6 +83,8 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&cc)
+
+	metrics.SetRepositoryLabels(cc.Spec.Metrics.RepositoryLabels)
 
 	if ptr.Equal(r.StartupInstanceID, cc.Spec.InstanceID) {
 		return ctrl.Result{}, nil

@@ -669,6 +669,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: instanceID
       type:
         scalar: string
+    - name: metrics
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
+      default: {}
     - name: promotionStrategy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration
@@ -1274,6 +1278,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: subject
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
+  map:
+    fields:
+    - name: repositoryLabels
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsRepositoryLabels
+      default: All
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsRepositoryLabels
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ModeSpec
   map:
     fields:

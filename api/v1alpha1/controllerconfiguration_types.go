@@ -113,7 +113,41 @@ type ControllerConfigurationSpec struct {
 	// +optional
 	// +kubebuilder:default=Cluster
 	Scope ControllerScope `json:"scope,omitempty"`
+
+	// Metrics contains the configuration for the controller's Prometheus metrics.
+	// +optional
+	// +kubebuilder:default={}
+	Metrics MetricsConfiguration `json:"metrics,omitzero"`
 }
+
+// MetricsConfiguration defines the configuration for the controller's Prometheus metrics.
+type MetricsConfiguration struct {
+	// RepositoryLabels controls which git_operations_* and scm_calls_* metrics carry the
+	// git_repository and git_repository_namespace labels. Repository labels multiply series by the
+	// number of GitRepositories, and histograms multiply them again by their bucket count.
+	// All: every metric carries the labels.
+	// Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated
+	// across repositories (the labels are present but empty), so percentiles stay available at much
+	// lower cardinality.
+	// None: no metric carries them.
+	// Changing this value resets the affected metrics.
+	// +optional
+	// +kubebuilder:default=All
+	RepositoryLabels MetricsRepositoryLabels `json:"repositoryLabels,omitempty"`
+}
+
+// MetricsRepositoryLabels selects which metrics carry repository labels.
+// +kubebuilder:validation:Enum=All;Counters;None
+type MetricsRepositoryLabels string
+
+const (
+	// MetricsRepositoryLabelsAll keeps repository labels on every metric.
+	MetricsRepositoryLabelsAll MetricsRepositoryLabels = "All"
+	// MetricsRepositoryLabelsCounters keeps repository labels only on counters.
+	MetricsRepositoryLabelsCounters MetricsRepositoryLabels = "Counters"
+	// MetricsRepositoryLabelsNone removes repository labels from every metric.
+	MetricsRepositoryLabelsNone MetricsRepositoryLabels = "None"
+)
 
 // ControllerScope is the scope of namespaced resources the controller watches.
 // +kubebuilder:validation:Enum=Cluster;Namespace

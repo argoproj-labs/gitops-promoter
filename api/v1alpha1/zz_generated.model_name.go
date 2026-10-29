@@ -456,6 +456,11 @@ func (in HydratorMetadata) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in MetricsConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.MetricsConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ModeSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ModeSpec"
 }

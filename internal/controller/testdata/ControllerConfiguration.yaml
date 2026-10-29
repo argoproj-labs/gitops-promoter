@@ -195,3 +195,7 @@ spec:
 
   # Scope of namespaced resources the controller watches (Cluster or Namespace)
   scope: Cluster
+
+  # Which git_operations_* and scm_calls_* metrics carry repository labels (All, Counters, or None)
+  metrics:
+    repositoryLabels: All
