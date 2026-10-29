@@ -220,26 +220,6 @@ func (i *Installer) RefreshApp(ctx context.Context, appName string) error {
 	return nil
 }
 
-// RefreshAllApps refreshes all ArgoCD applications in the argocd namespace
-func (i *Installer) RefreshAllApps(ctx context.Context) error {
-	// Get all application names
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "applications", "-n",
-		"argocd", "-o", "jsonpath={.items[*].metadata.name}")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to list applications: %w", err)
-	}
-
-	appNames := strings.FieldsSeq(string(output))
-	for appName := range appNames {
-		if err := i.RefreshApp(ctx, appName); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // PortForward starts port forwarding with automatic restart on failure
 func (i *Installer) PortForward(ctx context.Context) error {
 	color.Green("Starting port forwards...")

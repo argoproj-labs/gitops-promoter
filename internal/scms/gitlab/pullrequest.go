@@ -361,10 +361,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 // AddLabels adds labels to a merge request on GitLab, creating missing project labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
@@ -386,10 +382,6 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, prObj v1alpha1.PullRequ
 }
 
 func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string, add bool) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
 		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)

@@ -103,6 +103,15 @@ func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient cli
 		secretNamespace = scmProvider.GetNamespace()
 	}
 
+	if scmProvider.GetSpec().SecretRef == nil {
+		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
+		if azdo := scmProvider.GetSpec().AzureDevOps; azdo != nil && azdo.WorkloadIdentity != nil {
+			// Azure DevOps workload identity authenticates with the controller's identity, not a secret.
+			return scmProvider, &v1.Secret{}, nil
+		}
+		return nil, nil, fmt.Errorf("%s %q has no secretRef", kind, scmProvider.GetName())
+	}
+
 	var secret v1.Secret
 	objectKey := client.ObjectKey{
 		Namespace: secretNamespace,

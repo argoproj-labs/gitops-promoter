@@ -185,11 +185,7 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 	if err := g.fetchBlobs(ctx, request); err != nil {
 		return blobObject{}, err
 	}
-	blob, ok := g.blobs[request]
-	if !ok {
-		return blobObject{}, fmt.Errorf("cat-file did not return result for %q", request)
-	}
-	return blob, nil
+	return g.blobs[request], nil
 }
 
 // prefetchCommits fills the commit cache in a single git log.

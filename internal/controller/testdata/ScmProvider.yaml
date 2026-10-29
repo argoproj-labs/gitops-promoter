@@ -32,6 +32,7 @@ spec:
   azureDevOps:
     organization: example-organization
     domain: dev.azure.com # Optional
+    # workloadIdentity is only supported on ClusterScmProvider
 
   # fake: {}  # testing only
 status:

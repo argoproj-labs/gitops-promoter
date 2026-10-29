@@ -55,10 +55,8 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 		return nil, errors.New("PromotionStrategy is required")
 	}
 
-	wrcs := args.WebRequestCommitStatus.DeepCopy()
-	if wrcs == nil {
-		return nil, errors.New("unexpected nil from WebRequestCommitStatus.DeepCopy()")
-	}
+	wrcs := &promoterv1alpha1.WebRequestCommitStatus{}
+	args.WebRequestCommitStatus.DeepCopyInto(wrcs)
 	ps := args.PromotionStrategy
 
 	var (

@@ -182,10 +182,8 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	logger := log.FromContext(ctx)
 
 	// Save the previous status before clearing it, so we can detect transitions
-	previousStatus := gcs.Status.DeepCopy()
-	if previousStatus == nil {
-		previousStatus = &promoterv1alpha1.GitCommitStatusStatus{}
-	}
+	var previousStatus promoterv1alpha1.GitCommitStatusStatus
+	gcs.Status.DeepCopyInto(&previousStatus)
 
 	// Build a map of environment statuses for efficient lookup
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
@@ -228,7 +226,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		// Get commit details for validation using the selected SHA
-		commitData, err := r.getCommitData(ctx, gcs, ps, shaToValidate, branch)
+		commitData, err := r.getCommitData(ctx, gcs, envStatus, shaToValidate, branch)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get commit data for branch %q at SHA %q: %w", branch, shaToValidate, err)
 		}
@@ -299,22 +297,10 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	return transitionedEnvironments, commitStatuses, nil
 }
 
-// getCommitData retrieves commit details from the PromotionStrategy status.
+// getCommitData retrieves commit details from the environment's PromotionStrategy status.
 // This function pulls data from the already-computed status rather than making git calls.
-func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, sha string, branch string) (*CommitData, error) {
+func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, envStatus *promoterv1alpha1.EnvironmentStatus, sha string, branch string) (*CommitData, error) {
 	logger := log.FromContext(ctx)
-
-	// Find the environment status in the PromotionStrategy
-	var envStatus *promoterv1alpha1.EnvironmentStatus
-	for i := range ps.Status.Environments {
-		if ps.Status.Environments[i].Branch == branch {
-			envStatus = &ps.Status.Environments[i]
-			break
-		}
-	}
-	if envStatus == nil {
-		return nil, fmt.Errorf("environment status for branch %q not found in PromotionStrategy", branch)
-	}
 
 	// Determine which commit state to use based on the target
 	var commitState *promoterv1alpha1.CommitShaState
@@ -323,11 +309,6 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 	} else {
 		// Default to active
 		commitState = &envStatus.Active.Hydrated
-	}
-
-	// Validate that the SHA matches what we expect
-	if commitState.Sha != sha {
-		return nil, fmt.Errorf("SHA mismatch: expected %q from PromotionStrategy status but got %q", commitState.Sha, sha)
 	}
 
 	// Parse trailers from the commit body without needing git operations.
