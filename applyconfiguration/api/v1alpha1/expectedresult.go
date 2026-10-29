@@ -19,13 +19,15 @@ package v1alpha1
 
 // ExpectedResultApplyConfiguration represents a declarative configuration of the ExpectedResult type for use
 // with apply.
+//
+// ExpectedResult holds information about what to expect from the results of a Tekton run
 type ExpectedResultApplyConfiguration struct {
 	// Key is the name of the result from the Tekton resource to use
 	Key *string `json:"key,omitempty"`
 	// Expression is an expr expression to be used with the result. Must return a boolean.
 	// The result can be accessed through the string variable Result.
 	// For example:
-	// expectedResult:
+	// expectedResults:
 	// - key: testCoverage
 	// expression: "Result >= 80"
 	//

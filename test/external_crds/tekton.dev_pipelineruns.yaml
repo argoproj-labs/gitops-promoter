@@ -37,6 +37,7 @@ spec:
           metadata:
             type: object
           spec:
+            description: PipelineRunSpec is the spec for a PipelineRun resource
             properties:
               params:
                 items:
@@ -59,14 +60,16 @@ spec:
                     type: string
                 type: object
               taskRunTemplate:
+                description: PipelineTaskRunTemplate is the field where TaskRun specific
+                  settings are included for Pipelines
                 properties:
                   serviceAccountName:
                     type: string
                 type: object
             type: object
           status:
-            description: TektonRunStatus is an object that represents the status of
-              a TaskRun or PipelineRun
+            description: RunStatus is an object that represents the status of a TaskRun
+              or PipelineRun
             properties:
               conditions:
                 items:

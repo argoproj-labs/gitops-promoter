@@ -56,6 +56,8 @@ spec:
                   If left empty along with the general expression also being empty, whether this passes will be determined by the completion status of
                   the Tekton run.
                 items:
+                  description: ExpectedResult holds information about what to expect
+                    from the results of a Tekton run
                   properties:
                     expression:
                       description: |-
@@ -154,7 +156,7 @@ spec:
                     description: Name is the name of the Tekton resource to target.
                       It must be in the same namespace as the commit status.
                     type: string
-                  parameters:
+                  params:
                     description: |-
                       Parameters are the parameters that get passed to the Tekton resource run that is created.
 
@@ -168,7 +170,7 @@ spec:
                         Resource.
                       properties:
                         name:
-                          description: Name is the name of the paramter
+                          description: Name is the name of the parameter
                           type: string
                         type:
                           default: string
@@ -182,9 +184,9 @@ spec:
                           type: string
                         value:
                           description: |-
-                            Value is what the value of the paramter is. The value must be passed as a string. If you are looking to use an
+                            Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an
                             array or object a json formated string for an array or object must be provided.
-                            A parameter's value can use the following Go template values to inject information into a paramter.
+                            A parameter's value can use the following Go template values to inject information into a parameter.
 
                             .TargetedSha - The SHA that the pipeline is being run on
                             .Branch - The name of the branch for the environment
@@ -205,6 +207,9 @@ spec:
                                 value: |
                                   { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
                           type: string
+                      required:
+                      - name
+                      - value
                       type: object
                     type: array
                   serviceAccount:
@@ -256,6 +261,8 @@ spec:
             - tektonResourceRef
             type: object
           status:
+            description: TektonCommitStatusStatus is the Status for a commit status
+              resource
             properties:
               conditions:
                 description: Conditions Represents the observations of the current

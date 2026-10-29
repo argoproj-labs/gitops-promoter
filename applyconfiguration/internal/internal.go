@@ -2079,7 +2079,7 @@ var (
     - name: name
       type:
         scalar: string
-    - name: parameters
+    - name: params
       type:
         list:
           elementType:

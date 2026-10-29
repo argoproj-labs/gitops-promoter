@@ -115,17 +115,17 @@ type TektonResourceRef struct {
 	//     type: "string"
 	//
 	// +optional
-	Parameters []TektonParameter `json:"parameters,omitempty"`
+	Params []TektonParameter `json:"params,omitempty"`
 }
 
 // TektonParameter defines a parameter to a Tekton Resource.
 type TektonParameter struct {
-	// Name is the name of the paramter
-	// +kubebuilder:validation:required
+	// Name is the name of the parameter
+	// +kubebuilder:validation:Required
 	Name string `json:"name,omitempty"`
-	// Value is what the value of the paramter is. The value must be passed as a string. If you are looking to use an
+	// Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an
 	// array or object a json formated string for an array or object must be provided.
-	// A parameter's value can use the following Go template values to inject information into a paramter.
+	// A parameter's value can use the following Go template values to inject information into a parameter.
 	//
 	// .TargetedSha - The SHA that the pipeline is being run on
 	// .Branch - The name of the branch for the environment
@@ -146,7 +146,7 @@ type TektonParameter struct {
 	//     value: |
 	//       { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
 	//
-	// +kubebuilder:validation:required
+	// +kubebuilder:validation:Required
 	Value string `json:"value,omitempty"`
 	// Type represents the type of the paramater. Tekton Parameters can be either a string, array, or object.
 	// Defaults to string
@@ -155,6 +155,7 @@ type TektonParameter struct {
 	Type string `json:"type,omitempty"`
 }
 
+// ExpectedResult holds information about what to expect from the results of a Tekton run
 type ExpectedResult struct {
 	// Key is the name of the result from the Tekton resource to use
 	// +kubebuilder:validation:Required
@@ -175,6 +176,7 @@ type ExpectedResult struct {
 	Expression string `json:"expression"`
 }
 
+// TektonCommitStatusStatus is the Status for a commit status resource
 type TektonCommitStatusStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
@@ -262,7 +264,6 @@ type IndividualExpressionResult struct {
 // TektonCommitStatus is the schema for the tektoncommitstatus API.
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder
 type TektonCommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

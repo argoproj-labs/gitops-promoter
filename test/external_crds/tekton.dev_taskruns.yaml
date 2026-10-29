@@ -37,6 +37,7 @@ spec:
           metadata:
             type: object
           spec:
+            description: TaskRunSpec is the spec for a TaskRun resource
             properties:
               params:
                 items:
@@ -62,8 +63,8 @@ spec:
                 type: object
             type: object
           status:
-            description: TektonRunStatus is an object that represents the status of
-              a TaskRun or PipelineRun
+            description: RunStatus is an object that represents the status of a TaskRun
+              or PipelineRun
             properties:
               conditions:
                 items:

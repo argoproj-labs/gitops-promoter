@@ -37,7 +37,7 @@ type TektonResourceRefApplyConfiguration struct {
 	// value: "someValue"
 	// type: "string"
 	//
-	Parameters []TektonParameterApplyConfiguration `json:"parameters,omitempty"`
+	Params []TektonParameterApplyConfiguration `json:"params,omitempty"`
 }
 
 // TektonResourceRefApplyConfiguration constructs a declarative configuration of the TektonResourceRef type for use with
@@ -70,15 +70,15 @@ func (b *TektonResourceRefApplyConfiguration) WithServiceAccount(value string) *
 	return b
 }
 
-// WithParameters adds the given value to the Parameters field in the declarative configuration
+// WithParams adds the given value to the Params field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the Parameters field.
-func (b *TektonResourceRefApplyConfiguration) WithParameters(values ...*TektonParameterApplyConfiguration) *TektonResourceRefApplyConfiguration {
+// If called multiple times, values provided by each call will be appended to the Params field.
+func (b *TektonResourceRefApplyConfiguration) WithParams(values ...*TektonParameterApplyConfiguration) *TektonResourceRefApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
-			panic("nil value passed to WithParameters")
+			panic("nil value passed to WithParams")
 		}
-		b.Parameters = append(b.Parameters, *values[i])
+		b.Params = append(b.Params, *values[i])
 	}
 	return b
 }

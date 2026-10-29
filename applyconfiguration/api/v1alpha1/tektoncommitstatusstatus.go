@@ -23,6 +23,8 @@ import (
 
 // TektonCommitStatusStatusApplyConfiguration represents a declarative configuration of the TektonCommitStatusStatus type for use
 // with apply.
+//
+// TektonCommitStatusStatus is the Status for a commit status resource
 type TektonCommitStatusStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no

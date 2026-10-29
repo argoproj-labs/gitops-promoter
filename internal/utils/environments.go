@@ -58,7 +58,7 @@ func GetApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key strin
 	return applicable
 }
 
-// DetermineCommitStatusReportOn parses the passed PromotionStrategy and searches for the provided key in both
+// DetermineReportOn parses the passed PromotionStrategy and searches for the provided key in both
 // activeCommitStatuses and proposedCommitStatuses to see which type to use before selecting environments.
 // If the key is not found in the PromotionStrategy an error will be returned. If the key is found in both
 // active and proposed an error will also be returned.
