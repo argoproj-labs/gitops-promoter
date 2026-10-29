@@ -629,7 +629,297 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(s.proposedTip))
 		})
 	})
+
+	Context("When two PromotionStrategies share an active branch with activePath", func() {
+		// recorded waits for rc to record its restore and returns the restore commit it pushed.
+		recorded := func(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit, restoreTo, blockedDrySha string) string {
+			GinkgoHelper()
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), rc)).To(Succeed())
+				g.Expect(rc.Status.RestoredFrom).To(Equal(restoreTo))
+				g.Expect(rc.Status.BlockedDrySha).To(Equal(blockedDrySha))
+				g.Expect(rc.Status.ActiveSha).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			return rc.Status.ActiveSha
+		}
+
+		It("restores only its own activePath and never holds the sibling", func() {
+			ctx := context.Background()
+			s := setupSharedActivePathStrategies(ctx)
+
+			By("Promoting app-one, then app-two, then app-one again")
+			dryOneFirst, restoreTo := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one first")
+			dryTwo, _ := s.promote(ctx, s.psTwo, sharedActivePathTwo, "app-two first")
+			dryOneSecond, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one second")
+
+			By("Restoring app-one to its first promotion")
+			rc := s.restore(ctx, s.psOne, restoreTo)
+			recorded(ctx, rc, restoreTo, dryOneSecond)
+			Eventually(func(g Gomega) {
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneFirst))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-two is untouched: it adopts no RestoreActiveCommit and keeps its content")
+			twoKey := s.ctpKey(s.psTwo)
+			Consistently(func(g Gomega) {
+				enqueueCTP(twoKey.Namespace, twoKey.Name)
+				ctpTwo := s.ctp(ctx, g, s.psTwo)
+				g.Expect(liveRestoreActiveCommitsForPolicy(ctx, g, &ctpTwo)).To(BeEmpty(), "app-two must not adopt app-one's restore")
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryTwo))
+			}, 5*time.Second, 250*time.Millisecond).Should(Succeed())
+
+			By("Verifying app-two keeps promoting while app-one is held")
+			s.promote(ctx, s.psTwo, sharedActivePathTwo, "app-two second")
+			Expect(k8sClient.Get(ctx, s.ctpKey(s.psOne), &promoterv1alpha1.ChangeTransferPolicy{})).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneFirst), "app-one stays restored")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("keeps its restore hold while the sibling promotes", func() {
+			ctx := context.Background()
+			s := setupSharedActivePathStrategies(ctx)
+
+			dryOneFirst, restoreTo := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one first")
+			dryOneSecond, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one second")
+			rc := s.restore(ctx, s.psOne, restoreTo)
+			restoreSha := recorded(ctx, rc, restoreTo, dryOneSecond)
+
+			By("Landing an app-two change on the shared active branch, which moves the tip past app-one's restore commit")
+			// Pushed straight to the active branch, as an SCM squash merge of app-two's pull request would be, so
+			// this spec is about app-one's hold and not about app-two's own promotion.
+			dryTwo, err := makeDryCommit(ctx, s.gitPath, "app-two after restore")
+			Expect(err).NotTo(HaveOccurred())
+			before, _, err := pushHydratedBranchForPath(ctx, s.gitPath, testBranchDevelopment, sharedActivePathTwo, testBranchDevelopment, dryTwo, "app-two squash-merged after app-one's restore")
+			Expect(err).NotTo(HaveOccurred())
+			sendWebhookForPush(ctx, before, testBranchDevelopment)
+
+			By("Verifying app-one's hold survives: the RestoreActiveCommit stays and the restore is not unblocked")
+			oneKey := s.ctpKey(s.psOne)
+			Consistently(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				var live promoterv1alpha1.RestoreActiveCommit
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &live)).To(Succeed(), "app-one's RestoreActiveCommit must survive the sibling's merge")
+				g.Expect(live.DeletionTimestamp.IsZero()).To(BeTrue())
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneFirst))
+			}, 5*time.Second, 250*time.Millisecond).Should(Succeed())
+			note, err := fetchPromotionHistoryNote(ctx, s.gitPath, restoreSha)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(note[constants.TrailerRestoreUnblockedAt]).To(BeEmpty(), "the sibling's merge must not release app-one's hold")
+
+			By("Hydrating a newer app-one change: its pull request stays open while the hold is in place")
+			dryOneThird := s.hydrate(ctx, sharedActivePathOne, "app-one third")
+			prKey := s.prKey(sharedActivePathOne)
+			var pr promoterv1alpha1.PullRequest
+			Eventually(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Proposed.Dry.Sha).To(Equal(dryOneThird))
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneFirst))
+			}, 3*time.Second, 250*time.Millisecond).Should(Succeed())
+
+			By("Releasing the hold lets the newer change promote")
+			clearRevertBlockEnvironment(ctx, ctrlclient.ObjectKeyFromObject(rc))
+			Eventually(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneThird))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("deletes the RestoreActiveCommit once its own environment promotes past the restore", func() {
+			ctx := context.Background()
+			s := setupSharedActivePathStrategies(ctx)
+
+			_, restoreTo := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one first")
+			dryOneSecond, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one second")
+			rc := s.restore(ctx, s.psOne, restoreTo)
+			recorded(ctx, rc, restoreTo, dryOneSecond)
+
+			By("Hydrating a newer app-one change and merging its pull request by hand on the SCM")
+			dryOneThird := s.hydrate(ctx, sharedActivePathOne, "app-one third")
+			oneKey := s.ctpKey(s.psOne)
+			prKey := s.prKey(sharedActivePathOne)
+			Eventually(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				g.Expect(k8sClient.Get(ctx, prKey, &promoterv1alpha1.PullRequest{})).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			before := s.mergeByHand(ctx, sharedActivePathOne)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Name: prKey.Name, Namespace: prKey.Namespace}}))).To(Succeed())
+			sendWebhookForPush(ctx, before, testBranchDevelopment)
+
+			By("Verifying the restore is superseded by app-one's own promotion")
+			Eventually(func(g Gomega) {
+				enqueueCTP(oneKey.Namespace, oneKey.Name)
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOneThird))
+				err := k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "the RestoreActiveCommit is deleted once this environment moves past its restore")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("refuses a restore target that did not change its activePath", func() {
+			ctx := context.Background()
+			s := setupSharedActivePathStrategies(ctx)
+
+			dryOne, _ := s.promote(ctx, s.psOne, sharedActivePathOne, "app-one first")
+			_, siblingMerge := s.promote(ctx, s.psTwo, sharedActivePathTwo, "app-two first")
+
+			By("Pointing app-one's RestoreActiveCommit at app-two's merge commit")
+			rc := s.restore(ctx, s.psOne, siblingMerge)
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), rc)).To(Succeed())
+				cond := meta.FindStatusCondition(rc.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Message).To(ContainSubstring("did not change activePath"))
+				g.Expect(rc.Status.RestoredFrom).To(BeEmpty())
+				g.Expect(s.ctp(ctx, g, s.psOne).Status.Active.Dry.Sha).To(Equal(dryOne))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
+
+const (
+	sharedActivePathOne = "apps/app-one"
+	sharedActivePathTwo = "apps/app-two"
+)
+
+// sharedActivePathStrategies is two PromotionStrategies whose single development environment shares one
+// active branch and differ only by spec.activePath, as in the "one branch per environment" layout.
+type sharedActivePathStrategies struct {
+	gitRepo    *promoterv1alpha1.GitRepository
+	psOne      *promoterv1alpha1.PromotionStrategy
+	psTwo      *promoterv1alpha1.PromotionStrategy
+	gitPath    string
+	namespaces string
+}
+
+func setupSharedActivePathStrategies(ctx context.Context) sharedActivePathStrategies {
+	GinkgoHelper()
+	_, scmSecret, scmProvider, gitRepo, _, _, base := promotionStrategyResource(ctx, "restore-shared-active-path", "default")
+	setupInitialTestGitRepoForActivePath(ctx, gitRepo)
+	Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+	Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+	Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+	s := sharedActivePathStrategies{gitRepo: gitRepo, namespaces: "default"}
+	for _, app := range []struct {
+		suffix, activePath string
+		ps                 **promoterv1alpha1.PromotionStrategy
+	}{{"-app-one", sharedActivePathOne, &s.psOne}, {"-app-two", sharedActivePathTwo, &s.psTwo}} {
+		ps := base.DeepCopy()
+		ps.Name = base.Name + app.suffix
+		ps.Spec.ActivePath = app.activePath
+		ps.Spec.Environments = []promoterv1alpha1.Environment{{Branch: testBranchDevelopment, AutoMerge: new(true)}}
+		declareDependentsSuccessfulGate(ps)
+		Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, ps)
+		*app.ps = ps
+	}
+	DeferCleanup(func() {
+		for _, ps := range []*promoterv1alpha1.PromotionStrategy{s.psOne, s.psTwo} {
+			deleteRestoreActiveCommitsForPolicy(ctx, s.ctpKey(ps).Name, ps.Namespace)
+			_ = k8sClient.Delete(ctx, ps)
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{Name: ps.Name, Namespace: ps.Namespace})
+		}
+		_ = k8sClient.Delete(ctx, gitRepo)
+		_ = k8sClient.Delete(ctx, scmProvider)
+		_ = k8sClient.Delete(ctx, scmSecret)
+	})
+
+	Eventually(func(g Gomega) {
+		g.Expect(s.ctp(ctx, g, s.psOne).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, sharedActivePathOne)))
+		g.Expect(s.ctp(ctx, g, s.psTwo).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, sharedActivePathTwo)))
+	}, constants.EventuallyTimeout).Should(Succeed())
+
+	gitPath, err := cloneTestRepo(ctx, gitRepo)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+	s.gitPath = gitPath
+	return s
+}
+
+func (s sharedActivePathStrategies) ctpKey(ps *promoterv1alpha1.PromotionStrategy) types.NamespacedName {
+	return types.NamespacedName{Name: utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, testBranchDevelopment)), Namespace: ps.Namespace}
+}
+
+func (s sharedActivePathStrategies) ctp(ctx context.Context, g Gomega, ps *promoterv1alpha1.PromotionStrategy) promoterv1alpha1.ChangeTransferPolicy {
+	var ctp promoterv1alpha1.ChangeTransferPolicy
+	g.Expect(k8sClient.Get(ctx, s.ctpKey(ps), &ctp)).To(Succeed())
+	return ctp
+}
+
+func (s sharedActivePathStrategies) prKey(activePath string) types.NamespacedName {
+	return types.NamespacedName{
+		Name:      utils.KubeSafeUniqueName(scmTarget.prName(s.gitRepo, path.Join(testBranchDevelopmentNext, activePath), testBranchDevelopment)),
+		Namespace: s.namespaces,
+	}
+}
+
+// hydrate makes a new dry commit and hydrates it onto activePath's proposed branch. It returns the dry SHA.
+func (s sharedActivePathStrategies) hydrate(ctx context.Context, activePath, message string) string {
+	GinkgoHelper()
+	drySha, err := makeDryCommit(ctx, s.gitPath, message)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(hydrateEnvironmentsBatchedTargets(ctx, s.gitRepo, []BatchedHydrationTarget{{
+		Branch: path.Join(testBranchDevelopmentNext, activePath), ActivePath: activePath, BootstrapBranch: testBranchDevelopment, DrySha: drySha,
+	}}, message, 0)).To(Succeed())
+	return drySha
+}
+
+// promote hydrates a new dry commit for ps's app and waits for it to merge onto the shared active branch.
+// It returns the dry SHA and the active tip the policy observed once promoted. SCMs do not webhook git
+// notes, so the policy is nudged the way PromotionStrategy.enqueueOutOfSyncCTPs would.
+func (s sharedActivePathStrategies) promote(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, activePath, message string) (drySha, tip string) {
+	GinkgoHelper()
+	drySha = s.hydrate(ctx, activePath, message)
+	key := s.ctpKey(ps)
+	Eventually(func(g Gomega) {
+		enqueueCTP(key.Namespace, key.Name)
+		ctp := s.ctp(ctx, g, ps)
+		g.Expect(ctp.Status.Active.Dry.Sha).To(Equal(drySha))
+		tip = ctp.Status.Active.Hydrated.Sha
+	}, constants.EventuallyTimeout).Should(Succeed())
+	return drySha, tip
+}
+
+// restore creates a RestoreActiveCommit for ps's development environment pointing at sha.
+func (s sharedActivePathStrategies) restore(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, sha string) *promoterv1alpha1.RestoreActiveCommit {
+	GinkgoHelper()
+	rc := &promoterv1alpha1.RestoreActiveCommit{
+		Name: utils.KubeSafeUniqueName(ps.Name + "-rc-" + sha), Namespace: ps.Namespace,
+		Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
+			Branch:               testBranchDevelopment,
+			Sha:                  sha,
+		},
+	}
+	Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+	return rc
+}
+
+// mergeByHand merges activePath's proposed branch into the active branch with git, the way a person
+// merging the pull request on the SCM would, and returns the active tip before the merge.
+func (s sharedActivePathStrategies) mergeByHand(ctx context.Context, activePath string) string {
+	GinkgoHelper()
+	proposed := path.Join(testBranchDevelopmentNext, activePath)
+	_, err := runGitCmd(ctx, s.gitPath, "fetch", "origin", testBranchDevelopment, proposed)
+	Expect(err).NotTo(HaveOccurred())
+	before, err := runGitCmd(ctx, s.gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, s.gitPath, "checkout", "-q", "-B", testBranchDevelopment, "origin/"+testBranchDevelopment)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, s.gitPath, "merge", "--no-ff", "-X", "theirs", "-m", "merge "+proposed+" by hand", "origin/"+proposed)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, s.gitPath, "push", "-q", "origin", testBranchDevelopment)
+	Expect(err).NotTo(HaveOccurred())
+	return strings.TrimSpace(before)
+}
 
 // restoredPromotionStrategy is a PromotionStrategy whose development environment has been promoted
 // twice and then restored to the first promotion. drySha2 is the dry SHA the restore moved off
