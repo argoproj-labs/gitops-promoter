@@ -94,12 +94,13 @@ const (
 	PromotionCompletedMessage = "Environment branch %s promoted to dry sha %s (previously %s)"
 
 	// RestoreSupersededReason indicates that a RestoreActiveCommit was deleted because its restore commit
-	// is behind the active tip. The delete does not stamp Promoter-restore-unblocked-at; the new tip
+	// is behind the environment's active commit (the active tip, or with spec.activePath the commit that
+	// last changed that path). The delete does not stamp Promoter-restore-unblocked-at; the new commit
 	// stays blocked until its own spec.blockEnvironment is set to false.
 	RestoreSupersededReason = "RestoreSuperseded"
 	// RestoreSupersededMessage is the message for a superseded RestoreActiveCommit.
-	// Args: RestoreActiveCommit name, its status.activeSha, the active tip.
-	RestoreSupersededMessage = "Deleted RestoreActiveCommit %s; its restore %s is behind active tip %s"
+	// Args: RestoreActiveCommit name, its status.activeSha, the environment's active commit.
+	RestoreSupersededMessage = "Deleted RestoreActiveCommit %s; its restore %s is behind active commit %s"
 
 	// RestoreAdoptedReason indicates that a RestoreActiveCommit was created because the active tip is
 	// already a blocked restore commit (Promoter-restored-from without Promoter-restore-unblocked-at)
