@@ -19,27 +19,30 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // PullRequest implements the scms.PullRequestProvider interface for Azure DevOps.
 type PullRequest struct {
-	client    *azuredevops.Connection
-	k8sClient client.Client
+	client      *azuredevops.Connection
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewAzdoPullRequestProvider creates a new instance of PullRequest for Azure DevOps.
-func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
+func NewAzdoPullRequestProvider(k8sClient client.Client, settingsMgr *settings.Manager, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
 	prClient, _, err := GetClient(context.Background(), scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PullRequest{
-		client:    prClient,
-		k8sClient: k8sClient,
+		client:      prClient,
+		k8sClient:   k8sClient,
+		settingsMgr: settingsMgr,
 	}, nil
 }
 
@@ -401,7 +404,9 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, pr.k8sClient, "", prObj.Spec.RepositoryReference, &prObj)
+	// Only the provider's spec is needed. Resolving the Secret too would need the controller namespace, which a
+	// ClusterScmProvider's Secret lives in and this provider doesn't know.
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, pr.k8sClient, pr.settingsMgr, gitRepo, &prObj)
 	if err != nil {
 		return "", fmt.Errorf("failed to get SCM provider: %w", err)
 	}
@@ -427,10 +432,6 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 
 // AddLabels adds labels to a pull request on Azure DevOps, creating missing pull request labels when needed.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
@@ -474,10 +475,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 
 // RemoveLabels removes labels from a pull request on Azure DevOps.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)

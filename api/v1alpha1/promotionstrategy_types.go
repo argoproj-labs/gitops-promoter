@@ -140,14 +140,6 @@ type Environment struct {
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
-// GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
-func (e *Environment) GetAutoMerge() bool {
-	if e.AutoMerge == nil {
-		return true
-	}
-	return *e.AutoMerge
-}
-
 // CommitStatusSelector is used to select commit statuses by their key.
 type CommitStatusSelector struct {
 	// +required

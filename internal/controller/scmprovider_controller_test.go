@@ -27,6 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -341,5 +342,20 @@ var _ = Describe("ScmProvider Controller", func() {
 			err = c.Get(ctx, client.ObjectKeyFromObject(scmProvider), &promoterv1alpha1.ScmProvider{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
+	})
+})
+
+var _ = Describe("ScmProvider azureDevOps.workloadIdentity", func() {
+	// Workload identity uses the controller's own identity, so the field only exists on ClusterScmProvider.
+	It("rejects the field as unknown", func() {
+		provider := &unstructured.Unstructured{}
+		provider.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind(promoterv1alpha1.ScmProviderKind))
+		provider.SetName("azdo-wi-namespaced")
+		provider.SetNamespace("default")
+		Expect(unstructured.SetNestedField(provider.Object, "example-org", "spec", "azureDevOps", "organization")).To(Succeed())
+		Expect(unstructured.SetNestedMap(provider.Object, map[string]any{}, "spec", "azureDevOps", "workloadIdentity")).To(Succeed())
+
+		err := k8sClient.Create(context.Background(), provider, client.FieldValidation("Strict"))
+		Expect(err).To(MatchError(ContainSubstring("unknown field")))
 	})
 })

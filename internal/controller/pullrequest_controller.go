@@ -483,9 +483,6 @@ func pullRequestStatusIsFinalized(pr *promoterv1alpha1.PullRequest) bool {
 func pullRequestStatusTransitionPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
-				return false
-			}
 			oldPR, okOld := e.ObjectOld.(*promoterv1alpha1.PullRequest)
 			newPR, okNew := e.ObjectNew.(*promoterv1alpha1.PullRequest)
 			if !okOld || !okNew {
@@ -563,9 +560,6 @@ func (r *PullRequestReconciler) pullRequestRequeueResult(ctx context.Context) (c
 func pullRequestDeletionFinalizerLengthChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
-				return false
-			}
 			if e.ObjectNew.GetDeletionTimestamp().IsZero() {
 				return false
 			}
@@ -620,7 +614,7 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
 	scmProvider, secret, gitRepository, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
-		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
+		ctx, r.Client, r.SettingsMgr, pr.Spec.RepositoryReference, &pr,
 	)
 	if err != nil {
 		if !pr.DeletionTimestamp.IsZero() && k8serrors.IsNotFound(err) {
@@ -643,7 +637,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.GetSpec().Gitea != nil:
 		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().AzureDevOps != nil:
-		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck // provider factory returns descriptive errors
+		return azuredevops.NewAzdoPullRequestProvider(r.Client, r.SettingsMgr, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

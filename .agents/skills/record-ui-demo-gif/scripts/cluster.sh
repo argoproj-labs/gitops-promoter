@@ -52,6 +52,11 @@ cmd_up() {
   log "context: $(kubectl config current-context)"
   log "installing CRDs"
   make -s install
+  # The controller watches Argo CD Applications and does not start without the CRD.
+  if ! kubectl get crd applications.argoproj.io >/dev/null 2>&1; then
+    log "installing the Argo CD Application CRD"
+    kubectl apply -f test/external_crds/argoproj.io_applications.yaml
+  fi
 
   log "creating namespace ${CONTROLLER_NAMESPACE} and ControllerConfiguration"
   kubectl create namespace "${CONTROLLER_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -

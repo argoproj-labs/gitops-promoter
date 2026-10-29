@@ -1474,10 +1474,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
 					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(createdPR.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+					g.Expect(createdPR.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, constants.EventuallyTimeout).Should(Succeed())
+				disappearedPRID := createdPR.Status.ID
+				originalUID := createdPR.UID
 
 				DeferCleanup(func() {
 					Eventually(func(g Gomega) {
@@ -1492,20 +1496,30 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, constants.EventuallyTimeout).Should(Succeed())
 				})
 
+				// The promotion is still pending, so the moment this PullRequest object disappears the CTP
+				// creates another one with the same name and copies that successor's open status over the
+				// unknown state. Hold the original with a test finalizer: createOrUpdatePullRequest skips a
+				// terminating PullRequest, so unknown stays on the CTP for the assertions below.
+				retainPullRequest(ctx, prKey)
+
 				By("Simulating external removal by deleting the PR from the fake SCM")
 				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 				Expect(fakeProvider.DeletePullRequest(ctx, createdPR)).To(Succeed())
 
 				By("Triggering PullRequest reconciliation")
-				triggerPRReconcile(ctx, prKey, &createdPR)
+				triggerPRReconcile(ctx, prKey, &createdPR, originalUID)
 
-				By("Verifying the PR is deleted and CTP records unknown with Ready=True")
+				By("Verifying the CTP finalizer is removed and CTP records unknown with Ready=True")
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, prKey, &createdPR)
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
+					g.Expect(createdPR.UID).To(Equal(originalUID))
+					g.Expect(createdPR.DeletionTimestamp.IsZero()).To(BeFalse())
+					g.Expect(createdPR.Finalizers).NotTo(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+					g.Expect(createdPR.Finalizers).NotTo(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ID).To(Equal(disappearedPRID))
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestUnknown))
 
 					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))

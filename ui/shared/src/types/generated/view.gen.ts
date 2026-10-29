@@ -113,6 +113,13 @@ export type components = {
              */
             project: string;
         };
+        /** @description AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on ClusterScmProvider. */
+        AzureWorkloadIdentity: {
+            /** @description ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as. Defaults to the AZURE_CLIENT_ID environment variable of the controller. */
+            clientID?: string;
+            /** @description TenantID is the Microsoft Entra tenant ID of the identity. Defaults to the AZURE_TENANT_ID environment variable of the controller. */
+            tenantID?: string;
+        };
         /**
          * @description BasicAuth defines HTTP Basic Authentication.
          *
@@ -316,6 +323,18 @@ export type components = {
             /** @description PullRequest is the state of the pull request that was created for this ChangeTransferPolicy. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
         };
+        /** @description ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with authentication that is only safe on a cluster-scoped resource, which only cluster admins can create. */
+        ClusterAzureDevOps: {
+            /** @description Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty. */
+            domain?: string;
+            /**
+             * @description Organization is the Azure DevOps organization name.
+             * @default
+             */
+            organization: string;
+            /** @description WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. When set, secretRef must be omitted. */
+            workloadIdentity?: components["schemas"]["AzureWorkloadIdentity"];
+        };
         /** @description ClusterScmProvider is the Schema for the clusterscmproviders API. */
         ClusterScmProvider: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -325,9 +344,30 @@ export type components = {
             /** @default {} */
             metadata?: components["schemas"]["ObjectMeta"];
             /** @default {} */
-            spec?: components["schemas"]["ScmProviderSpec"];
+            spec?: components["schemas"]["ClusterScmProviderSpec"];
             /** @default {} */
             status?: components["schemas"]["ScmProviderStatus"];
+        };
+        /** @description ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can create. */
+        ClusterScmProviderSpec: {
+            /** @description AzureDevOps required configuration for Azure DevOps as the SCM provider */
+            azureDevOps?: components["schemas"]["ClusterAzureDevOps"];
+            /** @description BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider */
+            bitbucketCloud?: components["schemas"]["BitbucketCloud"];
+            /** @description BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider */
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenter"];
+            /** @description Fake required configuration for Fake as the SCM provider */
+            fake?: components["schemas"]["Fake"];
+            /** @description Forgejo required configuration for Forgejo as the SCM provider */
+            forgejo?: components["schemas"]["Forgejo"];
+            /** @description Gitea required configuration for Gitea as the SCM provider */
+            gitea?: components["schemas"]["Gitea"];
+            /** @description GitHub required configuration for GitHub as the SCM provider */
+            github?: components["schemas"]["GitHub"];
+            /** @description GitLab required configuration for GitLab as the SCM provider */
+            gitlab?: components["schemas"]["GitLab"];
+            /** @description SecretRef contains the credentials required to auth to a specific provider */
+            secretRef?: components["schemas"]["LocalObjectReference"];
         };
         /** @description CommitBranchState defines the state of a branch in a ChangeTransferPolicy. */
         CommitBranchState: {
@@ -2141,6 +2181,8 @@ export type components = {
              *     Additional template variables (not in HTTPRequestSpec):
              *       - {{ index .TriggerVariables "key" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)
              *       - {{ index .SuccessVariables "key" }}: result of success.when.variables.expression this reconcile (nil if not configured)
+             *
+             *     In polling mode with reportOn: proposed, a reconcile for a SHA that already succeeded skips the HTTP request and evaluates success.when.variables.expression with Response nil. Guard reads of Response with Response != nil and fall back to SuccessOutput, so .SuccessVariables keeps the values from the request. A fixed fallback value replaces them, and an expression that fails without a Response leaves .SuccessVariables unset.
              *
              *     Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
              *

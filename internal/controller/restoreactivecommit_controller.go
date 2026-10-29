@@ -127,7 +127,7 @@ func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.
 		return r.unblockAndSelfDelete(ctx, &rc)
 	}
 
-	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, ctp)
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr, ctp.Spec.RepositoryReference, ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
@@ -266,7 +266,7 @@ func (r *RestoreActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Conte
 		return fmt.Errorf("failed to resolve ChangeTransferPolicy for unblock: %w", err)
 	}
 
-	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, ctp)
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr, ctp.Spec.RepositoryReference, ctp)
 	if err != nil {
 		return fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
@@ -402,9 +402,6 @@ func (r *RestoreActiveCommitReconciler) SetupWithManager(ctx context.Context, mg
 			// stamps Promoter-restore-unblocked-at when spec.blockEnvironment is false.
 			predicate.Funcs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					if e.ObjectOld == nil || e.ObjectNew == nil {
-						return false
-					}
 					return e.ObjectOld.GetDeletionTimestamp().IsZero() && !e.ObjectNew.GetDeletionTimestamp().IsZero()
 				},
 			},

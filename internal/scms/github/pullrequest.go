@@ -317,10 +317,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 // AddLabels adds labels to a pull request on GitHub, creating missing repository labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
-	if len(labels) == 0 {
-		return nil
-	}
-
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -440,10 +436,6 @@ func (pr *PullRequest) eachRepositoryLabel(ctx context.Context, gitRepo *v1alpha
 
 // RemoveLabels removes labels from a pull request on GitHub.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
-	if len(labels) == 0 {
-		return nil
-	}
-
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)

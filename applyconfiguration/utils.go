@@ -45,6 +45,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.AzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("AzureDevOpsRepo"):
 		return &apiv1alpha1.AzureDevOpsRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("AzureWorkloadIdentity"):
+		return &apiv1alpha1.AzureWorkloadIdentityApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuth"):
 		return &apiv1alpha1.BasicAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuth"):
@@ -77,8 +79,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ChangeTransferPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeTransferPolicyStatus"):
 		return &apiv1alpha1.ChangeTransferPolicyStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterAzureDevOps"):
+		return &apiv1alpha1.ClusterAzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProvider"):
 		return &apiv1alpha1.ClusterScmProviderApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderConfiguration"):
+		return &apiv1alpha1.ClusterScmProviderConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderSpec"):
+		return &apiv1alpha1.ClusterScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchState"):
 		return &apiv1alpha1.CommitBranchStateApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchStateHistoryProposed"):
@@ -247,6 +255,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderObjectReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderSpec"):
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderSpecCommon"):
+		return &apiv1alpha1.ScmProviderSpecCommonApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):

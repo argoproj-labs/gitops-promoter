@@ -420,7 +420,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					TypeMeta:  metav1.TypeMeta{},
 					Name:      name,
 					Namespace: "default",
-					Spec:      scmProvider.Spec,
+					Spec:      *scmProvider.GetSpec(),
 					Status:    promoterv1alpha1.ScmProviderStatus{},
 				}
 				gitRepo.Spec.ScmProviderRef = promoterv1alpha1.ScmProviderObjectReference{

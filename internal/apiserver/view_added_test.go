@@ -121,7 +121,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			objs = append(objs, gate)
 		}
 
-		bundle, err := buildBundle(context.Background(), newFakeReader(objs...), testNamespace, testPSName, "1")
+		bundle, err := buildBundle(context.Background(), newFakeReader(objs...), testNamespace, testPSName, "1", true)
 		Expect(err).NotTo(HaveOccurred())
 
 		viewFields := promotionStrategyDetailsGateSliceFields()

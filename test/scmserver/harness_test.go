@@ -32,6 +32,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 )
@@ -209,8 +210,9 @@ func providersFor(ctx context.Context, k8s client.Client, scmProvider *v1alpha1.
 		prs, prErr = gitlab.NewGitlabPullRequestProvider(k8s, secret, spec.GitLab.Domain)
 		statuses, csErr = gitlab.NewGitlabCommitStatusProvider(k8s, secret, spec.GitLab.Domain)
 	case spec.AzureDevOps != nil:
-		prs, prErr = azuredevops.NewAzdoPullRequestProvider(k8s, secret, scmProvider, spec.AzureDevOps.Organization) //nolint:contextcheck // matches the controller's factory, which takes no context
-		statuses, csErr = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, k8s, scmProvider, secret, spec.AzureDevOps.Organization)
+		settingsMgr := settings.NewManager(k8s, k8s, settings.ManagerConfig{ControllerNamespace: secret.Namespace})
+		prs, prErr = azuredevops.NewAzdoPullRequestProvider(k8s, settingsMgr, secret, scmProvider, spec.AzureDevOps.Organization) //nolint:contextcheck // matches the controller's factory, which takes no context
+		statuses, csErr = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, k8s, settingsMgr, scmProvider, secret, spec.AzureDevOps.Organization)
 	case spec.BitbucketCloud != nil:
 		prs, prErr = bitbucket_cloud.NewBitbucketCloudPullRequestProvider(k8s, secret, spec.BitbucketCloud.Domain)
 		statuses, csErr = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(k8s, secret, spec.BitbucketCloud.Domain)

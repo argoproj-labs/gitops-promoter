@@ -26,6 +26,7 @@ import (
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -40,10 +41,14 @@ type dashboardRuntime struct {
 // newDashboardRuntime wires the read cache, bundle provider, and extension apiserver.
 // authz, when non-nil, overrides delegated authorization (used by tests).
 func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opts *Options, authz authorizer.Authorizer) (*dashboardRuntime, error) {
-	readCache, err := cache.New(restConfig, cache.Options{
+	cacheOpts := cache.Options{
 		Scheme:           utils.GetScheme(),
 		DefaultTransform: cacheTransform(),
-	})
+	}
+	if opts.Namespace != "" {
+		cacheOpts.DefaultNamespaces = map[string]cache.Config{opts.Namespace: {}}
+	}
+	readCache, err := cache.New(restConfig, cacheOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create read cache: %w", err)
 	}
@@ -52,7 +57,7 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 		return nil, fmt.Errorf("failed to register gate field indexes: %w", err)
 	}
 
-	provider := NewBundleProvider(readCache)
+	provider := NewBundleProvider(readCache, opts.Namespace, opts.ClusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled)
 	if err := provider.SetupInformers(ctx); err != nil {
 		return nil, fmt.Errorf("failed to set up informers: %w", err)
 	}

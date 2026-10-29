@@ -38,8 +38,12 @@ secret.yaml
 /install-without-ui.yaml
 /install-with-dashboard-cert-manager.yaml
 /install-with-dashboard-byo-cert.yaml
+/install-without-ui-namespaced.yaml
+/install-with-dashboard-cert-manager-namespaced.yaml
+/install-with-dashboard-byo-cert-namespaced.yaml
 
 junit.xml
+e2e-junit.xml
 
 release_dist
 

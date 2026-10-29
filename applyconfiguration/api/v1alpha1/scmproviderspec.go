@@ -26,24 +26,9 @@ import (
 //
 // ScmProviderSpec defines the desired state of ScmProvider
 type ScmProviderSpecApplyConfiguration struct {
-	// SecretRef contains the credentials required to auth to a specific provider
-	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
-	// GitHub required configuration for GitHub as the SCM provider
-	GitHub *GitHubApplyConfiguration `json:"github,omitempty"`
-	// GitLab required configuration for GitLab as the SCM provider
-	GitLab *GitLabApplyConfiguration `json:"gitlab,omitempty"`
-	// Forgejo required configuration for Forgejo as the SCM provider
-	Forgejo *ForgejoApplyConfiguration `json:"forgejo,omitempty"`
-	// Gitea required configuration for Gitea as the SCM provider
-	Gitea *GiteaApplyConfiguration `json:"gitea,omitempty"`
-	// BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider
-	BitbucketCloud *BitbucketCloudApplyConfiguration `json:"bitbucketCloud,omitempty"`
-	// BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider
-	BitbucketDataCenter *BitbucketDataCenterApplyConfiguration `json:"bitbucketDataCenter,omitempty"`
+	ScmProviderSpecCommonApplyConfiguration `json:""`
 	// AzureDevOps required configuration for Azure DevOps as the SCM provider
 	AzureDevOps *AzureDevOpsApplyConfiguration `json:"azureDevOps,omitempty"`
-	// Fake required configuration for Fake as the SCM provider
-	Fake *FakeApplyConfiguration `json:"fake,omitempty"`
 }
 
 // ScmProviderSpecApplyConfiguration constructs a declarative configuration of the ScmProviderSpec type for use with
@@ -56,7 +41,7 @@ func ScmProviderSpec() *ScmProviderSpecApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SecretRef field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *ScmProviderSpecApplyConfiguration {
-	b.SecretRef = &value
+	b.ScmProviderSpecCommonApplyConfiguration.SecretRef = &value
 	return b
 }
 
@@ -64,7 +49,7 @@ func (b *ScmProviderSpecApplyConfiguration) WithSecretRef(value v1.LocalObjectRe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GitHub field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithGitHub(value *GitHubApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.GitHub = value
+	b.ScmProviderSpecCommonApplyConfiguration.GitHub = value
 	return b
 }
 
@@ -72,7 +57,7 @@ func (b *ScmProviderSpecApplyConfiguration) WithGitHub(value *GitHubApplyConfigu
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GitLab field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithGitLab(value *GitLabApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.GitLab = value
+	b.ScmProviderSpecCommonApplyConfiguration.GitLab = value
 	return b
 }
 
@@ -80,7 +65,7 @@ func (b *ScmProviderSpecApplyConfiguration) WithGitLab(value *GitLabApplyConfigu
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Forgejo field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithForgejo(value *ForgejoApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.Forgejo = value
+	b.ScmProviderSpecCommonApplyConfiguration.Forgejo = value
 	return b
 }
 
@@ -88,7 +73,7 @@ func (b *ScmProviderSpecApplyConfiguration) WithForgejo(value *ForgejoApplyConfi
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Gitea field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithGitea(value *GiteaApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.Gitea = value
+	b.ScmProviderSpecCommonApplyConfiguration.Gitea = value
 	return b
 }
 
@@ -96,7 +81,7 @@ func (b *ScmProviderSpecApplyConfiguration) WithGitea(value *GiteaApplyConfigura
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the BitbucketCloud field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithBitbucketCloud(value *BitbucketCloudApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.BitbucketCloud = value
+	b.ScmProviderSpecCommonApplyConfiguration.BitbucketCloud = value
 	return b
 }
 
@@ -104,7 +89,15 @@ func (b *ScmProviderSpecApplyConfiguration) WithBitbucketCloud(value *BitbucketC
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the BitbucketDataCenter field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithBitbucketDataCenter(value *BitbucketDataCenterApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.BitbucketDataCenter = value
+	b.ScmProviderSpecCommonApplyConfiguration.BitbucketDataCenter = value
+	return b
+}
+
+// WithFake sets the Fake field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Fake field is set to the value of the last call.
+func (b *ScmProviderSpecApplyConfiguration) WithFake(value *FakeApplyConfiguration) *ScmProviderSpecApplyConfiguration {
+	b.ScmProviderSpecCommonApplyConfiguration.Fake = value
 	return b
 }
 
@@ -113,13 +106,5 @@ func (b *ScmProviderSpecApplyConfiguration) WithBitbucketDataCenter(value *Bitbu
 // If called multiple times, the AzureDevOps field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithAzureDevOps(value *AzureDevOpsApplyConfiguration) *ScmProviderSpecApplyConfiguration {
 	b.AzureDevOps = value
-	return b
-}
-
-// WithFake sets the Fake field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Fake field is set to the value of the last call.
-func (b *ScmProviderSpecApplyConfiguration) WithFake(value *FakeApplyConfiguration) *ScmProviderSpecApplyConfiguration {
-	b.Fake = value
 	return b
 }

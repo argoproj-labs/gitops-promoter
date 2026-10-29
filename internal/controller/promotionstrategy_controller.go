@@ -481,10 +481,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(
 	promotionStrategyUID types.UID,
 	ctps []*promoterv1alpha1.ChangeTransferPolicy,
 ) {
-	if len(ctps) == 0 {
-		return
-	}
-
 	// Initialize state map lazily
 	if r.enqueueStates == nil {
 		r.enqueueStateMutex.Lock()
