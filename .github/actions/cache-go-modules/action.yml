@@ -1,0 +1,22 @@
+name: Cache Go modules and build output
+description: >-
+  Restore the Go module cache (GOMODCACHE) and build cache (GOCACHE) under a key that is private to the
+  calling workflow and job. setup-go's built-in cache keys both on the go.sum hash alone, shared by every
+  job in the repository, and actions/cache saves only on a miss: the quickest job claims the key and the
+  others never save. The Lint job finishes first with a nearly empty module cache (golangci-lint-action
+  manages its own), so on main the shared entry was 7 KB and every other job downloaded every module from
+  the proxy on every run. Jobs that use this action set `cache: false` on setup-go.
+runs:
+  using: composite
+  steps:
+    - name: Restore Go module and build caches
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        # `go env GOMODCACHE` and `go env GOCACHE` on the ubuntu runners.
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        # Matrix legs of one job build the same packages, so sharing a key between them is fine.
+        key: ${{ runner.os }}-go-${{ github.workflow }}-${{ github.job }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ github.workflow }}-${{ github.job }}-

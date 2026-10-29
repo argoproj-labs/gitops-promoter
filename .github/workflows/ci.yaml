@@ -23,6 +23,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+          # The module and build caches are restored by the next step under a per-job key.
+          cache: false
+      - name: Cache Go modules and build output
+        uses: $/.github/actions/cache-go-modules
       - name: Cache Makefile tools
         uses: $/.github/actions/cache-make-tools
       - name: Setup Node.js
@@ -192,6 +196,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+          # The module and build caches are restored by the next step under a per-job key.
+          cache: false
+      - name: Cache Go modules and build output
+        uses: $/.github/actions/cache-go-modules
       - name: Cache Makefile tools
         uses: $/.github/actions/cache-make-tools
       - name: go mod tidy
@@ -251,6 +259,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+          # The module and build caches are restored by the next step under a per-job key.
+          cache: false
+      - name: Cache Go modules and build output
+        uses: $/.github/actions/cache-go-modules
       - name: Cache Makefile tools
         uses: $/.github/actions/cache-make-tools
       - name: Run Nilaway
@@ -266,6 +278,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+          # The module and build caches are restored by the next step under a per-job key.
+          cache: false
+      - name: Cache Go modules and build output
+        uses: $/.github/actions/cache-go-modules
       - name: Cache Makefile tools
         uses: $/.github/actions/cache-make-tools
       - name: Run deadcode

@@ -28,18 +28,18 @@ jobs:
     # The suite builds two images and promotes through every provider of the test SCM server.
     timeout-minutes: 30
     steps:
-      # Checkout comes first: setup-go keys its module and build cache on go.sum, which has to be in the
-      # workspace when the action runs. With the steps the other way round every leg logged
-      # "Restore cache failed: Some specified paths were not resolved" and re-downloaded every module.
+      # Checkout comes first: the cache steps below key on go.sum and the Makefile, which have to be in
+      # the workspace when they run.
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.2'
-          # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
-          cache-dependency-path: |
-            go.sum
+          # The module and build caches are restored by the next step under a per-job key.
+          cache: false
+      - name: Cache Go modules and build output
+        uses: $/.github/actions/cache-go-modules
       - name: Cache Makefile tools
         uses: $/.github/actions/cache-make-tools
       - name: Create k8s Kind Cluster
