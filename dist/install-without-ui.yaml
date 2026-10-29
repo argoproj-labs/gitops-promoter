@@ -9781,15 +9781,30 @@ spec:
                       description: Branch is the name of the branch/environment.
                       minLength: 1
                       type: string
-                    lastRequestTime:
-                      description: LastRequestTime is when the last HTTP request was
-                        made.
-                      format: date-time
-                      type: string
-                    lastResponseStatusCode:
-                      description: LastResponseStatusCode is the HTTP status code
-                        from the last request.
-                      type: integer
+                    lastRequest:
+                      description: |-
+                        LastRequest captures metadata about the most recent HTTP request for this environment.
+                        Populated on the first request; values carry forward on reconciles that skip the request.
+                      properties:
+                        method:
+                          description: Method is the static HTTP method.
+                          type: string
+                        responseStatusCode:
+                          description: ResponseStatusCode is the HTTP status code
+                            from the last request.
+                          type: integer
+                        time:
+                          description: Time is when the last HTTP request was made.
+                          format: date-time
+                          type: string
+                        url:
+                          description: |-
+                            URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                            for the last HTTP request attempt for this environment (empty when no request has been made yet).
+                            It carries forward the previous value when a reconcile skips the HTTP request
+                            (polling interval, trigger false, or already-successful SHA fast path).
+                          type: string
+                      type: object
                     lastSuccessfulSha:
                       description: |-
                         LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
@@ -9806,13 +9821,6 @@ spec:
                       - pending
                       - success
                       - failure
-                      type: string
-                    renderedURL:
-                      description: |-
-                        RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
-                        for the last HTTP request attempt for this environment (empty when no request has been made yet).
-                        It carries forward the previous value when a reconcile skips the HTTP request
-                        (polling interval, trigger false, or already-successful SHA fast path).
                       type: string
                     reportedSha:
                       description: |-
@@ -9869,15 +9877,30 @@ spec:
                   PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
                   At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
                 properties:
-                  lastRequestTime:
-                    description: LastRequestTime is when the last HTTP request was
-                      made.
-                    format: date-time
-                    type: string
-                  lastResponseStatusCode:
-                    description: LastResponseStatusCode is the HTTP status code from
-                      the last request.
-                    type: integer
+                  lastRequest:
+                    description: |-
+                      LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context.
+                      Populated on the first request; values carry forward on reconciles that skip the request.
+                    properties:
+                      method:
+                        description: Method is the static HTTP method.
+                        type: string
+                      responseStatusCode:
+                        description: ResponseStatusCode is the HTTP status code from
+                          the last request.
+                        type: integer
+                      time:
+                        description: Time is when the last HTTP request was made.
+                        format: date-time
+                        type: string
+                      url:
+                        description: |-
+                          URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                          for the last HTTP request attempt for this environment (empty when no request has been made yet).
+                          It carries forward the previous value when a reconcile skips the HTTP request
+                          (polling interval, trigger false, or already-successful SHA fast path).
+                        type: string
+                    type: object
                   lastSuccessfulShas:
                     description: |-
                       LastSuccessfulShas tracks the last SHA that achieved success for each branch.
@@ -9934,13 +9957,6 @@ spec:
                     x-kubernetes-list-map-keys:
                     - branch
                     x-kubernetes-list-type: map
-                  renderedURL:
-                    description: |-
-                      RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
-                      for the last HTTP request attempt (empty when no request has been made yet).
-                      It carries forward the previous value when a reconcile skips the HTTP request
-                      (polling interval, trigger false, or already-successful SHA fast path).
-                    type: string
                   responseOutput:
                     description: 'ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput,
                       one shared map for context=promotionstrategy.'
