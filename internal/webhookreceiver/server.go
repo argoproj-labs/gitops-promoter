@@ -331,6 +331,10 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 // non-nil only for terminal outcomes.
 func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, via string) (found, retryable bool, err error) {
 	logger := log.FromContext(ctx)
+	if wr.enqueueCTP == nil {
+		// Nothing can be enqueued, so a lookup would be wasted; the caller logs this at Error.
+		return false, false, errors.New("webhook receiver has no enqueue function configured")
+	}
 	ctps, outcome, lookupErr := wr.lookupCTPsByHydratedSHA(ctx, sha, ref)
 	switch outcome {
 	case ctpLookupFound:
@@ -339,9 +343,7 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 			return false, false, errors.New("CTP lookup reported found but returned none")
 		}
 		for _, ctp := range ctps {
-			if wr.enqueueCTP != nil {
-				wr.enqueueCTP(ctp.Namespace, ctp.Name)
-			}
+			wr.enqueueCTP(ctp.Namespace, ctp.Name)
 			logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
 		}
 		return true, false, nil
