@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: |
             go.sum
       - name: Cache Makefile tools
-        uses: ./.github/actions/cache-make-tools
+        uses: $/.github/actions/cache-make-tools
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
