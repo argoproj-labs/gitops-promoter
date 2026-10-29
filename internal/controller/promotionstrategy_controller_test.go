@@ -1912,6 +1912,81 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(manifestOne).To(Equal(appOneBaselineManifest), "app-one manifest on active must be unchanged")
 			}, time.Second*5, time.Second*1).Should(Succeed())
 		})
+
+		It("should not reset an app's timed gate when a sibling's promotion moves the shared active branch", func() {
+			// A TimedCommitStatus measures how long an environment's active commit has been in place.
+			// On a shared active branch, every sibling promotion creates a new tip commit; the timer
+			// must track this app's own last change to its activePath, not the branch tip.
+			const soak = 10 * time.Second
+			ctpOneName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyOne.Name, testBranchDevelopment))
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			By("Promoting app-one onto the shared active branch")
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry app-one for timed gate")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathOne), ActivePath: activePathOne, BootstrapBranch: testBranchDevelopment, DrySha: dryShaOne},
+			}, "hydrate app-one for timed gate", 0)).To(Succeed())
+			Eventually(func(g Gomega) {
+				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
+				g.Expect(getCTP(g, &promotionStrategyOne).Status.Active.Dry.Sha).To(Equal(dryShaOne))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a TimedCommitStatus for app-one and waiting for its soak to complete")
+			timed := &promoterv1alpha1.TimedCommitStatus{
+				Name:      promotionStrategyOne.Name + "-timed",
+				Namespace: promotionStrategyOne.Namespace,
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: promotionStrategyOne.Name},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{Branch: testBranchDevelopment, Duration: metav1.Duration{Duration: soak}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timed)).To(Succeed())
+			defer func() { _ = client.IgnoreNotFound(k8sClient.Delete(ctx, timed)) }()
+
+			var soakedCommitTime metav1.Time
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(timed), &tcs)).To(Succeed())
+				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				soakedCommitTime = tcs.Status.Environments[0].CommitTime
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Promoting app-two onto the shared active branch (app-one receives no change)")
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry app-two for timed gate")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwo},
+			}, "hydrate app-two for timed gate", 0)).To(Succeed())
+			Eventually(func(g Gomega) {
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-one's timed gate stays met: its activePath did not change")
+			Consistently(func(g Gomega) {
+				// Keep app-one reconciling so it observes the new shared tip.
+				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
+
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne), "app-one active dry sha must not move")
+
+				var tcs promoterv1alpha1.TimedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(timed), &tcs)).To(Succeed())
+				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).To(BeTemporally("==", soakedCommitTime.Time),
+					"app-one's soak must be measured from its own last change, not from the sibling's merge")
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"app-one's timed gate must not reset when a sibling promotes")
+			}, 8*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
