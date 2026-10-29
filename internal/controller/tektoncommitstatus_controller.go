@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -52,6 +54,8 @@ import (
 
 const (
 	commitStatusLabelKey = promoterv1alpha1.CommitStatusGateLabelPrefix + "tekton-commit-status"
+	commitShaLabelKey    = promoterv1alpha1.CommitStatusGateLabelPrefix + "commit-sha"
+	maxRunNameLength     = 63
 )
 
 // TektonCommitStatusReconciler reconciles a TektonCommitStatus object.
@@ -72,6 +76,14 @@ type TektonCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=tekton.dev,resources=taskruns,verbs=get;list;watch;create;delete
 
+// Reconcile is part of the main kubernetes reconciliation loop which aims to
+// move the current state of the cluster closer to the desired state.
+//
+// For each environment the following is done:
+// 1. Fetches commit data from the promotion strategy
+// 2. Creates a Tekton TaskRun or PipelineRun with settings in the TektonCommitStatus
+// 3. Evaluates the runs results when its finished
+// 4. Gates promotions based on the results by creating+updating CommitStatuses for each environment
 func (r *TektonCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling TektonCommitStatus", "name", req.Name)
@@ -173,7 +185,7 @@ func (r *TektonCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr
 }
 
 // tektonRunWatchUpdateHandler checks to see if a TektonRun resource has progressed
-func tektonRunWatchUpdateHandler[T tekton.TektonRunResource](event event.UpdateEvent) bool {
+func tektonRunWatchUpdateHandler[T tekton.RunResource](event event.UpdateEvent) bool {
 	oldTektonRun, ok := event.ObjectOld.(T)
 	if !ok {
 		return false
@@ -215,12 +227,12 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 	// Parse the reportOn by checking the promotion strategy for where the key is
 	reportOn, err := utils.DetermineReportOn(ps, tcs.Spec.Key)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to determine ReportOn for TektonCommitStatus: %s", reportOn)
 	}
 
 	// Reject when reportOn is active and target is proposed because this scenario does not make sense.
 	if reportOn == constants.CommitRefActive && tcs.Spec.Target == constants.CommitRefProposed {
-		return nil, nil, fmt.Errorf("commit status is set to be active but the target is proposed which is unsupported")
+		return nil, nil, errors.New("commit status is set to be active but the target is proposed which is unsupported")
 	}
 
 	// Get environments where this TektonCommitStatus applies to
@@ -229,7 +241,7 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 	// Setup tracking variables
 	transitionedEnvs := make([]string, 0)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
-	tcs.Status.Environments = make([]promoterv1alpha1.TektonCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
+	newEnvs := make([]promoterv1alpha1.TektonCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
 
 	for _, env := range applicableEnvs {
 		envStatus, found := envStatuses[env.Branch]
@@ -252,22 +264,23 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 		// Create or get the Tekton resource based on if it is found
 		prevEnvStatus, found := prevEnvStatuses[env.Branch]
 		needToCreate := false
-		if !found {
-			needToCreate = true
-		} else if prevEnvStatus.TargetedSha != shaToRun {
+		if !found || prevEnvStatus.TargetedSha != shaToRun {
 			needToCreate = true
 		}
 
-		// TektonRun has been pruned if sha is the same, prune run is enabled, and the run phase is succeeded
-		pruned := prevEnvStatus.TargetedSha == shaToRun && tcs.Spec.PruneRun && prevEnvStatus.TektonRunPhase == tekton.TektonRunPhaseSucceeded
+		// TektonRun has been pruned if sha is the same, prune run is enabled, and the commit status is successful
+		pruned := prevEnvStatus.TargetedSha == shaToRun && tcs.Spec.PruneRun && prevEnvStatus.Phase == promoterv1alpha1.CommitPhaseSuccess
 
 		// Get the currentStatus of the Tekton Resource
 		// If the object does not exist it gets created and the currentStatus will be empty
-		var currentStatus tekton.TektonRunStatus
+		var currentStatus tekton.RunStatus
 		runName := ""
-		// FIXME: need to handle a case where its trying to create something that already exists gracefully
 		if needToCreate {
 			runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
+			if k8s_errors.IsAlreadyExists(err) {
+				runName = prevEnvStatus.TektonRunName
+				currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
+			}
 		} else if !pruned {
 			runName = prevEnvStatus.TektonRunName
 			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
@@ -282,7 +295,6 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			// If TektonRun has been pruned reuse the previous status as we do not have data to calculate and result was already successful
 			newEnvStatus = prevEnvStatus
 			description = fmt.Sprintf("Tekton run %s of kind %s succeeded and all result checks passed on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, env.Branch)
-
 		} else {
 			newEnvStatus, description, err = r.calculateNewEnvironmentStatus(tcs, currentStatus, env.Branch, shaToRun, runName)
 			if err != nil {
@@ -304,7 +316,7 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			}
 		}
 
-		tcs.Status.Environments = append(tcs.Status.Environments, newEnvStatus)
+		newEnvs = append(newEnvs, newEnvStatus)
 		cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
 			Parent:      tcs,
 			RepoRefName: ps.Spec.RepositoryReference.Name,
@@ -331,6 +343,8 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 			"phase", newEnvStatus.Phase,
 			"key", tcs.Spec.Key)
 	}
+	// Set new status when all environment processing is done to not lose anything if there is an error
+	tcs.Status.Environments = newEnvs
 
 	return transitionedEnvs, commitStatuses, nil
 }
@@ -344,47 +358,58 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 		"Branch":      branch,
 	}
 
-	for _, parameter := range resourceRef.Parameters {
-		tmpl, err := template.New(parameter.Name).Parse(parameter.Value)
+	for _, param := range resourceRef.Params {
+		tmpl, err := template.New(param.Name).Parse(param.Value)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create template: %w", err)
 		}
 
 		var writer bytes.Buffer
 		if err := tmpl.Execute(&writer, templateValues); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to execute template: %w", err)
 		}
 
 		var jsonBytes []byte
-		switch parameter.Type {
+		switch param.Type {
 		case tekton.TektonDataTypeString, "":
 			jsonBytes, err = json.Marshal(writer.String())
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to Marshal data: %w", err)
 			}
 		case tekton.TektonDataTypeArray, tekton.TektonDataTypeObject:
 			jsonBytes = []byte(strings.TrimSpace(writer.String()))
 			if !json.Valid(jsonBytes) {
-				return nil, fmt.Errorf("invalid JSON for parameter %s of type %s", parameter.Name, parameter.Type)
+				return nil, fmt.Errorf("invalid JSON for param %s of type %s", param.Name, param.Type)
 			}
+		default:
+			return nil, fmt.Errorf("unknown data type %s on parameter %s", param.Type, param.Name)
 		}
 
-		params = append(params, tekton.Data{Name: parameter.Name, Value: &apiextensionsv1.JSON{Raw: jsonBytes}, Type: parameter.Type})
+		params = append(params, tekton.Data{Name: param.Name, Value: &apiextensionsv1.JSON{Raw: jsonBytes}, Type: param.Type})
 	}
 	return params, nil
+}
+
+// createSafeRunName creates a safe and unique name for a TaskRun or PipelineRun. The name is unique for each
+// environment by using the commit sha in the name. A TektonRun can only have a name of 63 or less characters so
+// the key is trimmed to fit.
+func createUniqueSafeRunName(tcs *promoterv1alpha1.TektonCommitStatus, sha string) string {
+	shaSuffix := fmt.Sprintf("sha%s-%s", sha[:8], rand.String(8))
+	maxLen := maxRunNameLength - len(shaSuffix)
+	return utils.TruncateString(tcs.Spec.Key, maxLen) + shaSuffix
 }
 
 // buildTaskRun builds a TaskRun object with the information from the CommitStatus, the branch, and SHA.
 // It also parses the parameters provided and evaluates the templates that may be in them.
 func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (*tekton.TaskRun, error) {
-	name := fmt.Sprintf("%s-sha%s", tcs.Spec.Key, sha[:8])
 	taskRun := &tekton.TaskRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
-			Name:      utils.KubeSafeUniqueName(name),
+			Name:      createUniqueSafeRunName(tcs, sha),
 			Labels: map[string]string{
 				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
+				commitShaLabelKey:                 utils.KubeSafeLabel(sha),
 			},
 		},
 		Spec: tekton.TaskRunSpec{
@@ -394,7 +419,6 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 			ServiceAccountName: tcs.Spec.TektonResource.ServiceAccount,
 		},
 	}
-
 	params, err := parseTektonParameterTemplates(tcs.Spec.TektonResource, branch, sha)
 	if err != nil {
 		return nil, err
@@ -406,14 +430,14 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 // buildPipelineRun builds a PipelinRun object with the information from the CommitStatus, the branch, and SHA.
 // It also parses the parameters provided and evaluates the templates that may be in them.
 func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (*tekton.PipelineRun, error) {
-	name := fmt.Sprintf("%s-sha%s", tcs.Spec.Key, sha)
 	pipelineRun := &tekton.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
-			Name:      utils.KubeSafeUniqueName(name),
+			Name:      createUniqueSafeRunName(tcs, sha),
 			Labels: map[string]string{
 				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
+				commitShaLabelKey:                 utils.KubeSafeLabel(sha),
 			},
 		},
 		Spec: tekton.PipelineRunSpec{
@@ -437,41 +461,53 @@ func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha stri
 // createTektonResource uses the reconciler's client to append an owner reference to the object and then create it.
 func (r *TektonCommitStatusReconciler) createTektonResource(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, obj client.Object) error {
 	if err := controllerutil.SetControllerReference(tcs, obj, r.RuntimeScheme); err != nil {
-		return err
+		return fmt.Errorf("failed to set owner reference on object: %w", err)
 	}
-	return r.Create(ctx, obj, &client.CreateOptions{})
+	if err := r.Create(ctx, obj, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create TektonRun: %w", err)
+	}
+	return nil
 }
 
 // getTektonResource uses the reconciler's client to get a Tekton Resource by namespace and name.
 func (r *TektonCommitStatusReconciler) getTektonResource(ctx context.Context, ns, name string, obj client.Object) error {
-	return r.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, obj, &client.GetOptions{})
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, obj, &client.GetOptions{}); err != nil {
+		return fmt.Errorf("failed to get TektonRun: %w", err)
+	}
+	return nil
 }
 
 // deleteTektonResource uses the reconciler's client to delete a Tekton Resource by namespace and name.
 func (r *TektonCommitStatusReconciler) deleteTektonResource(ctx context.Context, obj client.Object) error {
-	return r.Delete(ctx, obj, &client.DeleteOptions{})
+	if err := r.Delete(ctx, obj, &client.DeleteOptions{}); err != nil {
+		return fmt.Errorf("failed to delete TektonRun: %w", err)
+	}
+	return nil
 }
 
 // parseResultValue tries to unmarshal the value field of the Tekton results data to parse whether it is one of tekton's three result types being
 // a string, array, or object. If the unmarshal fails then it is a string so just return it as is.
 func parseResultValue(result tekton.Data) any {
+	if result.Value == nil {
+		return nil
+	}
 	var value any
-	if err := json.Unmarshal([]byte(result.Value.Raw), &value); err == nil {
+	if err := json.Unmarshal(result.Value.Raw, &value); err == nil {
 		return value
 	}
 	return result.Value
 }
 
 // createTektonRun creates either a TaskRun or PipelineRun based on what is defined in the TektonCommitStatus and returns its name and status
-func (r *TektonCommitStatusReconciler) createTektonRun(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (string, tekton.TektonRunStatus, error) {
+func (r *TektonCommitStatusReconciler) createTektonRun(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (string, tekton.RunStatus, error) {
 	var obj client.Object
-	var status tekton.TektonRunStatus
+	var status tekton.RunStatus
 	var runName string
 	switch tcs.Spec.TektonResource.Kind {
 	case tekton.TektonKindTask:
 		taskRun, err := buildTaskRun(tcs, branch, sha)
 		if err != nil {
-			return "", tekton.TektonRunStatus{}, err
+			return "", tekton.RunStatus{}, err
 		}
 		obj = taskRun
 		status = taskRun.Status
@@ -479,39 +515,39 @@ func (r *TektonCommitStatusReconciler) createTektonRun(ctx context.Context, tcs 
 	case tekton.TektonKindPipeline:
 		pipelineRun, err := buildPipelineRun(tcs, branch, sha)
 		if err != nil {
-			return "", tekton.TektonRunStatus{}, err
+			return "", tekton.RunStatus{}, err
 		}
 		obj = pipelineRun
 		status = pipelineRun.Status
 		runName = pipelineRun.Name
 	default:
-		return "", tekton.TektonRunStatus{}, fmt.Errorf("unknown Tekton resource kind: %s", tcs.Spec.TektonResource.Kind)
+		return "", tekton.RunStatus{}, fmt.Errorf("unknown Tekton resource kind: %s", tcs.Spec.TektonResource.Kind)
 	}
 	err := r.createTektonResource(ctx, tcs, obj)
 	if err != nil {
-		return "", tekton.TektonRunStatus{}, err
+		return "", tekton.RunStatus{}, err
 	}
 	return runName, status, nil
 }
 
 // getTektonRun gets either a TaskRun or a PipelineRun based on what is defined in the TektonCommitStatus and returns its status
-func (r *TektonCommitStatusReconciler) getTektonRun(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, prevEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus) (tekton.TektonRunStatus, error) {
-	var status tekton.TektonRunStatus
+func (r *TektonCommitStatusReconciler) getTektonRun(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, prevEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus) (tekton.RunStatus, error) {
+	var status tekton.RunStatus
 	switch tcs.Spec.TektonResource.Kind {
 	case tekton.TektonKindTask:
 		taskRun := &tekton.TaskRun{}
 		if err := r.getTektonResource(ctx, tcs.Namespace, prevEnvStatus.TektonRunName, taskRun); err != nil {
-			return tekton.TektonRunStatus{}, err
+			return tekton.RunStatus{}, err
 		}
 		status = taskRun.Status
 	case tekton.TektonKindPipeline:
 		pipelineRun := &tekton.PipelineRun{}
 		if err := r.getTektonResource(ctx, tcs.Namespace, prevEnvStatus.TektonRunName, pipelineRun); err != nil {
-			return tekton.TektonRunStatus{}, err
+			return tekton.RunStatus{}, err
 		}
 		status = pipelineRun.Status
 	default:
-		return tekton.TektonRunStatus{}, fmt.Errorf("unknown Tekton resource kind: %s", tcs.Spec.TektonResource.Kind)
+		return tekton.RunStatus{}, fmt.Errorf("unknown Tekton resource kind: %s", tcs.Spec.TektonResource.Kind)
 	}
 	return status, nil
 }
@@ -564,9 +600,9 @@ func (r *TektonCommitStatusReconciler) getCompiledExpression(expression string) 
 // evaluateTektonRunResults iterates over results in the status from a Tekton Run resource and evaluates the expressions provided.
 // If no expressions are provided then take a look for the succeeded condition and see if it has the value of true.
 // The function returns the individual results, the general expression result, the combined results in that order
-func (r *TektonCommitStatusReconciler) evaluateTektonRunResults(tcs *promoterv1alpha1.TektonCommitStatus, runStatus tekton.TektonRunStatus) ([]promoterv1alpha1.IndividualExpressionResult, bool, bool, error) {
+func (r *TektonCommitStatusReconciler) evaluateTektonRunResults(tcs *promoterv1alpha1.TektonCommitStatus, runStatus tekton.RunStatus) ([]promoterv1alpha1.IndividualExpressionResult, bool, bool, error) {
 	// If we have no expressions check conditions to make sure
-	// Even though this function is only ever called in a succeded pipeline, check still is valuable
+	// Even though this function is only ever called in a succeeded pipeline, check still is valuable
 	if tcs.UseRunStatusEvaluation() {
 		condition := meta.FindStatusCondition(runStatus.Conditions, tekton.TektonConditionType)
 		return []promoterv1alpha1.IndividualExpressionResult{}, true, condition != nil && condition.Status == metav1.ConditionTrue, nil
@@ -626,16 +662,13 @@ func (r *TektonCommitStatusReconciler) evaluateTektonRunResults(tcs *promoterv1a
 
 // calculateNewEnvironmentStatus calculates the new environment status for the current environment and determines the phase of the commit status. Returns the new environment
 // and also the description to use for the child commit status.
-func (r *TektonCommitStatusReconciler) calculateNewEnvironmentStatus(tcs *promoterv1alpha1.TektonCommitStatus, currentStatus tekton.TektonRunStatus, branch, sha, runName string) (promoterv1alpha1.TektonCommitStatusEnvironmentStatus, string, error) {
+func (r *TektonCommitStatusReconciler) calculateNewEnvironmentStatus(tcs *promoterv1alpha1.TektonCommitStatus, currentStatus tekton.RunStatus, branch, sha, runName string) (promoterv1alpha1.TektonCommitStatusEnvironmentStatus, string, error) {
 	// Parse the current status of the Tekton resource run
-	newEnvStatus := promoterv1alpha1.TektonCommitStatusEnvironmentStatus{
-		Branch:        branch,
-		TargetedSha:   sha,
-		TektonRunName: runName,
-	}
+	var newEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus
 
 	// Check the conditions of the Tekton Resource which will tell you what the current state is
 	var description string
+	var err error
 	if len(currentStatus.Conditions) > 0 {
 		// Loop through conditions and look for one in which the type is Succeeded.
 		// See below docs for information.
@@ -643,36 +676,7 @@ func (r *TektonCommitStatusReconciler) calculateNewEnvironmentStatus(tcs *promot
 		// https://github.com/tektoncd/pipeline/blob/main/docs/api-spec.md#pipelinerunstatus
 		condition := meta.FindStatusCondition(currentStatus.Conditions, tekton.TektonConditionType)
 		if condition != nil {
-			switch condition.Status {
-			case metav1.ConditionTrue:
-				// Tekton run has completed so parse the results
-				newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseSucceeded
-				individualResults, generalOk, combinedOk, err := r.evaluateTektonRunResults(tcs, currentStatus)
-				if err != nil {
-					return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", err
-				}
-				newEnvStatus.IndividualExpressionResults = individualResults
-				newEnvStatus.ExpressionResult = generalOk
-				if combinedOk {
-					newEnvStatus.Phase = promoterv1alpha1.CommitPhaseSuccess
-					description = fmt.Sprintf("Tekton run %s of kind %s succeeded and all result checks passed on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, branch)
-				} else {
-					newEnvStatus.Phase = promoterv1alpha1.CommitPhaseFailure
-					description = fmt.Sprintf("Tekton run %s of kind %s succeeded but a result check failed on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, branch)
-				}
-			case metav1.ConditionFalse:
-				// Tekton run failed
-				newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseFailed
-				newEnvStatus.Phase = promoterv1alpha1.CommitPhaseFailure
-				description = fmt.Sprintf("Tekton run %s of kind %s failed on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, branch)
-			case metav1.ConditionUnknown:
-				// Tekton run is still running
-				newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseRunning
-				newEnvStatus.Phase = promoterv1alpha1.CommitPhasePending
-				description = fmt.Sprintf("Waiting for Tekton run %s of kind %s to finish running on environment %s", newEnvStatus.TektonRunName, tcs.Spec.TektonResource.Kind, branch)
-			default:
-				return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", fmt.Errorf("condition status was an unknown type of %v", condition.Status)
-			}
+			newEnvStatus, description, err = r.determineEnvironmentPhases(tcs, currentStatus, condition.Status, runName, branch)
 		} else {
 			// If for some reason the Succeeded condition is not listed just set to running and pending
 			newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseRunning
@@ -683,7 +687,52 @@ func (r *TektonCommitStatusReconciler) calculateNewEnvironmentStatus(tcs *promot
 		newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseRunning
 		newEnvStatus.Phase = promoterv1alpha1.CommitPhasePending
 	}
+	if err != nil {
+		return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", fmt.Errorf("failed to determine environment phases: %w", err)
+	}
 
+	newEnvStatus.Branch = branch
+	newEnvStatus.TargetedSha = sha
+	newEnvStatus.TektonRunName = runName
+
+	return newEnvStatus, description, nil
+}
+
+// determineEnvironmentPhases determines what the phase of the CommitStatus and TektonRun are for an environment based on the condition status.
+// It also evaluates the results that are found on a TektonRun
+func (r *TektonCommitStatusReconciler) determineEnvironmentPhases(tcs *promoterv1alpha1.TektonCommitStatus, currentStatus tekton.RunStatus, conditionStatus metav1.ConditionStatus, runName, branch string) (promoterv1alpha1.TektonCommitStatusEnvironmentStatus, string, error) {
+	newEnvStatus := promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}
+	var description string
+	switch conditionStatus {
+	case metav1.ConditionTrue:
+		// Tekton run has completed so parse the results
+		newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseSucceeded
+		individualResults, generalOk, combinedOk, err := r.evaluateTektonRunResults(tcs, currentStatus)
+		if err != nil {
+			return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", fmt.Errorf("failed to evaluate results: %w", err)
+		}
+		newEnvStatus.IndividualExpressionResults = individualResults
+		newEnvStatus.ExpressionResult = generalOk
+		if combinedOk {
+			newEnvStatus.Phase = promoterv1alpha1.CommitPhaseSuccess
+			description = fmt.Sprintf("Tekton run %s of kind %s succeeded and all result checks passed on environment %s", runName, tcs.Spec.TektonResource.Kind, branch)
+		} else {
+			newEnvStatus.Phase = promoterv1alpha1.CommitPhaseFailure
+			description = fmt.Sprintf("Tekton run %s of kind %s succeeded but a result check failed on environment %s", runName, tcs.Spec.TektonResource.Kind, branch)
+		}
+	case metav1.ConditionFalse:
+		// Tekton run failed
+		newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseFailed
+		newEnvStatus.Phase = promoterv1alpha1.CommitPhaseFailure
+		description = fmt.Sprintf("Tekton run %s of kind %s failed on environment %s", runName, tcs.Spec.TektonResource.Kind, branch)
+	case metav1.ConditionUnknown:
+		// Tekton run is still running
+		newEnvStatus.TektonRunPhase = tekton.TektonRunPhaseRunning
+		newEnvStatus.Phase = promoterv1alpha1.CommitPhasePending
+		description = fmt.Sprintf("Waiting for Tekton run %s of kind %s to finish running on environment %s", runName, tcs.Spec.TektonResource.Kind, branch)
+	default:
+		return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", fmt.Errorf("condition status was an unknown type of %v", conditionStatus)
+	}
 	return newEnvStatus, description, nil
 }
 

@@ -86,6 +86,8 @@ func setTektonRunConditionStatus(ctx context.Context, runName, kind string, cond
 			g.Expect(err).NotTo(HaveOccurred(), "Failed to get PipelineRun %s: %v", runName, err)
 			pipelineRun.Status.Conditions = []metav1.Condition{condition}
 			run = &pipelineRun
+		default:
+			GinkgoWriter.Printf("Unknown kind of %s for Tekton resource", kind)
 		}
 		err := k8sClient.Status().Update(ctx, run)
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to update Tekton Run %s of kind %s: %v", runName, kind, err)
@@ -98,7 +100,7 @@ func setTektonRunConditionStatus(ctx context.Context, runName, kind string, cond
 // default to a string result type
 func setTektonRunResults(ctx context.Context, runName, kind string, results map[string]any, types map[string]string) {
 	Eventually(func(g Gomega) {
-		data := []tekton.Data{}
+		data := make([]tekton.Data, 0, len(results))
 		for key, result := range results {
 			bytes, err := json.Marshal(result)
 			g.Expect(err).ToNot(HaveOccurred())
@@ -137,6 +139,8 @@ func setTektonRunResults(ctx context.Context, runName, kind string, results map[
 			pipelineRun.Status.Results = data
 			pipelineRun.Status.Conditions = []metav1.Condition{condition}
 			run = &pipelineRun
+		default:
+			GinkgoWriter.Printf("Unknown kind of %s for Tekton resource", kind)
 		}
 		g.Expect(k8sClient.Status().Update(ctx, run)).To(Succeed())
 	}, constants.EventuallyTimeout).Should(Succeed())
@@ -166,6 +170,7 @@ func setAllEnvironmentsTektonRunResults(ctx context.Context, tcsName, runType st
 	setTektonRunResults(ctx, productionRun, runType, results, resultTypes)
 }
 
+// setExpectedResultsOnTCS is a helper function that recreates the supplied TCS with the expected results set
 func setExpectedResultsOnTCS(ctx context.Context, tcsName string, expectedResults []promoterv1alpha1.ExpectedResult, clearExpression bool) {
 	Eventually(ctx, func(g Gomega) {
 		var tcs promoterv1alpha1.TektonCommitStatus
@@ -179,7 +184,7 @@ func setExpectedResultsOnTCS(ctx context.Context, tcsName string, expectedResult
 			tcs.Spec.Expression = ""
 		}
 		// Delete the TCS as it was causing an error where object was modified when trying to update
-		// so recreate fresh
+		// so recreate it
 		Expect(k8sClient.Delete(ctx, &tcs)).To(Succeed())
 		newTCS := promoterv1alpha1.TektonCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
@@ -501,7 +506,7 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 						Kind:           tekton.TektonKindTask,
 						Name:           "test-task",
 						ServiceAccount: "default",
-						Parameters:     parameters,
+						Params:         parameters,
 					},
 				},
 			}
@@ -522,7 +527,7 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 						Kind:           tekton.TektonKindPipeline,
 						Name:           "test-pipeline",
 						ServiceAccount: "default",
-						Parameters:     parameters,
+						Params:         parameters,
 					},
 				},
 			}
@@ -564,6 +569,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 							err = k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)
 							g.Expect(err).NotTo(HaveOccurred())
 							params = pipelineRun.Spec.Params
+						default:
+							GinkgoWriter.Printf("Unknown kind of %s for Tekton resource", kind)
 						}
 
 						branchFound := false
@@ -607,6 +614,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 								var obj TemplatedObj
 								g.Expect(json.Unmarshal(param.Value.Raw, &obj)).To(Succeed())
 								g.Expect(obj).To(Equal(expectedObj))
+							default:
+								GinkgoWriter.Printf("Unknown parameter %s", param.Name)
 							}
 						}
 						g.Expect(branchFound).To(BeTrue())
@@ -699,10 +708,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 					}, &updated)
 					g.Expect(err).NotTo(HaveOccurred())
 
-					// Should have a status for all 3 environments
 					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-					// Check that each environment is in the phase of succeeded
 					for _, env := range updated.Status.Environments {
 						switch kind {
 						case tekton.TektonKindTask:
@@ -711,6 +718,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 						case tekton.TektonKindPipeline:
 							var pipelineRun tekton.PipelineRun
 							g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)).To(Succeed())
+						default:
+							GinkgoWriter.Printf("Unknown kind of %s for Tekton resource", kind)
 						}
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -727,10 +736,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 					}, &updated)
 					g.Expect(err).NotTo(HaveOccurred())
 
-					// Should have a status for all 3 environments
 					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-					// Check that each environment is in the phase of succeeded
 					for _, env := range updated.Status.Environments {
 						switch kind {
 						case tekton.TektonKindTask:
@@ -750,6 +757,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 							} else {
 								g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &pipelineRun)).To(Succeed())
 							}
+						default:
+							GinkgoWriter.Printf("Unknown kind of %s for Tekton resource", kind)
 						}
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -883,10 +892,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 					}, &updated)
 					g.Expect(err).NotTo(HaveOccurred())
 
-					// Should have a status for all 3 environments
 					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-					// Check that each environment is in the phase of succeeded
 					for _, env := range updated.Status.Environments {
 						g.Expect(env.ExpressionResult).To(Equal(expressionResult))
 						g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseSucceeded))
@@ -1050,10 +1057,8 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 					}, &updated)
 					g.Expect(err).NotTo(HaveOccurred())
 
-					// Should have a status for all 3 environments
 					g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-					// Check that each environment is in the phase of succeeded
 					for _, env := range updated.Status.Environments {
 						g.Expect(env.TektonRunPhase).To(Equal(tekton.TektonRunPhaseSucceeded))
 						g.Expect(env.ExpressionResult).To(Equal(generalResult))
@@ -1176,14 +1181,11 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				}, &updated)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Should have a status for all 3 environments
 				g.Expect(updated.Status.Environments).To(HaveLen(3))
 
-				// Check that each environment is in the phase of succeeded
 				for _, env := range updated.Status.Environments {
 					var taskRun tekton.TaskRun
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: env.TektonRunName}, &taskRun)).To(Succeed())
-
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})

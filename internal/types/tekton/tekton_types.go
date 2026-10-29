@@ -20,9 +20,9 @@ type ObjectReference struct {
 	Name string `json:"name,omitempty"`
 }
 
-// TektonRunResource represents an interface for TektonRunResources
+// RunResource represents an interface for TektonRun resources
 // +kubebuilder:object:generate=false
-type TektonRunResource interface {
+type RunResource interface {
 	GetConditions() []metav1.Condition
 }
 
@@ -36,10 +36,11 @@ type TaskRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
-	Spec   TaskRunSpec     `json:"spec"`
-	Status TektonRunStatus `json:"status,omitempty"`
+	Spec   TaskRunSpec `json:"spec"`
+	Status RunStatus   `json:"status,omitempty"`
 }
 
+// TaskRunSpec is the spec for a TaskRun resource
 type TaskRunSpec struct {
 	ServiceAccountName string          `json:"serviceAccountName,omitempty"`
 	TaskRef            ObjectReference `json:"taskRef,omitempty"`
@@ -55,21 +56,23 @@ type PipelineRun struct {
 	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   PipelineRunSpec `json:"spec"`
-	Status TektonRunStatus `json:"status,omitempty"`
+	Status RunStatus       `json:"status,omitempty"`
 }
 
+// PipelineRunSpec is the spec for a PipelineRun resource
 type PipelineRunSpec struct {
 	TaskRunTemplate PipelineTaskRunTemplate `json:"taskRunTemplate,omitempty"`
 	PipelineRef     ObjectReference         `json:"pipelineRef,omitempty"`
 	Params          []Data                  `json:"params,omitempty"`
 }
 
+// PipelineTaskRunTemplate is the field where TaskRun specific settings are included for Pipelines
 type PipelineTaskRunTemplate struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
-// TektonRunStatus is an object that represents the status of a TaskRun or PipelineRun
-type TektonRunStatus struct {
+// RunStatus is an object that represents the status of a TaskRun or PipelineRun
+type RunStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions"`
 	// +optional
@@ -115,11 +118,12 @@ type PipelineRunList struct {
 	Items           []PipelineRun `json:"items"`
 }
 
-// Below are two helper functions that allow for the interface to be satisfied
+// GetConditions returns the conditions on the TaskRun so it can fulfil the interface
 func (t *TaskRun) GetConditions() []metav1.Condition {
 	return t.Status.Conditions
 }
 
+// GetConditions returns the conditions on the PipelineRun so it can fulfil the interface
 func (p *PipelineRun) GetConditions() []metav1.Condition {
 	return p.Status.Conditions
 }
