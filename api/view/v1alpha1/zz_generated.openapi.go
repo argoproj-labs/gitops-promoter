@@ -4543,7 +4543,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguratio
 				Properties: map[string]spec.Schema{
 					"gitRepository": {
 						SchemaProps: spec.SchemaProps{
-							Description: "GitRepository controls which git_operations_* and scm_calls_* metrics carry the git_repository and git_repository_namespace labels. These labels multiply series by the number of GitRepositories, and histograms multiply them again by their bucket count. All: every metric carries the labels. Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated across repositories (the labels are present but empty), so percentiles stay available at much lower cardinality. None: no metric carries them. Changing this value resets the affected metrics.",
+							Description: "GitRepository controls which of git_operations_total, git_operations_duration_seconds, scm_calls_total, and scm_calls_duration_seconds set the git_repository and git_repository_namespace labels. These labels multiply series by the number of GitRepositories, and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges never carry these labels. Where a metric doesn't set the labels, the label names remain with empty values, aggregating series across repositories. All: all four metrics set the labels. Counters: only the two _total counters set them, so percentiles from the _duration_seconds histograms stay available at much lower cardinality. None: none of the four metrics set them. Changing this value resets the affected metrics.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

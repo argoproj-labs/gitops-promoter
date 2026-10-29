@@ -130,30 +130,34 @@ type MetricsConfiguration struct {
 
 // MetricsLabelsConfiguration selects which metrics carry each configurable Prometheus label.
 type MetricsLabelsConfiguration struct {
-	// GitRepository controls which git_operations_* and scm_calls_* metrics carry the
-	// git_repository and git_repository_namespace labels. These labels multiply series by the
-	// number of GitRepositories, and histograms multiply them again by their bucket count.
-	// All: every metric carries the labels.
-	// Counters: only the _total counters carry them. The _duration_seconds histograms are aggregated
-	// across repositories (the labels are present but empty), so percentiles stay available at much
-	// lower cardinality.
-	// None: no metric carries them.
+	// GitRepository controls which of git_operations_total, git_operations_duration_seconds,
+	// scm_calls_total, and scm_calls_duration_seconds set the git_repository and
+	// git_repository_namespace labels. These labels multiply series by the number of GitRepositories,
+	// and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges
+	// never carry these labels.
+	// Where a metric doesn't set the labels, the label names remain with empty values, aggregating
+	// series across repositories.
+	// All: all four metrics set the labels.
+	// Counters: only the two _total counters set them, so percentiles from the _duration_seconds
+	// histograms stay available at much lower cardinality.
+	// None: none of the four metrics set them.
 	// Changing this value resets the affected metrics.
 	// +optional
 	// +kubebuilder:default=All
 	GitRepository MetricLabelMode `json:"gitRepository,omitempty"`
 }
 
-// MetricLabelMode selects which metrics carry a Prometheus label.
+// MetricLabelMode selects which of the affected metrics set a Prometheus label's value. Metrics that
+// don't set it keep the label name with an empty value.
 // +kubebuilder:validation:Enum=All;Counters;None
 type MetricLabelMode string
 
 const (
-	// MetricLabelModeAll keeps the label on every metric.
+	// MetricLabelModeAll sets the label's value on every affected metric.
 	MetricLabelModeAll MetricLabelMode = "All"
-	// MetricLabelModeCounters keeps the label only on counters.
+	// MetricLabelModeCounters sets the label's value only on the affected counters and leaves it empty on the others.
 	MetricLabelModeCounters MetricLabelMode = "Counters"
-	// MetricLabelModeNone removes the label from every metric.
+	// MetricLabelModeNone leaves the label's value empty on every affected metric.
 	MetricLabelModeNone MetricLabelMode = "None"
 )
 
