@@ -23,6 +23,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+      - name: Cache Makefile tools
+        uses: ./.github/actions/cache-make-tools
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -190,6 +192,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+      - name: Cache Makefile tools
+        uses: ./.github/actions/cache-make-tools
       - name: go mod tidy
         run: |
           go mod tidy
@@ -247,6 +251,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+      - name: Cache Makefile tools
+        uses: ./.github/actions/cache-make-tools
       - name: Run Nilaway
         run: make nilaway-no-test
   deadcode:
@@ -260,5 +266,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
+      - name: Cache Makefile tools
+        uses: ./.github/actions/cache-make-tools
       - name: Run deadcode
         run: make deadcode

@@ -1,0 +1,21 @@
+name: Cache Makefile tools
+description: >-
+  Restore the tools the Makefile installs under bin/ (controller-gen, kustomize, setup-envtest and the
+  Kubernetes binaries it downloads, golangci-lint, nilaway, deadcode, mockery) so a job does not rebuild
+  them from the module proxy on every run. The Makefile names each binary after its version and stamps
+  the Go version it was built with, so a restored tool is used only when both still match; anything
+  missing or stale is installed as before. bin/manager is excluded: the unit-test job caches it on its
+  own key.
+runs:
+  using: composite
+  steps:
+    - name: Restore Makefile tools from cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          bin/
+          !bin/manager
+        # Tool versions and ENVTEST_K8S_VERSION live in the Makefile; the Go toolchain version lives in go.mod.
+        key: ${{ runner.os }}-make-tools-${{ hashFiles('Makefile', 'go.mod') }}
+        restore-keys: |
+          ${{ runner.os }}-make-tools-
