@@ -15,7 +15,12 @@ runs:
         path: |
           bin/
           !bin/manager
+        # The key carries the workflow and job because each job installs a different set of tools and
+        # actions/cache saves only on a miss: with one shared key the quickest job (Dead Code Analysis,
+        # which installs deadcode alone) wins the save, every other job then gets an exact hit on that
+        # entry and never saves, and the cache holds a single tool for as long as the hash is stable.
+        # Matrix legs of one job install the same tools, so sharing a key between them is fine.
         # Tool versions and ENVTEST_K8S_VERSION live in the Makefile; the Go toolchain version lives in go.mod.
-        key: ${{ runner.os }}-make-tools-${{ hashFiles('Makefile', 'go.mod') }}
+        key: ${{ runner.os }}-make-tools-${{ github.workflow }}-${{ github.job }}-${{ hashFiles('Makefile', 'go.mod') }}
         restore-keys: |
-          ${{ runner.os }}-make-tools-
+          ${{ runner.os }}-make-tools-${{ github.workflow }}-${{ github.job }}-
