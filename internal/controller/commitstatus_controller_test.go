@@ -26,8 +26,10 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -141,37 +143,30 @@ var _ = Describe("CommitStatus Controller", func() {
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind CommitStatus")
 
+			repo := scmTarget.newRepo(ctx, typeNamespacedName.Name)
+
 			scmSecret = &v1.Secret{
 				TypeMeta:  metav1.TypeMeta{},
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Data:      nil,
+				Data:      scmTarget.secretData(repo),
 			}
 
 			scmProvider = &promoterv1alpha1.ScmProvider{
 				TypeMeta:  metav1.TypeMeta{},
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: resourceName},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-				Status: promoterv1alpha1.ScmProviderStatus{},
+				Spec:      scmTarget.scmProviderSpec(repo, resourceName),
+				Status:    promoterv1alpha1.ScmProviderStatus{},
 			}
 
 			gitRepo = &promoterv1alpha1.GitRepository{
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: typeNamespacedName.Name,
-						Name:  typeNamespacedName.Name,
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: typeNamespacedName.Name,
-					},
-				},
+				Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+					Kind: promoterv1alpha1.ScmProviderKind,
+					Name: typeNamespacedName.Name,
+				}),
 			}
 
 			commitStatus = &promoterv1alpha1.CommitStatus{
@@ -206,6 +201,79 @@ var _ = Describe("CommitStatus Controller", func() {
 
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When publishTo is not set", func() {
+		It("should default to scm", func() {
+			ctx := context.Background()
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "default-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+				},
+			}
+			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
+
+			// The CRD default fills spec.publishTo on create.
+			Expect(cs.Spec.PublishTo).To(HaveValue(Equal([]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM})))
+		})
+	})
+
+	Context("When publishTo is empty", func() {
+		It("should record status without needing an SCM provider", func() {
+			ctx := context.Background()
+			// The GitRepository does not exist. A reconcile that called the SCM provider would fail.
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "skip-scm-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cs) })
+
+			Eventually(func(g Gomega) {
+				got := &promoterv1alpha1.CommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "skip-scm-commit-status"}, got)).To(Succeed())
+				g.Expect(got.Spec.PublishTo).To(HaveValue(BeEmpty()))
+				g.Expect(got.Status.Sha).To(Equal(got.Spec.Sha))
+				g.Expect(got.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(got.Status.Id).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When publishTo is invalid", func() {
+		It("should reject an unknown destination", func() {
+			ctx := context.Background()
+			cs := &promoterv1alpha1.CommitStatus{
+				Name:      "invalid-publishto-commit-status",
+				Namespace: "default",
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+					Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+					Name:                "test-commit-status",
+					Description:         "Test commit status",
+					PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{"promoter"},
+				},
+			}
+			err := k8sClient.Create(ctx, cs)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.publishTo"))
 		})
 	})
 
@@ -358,35 +426,27 @@ var _ = Describe("CommitStatus Controller", func() {
 // Note: URL is set to empty by default and can be customized in tests
 func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
+	repo := scmTarget.newRepo(ctx, name)
 
 	scmSecret := &v1.Secret{
 		Name:      name,
 		Namespace: "default",
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
+		Spec:      scmTarget.scmProviderSpec(repo, name),
 	}
 
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      name,
 		Namespace: "default",
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: "test-owner",
-				Name:  "test-repo",
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: name,
+		}),
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{

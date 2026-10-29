@@ -32,6 +32,12 @@ Open [http://localhost:5173](http://localhost:5173) in your browser. This will h
 make run
 ```
 
+## Routes
+
+- `/promotion-strategies`: tiles for the strategies in the selected namespace.
+- `/promotion-strategies/:namespace/:name`: the promotion explorer (commit history grid plus promotion map) for one strategy. The selected cell, the environments the history is filtered to (selected on the map or in the Environment filter), and the view are kept in the `commit`, `env`, `node`, and `view` query parameters (`node` is a single branch or several separated by commas; `view=manifest` shows the live manifest instead of the explorer).
+- `/promotion-strategies/:namespace/:name/history/*`: redirects to the explorer route, preserving the query string.
+
 ## Development
 
 ### Build Dashboard Only

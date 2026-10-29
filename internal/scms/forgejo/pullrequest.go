@@ -183,12 +183,15 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 	}
 
 	start := time.Now()
-	_, resp, err := pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
+	merged, resp, err := pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
+	}
+	if !merged {
+		return scms.MergeResult{}, fmt.Errorf("forgejo refused to merge pull request %d: %s", prID, resp.Status)
 	}
 	if resp != nil {
 		logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -274,10 +277,6 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest promoterv1alpha1.Pul
 		}
 		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
 	}
-	if existingPR == nil {
-		return scms.GetPullRequestResult{}, nil
-	}
-
 	return mapForgejoPullRequestToGetResult(existingPR), nil
 }
 
@@ -331,10 +330,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 
 // AddLabels adds labels to a pull request on Forgejo, creating missing repository labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
@@ -364,10 +359,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alph
 
 // RemoveLabels removes labels from a pull request on Forgejo.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
@@ -463,18 +454,24 @@ func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, 
 	return nameToID, nil
 }
 
+// labelPageSize is the largest page the labels endpoint serves.
+const labelPageSize = 50
+
 func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, error) {
 	var allLabels []*forgejo.Label
 	page := 1
 	for {
 		repoLabels, resp, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{
-			Page: page, PageSize: 50,
+			Page: page, PageSize: labelPageSize,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list repository labels: %w", err)
 		}
 		allLabels = append(allLabels, repoLabels...)
-		if len(repoLabels) == 0 || resp == nil || page >= resp.LastPage {
+		// The labels endpoint sends X-Total-Count but no Link header, so the SDK never learns the last page
+		// (resp.LastPage stays 0). A page shorter than the page size is the last one; a Link header, when a
+		// server does send one, ends the loop too.
+		if len(repoLabels) < labelPageSize || (resp != nil && resp.LastPage > 0 && page >= resp.LastPage) {
 			break
 		}
 		page++

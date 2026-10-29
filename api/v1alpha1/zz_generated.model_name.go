@@ -61,6 +61,11 @@ func (in AzureDevOpsRepo) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in AzureWorkloadIdentity) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.AzureWorkloadIdentity"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in BasicAuth) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.BasicAuth"
 }
@@ -78,6 +83,16 @@ func (in BitbucketCloud) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in BitbucketCloudRepo) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.BitbucketCloudRepo"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in BitbucketDataCenter) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.BitbucketDataCenter"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in BitbucketDataCenterRepo) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.BitbucketDataCenterRepo"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -141,6 +156,11 @@ func (in ChangeTransferPolicyStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterAzureDevOps) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterAzureDevOps"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProvider) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProvider"
 }
@@ -153,6 +173,11 @@ func (in ClusterScmProviderConfiguration) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProviderList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterScmProviderSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderSpec"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -411,6 +436,11 @@ func (in HTTPRequestSpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in HTTPRequestVariablesSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.HTTPRequestVariablesSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in HealthyDryShas) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.HealthyDryShas"
 }
@@ -628,6 +658,11 @@ func (in ScmProviderObjectReference) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ScmProviderSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ScmProviderSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScmProviderSpecCommon) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScmProviderSpecCommon"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

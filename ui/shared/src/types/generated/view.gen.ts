@@ -68,6 +68,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef?: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
              * @default {}
@@ -111,6 +113,13 @@ export type components = {
              */
             project: string;
         };
+        /** @description AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on ClusterScmProvider. */
+        AzureWorkloadIdentity: {
+            /** @description ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as. Defaults to the AZURE_CLIENT_ID environment variable of the controller. */
+            clientID?: string;
+            /** @description TenantID is the Microsoft Entra tenant ID of the identity. Defaults to the AZURE_TENANT_ID environment variable of the controller. */
+            tenantID?: string;
+        };
         /**
          * @description BasicAuth defines HTTP Basic Authentication.
          *
@@ -144,7 +153,10 @@ export type components = {
             secretRef: components["schemas"]["LocalObjectReference"];
         };
         /** @description BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings. */
-        BitbucketCloud: Record<string, never>;
+        BitbucketCloud: {
+            /** @description Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty. */
+            domain?: string;
+        };
         /** @description BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name. */
         BitbucketCloudRepo: {
             /**
@@ -157,6 +169,27 @@ export type components = {
              * @default
              */
             owner: string;
+        };
+        /** @description BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration. */
+        BitbucketDataCenter: {
+            /**
+             * @description Domain is the Bitbucket DataCenter/Server domain, such as "bitbucket.mycompany.com".
+             * @default
+             */
+            domain: string;
+        };
+        /** @description BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug. */
+        BitbucketDataCenterRepo: {
+            /**
+             * @description Name is the repository slug (e.g. "my-repo").
+             * @default
+             */
+            name: string;
+            /**
+             * @description Project is the Bitbucket project key (e.g. "MYPROJ").
+             * @default
+             */
+            project: string;
         };
         /** @description ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy. */
         ChangeRequestPolicyCommitStatusPhase: {
@@ -290,6 +323,18 @@ export type components = {
             /** @description PullRequest is the state of the pull request that was created for this ChangeTransferPolicy. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
         };
+        /** @description ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with authentication that is only safe on a cluster-scoped resource, which only cluster admins can create. */
+        ClusterAzureDevOps: {
+            /** @description Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty. */
+            domain?: string;
+            /**
+             * @description Organization is the Azure DevOps organization name.
+             * @default
+             */
+            organization: string;
+            /** @description WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. When set, secretRef must be omitted. */
+            workloadIdentity?: components["schemas"]["AzureWorkloadIdentity"];
+        };
         /** @description ClusterScmProvider is the Schema for the clusterscmproviders API. */
         ClusterScmProvider: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -299,9 +344,30 @@ export type components = {
             /** @default {} */
             metadata?: components["schemas"]["ObjectMeta"];
             /** @default {} */
-            spec?: components["schemas"]["ScmProviderSpec"];
+            spec?: components["schemas"]["ClusterScmProviderSpec"];
             /** @default {} */
             status?: components["schemas"]["ScmProviderStatus"];
+        };
+        /** @description ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can create. */
+        ClusterScmProviderSpec: {
+            /** @description AzureDevOps required configuration for Azure DevOps as the SCM provider */
+            azureDevOps?: components["schemas"]["ClusterAzureDevOps"];
+            /** @description BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider */
+            bitbucketCloud?: components["schemas"]["BitbucketCloud"];
+            /** @description BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider */
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenter"];
+            /** @description Fake required configuration for Fake as the SCM provider */
+            fake?: components["schemas"]["Fake"];
+            /** @description Forgejo required configuration for Forgejo as the SCM provider */
+            forgejo?: components["schemas"]["Forgejo"];
+            /** @description Gitea required configuration for Gitea as the SCM provider */
+            gitea?: components["schemas"]["Gitea"];
+            /** @description GitHub required configuration for GitHub as the SCM provider */
+            github?: components["schemas"]["GitHub"];
+            /** @description GitLab required configuration for GitLab as the SCM provider */
+            gitlab?: components["schemas"]["GitLab"];
+            /** @description SecretRef contains the credentials required to auth to a specific provider */
+            secretRef?: components["schemas"]["LocalObjectReference"];
         };
         /** @description CommitBranchState defines the state of a branch in a ChangeTransferPolicy. */
         CommitBranchState: {
@@ -407,6 +473,8 @@ export type components = {
              * @default
              */
             phase: string;
+            /** @description PublishTo is the set of destinations for this commit status. - "scm": post the status to the SCM provider The default is ["scm"]. An empty list keeps the status in Kubernetes and does not post it to the SCM. Omitting the field uses the default. The controller posts to the SCM when "scm" is present. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description SHA is the commit SHA to set the status on. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
              * @default
@@ -531,6 +599,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
              * @default {}
@@ -771,6 +841,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description Target specifies which commit SHA to validate with the expression. - "active": Validates the currently active/deployed commit (default behavior) - "proposed": Validates the proposed commit that will be promoted
              *
@@ -870,6 +942,7 @@ export type components = {
         GitRepositorySpec: {
             azureDevOps?: components["schemas"]["AzureDevOpsRepo"];
             bitbucketCloud?: components["schemas"]["BitbucketCloudRepo"];
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenterRepo"];
             fake?: components["schemas"]["FakeRepo"];
             forgejo?: components["schemas"]["ForgejoRepo"];
             gitea?: components["schemas"]["GiteaRepo"];
@@ -960,6 +1033,7 @@ export type components = {
          *       - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
          *       - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
          *       - {{ index .TriggerVariables "key" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile
+         *       - {{ index .HTTPRequestVariables "key" }}: result of httpRequest.httpRequestVariables.expression for this reconcile (nil when not configured)
          *
          *     Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
          *
@@ -1010,6 +1084,8 @@ export type components = {
             headerTemplates?: {
                 [key: string]: string;
             };
+            /** @description HTTPRequestVariables optionally holds an expr expression that produces a free-form map of variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate as {{ index .HTTPRequestVariables "key" }}. Evaluated before the HTTP request (same timing as the templates above). Available in both polling and trigger modes. See HTTPRequestVariablesSpec for details. */
+            httpRequestVariables?: components["schemas"]["HTTPRequestVariablesSpec"];
             /**
              * @description Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
              *
@@ -1025,6 +1101,22 @@ export type components = {
              * @default
              */
             urlTemplate: string;
+        };
+        /**
+         * @description HTTPRequestVariablesSpec holds an expr expression that computes a free-form map of variables made available to all httpRequest templates as .HTTPRequestVariables.
+         *
+         *     The expression is evaluated before the HTTP request is made — the same timing as the templates above — so it shares their variable set (see HTTPRequestSpec for the full list). It is available in both polling and trigger modes, unlike TriggerVariables which require trigger mode.
+         *
+         *     The expression must return a map/object. Every key is then accessible in templates via {{ index .HTTPRequestVariables "key" }}.
+         *
+         *     The built-in expr function urlValuesEncode(map) URL-encodes a map of query-parameter key/value pairs and returns a percent-encoded key=value&… string suitable for appending to a URL.
+         */
+        HTTPRequestVariablesSpec: {
+            /**
+             * @description Expression is an expr expression that must return a map/object. The result is exposed to all httpRequest Go templates as .HTTPRequestVariables. Available variables match those documented on HTTPRequestSpec.
+             * @default
+             */
+            expression: string;
         };
         /** @description HealthyDryShas is a list of dry commits that were observed to be healthy in the environment. */
         HealthyDryShas: {
@@ -1654,6 +1746,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /** @description Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC. */
             timezone?: string;
         };
@@ -1758,6 +1852,8 @@ export type components = {
             azureDevOps?: components["schemas"]["AzureDevOps"];
             /** @description BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider */
             bitbucketCloud?: components["schemas"]["BitbucketCloud"];
+            /** @description BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider */
+            bitbucketDataCenter?: components["schemas"]["BitbucketDataCenter"];
             /** @description Fake required configuration for Fake as the SCM provider */
             fake?: components["schemas"]["Fake"];
             /** @description Forgejo required configuration for Forgejo as the SCM provider */
@@ -1913,6 +2009,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
         };
         /** @description TimedCommitStatusStatus defines the observed state of TimedCommitStatus. */
         TimedCommitStatusStatus: {
@@ -2084,6 +2182,8 @@ export type components = {
              *       - {{ index .TriggerVariables "key" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)
              *       - {{ index .SuccessVariables "key" }}: result of success.when.variables.expression this reconcile (nil if not configured)
              *
+             *     In polling mode with reportOn: proposed, a reconcile for a SHA that already succeeded skips the HTTP request and evaluates success.when.variables.expression with Response nil. Guard reads of Response with Response != nil and fall back to SuccessOutput, so .SuccessVariables keeps the values from the request. A fixed fallback value replaces them, and an expression that fails without a Response leaves .SuccessVariables unset.
+             *
              *     Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
              *
              *     If not specified, defaults to empty string.
@@ -2113,6 +2213,8 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
             /**
              * @description ReportOn specifies which commit SHA to report the CommitStatus on. - "proposed": Reports on the proposed hydrated commit SHA (default) - "active": Reports on the active hydrated commit SHA
              *

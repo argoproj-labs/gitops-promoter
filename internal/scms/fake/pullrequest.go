@@ -90,15 +90,24 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 // Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
-	mutexPR.Lock()
-	defer mutexPR.Unlock()
-	if pullRequests == nil {
-		pullRequests = make(map[string]pullRequestProviderState)
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	hasCommits, err := pr.hasCommitsBetween(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, base, head)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare %s and %s: %w", base, head, err)
+	}
+	if !hasCommits {
+		return "", fmt.Errorf("no commits between %s and %s", base, head)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		pullRequests = make(map[string]pullRequestProviderState)
 	}
 
 	pullRequestCopy := pullRequest.DeepCopy()
@@ -120,6 +129,48 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	return id, nil
+}
+
+// hasCommitsBetween reports whether head has commits that base lacks, mirroring the check real SCMs
+// apply before opening a pull request. Missing branches are not this check's concern and report true.
+func (pr *PullRequest) hasCommitsBetween(ctx context.Context, owner, name, base, head string) (bool, error) {
+	repoURL := fmt.Sprintf("http://localhost:%d/%s/%s", 5000+ginkgov2.GinkgoParallelProcess(), owner, name)
+	baseRef, headRef := "refs/heads/"+base, "refs/heads/"+head
+
+	out, err := pr.runGitCmd(ctx, "", "ls-remote", repoURL, baseRef, headRef)
+	if err != nil {
+		return false, err
+	}
+	shas := map[string]string{}
+	for line := range strings.Lines(out) {
+		if sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t"); ok {
+			shas[ref] = sha
+		}
+	}
+	baseSha, headSha := shas[baseRef], shas[headRef]
+	if baseSha == "" || headSha == "" {
+		return true, nil
+	}
+	if baseSha == headSha {
+		return false, nil
+	}
+
+	gitPath, err := os.MkdirTemp("", "*")
+	if err != nil {
+		return false, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(gitPath) }()
+	if _, err := pr.runGitCmd(ctx, gitPath, "init", "--bare", "."); err != nil {
+		return false, err
+	}
+	if _, err := pr.runGitCmd(ctx, gitPath, "fetch", "--filter=blob:none", repoURL, "+"+baseRef+":refs/base", "+"+headRef+":refs/head"); err != nil {
+		return false, err
+	}
+	count, err := pr.runGitCmd(ctx, gitPath, "rev-list", "--count", "refs/base..refs/head")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(count) != "0", nil
 }
 
 // Update updates an existing pull request with the specified title and description.
@@ -578,9 +629,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 // AddLabels adds labels to a pull request in the fake provider.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
 	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
-	if len(labelNames) == 0 {
-		return nil
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -606,9 +654,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 // RemoveLabels removes labels from a pull request in the fake provider.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
 	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
-	if len(labelNames) == 0 {
-		return nil
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

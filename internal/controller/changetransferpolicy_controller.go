@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -40,7 +39,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
@@ -202,15 +200,13 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	// Snapshot the persisted status (from the Get above) before calculateStatus overwrites it,
 	// so promotion lifecycle events can be emitted only on actual state transitions.
-	prevStatus := ctp.Status.DeepCopy()
-	if prevStatus == nil {
-		prevStatus = &promoterv1alpha1.ChangeTransferPolicyStatus{}
-	}
+	var prevStatus promoterv1alpha1.ChangeTransferPolicyStatus
+	ctp.Status.DeepCopyInto(&prevStatus)
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
-	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
+	r.emitPromotionLifecycleEvents(&ctp, &prevStatus)
 
 	if err := r.deleteSupersededRestoreActiveCommits(ctx, &ctp, gitOperations); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to delete superseded RestoreActiveCommits: %w", err)
@@ -440,7 +436,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 			if ctpName == "" {
 				return nil
 			}
-			return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: rc.Namespace, Name: ctpName}}}
+			return []reconcile.Request{{Namespace: rc.Namespace, Name: ctpName}}
 		}), builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(event.CreateEvent) bool { return true },
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -824,6 +820,21 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		return tooManyPRsError(pr)
 	}
 
+	if pr.Items[0].Status.ID == "" && pr.Items[0].Status.State == "" {
+		// A successor PR object exists (e.g. just created to replace a merged/closed one), but the
+		// PullRequest controller hasn't populated its status yet. Clear any last-known status rather
+		// than copying this empty one over it: an all-empty PullRequestCommonStatus (every field is
+		// omitempty) marshals to "{}" in the server-side-apply body, which structured-merge turns into
+		// a JSON null on re-apply, and unlike status.proposed.dry (+nullable), the CRD schema for
+		// status.pullRequest rejects a null value. This is safe: pullRequestUpdateEnqueuesChangeTransferPolicyPredicate
+		// re-triggers a reconcile once the new PR's status is populated (ID transitions from "" to non-empty),
+		// so the real status is filled in on the very next reconcile instead of being lost.
+		logger.V(4).Info("Successor PR status not yet populated, clearing stale PR status in CTP",
+			"prName", pr.Items[0].Name)
+		ctp.Status.PullRequest = nil
+		return nil
+	}
+
 	if ctp.Status.PullRequest == nil {
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
@@ -969,8 +980,9 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 // the finalizer release, typically two or three passes. The note's content is fixed once the PR is merged
 // (spec.commit.message is never rewritten for a merged PR and the merge commit is immutable), so an existing
 // note is reused rather than rewritten, which avoids a redundant notes-ref push per pass. GetHistoryNote
-// reads the remote notes ref and does not need the merge commit locally; when the note already exists,
-// both the branch fetch and the ChangeTransferPolicyHistory wake-up are skipped.
+// reads the notes ref FetchNotes mirrored from the remote at the start of the reconcile, so a note whose
+// push failed is not mistaken for one that exists, and it does not need the merge commit locally; when
+// the note already exists, both the branch fetch and the ChangeTransferPolicyHistory wake-up are skipped.
 //
 // The merge commit may not be in the local clone yet: CloneRepo is blob-less and the active branch is only
 // fetched later in the reconcile by calculateStatus, so on the first pass after an external merge the active
@@ -1418,6 +1430,8 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.BitbucketCloud != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.BitbucketDataCenter != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketDataCenter.Project, gitRepo.Spec.BitbucketDataCenter.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.AzureDevOps != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	default:
@@ -1818,15 +1832,13 @@ func (r *ChangeTransferPolicyReconciler) ensureRestoreActiveCommitForRestoreTip(
 
 	name := utils.KubeSafeUniqueName(ctp.Name + "-restore-" + state.RestoredFrom)
 	rc := &promoterv1alpha1.RestoreActiveCommit{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ctp.Namespace,
-			Labels: utils.StampInstanceIDLabel(map[string]string{
-				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ps.Name),
-				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-			}),
-		},
+		Name:      name,
+		Namespace: ctp.Namespace,
+		Labels: utils.StampInstanceIDLabel(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ps.Name),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
 		Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
 			Branch:               ctp.Spec.ActiveBranch,
@@ -2041,21 +2053,20 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
 
 	if ctp.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(ctp, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
+		if !controllerutil.AddFinalizer(ctp, finalizer) {
+			// Already has the finalizer.
 			return false, nil
 		}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(ctp, finalizer) {
-				return r.Update(ctx, ctp) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
+		// A single attempt, not a Get-retry loop: on conflict Reconcile returns the error and the
+		// standard workqueue rate limiter retries with a fresh top-level Get on the next Reconcile
+		// call. Re-Getting here would overwrite ctp -- including status.conditions, which Reconcile
+		// already reset via RemoveReadyCondition -- with whatever was last persisted, silently
+		// reintroducing a stale Ready condition from an earlier failed reconcile.
+		if err := r.Update(ctx, ctp); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
 	}
 
 	// If we're here, the object is being deleted
@@ -2070,16 +2081,11 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 		return false, fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
 	}
 
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
+	// A single attempt, not a Get-retry loop: see the add-finalizer path above.
+	if controllerutil.RemoveFinalizer(ctp, finalizer) {
+		if err := r.Update(ctx, ctp); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
-		if controllerutil.RemoveFinalizer(ctp, finalizer) {
-			return r.Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
-		}
-		return nil
-	}); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil
 }
@@ -2110,11 +2116,14 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
 //   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
+//   - Update when the Ready condition's status changes (including appearing or disappearing). The CTP
+//     inherits a not-Ready PR's condition, so without this a CTP whose PR recovers from a transient
+//     failure would stay not-Ready until its periodic requeue.
 //
 // Does not enqueue CTP on status-only updates, including:
 //   - status.url (stable or changed)
 //   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
-//   - status.conditions (Ready message, reason, lastTransitionTime)
+//   - other status.conditions changes (Ready message, reason, lastTransitionTime)
 //   - status.observedGeneration
 //   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
@@ -2144,9 +2153,21 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
 				return true
 			}
+			if readyConditionStatus(oldPR) != readyConditionStatus(newPR) {
+				return true
+			}
 			return false
 		},
 	}
+}
+
+// readyConditionStatus returns the status of pr's Ready condition, or "" when it has none.
+func readyConditionStatus(pr *promoterv1alpha1.PullRequest) metav1.ConditionStatus {
+	ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+	if ready == nil {
+		return ""
+	}
+	return ready.Status
 }
 
 // metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time

@@ -21,11 +21,17 @@ spec:
   forgejo:
     domain: forgejo.example.com
 
-  bitbucketCloud: {}
+  bitbucketCloud:
+    domain: bitbucket.example.com # Optional, leave empty for default bitbucket.org
 
   azureDevOps:
     organization: example-org
     domain: dev.azure.com # Optional
+    # Optional, authenticates with the controller's Azure workload identity instead of a secret. Omit secretRef and
+    # domain when set. Only supported on ClusterScmProvider. Use {} for the identity the webhook injects.
+    workloadIdentity:
+      clientID: 00000000-0000-0000-0000-000000000000 # Optional, defaults to AZURE_CLIENT_ID of the controller
+      tenantID: 00000000-0000-0000-0000-000000000000 # Optional, defaults to AZURE_TENANT_ID of the controller
 
   gitea:
     domain: gitea.example.com

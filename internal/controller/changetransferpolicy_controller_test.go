@@ -99,7 +99,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			})
 
 			AfterEach(func() {
@@ -223,7 +223,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert", Namespace: "default"},
+					Name: name + "-revert", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -286,7 +286,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(noteOut).NotTo(BeEmpty())
 				// Find a note that carries Promoter-restore-unblocked-at.
 				foundUnblock := false
-				for _, line := range strings.Split(strings.TrimSpace(noteOut), "\n") {
+				for line := range strings.SplitSeq(strings.TrimSpace(noteOut), "\n") {
 					parts := strings.Fields(line)
 					if len(parts) < 2 {
 						continue
@@ -565,7 +565,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				rc := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-open", Namespace: "default"},
+					Name: name + "-revert-open", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -666,7 +666,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
 				older := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-old", Namespace: "default"},
+					Name: name + "-revert-old", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -686,7 +686,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("Restoring further back, which supersedes the first RestoreActiveCommit")
 				newer := &promoterv1alpha1.RestoreActiveCommit{
-					ObjectMeta: metav1.ObjectMeta{Name: name + "-revert-new", Namespace: "default"},
+					Name: name + "-revert-new", Namespace: "default",
 					Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: restoreStrategyName},
 						Branch:               testBranchDevelopment,
@@ -771,7 +771,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -844,6 +844,97 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		Context("When an open PullRequest's Ready condition changes", func() {
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var prNamespacedName types.NamespacedName
+
+			BeforeEach(func() {
+				var name string
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-pr-ready-flip", "default")
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Name = utils.ChangeTransferPolicyNameForEnvironment(name+"-ps", testBranchDevelopment)
+				// No auto-merge and no gates: once the PR is open, nothing but the PR itself (or the 5m periodic
+				// requeue) re-enqueues the CTP.
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+				typeNamespacedName = types.NamespacedName{Name: changeTransferPolicy.Name, Namespace: "default"}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName := scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prNamespacedName = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+			})
+
+			AfterEach(func() {
+				deleteRestoreActiveCommitsForPolicy(ctx, changeTransferPolicy.Name, changeTransferPolicy.Namespace)
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			// setPullRequestReady overwrites the PR's Ready condition status, standing in for a PR reconcile that
+			// failed (False) and a later one that recovered (True). The PullRequest controller doesn't reconcile on
+			// its own status changes, so the overwrite sticks.
+			setPullRequestReady := func(status metav1.ConditionStatus) {
+				GinkgoHelper()
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					ready.Status = status
+					ready.Reason = "TestOverride"
+					ready.Message = "set by test"
+					g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			ctpReadyStatus := func(g Gomega) metav1.ConditionStatus {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+				ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				return ready.Status
+			}
+
+			It("becomes Ready again as soon as its PullRequest recovers", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+				By("Opening a PR")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prNamespacedName, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(meta.IsStatusConditionTrue(pr.Status.Conditions, string(promoterConditions.Ready))).To(BeTrue())
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Failing the PR and letting the CTP inherit it")
+				setPullRequestReady(metav1.ConditionFalse)
+				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionFalse))
+					g.Expect(changeTransferPolicy.Status.Conditions).To(ContainElement(
+						HaveField("Reason", string(promoterConditions.PullRequestNotReady))))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Recovering the PR without enqueueing the CTP")
+				setPullRequestReady(metav1.ConditionTrue)
+				// Well inside the CTP's 5m periodic requeue: only the PR update can bring it back this fast.
+				Eventually(func(g Gomega) {
+					g.Expect(ctpReadyStatus(g)).To(Equal(metav1.ConditionTrue))
+				}, 30*time.Second).Should(Succeed())
+			})
+		})
+
 		Context("When emitting promotion lifecycle events", func() {
 			var name string
 			var scmSecret *v1.Secret
@@ -909,8 +1000,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionStartedReason)).To(BeTrue())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionBlockedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionStartedReason))
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionBlockedReason))
 					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeFalse())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -932,7 +1023,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 					var eventList v1.EventList
 					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeTrue())
+					expectEventEmitted(g, hasEventWithReason(eventList, name, constants.PromotionCompletedReason))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -968,7 +1059,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1064,7 +1155,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1252,7 +1343,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
@@ -1345,30 +1436,30 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Marking PR for deletion")
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					g.Expect(err).To(Succeed())
+				// The CTP still has a pending promotion, so once the closed PR is gone it creates a new one
+				// with the same name. Track the closed PR by UID so the steps below never act on its successor.
+				closedPRUID := createdPR.UID
 
-					err = k8sClient.Delete(ctx, &createdPR)
-					g.Expect(err).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Marking PR for deletion")
+				err := k8sClient.Delete(ctx, &createdPR, ctrlclient.Preconditions{UID: &closedPRUID})
+				// NotFound or a UID conflict means the closed PR is already gone.
+				if !errors.IsNotFound(err) && !errors.IsConflict(err) {
+					Expect(err).To(Succeed())
+				}
 
 				By("Verifying finalizer is removed and PR can be deleted")
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      createdPR.Name,
-						Namespace: createdPR.Namespace,
-					}, &createdPR)
-					// PR should be deleted (not found)
-					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					var pr promoterv1alpha1.PullRequest
+					err := k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(&createdPR), &pr)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.UID).NotTo(Equal(closedPRUID), "the closed PullRequest still exists")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", func() {
+			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1529,7 +1620,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, 3*time.Second, 200*time.Millisecond).Should(Succeed())
 			})
 
-			It("should delete PR quickly when externally merged on SCM and CTP reconciles", func() {
+			It("should delete PR quickly when externally merged on SCM and CTP reconciles", Label(fakeSCMOnlyLabel), func() {
 				setPullRequestRequeueDuration(ctx, time.Hour)
 
 				By("Adding a pending commit and waiting for open PR")
@@ -1622,7 +1713,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 				prKey = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(prName),
 					Namespace: "default",
@@ -1731,7 +1822,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("writes a history note for an externally squash-merged PR and builds history without trailers", func() {
+			It("writes a history note for an externally squash-merged PR and builds history without trailers", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1796,7 +1887,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			It("skips the note but still releases the PR when it was closed without merging", func() {
+			It("skips the note but still releases the PR when it was closed without merging", Label(fakeSCMOnlyLabel), func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
@@ -1878,7 +1969,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prName = scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 				prKey = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
 
 				gitPath, err = os.MkdirTemp("", "*")
@@ -1909,7 +2000,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			// Regression for open-PR steady state with blocked promotion: routine PR status
 			// writes used to Owns(PullRequest)-enqueue CTP, which SSA-reapplied the PR and
 			// retriggered PR controller SCM sync in a CTP→PR→CTP feedback loop.
-			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", func() {
+			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", Label(fakeSCMOnlyLabel), func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
@@ -1952,7 +2043,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 			})
 
-			It("should still hit SCM when the PR spec changes", func() {
+			It("should still hit SCM when the PR spec changes", Label(fakeSCMOnlyLabel), func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, _ := waitForOpenPRWithID()
@@ -2056,13 +2147,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
 				Expect(secondDrySha).NotTo(Equal(firstDrySha))
 
-				By("Waiting for the controller to advance the CTP and report Ready=True without an SSA validation error")
+				By("Waiting for the full status apply to record the transition without an SSA validation error")
 				// Without the fix the full status SSA is rejected with 422 and the
-				// fallback writes only Ready=False with reason=ReconciliationError and
-				// the apiserver error in the message. With the fix the controller
-				// successfully applies status and Ready=True. We assert both the
-				// positive end state and the absence of the bug-specific error text in
-				// the Ready condition message.
+				// conditions-only fallback leaves Proposed.Dry on the previous SHA,
+				// leaves Proposed.Note populated, and writes Ready=False with the
+				// apiserver error in the message. The positive signal is that full
+				// status landing: Dry advances and Note is cleared. Ready=True is the
+				// wrong signal here — the CTP inherits PullRequestNotReady whenever
+				// the pull request reconcile is still retrying, which is routine
+				// under SCM or apiserver faults and is unrelated to this apply bug.
 				Eventually(func(g Gomega) {
 					var ctp promoterv1alpha1.ChangeTransferPolicy
 					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
@@ -2073,10 +2166,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
 					g.Expect(ready.Message).NotTo(ContainSubstring("must be of type object"),
 						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
-					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
-						"Ready should be True after the populated → empty proposed.note transition, got reason=%q message=%q", ready.Reason, ready.Message)
-					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationSuccess)))
-					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+
+					// A conditions-only fallback cannot change these fields, so both
+					// landing means the full status apply was accepted.
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
+						"controller should have advanced Proposed.Dry.Sha to the new dry commit")
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -2241,7 +2337,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_ = k8sClient.Delete(ctx, changeTransferPolicy)
 			})
 
-			It("does not call SCM Merge with a stale PullRequest.spec.mergeSha", func() {
+			It("does not call SCM Merge with a stale PullRequest.spec.mergeSha", Label(fakeSCMOnlyLabel), func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 				defer func() { _ = os.RemoveAll(gitPath) }()
@@ -2285,10 +2381,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(pushGitNote(ctx, gitPath, strings.TrimSpace(hydratedSha), proposedDrySha)).To(Succeed())
 
 				prKey := types.NamespacedName{
-					Name: utils.KubeSafeUniqueName(utils.GetPullRequestName(
-						gitRepo.Spec.Fake.Owner,
-						gitRepo.Spec.Fake.Name,
-						changeTransferPolicy.Spec.ProposedBranch,
+					Name: utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch,
 						changeTransferPolicy.Spec.ActiveBranch,
 					)),
 					Namespace: "default",
@@ -2732,6 +2825,47 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 
+	readyPR := func(status metav1.ConditionStatus, reason string) *promoterv1alpha1.PullRequest {
+		return &promoterv1alpha1.PullRequest{
+			Generation: 1,
+			Status: promoterv1alpha1.PullRequestStatus{
+				State: promoterv1alpha1.PullRequestOpen,
+				ID:    "1",
+				Conditions: []metav1.Condition{
+					{Type: string(promoterConditions.Ready), Status: status, Reason: reason, ObservedGeneration: 1},
+				},
+			},
+		}
+	}
+
+	It("enqueues when the Ready condition recovers", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition fails", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		newPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the Ready condition first appears", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Status.Conditions = nil
+		newPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores Ready reason and message churn when the status is unchanged", func() {
+		oldPR := readyPR(metav1.ConditionFalse, string(promoterConditions.ReconciliationError))
+		oldPR.Status.Conditions[0].Message = "first failure"
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].Message = "second failure"
+		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
 			Generation: 1,
@@ -2929,10 +3063,7 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(pushGitNote(ctx, gitPath, hydratedSha, drySha)).To(Succeed())
 				sendWebhookForPush(ctx, beforeSha, proposedBranch)
 
-				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
-					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
-					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
-				))
+				prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch))
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
@@ -2965,10 +3096,7 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sendWebhookForPush(ctx, strings.TrimSpace(beforeSha), proposedBranch)
 
-				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
-					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
-					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
-				))
+				prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch))
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
@@ -3029,11 +3157,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3084,11 +3212,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3194,11 +3322,11 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
 						metadataPath,
 					)
-					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+					expectEventEmitted(g, slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
 						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
 							e.Reason == constants.MissingProposedHydratorMetadataReason &&
 							e.Message == expectedEventMsg
-					})).To(BeTrue())
+					}))
 
 					prList := promoterv1alpha1.PullRequestList{}
 					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
@@ -3299,6 +3427,17 @@ func deleteRestoreActiveCommitsForPolicy(ctx context.Context, ctpName, namespace
 	}
 }
 
+// expectEventEmitted asserts found, which says whether a spec's expected event is present. Events are
+// best-effort, so with faults injected it asserts nothing: a faulted Event write is dropped for good, and an
+// injected failure can change which events a controller emits (one sent only on a healthy-to-failed
+// transition, for example, is skipped when an injected fault already failed the object).
+func expectEventEmitted(g Gomega, found bool) {
+	if faultsInjected {
+		return
+	}
+	g.Expect(found).To(BeTrue(), "expected event was not emitted")
+}
+
 // hasEventWithReason reports whether eventList contains an event for the named involved object
 // with the given reason.
 func hasEventWithReason(eventList v1.EventList, involvedName, reason string) bool {
@@ -3316,19 +3455,14 @@ func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, 
 //nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
+	repo := scmTarget.newRepo(ctx, name)
 	gitRepo := &promoterv1alpha1.GitRepository{
 		Name:      name,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
+		Spec: scmTarget.gitRepositorySpec(repo, promoterv1alpha1.ScmProviderObjectReference{
+			Kind: promoterv1alpha1.ScmProviderKind,
+			Name: name,
+		}),
 	}
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -3336,18 +3470,15 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: namespace,
-		Data:      nil,
+		Data:      scmTarget.secretData(repo),
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		TypeMeta:  metav1.TypeMeta{},
 		Name:      name,
 		Namespace: namespace,
-		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
-			Fake:      &promoterv1alpha1.Fake{},
-		},
-		Status: promoterv1alpha1.ScmProviderStatus{},
+		Spec:      scmTarget.scmProviderSpec(repo, name),
+		Status:    promoterv1alpha1.ScmProviderStatus{},
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
@@ -3507,8 +3638,10 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(entry.RestoreUnblockedAt).To(BeNil())
 		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
 			"the original promotion's merge time is kept on a restore entry")
-		committed := strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha))
-		Expect(entry.Active.Hydrated.CommitTime.Format(time.RFC3339)).To(Equal(committed),
+		// git prints a zero offset as +00:00 where Go's RFC3339 prints Z, so compare instants, not strings.
+		committed, err := time.Parse(time.RFC3339, strings.TrimSpace(mustRunGit(workDir, "show", "-s", "--format=%cI", commitSha)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entry.Active.Hydrated.CommitTime.Time).To(BeTemporally("==", committed),
 			"the entry's own commit time is what readers use as the restore time")
 	})
 
@@ -3847,13 +3980,17 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 
 	It("writes the note as soon as the PR reports the merge, without releasing the finalizer", func() {
 		By("Confirming the controller's clone has not fetched the merge yet")
-		// The clone predates the external merge; origin/<active> only advances when FetchBranch runs.
-		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).NotTo(Equal(squashSha))
+		// The clone predates the external merge. The tracking ref is either absent or still the
+		// pre-merge tip; it only advances when FetchBranch runs.
+		activeTip, err := runGitCmd(ctx, gitOps.ClonePath(), "rev-parse", "--verify", "--quiet", "origin/"+activeBranch)
+		if err == nil {
+			Expect(strings.TrimSpace(activeTip)).NotTo(Equal(squashSha))
+		}
 
 		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
 		r := newReconciler(pr)
 
-		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Verifying the active branch was fetched so the merge commit could be read")
@@ -3945,7 +4082,14 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ActiveBranch)
 		Expect(err).NotTo(HaveOccurred())
-		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctp.Spec.ProposedBranch)
+		// SCMs refuse to open a PR when the source branch has no commits the target lacks.
+		_, err = runGitCmd(ctx, gitPath, "checkout", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "-c", "user.name=testuser", "-c", "user.email=testemail@test.com", "commit", "--allow-empty", "-m", "diverge from "+ctp.Spec.ActiveBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", ctp.Spec.ProposedBranch)
 		Expect(err).NotTo(HaveOccurred())
 		originalMergeSha = strings.TrimSpace(originalMergeSha)
 
@@ -3960,7 +4104,7 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		ctp.Status.Proposed.Dry.Sha = strings.Repeat("d", 40)
 		ctp.Status.Proposed.Hydrated.Sha = strings.Repeat("b", 40)
 
-		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+		prName := utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
 		pr = &promoterv1alpha1.PullRequest{
 			Name:       prName,
@@ -4184,18 +4328,16 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 	It("blocks without touching git while a RestoreActiveCommit's restore is still pending", func() {
 		ctx := context.Background()
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", "environment/dev"),
-				Namespace: "default",
-			},
-			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
+			Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", "environment/dev"),
+			Namespace: "default",
+			Spec:      promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/dev"},
 		}
 		ctp.Status.Proposed.Dry.Sha = proposedDry
 		// Never cloned. Reaching CommitIsAncestor or RestoreBlockState would fail this call.
-		gitRepo := &promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo", Namespace: "default"}}
+		gitRepo := &promoterv1alpha1.GitRepository{Name: "repo", Namespace: "default"}
 		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: "/nonexistent/skip-after-revert"}, "default/skip-after-revert-pending")
 		rc := &promoterv1alpha1.RestoreActiveCommit{
-			ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+			Name: "restore-dev", Namespace: "default",
 			Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 				Branch:               "environment/dev",
@@ -4282,7 +4424,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			mustRunGit(workDir, "push", "origin", "side")
 
 			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{Name: "skip-revert-repo", Namespace: "default"},
+				Name: "skip-revert-repo", Namespace: "default",
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "skip-revert-repo"},
 				},
@@ -4294,11 +4436,9 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
 			ctp = &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", branch),
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
+				Name:      utils.ChangeTransferPolicyNameForEnvironment("skip-ps", branch),
+				Namespace: "default",
+				Spec:      promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: branch},
 			}
 			ctp.Status.Active.Hydrated.Sha = activeSha
 			ctp.Status.Proposed.Hydrated.Sha = parentSha
@@ -4379,7 +4519,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 		It("does not block from a RestoreActiveCommit that already has status when the tip is not a restore", func() {
 			rc := &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: "restore-dev", Namespace: "default"},
+				Name: "restore-dev", Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               ctp.Spec.ActiveBranch,
@@ -4450,7 +4590,7 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 
 		supersededRevert := func(name, activeSha string) *promoterv1alpha1.RestoreActiveCommit {
 			return &promoterv1alpha1.RestoreActiveCommit{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Name: name, Namespace: "default",
 				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "skip-ps"},
 					Branch:               branch,
@@ -4482,5 +4622,62 @@ var _ = Describe("skipPullRequestAfterRevert", func() {
 			err := c.Get(ctx, ctrlclient.ObjectKeyFromObject(rc), &promoterv1alpha1.RestoreActiveCommit{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
+	})
+})
+
+var _ = Describe("setPullRequestState with a not-yet-reconciled successor PR", func() {
+	It("clears the last-known PullRequest status instead of overwriting it with an all-empty one", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-ctp",
+				Namespace: "default",
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel: "stale-pr-status-ps",
+				},
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch: "environment/development",
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				// Last-known status from the previous PR, which has since been merged/closed and
+				// replaced by a new PR object below.
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:    "41",
+					State: promoterv1alpha1.PullRequestMerged,
+				},
+			},
+		}
+
+		// A brand new PullRequest was just created for this CTP. Its status hasn't been populated
+		// by the PullRequest controller yet, so Status.ID/State/etc. are all still zero-valued -
+		// this is the race window the bug lives in.
+		pr := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "stale-pr-status-pr",
+				Namespace: ctp.Namespace,
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+				},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				State: promoterv1alpha1.PullRequestOpen,
+			},
+		}
+
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr).Build()
+		r := &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+		Expect(r.setPullRequestState(ctx, ctp)).To(Succeed())
+
+		// Regression guard for kubernetes/kubernetes#135841: an all-empty PullRequestCommonStatus
+		// (every field is omitempty) marshals to "{}" in the server-side-apply body, which
+		// structured-merge turns into a JSON null on re-apply. Unlike status.proposed.dry (marked
+		// +nullable), the CRD schema for status.pullRequest rejects a null value, so the apply is
+		// rejected by the API server. The CTP must clear the field to nil - not copy the new PR's
+		// still-empty status over the last-known one - so the apply stays valid until the
+		// PullRequest controller populates the new PR's status (which re-triggers a CTP reconcile).
+		Expect(ctp.Status.PullRequest).To(BeNil())
 	})
 })

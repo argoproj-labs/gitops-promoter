@@ -47,11 +47,11 @@ var _ = Describe("removeUnreferencedSecretFinalizers", func() {
 			WithScheme(utils.GetScheme()).
 			WithObjects(secret("a-stuck"), secret("b-stale"), secret("c-referenced")).
 			WithInterceptorFuncs(interceptor.Funcs{
-				Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 					if obj.GetName() == "a-stuck" {
 						return errors.New("simulated update failure")
 					}
-					return cl.Update(ctx, obj, opts...)
+					return cl.Patch(ctx, obj, patch, opts...)
 				},
 			}).
 			Build()

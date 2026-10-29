@@ -36,6 +36,15 @@ markdown_extensions:
         args: []
         kwds:
           case: lower
+validation:
+  # Raise these from INFO to WARNING so `make lint-docs` fails on them.
+  nav:
+    omitted_files: warn
+    absolute_links: warn
+  links:
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
 nav:
   - Overview: index.md
   - Architecture: architecture.md
@@ -74,15 +83,18 @@ nav:
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
       - Rolling Back an Environment: advanced-usage/rolling-back.md
+      - Dynamic Pull Request Labels: advanced-usage/pull-request-labels.md
   - CRD Specs: crd-specs.md
   - Contributing:
       - Overview: contributing/index.md
       - Developing a CommitStatus: contributing/developing-a-commitstatus.md
       - Developing the Argo CD Extension: contributing/developing-the-argocd-extension.md
       - Adding an SCM Provider: contributing/adding-an-scm-provider.md
+      - Test SCM Server: contributing/test-scm-server.md
       - Writing CEL Validation Rules: contributing/writing-cel-rules.md
       - Continuous Integration: contributing/ci.md
       - UI TypeScript types: contributing/ui-types.md
+      - Backporting Fixes: contributing/backporting-fixes.md
       - Cutting a Release: contributing/cutting-a-release.md
       - Using Finalizers: contributing/using-finalizers.md
       - Maintaining CRDs: contributing/maintaining-crds.md

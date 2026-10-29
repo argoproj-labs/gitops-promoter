@@ -49,10 +49,12 @@ import (
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/k8sfault"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,6 +105,12 @@ var (
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
 	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	// settingsMgr is the manager the suite's reconcilers use. It reads
+	// ControllerConfiguration from the informer cache, not the API.
+	settingsMgr *settings.Manager
+	// faultsInjected is true when K8S_FAULT_PROBABILITY or PROMOTER_TEST_SCM_FAULT_PROBABILITY is
+	// enabled. Specs then stop asserting best-effort side effects (see expectEventEmitted).
+	faultsInjected bool
 )
 
 func TestControllers(t *testing.T) {
@@ -119,7 +127,10 @@ func TestControllers(t *testing.T) {
 	RunSpecs(t, "Controller Suite", c)
 }
 
-var _ = BeforeSuite(func() {
+// Process 1 sets up state shared by every process before any process starts its own setup or specs.
+var _ = SynchronizedBeforeSuite(func() {
+	installSCMFaultRulesFromEnv(context.Background())
+}, func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), zap.Level(zapcore.Level(-4)), func(o *zap.Options) {
 		o.TimeEncoder = zapcore.RFC3339NanoTimeEncoder
 	}))
@@ -168,6 +179,13 @@ var _ = BeforeSuite(func() {
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
 
+	// k8sClient is already built from cfg, and client.New copies the config, so wrapping here reaches only
+	// clients created afterwards: the reconcilers, and the partitioned manager tests pass the same cfg.
+	if probability, enabled := k8sfault.MaybeWrap(cfg); enabled {
+		GinkgoWriter.Printf("fault injection enabled for reconciler writes to the Kubernetes API: probability=%.3f\n", probability)
+		faultsInjected = true
+	}
+
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
 		Client: promotercache.ClientOptions(),
@@ -183,12 +201,13 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
+	if _, ok := scmFaultProbabilityFromEnv(); ok {
+		faultsInjected = true
+	}
+	Expect(k8sClient.Create(ctx, controllerConfigurationForTests())).To(Succeed())
 	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
-	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
+	settingsMgr = settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
 
@@ -337,6 +356,9 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
+	By("configuring SCM test target")
+	scmTarget = initSCMTargetFromEnv(ctx)
+
 	go func() {
 		defer GinkgoRecover()
 		err = multiClusterManager.Start(ctx)
@@ -386,6 +408,10 @@ var _ = BeforeSuite(func() {
 		return multiClusterManager.GetLocalManager().GetClient().List(ctx, list)
 	}, constants.EventuallyTimeout, 100*time.Millisecond).Should(Succeed(),
 		"ArgoCDCommitStatus informer should be ready before tests run")
+})
+
+var _ = BeforeEach(func() {
+	skipIfFakeSCMOnly()
 })
 
 var _ = AfterSuite(func() {
@@ -455,9 +481,10 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+// testGitRepoCloneURL is the clone URL for the test repository. In fake mode it points at the
+// in-process gitkit server; in scmserver mode it is an authenticated HTTPS URL for the selected provider.
 func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
-	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+	return scmTarget.cloneURL(repo)
 }
 
 func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
@@ -712,10 +739,9 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	// --short=5 aligns with shipped ControllerConfiguration pullRequest.template (trunc 5 on dry SHA).
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=5", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-	shortSha = strings.TrimSpace(shortSha)
+	// Matches the shipped pullRequest.template's trunc 5 on the dry SHA. Not `git rev-parse --short=5`, which
+	// lengthens the prefix when 5 characters are ambiguous in this clone.
+	shortSha := sha[:5]
 
 	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
@@ -791,6 +817,52 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	return sha, shortSha
 }
 
+// controllerConfigurationForTests returns the shipped ControllerConfiguration for a test environment's controllers.
+// With faults injected, the shipped 5m slow delay would stall a spec whose reconciles hit maxFastAttempts errors in a
+// row, so it retries well within the specs' timeouts instead.
+func controllerConfigurationForTests() *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	cc, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
+	Expect(err).NotTo(HaveOccurred())
+	if faultsInjected {
+		cc = withSlowDelay(cc, "5s")
+	}
+	return cc
+}
+
+// withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.
+func withSlowDelay(cc *promoterv1alpha1.ControllerConfiguration, delay string) *promoterv1alpha1.ControllerConfiguration {
+	GinkgoHelper()
+	data, err := json.Marshal(cc)
+	Expect(err).NotTo(HaveOccurred())
+	var obj map[string]any
+	Expect(json.Unmarshal(data, &obj)).To(Succeed())
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			if _, ok := v["slowDelay"]; ok {
+				v["slowDelay"] = delay
+			}
+			for _, child := range v {
+				walk(child)
+			}
+		case []any:
+			for _, child := range v {
+				walk(child)
+			}
+		default:
+			// Scalars have no children.
+		}
+	}
+	walk(obj)
+	data, err = json.Marshal(obj)
+	Expect(err).NotTo(HaveOccurred())
+	out := &promoterv1alpha1.ControllerConfiguration{}
+	Expect(json.Unmarshal(data, out)).To(Succeed())
+	return out
+}
+
 func runGitCmd(ctx context.Context, directory string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdoutBuf bytes.Buffer
@@ -801,6 +873,16 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
+		// Exempt fixture traffic from scmserver fault rules, which are meant for the controllers.
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=" + scmserver.NoFaultHeader + ": 1",
+	}
+	if ca := os.Getenv("GIT_SSL_CAINFO"); ca != "" {
+		cmd.Env = append(cmd.Env, "GIT_SSL_CAINFO="+ca)
+	}
+	if ca := os.Getenv("SSL_CERT_FILE"); ca != "" {
+		cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+ca)
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -845,8 +927,13 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 	return string(payloadBytes)
 }
 
-// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior
+// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior.
+// When the suite targets scmserver, the server already delivers real provider-shaped push
+// webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	if scmTarget.sendsOwnWebhooks() {
+		return
+	}
 	// Build GitHub-style webhook payload
 	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
 

@@ -31,9 +31,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/gitops-promoter_0.45.0_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/gitops-promoter_0.46.0_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -69,9 +69,9 @@ server:
         - name: EXTENSION_NAME
           value: gitops-promoter
         - name: EXTENSION_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/gitops-promoter-argocd-extension.tar.gz
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/gitops-promoter-argocd-extension.tar.gz
         - name: EXTENSION_CHECKSUM_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/gitops-promoter_0.45.0_checksums.txt
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/gitops-promoter_0.46.0_checksums.txt
       volumeMounts:
         - name: extensions
           mountPath: /tmp/extensions/
@@ -144,6 +144,8 @@ spec:
         {{- end }}
         {{- end }}
 ```
+
+The extension also persists the selected commit and environment of the promotion explorer in the `psCommit` and `psEnv` query parameters, and the environments the history is filtered to in the `psNode` query parameter (a single branch, or several separated by commas), so a URL copied from the extension reopens the same selection.
 
 ## Deep Links
 

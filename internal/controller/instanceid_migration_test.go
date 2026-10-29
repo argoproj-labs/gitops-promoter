@@ -121,9 +121,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		ctx := migCtx
 		wave0 := migrationWave0
 
-		controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(migClient.Create(ctx, controllerConfiguration)).To(Succeed())
+		Expect(migClient.Create(ctx, controllerConfigurationForTests())).To(Succeed())
 
 		cancelDefault := startPartitionedManager(ctx, migCfg, "default", nil)
 

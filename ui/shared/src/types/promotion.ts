@@ -17,7 +17,7 @@ export type RelativeTimeAgo = string;
 export type PromotionStrategy = PromotionStrategyResource;
 
 /**
- * Per-environment status assembled for Card/PSData (from CTP status + spec branch).
+ * Per-environment status assembled for PSData (from CTP status + spec branch).
  * `history` is not part of the EnvironmentStatus CRD schema; it is re-projected onto the
  * environment from the per-environment ChangeTransferPolicyHistory resource in the bundle.
  */
@@ -85,14 +85,16 @@ export type CommitStatusManagerKind =
   | 'GitCommitStatus'
   | 'ScheduledCommitStatus'
   | 'ArgoCDCommitStatus'
-  | 'WebRequestCommitStatus';
+  | 'WebRequestCommitStatus'
+  | 'DependentsSuccessfulCommitStatus';
 
 export type CommitStatusManager =
   | components['schemas']['TimedCommitStatus']
   | components['schemas']['GitCommitStatus']
   | components['schemas']['ScheduledCommitStatus']
   | components['schemas']['ArgoCDCommitStatus']
-  | components['schemas']['WebRequestCommitStatus'];
+  | components['schemas']['WebRequestCommitStatus']
+  | components['schemas']['DependentsSuccessfulCommitStatus'];
 
 /** {@link BranchCommitStatus} stamped with the manager join computed by `mergeCommitStatusManagers`. */
 export interface EnrichedBranchCommitStatus extends BranchCommitStatus {
@@ -114,14 +116,6 @@ export interface HealthSummaryResult {
   successCount: number;
   totalCount: number;
   shouldDisplay: boolean;
-}
-
-export interface DeploymentCommit {
-  sha: string;
-  author: string;
-  subject: string;
-  body: string;
-  date: Rfc3339DateTime | '';
 }
 
 export interface PrTooltip {

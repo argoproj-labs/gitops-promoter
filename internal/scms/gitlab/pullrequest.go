@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -254,7 +253,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		logger.V(4).Info("gitlab response status", "status", "nil response")
-		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
+		return scms.FindOpenResult{}, fmt.Errorf("received nil response from GitLab API: %w", err)
 	}
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {
@@ -282,16 +281,19 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
-// mergedTargetSHA returns the commit the merge produced on the target branch. A squashed merge
-// reports its commit under squash_commit_sha and leaves merge_commit_sha empty.
+// mergedTargetSHA returns the commit the merge produced on the target branch. With GitLab's default
+// merge method, a squashed merge request reports both squash_commit_sha (the squashed source commit)
+// and merge_commit_sha (the merge commit that became the target branch tip), so merge_commit_sha
+// wins. Only a fast-forward-only project leaves merge_commit_sha empty, and then the squash commit
+// is the tip.
 func mergedTargetSHA(mr *gitlab.MergeRequest) string {
 	if mr == nil {
 		return ""
 	}
-	if mr.SquashCommitSHA != "" {
-		return mr.SquashCommitSHA
+	if mr.MergeCommitSHA != "" {
+		return mr.MergeCommitSHA
 	}
-	return mr.MergeCommitSHA
+	return mr.SquashCommitSHA
 }
 
 // Get fetches a pull request by status.id.
@@ -359,10 +361,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 // AddLabels adds labels to a merge request on GitLab, creating missing project labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
@@ -384,10 +382,6 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, prObj v1alpha1.PullRequ
 }
 
 func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string, add bool) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
 		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)

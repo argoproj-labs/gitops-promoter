@@ -693,6 +693,9 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		WithName(commitStatusName).
 		WithDescription(desc).
 		WithPhase(phase)
+	if argoCDCommitStatus.Spec.PublishTo != nil {
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*argoCDCommitStatus.Spec.PublishTo)
+	}
 
 	// Render URL from template if it exists
 	if argoCDCommitStatus.Spec.URL.Template != "" {

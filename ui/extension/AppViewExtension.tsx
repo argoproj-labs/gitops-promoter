@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
-import Card from '@components-lib/components/Card';
-import HistoryView from '@components-lib/components/HistoryView/HistoryView';
-import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
+import PromotionExplorer from '@components-lib/components/PromotionExplorer/PromotionExplorer';
+import type { CellSelection } from '@components-lib/components/PromotionExplorer/PromotionExplorer';
+import {
+  formatEnvSelection,
+  parseEnvSelection,
+} from '@components-lib/components/PromotionExplorer/helpers';
 import { PromotionStrategy } from '@shared/types/promotion';
-import type { PromotionStrategyDetails } from '@shared/types/view';
+import type { PromotionStrategyDetails, ScmProviderSpec } from '@shared/types/view';
 import { mergeCommitStatusManagers } from '@shared/utils/PSData';
 import { environmentsFromBundle } from '@shared/utils/environments';
 import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import { scmProviderSpecFromBundle, sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
-
-type ViewMode = 'card' | 'history';
 
 const GROUP = 'view.promoter.argoproj.io';
 const KIND = 'PromotionStrategyDetails';
@@ -21,6 +22,7 @@ const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface StrategyItem {
   promotionStrategy: PromotionStrategy;
+  scmProvider?: ScmProviderSpec;
 }
 
 function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
@@ -30,6 +32,7 @@ function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManag
     scheduledCommitStatuses: bundle.scheduledCommitStatuses,
     argoCDCommitStatuses: bundle.argoCDCommitStatuses,
     webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+    dependentsSuccessfulCommitStatuses: bundle.dependentsSuccessfulCommitStatuses,
   };
 }
 
@@ -53,6 +56,7 @@ function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
   sortStrategyCommitStatuses(promotionStrategy);
   return {
     promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
+    scmProvider: scmProviderSpecFromBundle(bundle),
   };
 }
 
@@ -78,6 +82,7 @@ const setParam = (name: string) => {
 
 const COMMIT_PARAM = 'psCommit';
 const ENV_PARAM = 'psEnv';
+const NODE_PARAM = 'psNode';
 
 const getSelectionFromUrl = (): CellSelection | null => {
   const params = new URLSearchParams(window.location.search);
@@ -94,6 +99,20 @@ const setSelectionInUrl = (selection: CellSelection | null) => {
   } else {
     url.searchParams.delete(COMMIT_PARAM);
     url.searchParams.delete(ENV_PARAM);
+  }
+  window.history.replaceState(null, '', url.toString());
+};
+
+const getSelectedEnvsFromUrl = (): string[] =>
+  parseEnvSelection(new URLSearchParams(window.location.search).get(NODE_PARAM));
+
+const setSelectedEnvsInUrl = (branches: string[]) => {
+  const url = new URL(window.location.href);
+  const value = formatEnvSelection(branches);
+  if (value) {
+    url.searchParams.set(NODE_PARAM, value);
+  } else {
+    url.searchParams.delete(NODE_PARAM);
   }
   window.history.replaceState(null, '', url.toString());
 };
@@ -130,7 +149,6 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>(() => (getSelectionFromUrl() ? 'history' : 'card'));
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -222,8 +240,8 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
   return (
     <div className="extension-container">
-      <div className="gp-controls">
-        {strategies.length > 1 && (
+      {strategies.length > 1 && (
+        <div className="gp-controls">
           <div className="strategy-dropdown-wrapper">
             <Select<SelectOption>
               classNamePrefix="strategy-dropdown"
@@ -236,43 +254,24 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
                 const key = option ? option.value : '';
                 setSelectedKey(key);
                 setParam(key);
+                setSelectionInUrl(null);
+                setSelectedEnvsInUrl([]);
                 setStored(application.metadata.namespace, application.metadata.name, key);
               }}
             />
           </div>
-        )}
-        {selected && (
-          <div className="gp-view-toggle" role="tablist" aria-label="View">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'card'}
-              className={`gp-view-toggle__btn ${view === 'card' ? 'gp-view-toggle__btn--active' : ''}`}
-              onClick={() => setView('card')}
-            >
-              Overview
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'history'}
-              className={`gp-view-toggle__btn ${view === 'history' ? 'gp-view-toggle__btn--active' : ''}`}
-              onClick={() => setView('history')}
-            >
-              History
-            </button>
-          </div>
-        )}
-      </div>
-      {selected && view === 'card' && (
-        <Card environments={selected.promotionStrategy.status?.environments || []} />
+        </div>
       )}
-      {selected && view === 'history' && (
-        <div className="gp-history-wrapper">
-          <HistoryView
+      {selected && (
+        <div className="gp-explorer-wrapper">
+          <PromotionExplorer
+            key={selectedKey}
             strategy={selected.promotionStrategy}
+            scmProvider={selected.scmProvider}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}
+            initialSelectedEnvs={getSelectedEnvsFromUrl()}
+            onSelectedEnvsChange={setSelectedEnvsInUrl}
           />
         </div>
       )}

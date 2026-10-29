@@ -35,8 +35,8 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 	// Heavy corruption case: multiple CTPs reconciling against the same repo + activeBranch. Each CTP
 	// has its own proposed branch (so pushes target different remote refs and there is no remote-push
 	// contention) and, thanks to the per-CTP clone key, its own on-disk clone. The concurrent
-	// checkout -B / merge / push operations are therefore isolated and every clone stays healthy. If
-	// the clones were shared, these would interleave on one .git and produce index.lock/fsck damage.
+	// merge and push operations are therefore isolated and every clone stays healthy. If the clones
+	// were shared, these would interleave on one repository and produce ref or object damage.
 	It("keeps each CTP's clone healthy under concurrent merges", func() {
 		const (
 			goroutines = 8

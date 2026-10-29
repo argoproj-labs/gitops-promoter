@@ -89,14 +89,3 @@
 .strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar-corner {
   background: colors.$argo-color-gray-1;
 }
-
-.strategy-json-editor-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  font-size: 16px;
-  color: colors.$argo-color-gray-6;
-  font-family: 'Heebo', sans-serif;
-  font-weight: 500;
-}

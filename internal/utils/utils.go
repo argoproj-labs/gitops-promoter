@@ -75,6 +75,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		(repositoryRef.Spec.Forgejo != nil && provider.GetSpec().Forgejo == nil) ||
 		(repositoryRef.Spec.Gitea != nil && provider.GetSpec().Gitea == nil) ||
 		(repositoryRef.Spec.BitbucketCloud != nil && provider.GetSpec().BitbucketCloud == nil) ||
+		(repositoryRef.Spec.BitbucketDataCenter != nil && provider.GetSpec().BitbucketDataCenter == nil) ||
 		(repositoryRef.Spec.AzureDevOps != nil && provider.GetSpec().AzureDevOps == nil) ||
 		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
@@ -108,6 +109,15 @@ func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient cli
 		secretNamespace = settingsMgr.GetControllerNamespace()
 	} else {
 		secretNamespace = scmProvider.GetNamespace()
+	}
+
+	if scmProvider.GetSpec().SecretRef == nil {
+		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
+		if azdo := scmProvider.GetSpec().AzureDevOps; azdo != nil && azdo.WorkloadIdentity != nil {
+			// Azure DevOps workload identity authenticates with the controller's identity, not a secret.
+			return scmProvider, &v1.Secret{}, nil
+		}
+		return nil, nil, fmt.Errorf("%s %q has no secretRef", kind, scmProvider.GetName())
 	}
 
 	var secret v1.Secret

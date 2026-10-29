@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -65,7 +66,9 @@ func GetClient(secret v1.Secret, domain string) (*gitlab.Client, error) {
 		return nil, fmt.Errorf("secret %q is missing required data key 'token'", secret.Name)
 	}
 
-	opts := []gitlab.ClientOptionFunc{}
+	// client-go defaults to its own pooled transport; use http.DefaultTransport so the CA pool
+	// installed by utils.ConfigureDefaultTransportFromEnv applies to GitLab as well.
+	opts := []gitlab.ClientOptionFunc{gitlab.WithHTTPClient(&http.Client{Transport: http.DefaultTransport})}
 	if domain != "" {
 		opts = append(opts, gitlab.WithBaseURL(fmt.Sprintf("https://%s/api/v4", domain)))
 	}

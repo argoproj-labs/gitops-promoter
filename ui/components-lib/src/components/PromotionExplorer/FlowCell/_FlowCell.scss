@@ -1,0 +1,490 @@
+@use '../tokens' as *;
+
+.cell {
+  appearance: none;
+  background: transparent;
+  border: 1px solid $stroke;
+  border-left-width: 4px;
+  border-radius: $radius-md;
+  padding: 0;
+  margin: 4px 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+
+  &:hover {
+    border-top-color: $stroke-strong;
+    border-right-color: $stroke-strong;
+    border-bottom-color: $stroke-strong;
+  }
+  &:focus-visible {
+    border-radius: $radius-md;
+  }
+  &--selected {
+    z-index: 1;
+    box-shadow:
+      0 0 0 1px $bg-surface,
+      0 0 0 4px $selection,
+      0 6px 16px rgba(15, 35, 60, 0.28);
+    &:focus-visible {
+      outline-offset: 5px;
+    }
+  }
+}
+
+.cell--live {
+  background: $cell-live-bg;
+  border-color: $cell-live-border;
+  border-left-color: $cell-live-rail;
+}
+.cell--was-here {
+  background: $cell-prev-bg;
+  border-color: $cell-prev-border;
+  border-left-color: $cell-prev-rail;
+  min-height: 44px;
+  padding: 9px 10px;
+}
+.cell--restore {
+  background: $restored-soft;
+  border-color: $restored-border;
+  border-left-color: $restored-ink;
+}
+.cell--in-flight {
+  background: $cell-proposed-bg;
+  border-color: $cell-proposed-border;
+  border-left-color: $cell-proposed-rail;
+}
+.cell--blocked-env {
+  background: $cell-proposed-bg;
+  border-color: $cell-proposed-border;
+  border-left-color: $cell-proposed-rail;
+}
+.cell--blocked {
+  background: $bg-soft;
+  border-color: $stroke;
+  border-left-color: $neutral-rail;
+}
+.cell--failed {
+  background: $cell-failed-bg;
+  border-color: $cell-failed-border;
+  border-left-color: $cell-failed-rail;
+}
+.cell--no-op {
+  background: $bg-soft;
+  border: 1px dashed $stroke-strong;
+}
+.cell--no-changes {
+  border: 1px dashed $cell-empty-border;
+  background: $cell-empty-bg;
+  color: $cell-empty-text;
+  font-size: 10px;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: $radius-md;
+  padding: 6px;
+  &:hover {
+    border-color: $cell-empty-border;
+  }
+}
+
+.cell--unknown-history {
+  border: 1px dashed $stroke-strong;
+  border-radius: $radius-md;
+  color: $text-muted;
+  font-size: 10.5px;
+  font-style: italic;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 46px;
+  padding: 6px;
+  cursor: default;
+  background-color: $bg-soft;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(15, 35, 60, 0.05) 5px,
+    rgba(15, 35, 60, 0.05) 10px
+  );
+}
+.cell__unknown-label {
+  line-height: 1.15;
+  text-align: center;
+}
+
+.cell__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 9px 4px;
+}
+
+.cell__head--was-here {
+  flex-wrap: wrap;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.cell__was-label {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: $cell-prev-label;
+  white-space: nowrap;
+}
+
+.cell__hydrated {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.cell__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 12px;
+  svg {
+    font-size: 9px;
+  }
+
+  &--live {
+    background: $cell-live-pill;
+    color: #fff;
+  }
+  &--restore {
+    background: $restored-ink;
+    color: #fff;
+  }
+  &--was-here {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+  &--in-flight {
+    background: $cell-proposed-pill;
+    color: #fff;
+  }
+  &--blocked-env {
+    background: $cell-proposed-pill;
+    color: #fff;
+  }
+  &--blocked {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+  // Beats the `svg { font-size: 9px }` above. The blocked mark sits straight on the blue
+  // fill; the stroke thickens the octicon's 1.5px lines so they hold up at this size.
+  svg#{&}__stop {
+    color: $held-stop;
+    font-size: 13px;
+    margin: -2px 0;
+    stroke-width: 1.4;
+    overflow: visible;
+  }
+  &--failed {
+    background: $cell-failed-pill;
+    color: #fff;
+  }
+  &--no-op {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px dashed $stroke-strong;
+  }
+  &--no-changes {
+    background: transparent;
+    color: $text-muted;
+    border: 1px dashed $stroke-strong;
+  }
+  &--unknown-history {
+    background: $bg-soft;
+    color: $text-muted;
+    border: 1px dashed $stroke-strong;
+  }
+}
+
+.cell__time {
+  font-size: 9px;
+  color: $cell-time-ink;
+  white-space: nowrap;
+}
+
+.cell__body {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0 9px 6px;
+}
+
+.cell__pr {
+  font-size: 9px;
+  font-weight: 700;
+  color: $cell-link-ink;
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover {
+    text-decoration: underline;
+  }
+  svg {
+    width: 11px;
+    height: 11px;
+    margin-right: 2px;
+    vertical-align: -1px;
+  }
+}
+
+.cell__sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  color: $cell-chip-ink;
+  background: $cell-chip-bg;
+  border-radius: 3px;
+  padding: 2px 5px;
+  line-height: 1.3;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.cell__superseded {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: $cell-prev-link;
+  background: transparent;
+  border: none;
+  width: auto;
+  cursor: pointer;
+  padding: 0;
+  margin-top: auto;
+  padding-top: 8px;
+  font-family: inherit;
+  &:hover {
+    color: $text-primary;
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 8px;
+  }
+}
+
+.cell__checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 113px;
+  box-sizing: border-box;
+  border-top: 1px solid $cell-divider;
+  padding-top: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  min-width: 0;
+  scroll-behavior: smooth;
+  &--overflow {
+    scrollbar-color: $cell-scroll-thumb $cell-scroll-track;
+    --fade-top: 0px;
+    --fade-bottom: 0px;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--fade-top),
+      #000 calc(100% - var(--fade-bottom)),
+      transparent 100%
+    );
+    &:focus-visible {
+      outline: 2px solid $cell-link-ink;
+      outline-offset: -2px;
+    }
+  }
+  &--fade-top {
+    --fade-top: #{$cell-checks-fade};
+  }
+  &--fade-bottom {
+    --fade-bottom: #{$cell-checks-fade};
+  }
+}
+
+@supports not (scrollbar-width: thin) {
+  .cell__checks--overflow {
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    &::-webkit-scrollbar-track {
+      background: $cell-scroll-track;
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: $cell-scroll-thumb;
+      border-radius: 3px;
+    }
+  }
+}
+
+.cell__checks-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.cell__checks-more {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 2px 8px 2px 6px;
+  border: none;
+  border-radius: 999px;
+  background: $cell-more-bg;
+  color: $cell-more-ink;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 3px $cell-more-shadow;
+  &:hover {
+    filter: brightness(1.15);
+  }
+}
+
+.cell__checks-more__caret {
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+}
+
+.cell-check {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 3px 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: $cell-check-name;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+.cell-check__link {
+  display: block;
+  justify-self: start;
+  max-width: 100%;
+  color: $cell-link-ink;
+  text-decoration: none;
+  border-radius: 2px;
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: 2px solid $cell-link-ink;
+    outline-offset: 1px;
+  }
+}
+
+.cell-check__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-check__icon {
+  display: block;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  vertical-align: baseline;
+  circle,
+  path,
+  polyline {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .cell-check__mark {
+    stroke-width: 1.5;
+  }
+  &--run {
+    transform-origin: 50% 50%;
+    animation: cell-check-spin 0.9s linear infinite;
+    .cell-check__track {
+      stroke: $cell-run-track;
+    }
+    .cell-check__arc {
+      stroke: $cell-run-ring;
+    }
+  }
+  &--pass {
+    .cell-check__ring {
+      stroke: $cell-pass-ring;
+    }
+    .cell-check__mark {
+      stroke: $cell-pass-mark;
+    }
+  }
+  &--fail {
+    .cell-check__ring {
+      stroke: $cell-fail-ring;
+    }
+    .cell-check__mark {
+      stroke: $cell-fail-mark;
+    }
+  }
+}
+
+@keyframes cell-check-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell-check__icon--run {
+    animation: none;
+  }
+}

@@ -19,14 +19,20 @@ package controller
 import (
 	"context"
 	_ "embed"
+	goerrors "errors"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -263,5 +269,93 @@ var _ = Describe("ScmProvider Controller", func() {
 					"ScmProvider should be deleted after the last referencing GitRepository is removed from the API")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+	})
+
+	Context("When the Secret finalizer update fails during ScmProvider deletion", func() {
+		// handleFinalizer removes the ScmProvider's own finalizer first and only then tries to
+		// remove the finalizer from the referenced Secret. Once the ScmProvider update succeeds,
+		// the apiserver deletes the object immediately because its finalizer list is now empty.
+		// If the Secret update then fails, the error makes Reconcile retry, but there is no
+		// ScmProvider left to retry from: the next Get 404s and the Secret's finalizer is
+		// permanently stuck. The fix is to remove the Secret finalizer first and only release the
+		// ScmProvider's own finalizer once that succeeds.
+		It("keeps the ScmProvider around until the Secret finalizer removal actually succeeds", func() {
+			ctx := context.Background()
+			secretName := "stuck-secret-" + utils.KubeSafeUniqueName(randomString(15))
+			providerName := "stuck-provider-" + utils.KubeSafeUniqueName(randomString(15))
+
+			now := metav1.Now()
+			secret := &v1.Secret{
+				Name:       secretName,
+				Namespace:  "default",
+				Finalizers: []string{promoterv1alpha1.ScmProviderSecretFinalizer},
+			}
+			scmProvider := &promoterv1alpha1.ScmProvider{
+				Name:              providerName,
+				Namespace:         "default",
+				Finalizers:        []string{promoterv1alpha1.ScmProviderFinalizer},
+				DeletionTimestamp: &now,
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					SecretRef: &v1.LocalObjectReference{Name: secretName},
+					Fake:      &promoterv1alpha1.Fake{},
+				},
+			}
+
+			secretUpdatesFail := true
+			c := fake.NewClientBuilder().
+				WithScheme(utils.GetScheme()).
+				WithObjects(secret, scmProvider).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+						if _, ok := obj.(*v1.Secret); ok && secretUpdatesFail {
+							return goerrors.New("simulated update failure")
+						}
+						return cl.Patch(ctx, obj, patch, opts...)
+					},
+				}).
+				Build()
+
+			r := &ScmProviderReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+			By("Failing the first reconcile's Secret update")
+			_, err := r.handleFinalizer(ctx, scmProvider.DeepCopy())
+			Expect(err).To(MatchError(ContainSubstring("simulated update failure")),
+				"the Secret finalizer removal should fail and the error should propagate so Reconcile retries")
+
+			By("Confirming the ScmProvider is still here to retry from")
+			var live promoterv1alpha1.ScmProvider
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(scmProvider), &live)).To(Succeed(),
+				"the ScmProvider must not be deleted until the Secret finalizer removal has actually "+
+					"succeeded; removing its own finalizer first abandons the Secret cleanup with no "+
+					"object left to retry from")
+			Expect(live.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+
+			By("Letting the Secret update succeed on the retried reconcile")
+			secretUpdatesFail = false
+			_, err = r.handleFinalizer(ctx, &live)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Confirming the Secret finalizer is gone and the ScmProvider itself is now deleted")
+			var liveSecret v1.Secret
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(secret), &liveSecret)).To(Succeed())
+			Expect(liveSecret.Finalizers).NotTo(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			err = c.Get(ctx, client.ObjectKeyFromObject(scmProvider), &promoterv1alpha1.ScmProvider{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("ScmProvider azureDevOps.workloadIdentity", func() {
+	// Workload identity uses the controller's own identity, so the field only exists on ClusterScmProvider.
+	It("rejects the field as unknown", func() {
+		provider := &unstructured.Unstructured{}
+		provider.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind(promoterv1alpha1.ScmProviderKind))
+		provider.SetName("azdo-wi-namespaced")
+		provider.SetNamespace("default")
+		Expect(unstructured.SetNestedField(provider.Object, "example-org", "spec", "azureDevOps", "organization")).To(Succeed())
+		Expect(unstructured.SetNestedMap(provider.Object, map[string]any{}, "spec", "azureDevOps", "workloadIdentity")).To(Succeed())
+
+		err := k8sClient.Create(context.Background(), provider, client.FieldValidation("Strict"))
+		Expect(err).To(MatchError(ContainSubstring("unknown field")))
 	})
 })

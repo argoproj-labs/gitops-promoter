@@ -12,17 +12,17 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
 | ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
 | ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
-| ClusterScmProvider | v1alpha1 | 21 | 0.00% |
+| ClusterScmProvider | v1alpha1 | 5,829 | 0.01% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 384 | 0.00% |
 | DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
-| GitRepository | v1alpha1 | 14 | 0.00% |
+| GitRepository | v1alpha1 | 16 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RestoreActiveCommit | v1alpha1 | 165 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
-| ScmProvider | v1alpha1 | 21 | 0.00% |
+| ScmProvider | v1alpha1 | 5,818 | 0.01% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
 | WebRequestCommitStatus | v1alpha1 | 25 | 0.00% |
 
@@ -96,11 +96,30 @@ Source: `promoter.argoproj.io_clusterscmproviders.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
+| `.spec.azureDevOps.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.bitbucketCloud.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.bitbucketDataCenter.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.fake.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.forgejo.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.gitea.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.github.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.gitlab.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.azureDevOps.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.bitbucketCloud.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.bitbucketDataCenter.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.fake.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.forgejo.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.gitea.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.github.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.gitlab.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec` | 16 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
+| `.spec` | 7 | 0.00% | `!has(self.azureDevOps) \|\| !has(self.azureDevOps.workloadIdentity) \|\| !has(self.secretRef)` |
+| `.spec.azureDevOps` | 4 | 0.00% | `!has(self.workloadIdentity) \|\| !has(self.domain)` |
 | `.spec.azureDevOps.domain` | 3 | 0.00% | `self != "dev.azure.com"` |
+| `.spec.bitbucketCloud.domain` | 3 | 0.00% | `self != "bitbucket.org"` |
 | `.spec.github.domain` | 2 | 0.00% | `self != "github.com"` |
 | `.spec.gitlab.domain` | 2 | 0.00% | `self != "gitlab.com"` |
-| **Total** | **21** | **0.00%** | |
+| **Total** | **5,829** | **0.01%** | |
 
 #### CommitStatus
 
@@ -187,8 +206,8 @@ Source: `promoter.argoproj.io_gitrepositories.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
-| **Total** | **14** | **0.00%** | |
+| `.spec` | 16 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
+| **Total** | **16** | **0.00%** | |
 
 #### PromotionStrategy
 
@@ -282,11 +301,28 @@ Source: `promoter.argoproj.io_scmproviders.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
+| `.spec.azureDevOps.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.bitbucketCloud.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.bitbucketDataCenter.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.fake.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.forgejo.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.gitea.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.github.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.gitlab.domain` | 413 | 0.00% | `isURL('https://' + self) && url('https://' + self).getHost() == self` |
+| `.spec.azureDevOps.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.bitbucketCloud.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.bitbucketDataCenter.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.fake.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.forgejo.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.gitea.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.github.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec.gitlab.domain` | 311 | 0.00% | `!isURL('https://' + self) \|\| url('https://' + self).getHostname() != ''` |
+| `.spec` | 16 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
 | `.spec.azureDevOps.domain` | 3 | 0.00% | `self != "dev.azure.com"` |
+| `.spec.bitbucketCloud.domain` | 3 | 0.00% | `self != "bitbucket.org"` |
 | `.spec.github.domain` | 2 | 0.00% | `self != "github.com"` |
 | `.spec.gitlab.domain` | 2 | 0.00% | `self != "gitlab.com"` |
-| **Total** | **21** | **0.00%** | |
+| **Total** | **5,818** | **0.01%** | |
 
 #### TimedCommitStatus
 

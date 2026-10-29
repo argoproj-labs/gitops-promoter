@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
 
 // This Ordered suite shares one PromotionStrategy. Each spec must use a distinct
@@ -174,7 +176,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -539,6 +541,43 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 
+	Describe("publishTo: empty", func() {
+		It("should set publishTo on the child CommitStatus", func() {
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-skip-scm")
+
+			By("Creating a GitCommitStatus with an empty publishTo")
+			gcs := &promoterv1alpha1.GitCommitStatus{
+				Name:      name + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:        "gcs-skip-scm",
+					Expression: `true`,
+					PublishTo:  &[]promoterv1alpha1.CommitStatusPublishTo{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, gcs)
+			}()
+
+			By("Verifying the CommitStatus has an empty publishTo and a phase")
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.CommitStatusResourceName(ctx, gcs, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.PublishTo).To(HaveValue(BeEmpty()))
+				g.Expect(cs.Status.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("Active vs Proposed SHA Validation", func() {
 		It("should give different validation results when active and proposed commits have different properties", func() {
 			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-active-proposed")
@@ -780,6 +819,17 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
 			Expect(err).NotTo(HaveOccurred())
+
+			// The check above reads ChangeTransferPolicy status, which can lag the repository: a newer dry SHA
+			// may already be on staging's proposed branch, and its promotion would then merge on top of the
+			// revert pushed below. Wait until the repository itself has nothing left to promote to staging.
+			By("Waiting until staging's active branch has the proposed branch's dry SHA")
+			Eventually(func(g Gomega) {
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(branchDrySha(ctx, gitPath, "origin/"+testBranchStaging)).To(
+					Equal(branchDrySha(ctx, gitPath, "origin/"+testBranchStaging+"-next")))
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Checkout the staging active branch
 			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchStaging, "origin/"+testBranchStaging)
@@ -1362,3 +1412,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 })
+
+// branchDrySha returns the dry SHA in hydrator.metadata at ref in the clone at gitPath.
+func branchDrySha(ctx context.Context, gitPath, ref string) string {
+	GinkgoHelper()
+	raw, err := runGitCmd(ctx, gitPath, "show", ref+":hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	var metadata git.HydratorMetadata
+	Expect(json.Unmarshal([]byte(raw), &metadata)).To(Succeed())
+	return metadata.DrySha
+}

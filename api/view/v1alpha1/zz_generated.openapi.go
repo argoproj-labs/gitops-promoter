@@ -43,10 +43,13 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(ref),
 		apiv1alpha1.AzureDevOps{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref),
 		apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref),
+		apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureWorkloadIdentity(ref),
 		apiv1alpha1.BasicAuth{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_BasicAuth(ref),
 		apiv1alpha1.BearerAuth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_BearerAuth(ref),
 		apiv1alpha1.BitbucketCloud{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref),
 		apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref),
+		apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenter(ref),
+		apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenterRepo(ref),
 		apiv1alpha1.Bucket{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_Bucket(ref),
 		apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeRequestPolicyCommitStatusPhase(ref),
 		apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref),
@@ -59,9 +62,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ChangeTransferPolicyList{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref),
 		apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
 		apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
+		apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterAzureDevOps(ref),
 		apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref),
 		apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderConfiguration(ref),
 		apiv1alpha1.ClusterScmProviderList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref),
+		apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderSpec(ref),
 		apiv1alpha1.CommitBranchState{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref),
 		apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryProposed(ref),
 		apiv1alpha1.CommitConfiguration{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitConfiguration(ref),
@@ -113,6 +118,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.GiteaRepo{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_GiteaRepo(ref),
 		apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPAuthentication(ref),
 		apiv1alpha1.HTTPRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref),
+		apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestVariablesSpec(ref),
 		apiv1alpha1.HealthyDryShas{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
 		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
 		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
@@ -157,6 +163,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ScmProviderList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
 		apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
 		apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref),
+		apiv1alpha1.ScmProviderSpecCommon{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpecCommon(ref),
 		apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
 		apiv1alpha1.SuccessSpec{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
 		apiv1alpha1.TLSAuth{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
@@ -745,6 +752,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
 					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -877,6 +903,33 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref commo
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureWorkloadIdentity(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AzureWorkloadIdentity configures Azure workload identity authentication for Azure DevOps. Only supported on ClusterScmProvider.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"clientID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ClientID is the client ID of the Microsoft Entra application or user-assigned managed identity to authenticate as. Defaults to the AZURE_CLIENT_ID environment variable of the controller.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tenantID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TenantID is the Microsoft Entra tenant ID of the identity. Defaults to the AZURE_TENANT_ID environment variable of the controller.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BasicAuth(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -927,6 +980,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref common
 			SchemaProps: spec.SchemaProps{
 				Description: "BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.",
 				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain overrides the Bitbucket Cloud host, for example to reach Bitbucket Cloud through a proxy or a Bitbucket Cloud compatible test server. When set, API requests are sent to https://<domain>/2.0 and git and web URLs use https://<domain>. If using Bitbucket Cloud directly, leave this field empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}
@@ -957,6 +1019,58 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref co
 					},
 				},
 				Required: []string{"owner", "name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenter(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain is the Bitbucket DataCenter/Server domain, such as \"bitbucket.mycompany.com\".",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"domain"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenterRepo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"project": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Project is the Bitbucket project key (e.g. \"MYPROJ\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the repository slug (e.g. \"my-repo\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"project", "name"},
 			},
 		},
 	}
@@ -1549,6 +1663,43 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterAzureDevOps(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClusterAzureDevOps is the Azure DevOps configuration of a ClusterScmProvider. It extends AzureDevOps with authentication that is only safe on a cluster-scoped resource, which only cluster admins can create.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"organization": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Organization is the Azure DevOps organization name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain is the Azure DevOps domain, such as \"dev.azure.com\". If using the default Azure DevOps domain, leave this field empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"workloadIdentity": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkloadIdentity enables Azure workload identity (Microsoft Entra ID) authentication instead of a Personal Access Token. The controller pod must be configured for Azure workload identity, which projects a federated service account token and sets the AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE environment variables. When set, secretRef must be omitted.",
+							Ref:         ref(apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"organization"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.AzureWorkloadIdentity{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -1579,7 +1730,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref(apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName()),
+							Ref:     ref(apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
@@ -1592,7 +1743,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ClusterScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1661,6 +1812,75 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(re
 		},
 		Dependencies: []string{
 			apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClusterScmProviderSpec defines the desired state of ClusterScmProvider. It matches ScmProviderSpec except that azureDevOps also accepts settings that are only safe on a cluster-scoped resource, which only cluster admins can create.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"secretRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecretRef contains the credentials required to auth to a specific provider",
+							Ref:         ref(v1.LocalObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"github": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitHub required configuration for GitHub as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitHub{}.OpenAPIModelName()),
+						},
+					},
+					"gitlab": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitLab required configuration for GitLab as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitLab{}.OpenAPIModelName()),
+						},
+					},
+					"forgejo": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Forgejo required configuration for Forgejo as the SCM provider",
+							Ref:         ref(apiv1alpha1.Forgejo{}.OpenAPIModelName()),
+						},
+					},
+					"gitea": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Gitea required configuration for Gitea as the SCM provider",
+							Ref:         ref(apiv1alpha1.Gitea{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketCloud": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
+						},
+					},
+					"fake": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Fake required configuration for Fake as the SCM provider",
+							Ref:         ref(apiv1alpha1.Fake{}.OpenAPIModelName()),
+						},
+					},
+					"azureDevOps": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
+							Ref:         ref(apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.ClusterAzureDevOps{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -2090,6 +2310,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 							Description: "Url is a URL that the user can follow to see more details about the status",
 							Type:        []string{"string"},
 							Format:      "",
+						},
+					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is the set of destinations for this commit status. - \"scm\": post the status to the SCM provider The default is [\"scm\"]. An empty list keeps the status in Kubernetes and does not post it to the SCM. Omitting the field uses the default. The controller posts to the SCM when \"scm\" is present. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -2762,6 +3001,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -3447,6 +3705,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 							Format:      "",
 						},
 					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 					"target": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Target specifies which commit SHA to validate with the expression. - \"active\": Validates the currently active/deployed commit (default behavior) - \"proposed\": Validates the proposed commit that will be promoted\n\nThe validation result is always reported on the PROPOSED commit (for gating), but this field controls which commit's data is used in the expression evaluation.\n\nExamples:\n  target: \"active\" - \"Don't promote if a revert commit is detected\"\n  target: \"proposed\" - \"Don't promote unless new commit follows naming convention\"",
@@ -3793,6 +4070,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 							Ref: ref(apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName()),
 						},
 					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref(apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName()),
+						},
+					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Ref: ref(apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName()),
@@ -3814,7 +4096,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName(), apiv1alpha1.FakeRepo{}.OpenAPIModelName(), apiv1alpha1.ForgejoRepo{}.OpenAPIModelName(), apiv1alpha1.GitHubRepo{}.OpenAPIModelName(), apiv1alpha1.GitLabRepo{}.OpenAPIModelName(), apiv1alpha1.GiteaRepo{}.OpenAPIModelName(), apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName(), apiv1alpha1.FakeRepo{}.OpenAPIModelName(), apiv1alpha1.ForgejoRepo{}.OpenAPIModelName(), apiv1alpha1.GitHubRepo{}.OpenAPIModelName(), apiv1alpha1.GitLabRepo{}.OpenAPIModelName(), apiv1alpha1.GiteaRepo{}.OpenAPIModelName(), apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -3971,7 +4253,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "HTTPRequestSpec defines the HTTP request configuration.\n\nURLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available. These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made, so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from the previous run (trigger mode only).\n\nTemplate variables:\n  - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)\n  - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches\n  - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)\n  - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)\n  - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace\n  - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace\n  - {{ index .TriggerOutput \"key\" }}, {{ index .ResponseOutput \"key\" }}: (trigger mode only) from previous reconcile\n  - {{ index .SuccessOutput \"key\" }}: custom data from the previous success.when.output.expression evaluation\n  - {{ index .TriggerVariables \"key\" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile\n\nExample: \"https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\n\nExactly one of Method or MethodTemplate must be set.",
+				Description: "HTTPRequestSpec defines the HTTP request configuration.\n\nURLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available. These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made, so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from the previous run (trigger mode only).\n\nTemplate variables:\n  - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)\n  - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches\n  - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)\n  - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)\n  - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace\n  - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace\n  - {{ index .TriggerOutput \"key\" }}, {{ index .ResponseOutput \"key\" }}: (trigger mode only) from previous reconcile\n  - {{ index .SuccessOutput \"key\" }}: custom data from the previous success.when.output.expression evaluation\n  - {{ index .TriggerVariables \"key\" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile\n  - {{ index .HTTPRequestVariables \"key\" }}: result of httpRequest.httpRequestVariables.expression for this reconcile (nil when not configured)\n\nExample: \"https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\n\nExactly one of Method or MethodTemplate must be set.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"urlTemplate": {
@@ -4018,6 +4300,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"httpRequestVariables": {
+						SchemaProps: spec.SchemaProps{
+							Description: "HTTPRequestVariables optionally holds an expr expression that produces a free-form map of variables made available to URLTemplate, MethodTemplate, HeaderTemplates, and BodyTemplate as {{ index .HTTPRequestVariables \"key\" }}. Evaluated before the HTTP request (same timing as the templates above). Available in both polling and trigger modes. See HTTPRequestVariablesSpec for details.",
+							Ref:         ref(apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName()),
+						},
+					},
 					"timeout": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Timeout is the maximum time to wait for the HTTP request to complete.",
@@ -4035,7 +4323,29 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
+			apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName(), apiv1alpha1.HTTPRequestVariablesSpec{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestVariablesSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "HTTPRequestVariablesSpec holds an expr expression that computes a free-form map of variables made available to all httpRequest templates as .HTTPRequestVariables.\n\nThe expression is evaluated before the HTTP request is made — the same timing as the templates above — so it shares their variable set (see HTTPRequestSpec for the full list). It is available in both polling and trigger modes, unlike TriggerVariables which require trigger mode.\n\nThe expression must return a map/object. Every key is then accessible in templates via {{ index .HTTPRequestVariables \"key\" }}.\n\nThe built-in expr function urlValuesEncode(map) URL-encodes a map of query-parameter key/value pairs and returns a percent-encoded key=value&… string suitable for appending to a URL.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is an expr expression that must return a map/object. The result is exposed to all httpRequest Go templates as .HTTPRequestVariables. Available variables match those documented on HTTPRequestSpec.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"expression"},
+			},
+		},
 	}
 }
 
@@ -5623,6 +5933,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec
 							Format:      "",
 						},
 					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 					"timezone": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC.",
@@ -6060,10 +6389,79 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
 						},
 					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
+						},
+					},
+					"fake": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Fake required configuration for Fake as the SCM provider",
+							Ref:         ref(apiv1alpha1.Fake{}.OpenAPIModelName()),
+						},
+					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
 							Ref:         ref(apiv1alpha1.AzureDevOps{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpecCommon(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScmProviderSpecCommon holds the ScmProvider and ClusterScmProvider spec fields that have the same type on both kinds.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"secretRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecretRef contains the credentials required to auth to a specific provider",
+							Ref:         ref(v1.LocalObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"github": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitHub required configuration for GitHub as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitHub{}.OpenAPIModelName()),
+						},
+					},
+					"gitlab": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitLab required configuration for GitLab as the SCM provider",
+							Ref:         ref(apiv1alpha1.GitLab{}.OpenAPIModelName()),
+						},
+					},
+					"forgejo": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Forgejo required configuration for Forgejo as the SCM provider",
+							Ref:         ref(apiv1alpha1.Forgejo{}.OpenAPIModelName()),
+						},
+					},
+					"gitea": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Gitea required configuration for Gitea as the SCM provider",
+							Ref:         ref(apiv1alpha1.Gitea{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketCloud": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
+						},
+					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
 						},
 					},
 					"fake": {
@@ -6076,7 +6474,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -6406,6 +6804,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 							Description: "Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
 							Type:        []string{"string"},
 							Format:      "",
+						},
+					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 					"environments": {
@@ -6946,7 +7363,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 					},
 					"descriptionTemplate": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DescriptionTemplate is the human-readable commit status description in the SCM provider (GitHub, GitLab, etc.). Uses Go templates; variable list and Sprig rules match HTTPRequestSpec (spec.httpRequest). Rendered with the latest data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec). How spec.mode.context restricts template data: see ModeSpec.\n\nAdditional template variables (not in HTTPRequestSpec):\n  - {{ index .TriggerVariables \"key\" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)\n  - {{ index .SuccessVariables \"key\" }}: result of success.when.variables.expression this reconcile (nil if not configured)\n\nExamples: \"External approval for {{ .Branch }}\", \"{{ .Phase }} - waiting for external approval\".\n\nIf not specified, defaults to empty string.",
+							Description: "DescriptionTemplate is the human-readable commit status description in the SCM provider (GitHub, GitLab, etc.). Uses Go templates; variable list and Sprig rules match HTTPRequestSpec (spec.httpRequest). Rendered with the latest data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec). How spec.mode.context restricts template data: see ModeSpec.\n\nAdditional template variables (not in HTTPRequestSpec):\n  - {{ index .TriggerVariables \"key\" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)\n  - {{ index .SuccessVariables \"key\" }}: result of success.when.variables.expression this reconcile (nil if not configured)\n\nIn polling mode with reportOn: proposed, a reconcile for a SHA that already succeeded skips the HTTP request and evaluates success.when.variables.expression with Response nil. Guard reads of Response with Response != nil and fall back to SuccessOutput, so .SuccessVariables keeps the values from the request. A fixed fallback value replaces them, and an expression that fails without a Response leaves .SuccessVariables unset.\n\nExamples: \"External approval for {{ .Branch }}\", \"{{ .Phase }} - waiting for external approval\".\n\nIf not specified, defaults to empty string.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -6956,6 +7373,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 							Description: "UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables (including .TriggerVariables and .SuccessVariables), timing, and context rules as DescriptionTemplate. Typical uses: approval UI, dashboard, API, or runbook links. To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:\n  \"https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}\"\nFor branch-only links: \"https://dashboard.example.com/{{ .Branch }}/status\".\n\nIf not specified, defaults to empty string (no URL shown).",
 							Type:        []string{"string"},
 							Format:      "",
+						},
+					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 					"reportOn": {

@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -191,18 +190,20 @@ func (r *RestoreActiveCommitReconciler) handleFinalizer(ctx context.Context, rc 
 	finalizer := promoterv1alpha1.RestoreActiveCommitFinalizer
 
 	if rc.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(rc, finalizer) {
+		if !controllerutil.AddFinalizer(rc, finalizer) {
+			// Already has the finalizer.
 			return false, nil
 		}
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := r.Get(ctx, client.ObjectKeyFromObject(rc), rc); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(rc, finalizer) {
-				return r.Update(ctx, rc) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
+
+		// A single attempt, not a Get-retry loop: on conflict Reconcile returns the error and the
+		// standard workqueue rate limiter retries with a fresh top-level Get on the next Reconcile
+		// call. Re-Getting here would overwrite rc -- including status.conditions, which Reconcile
+		// already reset via RemoveReadyCondition -- with whatever was last persisted, silently
+		// reintroducing a stale Ready condition from an earlier failed reconcile.
+		if err := r.Update(ctx, rc); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(rc, finalizer) {
@@ -215,16 +216,11 @@ func (r *RestoreActiveCommitReconciler) handleFinalizer(ctx context.Context, rc 
 		}
 	}
 
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-		if err := r.Get(ctx, client.ObjectKeyFromObject(rc), rc); err != nil {
-			return err //nolint:wrapcheck // error will be wrapped by caller
+	// A single attempt, not a Get-retry loop: see the add-finalizer path above.
+	if controllerutil.RemoveFinalizer(rc, finalizer) {
+		if err := r.Update(ctx, rc); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
-		if controllerutil.RemoveFinalizer(rc, finalizer) {
-			return r.Update(ctx, rc) //nolint:wrapcheck // error will be wrapped by caller
-		}
-		return nil
-	}); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil
 }
@@ -384,9 +380,6 @@ func (r *RestoreActiveCommitReconciler) SetupWithManager(ctx context.Context, mg
 			// stamps Promoter-restore-unblocked-at when spec.blockEnvironment is false.
 			predicate.Funcs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					if e.ObjectOld == nil || e.ObjectNew == nil {
-						return false
-					}
 					return e.ObjectOld.GetDeletionTimestamp().IsZero() && !e.ObjectNew.GetDeletionTimestamp().IsZero()
 				},
 			},

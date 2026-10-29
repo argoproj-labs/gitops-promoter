@@ -65,3 +65,8 @@ Pick `metrics.SCMAPICommitStatus`, `SCMAPIPullRequest`, or `SCMAPIProvider` and 
 ## User-facing metrics and docs
 
 If you introduce **new** Prometheus metrics (unusual for a new provider), register them in `internal/metrics/metrics.go` and document them in [Metrics](../monitoring/metrics.md). For `RecordSCMCall`, the existing `scm_calls_*` metrics already cover new providers.
+
+## Testing against the test SCM server
+
+Teach the [test SCM server](test-scm-server.md) the new provider's API and webhook format. Then add the provider to its
+contract, webhook and e2e tables, so the real implementation is exercised end to end in CI.

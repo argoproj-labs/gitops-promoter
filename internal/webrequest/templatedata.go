@@ -58,8 +58,12 @@ type TemplateData struct {
 	// SuccessVariables is the result of success.when.variables.expression evaluated this reconcile.
 	// Nil when success.when.variables is not set or in the skipped-SHA fast-path.
 	SuccessVariables map[string]any
-	Branch           string
-	Phase            string
+	// HTTPRequestVariables is the result of httpRequest.httpRequestVariables.expression evaluated just
+	// before the HTTP request is made. Nil when httpRequestVariables is not configured.
+	// Accessible in all httpRequest Go templates as {{ index .HTTPRequestVariables "key" }}.
+	HTTPRequestVariables map[string]any
+	Branch               string
+	Phase                string
 }
 
 // NamespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
@@ -137,6 +141,17 @@ func (td TemplateData) triggerExprData() map[string]any {
 		"SuccessOutput":          td.SuccessOutput,
 		"NamespaceMetadata":      td.NamespaceMetadata,
 	}
+}
+
+// httpRequestVariablesExprData builds the expression data map for httpRequest.httpRequestVariables.expression.
+// It extends triggerExprData with TriggerVariables (already computed this reconcile, before the HTTP request
+// fires) and registers urlValuesEncode for percent-encoding query-parameter maps.
+// The variable set mirrors what the httpRequest Go templates expose — see HTTPRequestSpec.
+func (td TemplateData) httpRequestVariablesExprData() map[string]any {
+	env := td.triggerExprData()
+	env["TriggerVariables"] = td.TriggerVariables
+	env["urlValuesEncode"] = urlValuesEncode
+	return env
 }
 
 // successWhenExprData builds the expression data map for success.when expressions.

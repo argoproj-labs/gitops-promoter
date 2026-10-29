@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
 	"strings"
 
 	"github.com/expr-lang/expr"
@@ -28,6 +29,22 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+// urlValuesEncode URL-encodes a map of query-parameter key/value pairs and returns a
+// percent-encoded "key=value&key2=value2" string suitable for appending after '?' in a URL.
+// Values are converted to strings via fmt.Sprint so numeric and boolean values work naturally.
+// Registered as the urlValuesEncode function in httpRequestVariables expr expressions.
+//
+// Example in an httpRequestVariables expression:
+//
+//	urlValuesEncode({"q": "hello world", "limit": "25"})  // → "limit=25&q=hello+world"
+func urlValuesEncode(params map[string]any) string {
+	vals := url.Values{}
+	for k, v := range params {
+		vals.Set(k, fmt.Sprint(v))
+	}
+	return vals.Encode()
+}
 
 // ExpressionEvaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
 // programs in an LRU (golang/groupcache/lru) so each (prefix, expression) pair is only compiled once while
@@ -147,10 +164,8 @@ func (e *ExpressionEvaluator) enrichWhenExprEnv(ctx context.Context, whenSpec pr
 	if err != nil {
 		return nil, err
 	}
-	out := maps.Clone(base)
-	if out == nil {
-		out = make(map[string]any)
-	}
+	out := make(map[string]any, len(base))
+	maps.Copy(out, base)
 	out["Variables"] = varsResult
 	return out, nil
 }
@@ -335,6 +350,55 @@ func (e *ExpressionEvaluator) evaluateSuccessDataExpression(ctx context.Context,
 
 	logger.V(4).Info("Success data expression evaluated", "successData", result)
 	return result, nil
+}
+
+// getCompiledHTTPRequestVariablesExpression returns a cached or newly compiled httpRequestVariables
+// expression program. The expression must return a map/object.
+func (e *ExpressionEvaluator) getCompiledHTTPRequestVariablesExpression(expression string) (*vm.Program, error) {
+	return e.getCompiledExpression(expressionCacheKey{Prefix: "httprequestvariables", Expression: expression})
+}
+
+// evaluateHTTPRequestVariablesExpression runs httpRequest.httpRequestVariables.expression against exprEnv.
+// The expression must return map[string]any; the result is set as TemplateData.HTTPRequestVariables
+// so all httpRequest templates can reference keys via {{ index .HTTPRequestVariables "key" }}.
+// The urlValuesEncode function must already be present in exprEnv (added by httpRequestVariablesExprData).
+func (e *ExpressionEvaluator) evaluateHTTPRequestVariablesExpression(ctx context.Context, expression string, exprEnv map[string]any) (map[string]any, error) {
+	logger := log.FromContext(ctx)
+
+	program, err := e.getCompiledHTTPRequestVariablesExpression(expression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile httpRequestVariables expression: %w", err)
+	}
+
+	output, err := expr.Run(program, exprEnv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate httpRequestVariables expression: %w", err)
+	}
+
+	result, ok := output.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("httpRequestVariables expression must return a map/object, got %T", output)
+	}
+
+	logger.V(4).Info("HTTPRequestVariables expression evaluated", "httpRequestVariables", result)
+	return result, nil
+}
+
+// EvaluateHTTPRequestVariables evaluates spec.httpRequest.httpRequestVariables.expression (when configured)
+// and returns the resulting map, which the caller must assign to TemplateData.HTTPRequestVariables before
+// any template rendering takes place.
+//
+// Returns (nil, nil) when httpRequestVariables is not configured or its expression is blank.
+//
+// The expression receives the same variables as httpRequest Go templates — see HTTPRequestSpec for the
+// full list — plus TriggerVariables (already computed this reconcile) and the built-in urlValuesEncode
+// function for percent-encoding query-parameter maps (see urlValuesEncode).
+func (e *ExpressionEvaluator) EvaluateHTTPRequestVariables(ctx context.Context, spec *promoterv1alpha1.HTTPRequestVariablesSpec, td TemplateData) (map[string]any, error) {
+	if spec == nil || strings.TrimSpace(spec.Expression) == "" {
+		return nil, nil
+	}
+	exprEnv := td.httpRequestVariablesExprData()
+	return e.evaluateHTTPRequestVariablesExpression(ctx, spec.Expression, exprEnv)
 }
 
 // evaluateTriggerWhenBranch evaluates trigger.when (variables, bool expression, optional output map).

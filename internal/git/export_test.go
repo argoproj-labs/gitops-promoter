@@ -4,11 +4,13 @@ package git
 // not to other packages that import git.
 var (
 	GitChildEnv          = gitChildEnv
+	GitHTTPHeaderEnv     = gitHTTPHeaderEnv
 	GitBin               = gitBin
 	ParseCommitLogOutput = parseCommitLogOutput
 	ParseCatFileBatch    = parseCatFileBatch
 	ParseNotesLogOutput  = parseNotesLogOutput
 	FullObjectID         = fullObjectID
+	RunCmdWithEnv        = runCmdWithEnv
 )
 
 // Trailers exposes the parsed trailers of a commitObject to package git_test.

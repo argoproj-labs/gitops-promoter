@@ -125,6 +125,8 @@ auth mechanism.
 
 A ClusterScmProvider represents a SCM instance (such as GitHub). ClusterScmProvider is the cluster-scoped alternative to the ScmProvider. It references a Secret in the same namespace where the promoter is running to enable access via some configured
 auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless of namespace.
+For Azure DevOps it can instead authenticate with the controller's Azure workload identity (`azureDevOps.workloadIdentity`),
+which is only supported on ClusterScmProvider because it uses the controller's own credentials.
 
 ```yaml
 {!internal/controller/testdata/ClusterScmProvider.yaml!}

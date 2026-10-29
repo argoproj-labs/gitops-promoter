@@ -81,7 +81,7 @@ func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitSt
 
 	csObj.Status.Id = strconv.FormatInt(commitStatus.ID, 16)
 	csObj.Status.Phase = csObj.Spec.Phase
-	csObj.Status.Sha = strconv.FormatInt(commitStatus.ID, 16)
+	csObj.Status.Sha = csObj.Spec.Sha
 
 	return csObj, nil
 }

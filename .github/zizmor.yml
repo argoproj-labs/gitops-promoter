@@ -11,6 +11,11 @@ rules:
     disable: true
   concurrency-limits:
     disable: true
+  # The cherry-pick workflow intentionally uses pull_request_target. It only
+  # handles already-merged commits and never checks out or executes fork code.
+  dangerous-triggers:
+    ignore:
+      - cherry-pick.yml
   dependabot-cooldown:
     disable: true
   dependabot-execution:

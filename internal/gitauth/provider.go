@@ -9,6 +9,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	bitbucket_datacenter "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
@@ -84,9 +85,21 @@ func CreateGitOperationsProvider(
 		}
 		return provider, nil
 
+	case scmProvider.GetSpec().BitbucketDataCenter != nil:
+		logger.V(4).Info("Creating Bitbucket DataCenter git authentication provider")
+		provider, err := bitbucket_datacenter.NewBitbucketDataCenterGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Bitbucket DataCenter Auth Provider: %w", err)
+		}
+		return provider, nil
+
 	case scmProvider.GetSpec().AzureDevOps != nil:
 		logger.V(4).Info("Creating Azure DevOps git authentication provider")
-		return azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret), nil
+		provider, err := azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Azure DevOps Auth Provider: %w", err)
+		}
+		return provider, nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}

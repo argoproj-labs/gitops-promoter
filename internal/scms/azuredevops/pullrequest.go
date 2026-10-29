@@ -249,7 +249,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		statusCode = 500
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
-		return scms.MergeResult{}, fmt.Errorf("failed to merge pull request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to complete pull request: %w", err)
 	}
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
@@ -404,7 +404,9 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, pr.k8sClient, pr.settingsMgr, prObj.Spec.RepositoryReference, &prObj)
+	// Only the provider's spec is needed. Resolving the Secret too would need the controller namespace, which a
+	// ClusterScmProvider's Secret lives in and this provider doesn't know.
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, pr.k8sClient, pr.settingsMgr, gitRepo, &prObj)
 	if err != nil {
 		return "", fmt.Errorf("failed to get SCM provider: %w", err)
 	}
@@ -430,10 +432,6 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 
 // AddLabels adds labels to a pull request on Azure DevOps, creating missing pull request labels when needed.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
@@ -477,10 +475,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 
 // RemoveLabels removes labels from a pull request on Azure DevOps.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	prID, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)

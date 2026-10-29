@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router';
 import DashboardPage from './pages/DashboardPage';
 import PromotionStrategyPage from './pages/PromotionStrategyPage';
-import HistoryPage from './pages/HistoryPage';
 import { TopBar } from '../src/components/TopBar';
 
 function PromotionStrategyPageWithNamespace() {
@@ -14,6 +13,34 @@ function RootRedirect() {
   return <Navigate to={{ pathname: '/promotion-strategies', search }} replace />;
 }
 
+function LegacyHistoryRedirect() {
+  const { namespace, name } = useParams();
+  const { search, hash } = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: `/promotion-strategies/${namespace}/${name}`, search, hash }}
+      replace
+    />
+  );
+}
+
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="/promotion-strategies" element={<DashboardPage />} />
+      <Route
+        path="/promotion-strategies/:namespace/:name"
+        element={<PromotionStrategyPageWithNamespace />}
+      />
+      <Route
+        path="/promotion-strategies/:namespace/:name/history/*"
+        element={<LegacyHistoryRedirect />}
+      />
+    </Routes>
+  );
+}
+
 function App() {
   // Vite injects BASE_URL at build time. For local dev it's '/' (no-op);
   // for static-host deploys under a subpath (e.g. GitHub Pages) it becomes
@@ -23,15 +50,7 @@ function App() {
   return (
     <BrowserRouter basename={basename}>
       <TopBar />
-      <Routes>
-        <Route path="/" element={<RootRedirect />} />
-        <Route path="/promotion-strategies" element={<DashboardPage />} />
-        <Route
-          path="/promotion-strategies/:namespace/:name"
-          element={<PromotionStrategyPageWithNamespace />}
-        />
-        <Route path="/promotion-strategies/:namespace/:name/history/*" element={<HistoryPage />} />
-      </Routes>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

@@ -37,9 +37,6 @@ type mockHTTPEXecutor struct {
 }
 
 func newMockHTTPEXecutor(resolve func(branch string) (*webrequest.HTTPResponse, error)) *mockHTTPEXecutor {
-	if resolve == nil {
-		panic("newMockHTTPEXecutor: resolve is nil")
-	}
 	return &mockHTTPEXecutor{resolve: resolve}
 }
 

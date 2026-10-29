@@ -11,11 +11,15 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
     - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
     - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, the `dist/` install bundles, deepcopy/applyconfiguration, extension icon output, `hack/celcost/report.md`): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **SCM interfaces** (`internal/scms/`): **`make mockery-gen`**, commit `internal/scms/mock/` (CI checks this separately from `build-installer`).
-    - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`. After view API or embedded promoter type changes, run **`make generate-apiserver`** then **`make generate-ui-types`** and commit `ui/shared/src/types/generated/view.gen.ts` (see [UI TypeScript types](ui-types.md)).
+    - **`ui/`**: `make lint-ui`, `make test-ui` (shared, components-lib, extension, and dashboard). After view API or embedded promoter type changes, run **`make generate-apiserver`** then **`make generate-ui-types`** and commit `ui/shared/src/types/generated/view.gen.ts` (see [UI TypeScript types](ui-types.md)).
     - **`docs/`** (this site): `make lint-docs`.
     - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).
 6. **Iterate on review** — CI must be green; maintainers will help get it over the line.
+
+Bug fixes are merged to `main` first. Maintainers use
+[`cherry-pick/X.Y` labels](backporting-fixes.md) to create PRs for the
+corresponding `release-X.Y` branches.
 
 ## Testing expectations
 
@@ -24,7 +28,8 @@ Substantive new or changed **user-facing behavior** (APIs, controllers, webhooks
 **How we test (stack):**
 
 - **Go (controller and cluster behavior):** [Ginkgo](https://onsi.github.io/ginkgo/) suites with **envtest**, which runs a real Kubernetes API server from test binaries for integration-style tests against our APIs and reconcilers.
-- **UI (dashboard and Argo CD extension):** unit tests via the **Node.js** tooling and npm scripts used in CI (lint and test targets for the dashboard and extension).
+- **SCM providers:** a Ginkgo contract suite and the e2e suite run the real provider implementations against the [test SCM server](test-scm-server.md), which impersonates every supported SCM.
+- **UI (shared, components-lib, dashboard, and Argo CD extension):** unit tests via the **Node.js** tooling and npm scripts used in CI (`make test-ui`).
 - **Static analysis:** **golangci-lint**, **Nilaway**, and other checks run in CI on every change.
 
 ## DCO sign-off
@@ -47,6 +52,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 | CRD maintenance checklist       | [Maintaining CRDs](maintaining-crds.md)                                                                  |
 | Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
 | Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
+| Test SCM server                 | [`test/scmserver/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/test/scmserver) (see [Test SCM Server](test-scm-server.md)) |
 
 ## Design patterns
 

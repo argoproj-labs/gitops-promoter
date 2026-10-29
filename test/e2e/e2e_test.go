@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,9 +30,23 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/test/utils"
 )
 
-const namespace = "promoter-system"
+const (
+	namespace = "promoter-system"
+	// argoCDApplicationCRD is the Argo CD Application CRD the integration suites also load.
+	argoCDApplicationCRD = "test/external_crds/argoproj.io_applications.yaml"
+	// e2eCoverageEnv, when "1", builds the manager with -cover and has it write profiles to the Kind node's
+	// coverageHostPath as the process exits. CI sets it on one matrix leg and uploads the profile to Codecov.
+	e2eCoverageEnv = "E2E_COVERAGE"
+	// coverageHostPath is where the Kind node stores the controller's coverage files. The CI workflow copies it
+	// after the suite deletes the controller namespace, which is what makes the process exit and flush the profile.
+	coverageHostPath = "/var/promoter-cover"
+)
 
 var _ = Describe("controller", Ordered, func() {
+	// installedApplicationCRD is true when the suite installed the Argo CD Application CRD, so teardown leaves a CRD
+	// that was already there, and its Applications, alone.
+	var installedApplicationCRD bool
+
 	BeforeAll(func() {
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
@@ -39,8 +54,19 @@ var _ = Describe("controller", Ordered, func() {
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
 
+		// The default ControllerConfiguration watches local Argo CD Applications, so the controller cannot
+		// start without the Application CRD.
+		By("installing the Argo CD Application CRD unless the cluster has it")
+		cmd := exec.Command("kubectl", "get", "crd", "applications.argoproj.io")
+		if _, err := utils.Run(cmd); err != nil {
+			cmd = exec.Command("kubectl", "apply", "-f", argoCDApplicationCRD)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			installedApplicationCRD = true
+		}
+
 		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		cmd = exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
 	})
 
@@ -54,6 +80,12 @@ var _ = Describe("controller", Ordered, func() {
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
+
+		if installedApplicationCRD {
+			By("removing the Argo CD Application CRD")
+			cmd = exec.Command("kubectl", "delete", "-f", argoCDApplicationCRD, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		}
 	})
 
 	Context("Operator", func() {
@@ -68,7 +100,11 @@ var _ = Describe("controller", Ordered, func() {
 			)
 
 			By("building the manager(Operator) image")
-			cmd := exec.Command("make", "docker-build", "IMAGE_TAG="+imageTag)
+			build := []string{"docker-build", "IMAGE_TAG=" + imageTag}
+			if e2eCoverageEnabled() {
+				build = append(build, "COVER=1")
+			}
+			cmd := exec.Command("make", build...)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
@@ -85,6 +121,29 @@ var _ = Describe("controller", Ordered, func() {
 			cmd = exec.Command("make", "deploy", "IMAGE_TAG="+imageTag)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("validating that the controller-manager runs the image built from this checkout")
+			cmd = exec.Command("kubectl", "get", "deployment", "promoter-controller-manager", "-n", namespace,
+				"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="manager")].image}`)
+			deployedImage, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			ExpectWithOffset(1, string(deployedImage)).To(Equal(projectimage))
+
+			if e2eCoverageEnabled() {
+				By("directing the controller to write coverage on exit")
+				Expect(prepareKindCoverageDir()).To(Succeed())
+				// The directory is created on the node before this patch, and hostPath type Directory requires it to
+				// exist. The manager runs as a non-root user, so the directory is world-writable. The SCM specs later
+				// strategic-merge their own volume onto this pod, which keeps this mount.
+				patch := `{"spec":{"template":{"spec":{"terminationGracePeriodSeconds":30,` +
+					`"volumes":[{"name":"coverage","hostPath":{"path":"` + coverageHostPath + `","type":"Directory"}}],` +
+					`"containers":[{"name":"manager","env":[{"name":"GOCOVERDIR","value":"/coverage"}],` +
+					`"volumeMounts":[{"name":"coverage","mountPath":"/coverage"}]}]}}}}`
+				cmd = exec.Command("kubectl", "patch", "deployment", "promoter-controller-manager",
+					"-n", namespace, "--type=strategic", "-p", patch)
+				_, err = utils.Run(cmd)
+				ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			}
 
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func() error {
@@ -123,6 +182,8 @@ var _ = Describe("controller", Ordered, func() {
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
 		})
 	})
+
+	Context("SCM providers", Ordered, scmProviderSpecs)
 
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
@@ -179,3 +240,24 @@ var _ = Describe("controller", Ordered, func() {
 		})
 	})
 })
+
+// e2eCoverageEnabled reports whether this run should build and run an instrumented controller.
+func e2eCoverageEnabled() bool {
+	return os.Getenv(e2eCoverageEnv) == "1"
+}
+
+// prepareKindCoverageDir creates the host path the controller writes coverage to. The manager container runs as a
+// non-root user, and a DirectoryOrCreate hostPath would be owned by root and not writable, so the directory is made
+// world-writable. Kind names the node container <cluster>-control-plane.
+func prepareKindCoverageDir() error {
+	cluster := "kind"
+	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
+		cluster = v
+	}
+	cmd := exec.CommandContext(context.Background(), "docker", "exec", cluster+"-control-plane", "sh", "-c",
+		"mkdir -p "+coverageHostPath+" && chmod 777 "+coverageHostPath)
+	if _, err := utils.Run(cmd); err != nil {
+		return fmt.Errorf("preparing coverage dir on the kind node: %w", err)
+	}
+	return nil
+}

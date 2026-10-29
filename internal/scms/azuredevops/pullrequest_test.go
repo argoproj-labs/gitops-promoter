@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -21,6 +23,8 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 		repoName     string
 		expectedUrl  string
 		prId         int
+		// clusterScoped references a ClusterScmProvider, whose Secret lives in the controller's namespace.
+		clusterScoped bool
 	}{
 		{
 			name:         "default dev.azure.com domain",
@@ -39,6 +43,16 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 			repoName:     "myrepo",
 			prId:         456,
 			expectedUrl:  "https://devops.example.com/myorg/myproject/_git/myrepo/pullrequest/456",
+		},
+		{
+			name:          "ClusterScmProvider",
+			domain:        "devops.example.com",
+			organization:  "myorg",
+			project:       "myproject",
+			repoName:      "myrepo",
+			prId:          789,
+			expectedUrl:   "https://devops.example.com/myorg/myproject/_git/myrepo/pullrequest/789",
+			clusterScoped: true,
 		},
 	}
 
@@ -89,14 +103,28 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 				},
 			}
 
+			objects := []client.Object{scmProvider, secret, gitRepo}
+			if tc.clusterScoped {
+				clusterScmProvider := &v1alpha1.ClusterScmProvider{Name: resourceName, Spec: *scmProvider.GetSpec()}
+				// The Secret is in the controller's namespace, not the GitRepository's.
+				secret.Namespace = "promoter-system"
+				gitRepo.Spec.ScmProviderRef.Kind = v1alpha1.ClusterScmProviderKind
+				controllerConfiguration := &v1alpha1.ControllerConfiguration{
+					Name: settings.ControllerConfigurationName, Namespace: "promoter-system",
+				}
+				controllerConfiguration.Spec.ClusterScmProvider.Mode = v1alpha1.FeatureModeEnabled
+				objects = []client.Object{clusterScmProvider, secret, gitRepo, controllerConfiguration}
+			}
+
 			// Create fake client
 			k8sClient := fake.NewClientBuilder().
 				WithScheme(scheme).
-				WithObjects(scmProvider, secret, gitRepo).
+				WithObjects(objects...).
 				Build()
 
 			pr := &PullRequest{
-				k8sClient: k8sClient,
+				k8sClient:   k8sClient,
+				settingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "promoter-system"}),
 			}
 
 			prObj := v1alpha1.PullRequest{

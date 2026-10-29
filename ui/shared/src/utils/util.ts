@@ -1,4 +1,5 @@
 import type { Environment, PromotionStrategy, Rfc3339DateTime } from '../types/promotion';
+import type { PromotionStrategyDetails, ScmProviderSpec } from '../types/view';
 
 /** Relative time from an {@link Rfc3339DateTime} (e.g. `"3 hours ago"`). */
 export const timeAgo = (dateString: Rfc3339DateTime): string => {
@@ -89,10 +90,42 @@ export function parseGoDuration(duration: string): number | null {
   return result === 0 ? 0 : result;
 }
 
+// The spec of the ScmProvider or ClusterScmProvider the bundle's GitRepository references.
+export function scmProviderSpecFromBundle(
+  bundle: PromotionStrategyDetails,
+): ScmProviderSpec | undefined {
+  return (bundle.scmProvider ?? bundle.clusterScmProvider)?.spec;
+}
+
+// The path between the repo and the sha on hosts whose commit pages are not at <repo>/commit/<sha>.
+// The public hosts are always recognized. A self-hosted one is recognized when it is the domain of
+// the strategy's own SCM provider.
+function commitPathForHost(repoUrl: string, scm: ScmProviderSpec | undefined): string | undefined {
+  let host: string;
+  try {
+    host = new URL(repoUrl).host;
+  } catch {
+    return undefined;
+  }
+  if (host === 'gitlab.com' || host === scm?.gitlab?.domain?.toLowerCase()) return '/-/commit/';
+  if (host === 'bitbucket.org' || host === scm?.bitbucketCloud?.domain?.toLowerCase()) {
+    return '/commits/';
+  }
+  return undefined;
+}
+
 // Get the commit url from the repo url and sha
-export function getCommitUrl(repoUrl: string, sha: string): string {
+export function getCommitUrl(repoUrl: string, sha: string, scm?: ScmProviderSpec): string {
   if (!repoUrl || !sha) return '';
   const cleanRepoUrl = repoUrl.replace(/\/$/, '');
+  const commitPath = commitPathForHost(cleanRepoUrl, scm);
+  if (commitPath) return `${cleanRepoUrl.replace(/\.git$/, '')}${commitPath}${sha}`;
+  const bitbucketDataCenter = cleanRepoUrl.match(/^(.*)\/scm\/(~?[^/]+)\/([^/]+?)(\.git)?$/);
+  if (bitbucketDataCenter) {
+    const [, base, owner, repo] = bitbucketDataCenter;
+    const ownerPath = owner.startsWith('~') ? `users/${owner.slice(1)}` : `projects/${owner}`;
+    return `${base}/${ownerPath}/repos/${repo}/commits/${sha}`;
+  }
   return `${cleanRepoUrl}/commit/${sha}`;
 }
 
@@ -161,7 +194,7 @@ export function getLastCommitTime(ps: PromotionStrategy): Date | null {
  * Sort every `commitStatuses` list on a parsed PromotionStrategy by key, in
  * place. The CRD emits these in a non-deterministic order (aggregated from
  * multiple CommitStatus resources), so normalizing once at ingestion gives every
- * consumer (overview, history matrix, drawer) the same stable ordering. Mutates
+ * consumer (explorer matrix, promotion map, drawer) the same stable ordering. Mutates
  * and returns the same object for call-site convenience.
  */
 export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {

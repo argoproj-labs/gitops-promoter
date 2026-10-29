@@ -30,6 +30,14 @@
   ignorePaths: [
     'docs/requirements-hashed.txt',
   ],
+  // Default Dockerfile matching already includes .oss-scanner/Dockerfile
+  // (/(^|/|\.)Dockerfile$/). Repeat it so a future managerFilePatterns override
+  // does not drop the scanner image. Patterns are additive.
+  dockerfile: {
+    managerFilePatterns: [
+      '/^\\.oss-scanner/Dockerfile$/',
+    ],
+  },
   // Custom datasource for envtest Kubernetes assets. setup-envtest discovers binaries
   // from this exact index (its --index default), so reading the same file guarantees
   // Renovate only proposes ENVTEST_K8S_VERSION values that actually have binaries.
@@ -121,7 +129,7 @@
       // make mod-tidy syncs follower deps (kube-openapi digest, SMD /vN) to CR.
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
@@ -165,7 +173,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
@@ -330,7 +338,8 @@
       prCreation: 'not-pending',
     },
     // ----------------------------------------------------------------------
-    // Group B: Go BUILD toolchain + golangci-lint + mockery + deadcode (+ golang image)
+    // Group B: Go BUILD toolchain + golangci-lint + mockery + deadcode
+    // (+ the golang image in Dockerfile and .oss-scanner/Dockerfile)
     // The go.mod go directive is not regex-managed. go-fix-maybe-bump may raise
     // it to X.Y.0 when a newer-language go fix pass rewrites source.
     // mockery/deadcode must track the CI Go: both use golang.org/x/tools and break
@@ -359,7 +368,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           // go fix at the current go.mod language version, then again at the new
           // toolchain's language version if it is newer. The bump is kept only if
           // the resulting code does not compile at the old floor.
@@ -387,7 +396,7 @@
       },
     },
     // ----------------------------------------------------------------------
-    // Group B2: Node.js (Dockerfile base image + setup-node in workflows)
+    // Group B2: Node.js (Dockerfile and .oss-scanner/Dockerfile base image + setup-node)
     // npm package deps stay manual; only the runtime version is automated here.
     // ----------------------------------------------------------------------
     {
@@ -472,7 +481,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make build-installer',
         ],
         fileFilters: [
@@ -492,7 +501,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make build-installer',
         ],
         // build-installer also runs cel-cost-report and generate-extension-icon-styles;
@@ -520,7 +529,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.27.1',
+          'install-tool golang 1.27.2',
           'make manifests',
           'make build-installer',
         ],
@@ -563,7 +572,10 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
-    // Docker base images: full version tags only, never digest-only PRs
+    // Docker base images: full version tags only, never digest-only PRs.
+    // Dockerfile and .oss-scanner/Dockerfile pin the same golang and node
+    // images. A tag bump rewrites the digest in both files; a rebuilt tag
+    // with the same version does not open a PR.
     // ----------------------------------------------------------------------
     {
       description: 'No digest-only image bumps; only bump on a real new version tag',
@@ -573,6 +585,19 @@
       matchUpdateTypes: [
         'digest',
         'pinDigest',
+      ],
+      enabled: false,
+    },
+    {
+      description: 'Leave the scanner Dockerfile syntax channel on docker/dockerfile:1',
+      matchManagers: [
+        'dockerfile',
+      ],
+      matchFileNames: [
+        '/^\\.oss-scanner/Dockerfile$/',
+      ],
+      matchDepTypes: [
+        'syntax',
       ],
       enabled: false,
     },

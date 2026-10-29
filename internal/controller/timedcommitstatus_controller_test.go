@@ -316,6 +316,14 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Verify the duration requirement has NOT been met (time remaining should be > 0)
 				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0),
 					"AtMostDurationRemaining must be > 0 for pending phase")
+
+				// The status can land before the CommitStatus when a write to the CommitStatus fails, so wait for it
+				// too before checking that it stays pending.
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.CommitStatusResourceName(ctx, &tcs, testBranchDevelopment),
+					Namespace: "default",
+				}, &cs)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying phase stays pending for 10 seconds (doesn't incorrectly switch to success)")
@@ -472,7 +480,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -659,6 +667,62 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(keyCtx, gitRepo)
 			_ = k8sClient.Delete(keyCtx, scmProvider)
 			_ = k8sClient.Delete(keyCtx, scmSecret)
+		})
+	})
+
+	Describe("publishTo: empty", func() {
+		It("should set publishTo on the child CommitStatus", func() {
+			skipCtx := context.Background()
+			skipName, scmSecret, scmProvider, gitRepo, _, _, skipPS := promotionStrategyResource(skipCtx, "timed-commit-status-skip-scm-test", "default")
+			skipPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timer"},
+			}
+
+			setupInitialTestGitRepoOnServer(skipCtx, gitRepo)
+
+			Expect(k8sClient.Create(skipCtx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(skipCtx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(skipCtx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(skipPS)
+			Expect(k8sClient.Create(skipCtx, skipPS)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(skipCtx, skipPS)
+
+			tcs := &promoterv1alpha1.TimedCommitStatus{
+				Name:      skipName + "-skip-scm",
+				Namespace: "default",
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					Key: "timer",
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: skipName,
+					},
+					PublishTo: &[]promoterv1alpha1.CommitStatusPublishTo{},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testBranchDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(skipCtx, tcs)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(skipCtx, tcs) }()
+
+			commitStatusName := utils.CommitStatusResourceName(skipCtx, tcs, testBranchDevelopment)
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(skipCtx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.PublishTo).To(HaveValue(BeEmpty()))
+				g.Expect(cs.Status.Phase).To(Equal(cs.Spec.Phase))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_ = k8sClient.Delete(skipCtx, skipPS)
+			_ = k8sClient.Delete(skipCtx, gitRepo)
+			_ = k8sClient.Delete(skipCtx, scmProvider)
+			_ = k8sClient.Delete(skipCtx, scmSecret)
 		})
 	})
 })

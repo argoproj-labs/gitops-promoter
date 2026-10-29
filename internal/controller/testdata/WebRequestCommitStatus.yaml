@@ -17,6 +17,10 @@ spec:
   # URL for the commit status target link in the SCM (Go templates supported). Optional.
   urlTemplate: ""
 
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
+
   # Which SHA to report on: "proposed" (default) or "active". Optional.
   reportOn: proposed
 
@@ -29,7 +33,8 @@ spec:
     # Optional: request body template
     bodyTemplate: ""
     timeout: 30s
-    # Optional: authentication (basic, bearer, oauth2, or tls with secretRef); omit if none
+    # Optional: authentication (basic, bearer, oauth2, or tls with secretRef); omit if none.
+    # The referenced Secret must be labeled promoter.argoproj.io/webrequestcommitstatus-access: allowed.
 
   # When the HTTP response is considered successful (phase success)
   success:
