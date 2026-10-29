@@ -27,7 +27,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -39,7 +39,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -50,7 +50,7 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-without-ui.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-without-ui.yaml
 ```
 
 ///
@@ -67,7 +67,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-cert-manager-namespaced.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager-namespaced.yaml
 ```
 
 ///
@@ -79,7 +79,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-byo-cert-namespaced.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert-namespaced.yaml
 ```
 
 ///
@@ -90,7 +90,7 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-without-ui-namespaced.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-without-ui-namespaced.yaml
 ```
 
 ///
@@ -790,7 +790,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -801,7 +801,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.47.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
