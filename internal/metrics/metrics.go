@@ -314,7 +314,8 @@ func withRepositoryLabels(labels prometheus.Labels, keep bool) prometheus.Labels
 	if keep {
 		return labels
 	}
-	blanked := maps.Clone(labels)
+	blanked := make(prometheus.Labels, len(labels))
+	maps.Copy(blanked, labels)
 	blanked["git_repository"] = ""
 	blanked["git_repository_namespace"] = ""
 	return blanked
