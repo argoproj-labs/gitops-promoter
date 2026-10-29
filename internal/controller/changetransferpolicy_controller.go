@@ -2013,6 +2013,15 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 		return false, nil
 	}
 
+	// On a shared active branch, sibling policies' merges change the root hydrator.metadata and so conflict with an
+	// idle policy's proposed branch. Resolving that would push a promoter merge commit onto a branch with nothing to
+	// promote, so only resolve conflicts while this policy has a pending change (same predicate createOrUpdatePullRequest
+	// uses to decide whether a PR is needed).
+	if ctp.Spec.ActivePath != "" && ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
+		logger.V(4).Info("Skipping conflict check, nothing to promote for activePath", "activePath", ctp.Spec.ActivePath, "drySha", ctp.Status.Active.Dry.Sha)
+		return false, nil
+	}
+
 	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
 	// Check if there's a conflict between branches
