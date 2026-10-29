@@ -34,6 +34,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
 )
 
