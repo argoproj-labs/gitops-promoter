@@ -24,7 +24,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -36,18 +38,30 @@ const (
 	sharedActivePathTwo = "apps/app-two"
 )
 
-// sharedActivePathStrategies is two PromotionStrategies whose single development environment shares one
-// active branch and differ only by spec.activePath, as in the "one branch per environment" layout.
+// sharedActivePathStrategies is a set of PromotionStrategies whose single development environment shares one
+// active branch and differ only by spec.activePath, as in the "one branch per environment" layout. apps holds
+// them in creation order; psOne and psTwo are the first two, for specs that only need a pair.
 type sharedActivePathStrategies struct {
 	gitRepo    *promoterv1alpha1.GitRepository
+	apps       []*promoterv1alpha1.PromotionStrategy
 	psOne      *promoterv1alpha1.PromotionStrategy
 	psTwo      *promoterv1alpha1.PromotionStrategy
 	gitPath    string
 	namespaces string
 }
 
+// setupSharedActivePathStrategies is setupSharedActivePathApps for the two apps sharedActivePathOne and
+// sharedActivePathTwo.
 func setupSharedActivePathStrategies(ctx context.Context) sharedActivePathStrategies {
 	GinkgoHelper()
+	return setupSharedActivePathApps(ctx, sharedActivePathOne, sharedActivePathTwo)
+}
+
+// setupSharedActivePathApps creates one PromotionStrategy per activePath, all promoting onto the same
+// development branch with AutoMerge on, and waits for their ChangeTransferPolicies.
+func setupSharedActivePathApps(ctx context.Context, activePaths ...string) sharedActivePathStrategies {
+	GinkgoHelper()
+	Expect(len(activePaths)).To(BeNumerically(">=", 2), "a shared active branch needs at least two apps")
 	_, scmSecret, scmProvider, gitRepo, _, _, base := promotionStrategyResource(ctx, "restore-shared-active-path", "default")
 	setupInitialTestGitRepoForActivePath(ctx, gitRepo)
 	Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -55,21 +69,19 @@ func setupSharedActivePathStrategies(ctx context.Context) sharedActivePathStrate
 	Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 
 	s := sharedActivePathStrategies{gitRepo: gitRepo, namespaces: "default"}
-	for _, app := range []struct {
-		suffix, activePath string
-		ps                 **promoterv1alpha1.PromotionStrategy
-	}{{"-app-one", sharedActivePathOne, &s.psOne}, {"-app-two", sharedActivePathTwo, &s.psTwo}} {
+	for _, activePath := range activePaths {
 		ps := base.DeepCopy()
-		ps.Name = base.Name + app.suffix
-		ps.Spec.ActivePath = app.activePath
+		ps.Name = base.Name + "-" + path.Base(activePath)
+		ps.Spec.ActivePath = activePath
 		ps.Spec.Environments = []promoterv1alpha1.Environment{{Branch: testBranchDevelopment, AutoMerge: new(true)}}
 		declareDependentsSuccessfulGate(ps)
 		Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 		createDependentsSuccessfulCommitStatus(ctx, ps)
-		*app.ps = ps
+		s.apps = append(s.apps, ps)
 	}
+	s.psOne, s.psTwo = s.apps[0], s.apps[1]
 	DeferCleanup(func() {
-		for _, ps := range []*promoterv1alpha1.PromotionStrategy{s.psOne, s.psTwo} {
+		for _, ps := range s.apps {
 			deleteRestoreActiveCommitsForPolicy(ctx, s.ctpKey(ps).Name, ps.Namespace)
 			_ = k8sClient.Delete(ctx, ps)
 			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{Name: ps.Name, Namespace: ps.Namespace})
@@ -80,8 +92,9 @@ func setupSharedActivePathStrategies(ctx context.Context) sharedActivePathStrate
 	})
 
 	Eventually(func(g Gomega) {
-		g.Expect(s.ctp(ctx, g, s.psOne).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, sharedActivePathOne)))
-		g.Expect(s.ctp(ctx, g, s.psTwo).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, sharedActivePathTwo)))
+		for _, ps := range s.apps {
+			g.Expect(s.ctp(ctx, g, ps).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, ps.Spec.ActivePath)))
+		}
 	}, constants.EventuallyTimeout).Should(Succeed())
 
 	gitPath, err := cloneTestRepo(ctx, gitRepo)
@@ -89,6 +102,54 @@ func setupSharedActivePathStrategies(ctx context.Context) sharedActivePathStrate
 	DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
 	s.gitPath = gitPath
 	return s
+}
+
+// historyFor returns ps's ChangeTransferPolicyHistory entries, newest first.
+func (s sharedActivePathStrategies) historyFor(ctx context.Context, g Gomega, ps *promoterv1alpha1.PromotionStrategy) []promoterv1alpha1.History {
+	var ctph promoterv1alpha1.ChangeTransferPolicyHistory
+	g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.GetChangeTransferPolicyHistoryName(s.ctpKey(ps).Name), Namespace: ps.Namespace}, &ctph)).To(Succeed())
+	return ctph.Status.History
+}
+
+// nudge enqueues ps's ChangeTransferPolicy the way PromotionStrategy.enqueueOutOfSyncCTPs would; SCMs do
+// not webhook git notes, and a sibling's merge webhook is the thing some specs deliberately do without.
+func (s sharedActivePathStrategies) nudge(ps *promoterv1alpha1.PromotionStrategy) {
+	key := s.ctpKey(ps)
+	enqueueCTP(key.Namespace, key.Name)
+}
+
+// squashMerge lands ps's pending change on the active branch the way an SCM squash merge would: a single
+// commit with the proposed tree for the path, so the proposed tip is not an ancestor of the active branch.
+// It removes the pull request object as the SCM closing it would, sends the push webhook, and waits for the
+// policy to see the change. Returns the dry SHA.
+func (s sharedActivePathStrategies) squashMerge(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, message string) string {
+	GinkgoHelper()
+	dry := s.hydrate(ctx, ps.Spec.ActivePath, message)
+	proposed := path.Join(testBranchDevelopmentNext, ps.Spec.ActivePath)
+	prKey := s.prKey(ps.Spec.ActivePath)
+	Eventually(func(g Gomega) {
+		s.nudge(ps)
+		g.Expect(s.ctp(ctx, g, ps).Status.Proposed.Dry.Sha).To(Equal(dry))
+		g.Expect(k8sClient.Get(ctx, prKey, &promoterv1alpha1.PullRequest{})).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
+	_, err := runGitCmd(ctx, s.gitPath, "fetch", "origin", testBranchDevelopment, proposed)
+	Expect(err).NotTo(HaveOccurred())
+	before, err := runGitCmd(ctx, s.gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+	Expect(err).NotTo(HaveOccurred())
+	before = strings.TrimSpace(before)
+	squash, err := runGitCmd(ctx, s.gitPath, "commit-tree", "origin/"+proposed+"^{tree}", "-p", before, "-m", "Squash-merge "+message)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, s.gitPath, "push", "-q", "origin", strings.TrimSpace(squash)+":refs/heads/"+testBranchDevelopment)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Name: prKey.Name, Namespace: prKey.Namespace}}))).To(Succeed())
+	sendWebhookForPush(ctx, before, testBranchDevelopment)
+	Eventually(func(g Gomega) {
+		s.nudge(ps)
+		ctp := s.ctp(ctx, g, ps)
+		g.Expect(ctp.Status.Active.Dry.Sha).To(Equal(dry))
+		g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(dry))
+	}, constants.EventuallyTimeout).Should(Succeed())
+	return dry
 }
 
 func (s sharedActivePathStrategies) ctpKey(ps *promoterv1alpha1.PromotionStrategy) types.NamespacedName {
