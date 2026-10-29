@@ -83,6 +83,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ClusterAzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProvider"):
 		return &apiv1alpha1.ClusterScmProviderApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderConfiguration"):
+		return &apiv1alpha1.ClusterScmProviderConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderSpec"):
 		return &apiv1alpha1.ClusterScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchState"):

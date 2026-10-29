@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -108,7 +109,11 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 				// The Secret is in the controller's namespace, not the GitRepository's.
 				secret.Namespace = "promoter-system"
 				gitRepo.Spec.ScmProviderRef.Kind = v1alpha1.ClusterScmProviderKind
-				objects = []client.Object{clusterScmProvider, secret, gitRepo}
+				controllerConfiguration := &v1alpha1.ControllerConfiguration{
+					Name: settings.ControllerConfigurationName, Namespace: "promoter-system",
+				}
+				controllerConfiguration.Spec.ClusterScmProvider.Mode = v1alpha1.FeatureModeEnabled
+				objects = []client.Object{clusterScmProvider, secret, gitRepo, controllerConfiguration}
 			}
 
 			// Create fake client
@@ -118,7 +123,8 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 				Build()
 
 			pr := &PullRequest{
-				k8sClient: k8sClient,
+				k8sClient:   k8sClient,
+				settingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "promoter-system"}),
 			}
 
 			prObj := v1alpha1.PullRequest{

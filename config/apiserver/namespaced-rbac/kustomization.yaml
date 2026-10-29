@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Binds the dashboard apiserver's read permissions and the PromotionStrategyDetails viewer
+# permissions only in promoter-system, for use with the fully isolated controller (config/namespaced).
+# Delegated authentication (system:auth-delegator and the kube-system RoleBinding) is unchanged.
+
+patches:
+  - target:
+      kind: ClusterRoleBinding
+      name: promoter-apiserver
+    patch: |-
+      - op: replace
+        path: /kind
+        value: RoleBinding
+      - op: add
+        path: /metadata/namespace
+        value: promoter-system
+  - target:
+      kind: ClusterRoleBinding
+      name: promoter-promotionstrategydetails-viewer
+    patch: |-
+      - op: replace
+        path: /kind
+        value: RoleBinding
+      - op: add
+        path: /metadata/namespace
+        value: promoter-system
