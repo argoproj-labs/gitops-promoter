@@ -1851,7 +1851,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwo},
 			}, "hydrate baseline for steady-state test", 0)).To(Succeed())
 
-			var appOneBaselineManifest string
+			var appOneBaselineManifest, appOnePathHydratedSha string
 			Eventually(func(g Gomega) {
 				ctpOne := getCTP(g, &promotionStrategyOne)
 				ctpTwo := getCTP(g, &promotionStrategyTwo)
@@ -1859,6 +1859,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
 				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne))
 				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
+				g.Expect(ctpOne.Status.Active.PathHydrated).NotTo(BeNil(), "an activePath policy records the commit that last changed its path")
+				appOnePathHydratedSha = ctpOne.Status.Active.PathHydrated.Sha
 
 				_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
 				g.Expect(readErr).NotTo(HaveOccurred())
@@ -1887,6 +1889,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				manifestTwo, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathTwo, "manifests-fake.yaml"))
 				g.Expect(readErr).NotTo(HaveOccurred())
 				g.Expect(manifestTwo).To(ContainSubstring(dryShaTwoNext))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-one observes the new shared tip but its path hydrated commit stays put")
+			Eventually(func(g Gomega) {
+				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
+				sharedTip, readErr := runGitCmd(ctx, gitPath, "rev-parse", activeRef)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				g.Expect(ctpOne.Status.Active.Hydrated.Sha).To(Equal(strings.TrimSpace(sharedTip)), "hydrated stays the branch tip")
+				g.Expect(ctpOne.Status.Active.Hydrated.Sha).NotTo(Equal(appOnePathHydratedSha), "the sibling's merge moved the tip")
+				g.Expect(ctpOne.Status.Active.PathHydrated).NotTo(BeNil())
+				g.Expect(ctpOne.Status.Active.PathHydrated.Sha).To(Equal(appOnePathHydratedSha), "app-one's path hydrated commit must not follow the sibling's merge")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying app-one sits at steady state: no promotion, no new proposed change, no open PR, content untouched")
