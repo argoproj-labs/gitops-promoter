@@ -258,7 +258,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var eventList v1.EventList
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
-				g.Expect(hasEventWithReasonAndMessage(eventList, name, constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name, constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Clean up

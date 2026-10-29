@@ -188,7 +188,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	go test ./test/e2e/ -v -timeout 30m -ginkgo.v
+	go test ./test/e2e/ -v -timeout 30m -ginkgo.v -ginkgo.junit-report=$(CURDIR)/e2e-junit.xml
 
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
@@ -201,17 +201,22 @@ test-parallel: test-deps ## Run tests in parallel
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/ test/scmserver/
 
-# Local-only: run controller integration tests against an externally running scmserver provider.
-# Requires `make run-scm-server` in another terminal. Not used by CI.
+# Run controller integration tests against an externally running scmserver provider.
+# Requires `make run-scm-server` in another terminal (or `make start-scm-server`). The weekly
+# fault-injection workflow runs it for every provider.
 # Example: make test-scm-provider SCM_PROVIDER=gitea
+# Fault injection: set PROMOTER_TEST_SCM_FAULT_PROBABILITY (SCM requests) and/or K8S_FAULT_PROBABILITY
+# (Kubernetes writes) to a fraction in (0, 1].
 # hack/git goes on PATH because git authenticates to the server through promoter_askpass.sh (see internal/git).
 SCM_PROVIDER ?=
 # Admin API listens on this port; the seven providers use the next seven. Override if 9000 is taken (e.g. by Zscaler).
 SCM_SERVER_PORT_BASE ?= 9000
 # debug logs every provider API request (not git traffic); info logs only startup and errors.
 SCM_SERVER_LOG_LEVEL ?= debug
+# Faults slow the suite down, so the fault-injection workflow raises this.
+SCM_PROVIDER_TEST_TIMEOUT ?= 30m
 .PHONY: test-scm-provider
-test-scm-provider: test-deps ## Run controller tests against scmserver (local only). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
+test-scm-provider: test-deps ## Run controller tests against scmserver (see docs/contributing/test-scm-server.md). Set SCM_PROVIDER=github|gitlab|azuredevops|bitbucket|gitea|forgejo|bitbucketdatacenter.
 	@if [ -z "$(SCM_PROVIDER)" ]; then echo "SCM_PROVIDER is required (e.g. SCM_PROVIDER=gitea)"; exit 1; fi
 	PATH="$(CURDIR)/hack/git:$$PATH" \
 	PROMOTER_TEST_SCM_PROVIDER="$(SCM_PROVIDER)" \
@@ -219,7 +224,7 @@ test-scm-provider: test-deps ## Run controller tests against scmserver (local on
 	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \
 	PROMOTER_TEST_SCM_TOKEN="$${PROMOTER_TEST_SCM_TOKEN:-dev-token}" \
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-	go tool ginkgo -p -procs=4 -r -v --label-filter='!fake-scm-only' --timeout 30m internal/controller/
+	go tool ginkgo -p -procs=4 -r -v --label-filter='!fake-scm-only' --timeout $(SCM_PROVIDER_TEST_TIMEOUT) --junit-report=junit.xml internal/controller/
 
 ##@ Fuzzing
 
@@ -316,15 +321,32 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
-.PHONY: run-scm-server
-run-scm-server: ## Run the test SCM server on localhost (admin API :SCM_SERVER_PORT_BASE, providers on the next 7 ports). See docs/contributing/test-scm-server.md.
-	mkdir -p $(LOCALBIN)
-	go run ./test/scmserver/cmd --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token --log-level $(SCM_SERVER_LOG_LEVEL) \
+SCM_SERVER_ARGS = --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token --log-level $(SCM_SERVER_LOG_LEVEL) \
 		--admin-addr 127.0.0.1:$(SCM_SERVER_PORT_BASE) --github-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+1))) \
 		--gitlab-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+2))) --azuredevops-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+3))) \
 		--bitbucket-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+4))) --gitea-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+5))) \
 		--forgejo-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+6))) \
 		--bitbucketdatacenter-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+7)))
+
+.PHONY: run-scm-server
+run-scm-server: ## Run the test SCM server on localhost (admin API :SCM_SERVER_PORT_BASE, providers on the next 7 ports). See docs/contributing/test-scm-server.md.
+	mkdir -p $(LOCALBIN)
+	go run ./test/scmserver/cmd $(SCM_SERVER_ARGS)
+
+SCM_SERVER_LOG ?= $(LOCALBIN)/scm-server.log
+.PHONY: start-scm-server
+start-scm-server: ## Start the test SCM server in the background (logs to SCM_SERVER_LOG) and wait until it is healthy.
+	mkdir -p $(LOCALBIN)
+	go build -o $(LOCALBIN)/scm-server ./test/scmserver/cmd
+	@if curl -fsS http://127.0.0.1:$(SCM_SERVER_PORT_BASE)/healthz > /dev/null 2>&1; then \
+		echo "a server is already listening on port $(SCM_SERVER_PORT_BASE); stop it or set SCM_SERVER_PORT_BASE"; exit 1; \
+	fi
+	@nohup $(LOCALBIN)/scm-server $(SCM_SERVER_ARGS) > $(SCM_SERVER_LOG) 2>&1 & pid=$$!; \
+	for i in $$(seq 1 60); do \
+		kill -0 $$pid 2>/dev/null || break; \
+		curl -fsS http://127.0.0.1:$(SCM_SERVER_PORT_BASE)/healthz > /dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "scmserver did not become healthy; see $(SCM_SERVER_LOG)"; cat $(SCM_SERVER_LOG); exit 1
 
 .PHONY: run-dashboard-dev
 run-dashboard-dev: 
@@ -387,8 +409,8 @@ test-ui-test-shared: ## Run shared unit tests (with coverage)
 	cd ui/shared && npm test
 
 .PHONY: lint-components-lib
-lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
-	cd ui/components-lib && npm run type-check && npm run format:check
+lint-components-lib: install-ui-deps ## Run components-lib lint, type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run lint && npm run type-check && npm run format:check
 	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
 .PHONY: lint-shared

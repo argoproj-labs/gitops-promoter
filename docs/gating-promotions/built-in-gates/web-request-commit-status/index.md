@@ -170,7 +170,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). Per-environment in `environments` context; aggregate of all branches in `promotionstrategy` context. |
 | `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. Use `find(PromotionStrategy.Status.Environments, {.Branch == Branch})` to access per-environment data (e.g. `.Proposed.Hydrated.Sha`). |
 | `WebRequestCommitStatus` | WebRequestCommitStatus | The full WebRequestCommitStatus spec and status (snapshot from the previous reconcile). Access per-branch status via `Status.Environments` or `Status.PromotionStrategyContext`. |
-| `NamespaceMetadata` | object | Labels and annotations of the WebRequestCommitStatus's namespace: `NamespaceMetadata.Labels` and `NamespaceMetadata.Annotations` (`map[string]string`). Same binding as Go templates. |
+| `NamespaceMetadata` | object | Labels and annotations of the WebRequestCommitStatus's namespace: `NamespaceMetadata.Labels` and `NamespaceMetadata.Annotations` (`map[string]string`). Same binding as Go templates. Empty when `ControllerConfiguration.spec.webRequestCommitStatus.namespaceMetadata` is `Disabled`. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
 | `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
@@ -369,7 +369,7 @@ spec:
 How it works:
 
 - `success.when.variables` is the single source of truth: it computes `tag`, `runId`, and `ok` once per reconcile.
-- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check.
+- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check. In polling mode with `reportOn: proposed`, a reconcile for a SHA that already succeeded skips the request and is also a carry-forward reconcile.
 - The boolean `expression: 'Variables.ok'` reuses the same value — no duplicate `Response != nil ? ... : ...` ladder.
 - `output: 'Variables'` persists the whole map to `SuccessOutput`, which is what the next carry-forward reconcile reads back as `prev`.
 - `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.

@@ -17,6 +17,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -36,22 +37,24 @@ type azdoGitClient interface {
 
 // CommitStatus implements the scms.CommitStatusProvider interface for Azure DevOps.
 type CommitStatus struct {
-	client    *azuredevops.Connection
-	k8sClient client.Client
+	client      *azuredevops.Connection
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
 // NewAzureDevopsCommitStatusProvider creates a new instance of CommitStatus for Azure DevOps.
-func NewAzureDevopsCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
+func NewAzureDevopsCommitStatusProvider(ctx context.Context, k8sClient client.Client, settingsMgr *settings.Manager, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
 	azureClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CommitStatus{
-		client:    azureClient,
-		k8sClient: k8sClient,
+		client:      azureClient,
+		k8sClient:   k8sClient,
+		settingsMgr: settingsMgr,
 	}, nil
 }
 
@@ -65,15 +68,10 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(
-		ctx,
-		cs.k8sClient,
-		commitStatus.Namespace,
-		commitStatus.Spec.RepositoryReference,
-		commitStatus,
-	)
+	// Only the provider's spec is needed; see generatePullRequestUrl.
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, cs.k8sClient, cs.settingsMgr, gitRepo, commitStatus)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
+		return nil, fmt.Errorf("failed to get SCM provider: %w", err)
 	}
 
 	// Get Git client from Azure DevOps connection

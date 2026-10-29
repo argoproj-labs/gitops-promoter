@@ -1,12 +1,15 @@
 package azuredevops
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"net/http"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	v1 "k8s.io/api/core/v1"
+
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // azureDevOpsHTTPStatusCode extracts the HTTP status code from an Azure DevOps REST API error.
@@ -29,9 +32,18 @@ func isAzureDevOpsNotFound(err error) bool {
 	return ok && code == http.StatusNotFound
 }
 
-// ApplyHTTPAuth applies Azure DevOps authentication to the HTTP request using Basic auth
-// with an empty username and the PAT as the password.
-func ApplyHTTPAuth(secret v1.Secret, req *http.Request) error {
+// ApplyHTTPAuth applies Azure DevOps authentication to the HTTP request. With workload identity it uses
+// a Bearer Microsoft Entra ID access token, otherwise Basic auth with an empty username and the PAT as the password.
+func ApplyHTTPAuth(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, req *http.Request) error {
+	if wi := workloadIdentityConfig(scmProvider); wi != nil {
+		token, err := workloadIdentityTokenFunc(ctx, wi)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return nil
+	}
+
 	token := string(secret.Data[azureDevOpsTokenSecretKey])
 	if token == "" {
 		return errors.New("non-empty token required in secret for Azure DevOps SCM auth")

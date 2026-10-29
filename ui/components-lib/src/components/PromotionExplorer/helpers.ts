@@ -31,7 +31,7 @@ export function shortSha(sha?: string): string {
 export function commitKey(c: Commit | undefined): string | null {
   const s = c?.sha;
   if (s && s.length >= 7) return s.slice(0, 7);
-  if (c?.subject || c?.author) return `nokey:${c?.subject ?? ''}|${c?.author ?? ''}`;
+  if (c?.subject || c?.author) return `nokey:${c.subject ?? ''}|${c.author ?? ''}`;
   return null;
 }
 

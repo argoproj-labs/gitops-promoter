@@ -10,6 +10,7 @@ var (
 	ParseCatFileBatch    = parseCatFileBatch
 	ParseNotesLogOutput  = parseNotesLogOutput
 	FullObjectID         = fullObjectID
+	RunCmdWithEnv        = runCmdWithEnv
 )
 
 // Trailers exposes the parsed trailers of a commitObject to package git_test.

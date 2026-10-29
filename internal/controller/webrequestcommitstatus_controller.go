@@ -437,7 +437,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
 		ctx,
 		r.Client,
-		r.SettingsMgr.GetControllerNamespace(),
+		r.SettingsMgr,
 		repositoryRef,
 		&metav1.ObjectMeta{Namespace: namespace},
 	)
@@ -517,7 +517,16 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,
 // body, and description templates can reference them. Called at the start of Reconcile for the
 // WebRequestCommitStatus's namespace.
+// Returns empty metadata when namespace metadata is disabled.
 func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (webrequest.NamespaceMetadata, error) {
+	mode, err := r.SettingsMgr.GetWebRequestCommitStatusNamespaceMetadata(ctx)
+	if err != nil {
+		return webrequest.NamespaceMetadata{}, fmt.Errorf("failed to get namespace metadata setting: %w", err)
+	}
+	if mode == promoterv1alpha1.FeatureModeDisabled {
+		return webrequest.NamespaceMetadata{}, nil
+	}
+
 	var ns corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, &ns); err != nil {
 		return webrequest.NamespaceMetadata{}, fmt.Errorf("failed to get namespace %q: %w", namespace, err)
@@ -532,7 +541,7 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 // allowedHostsForScmProvider returns the URL hostname permitted for the given ScmProviderSpec.
 // It may include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips the port from both
 // the configured value and the request URL so that standard-port URLs always match.
-func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) string {
+func allowedHostsForScmProvider(spec *promoterv1alpha1.ClusterScmProviderSpec) string {
 	switch {
 	case spec.GitHub != nil:
 		if spec.GitHub.Domain != "" {
@@ -648,7 +657,7 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	}
 
 	// Resolve the ScmProvider (namespaced or cluster-scoped).
-	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, gitRepo, wrcs)
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, r.SettingsMgr, gitRepo, wrcs)
 	if err != nil {
 		return "", fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
 	}

@@ -29,6 +29,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
@@ -61,6 +62,8 @@ import (
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -126,6 +129,9 @@ func runController(
 	if err != nil {
 		setupLog.Error(err, "failed to get namespace")
 		os.Exit(1)
+	}
+	if controllerNamespace == "" {
+		return errors.New("kubeconfig must set a default (install) namespace")
 	}
 
 	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
@@ -194,6 +200,15 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
+	scope, clusterScmProviderMode, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
+	if err != nil {
+		return fmt.Errorf("read startup config: %w", err)
+	}
+	clusterScmProviderEnabled := clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
+	if !clusterScmProviderEnabled {
+		setupLog.Info("ClusterScmProvider support disabled")
+	}
+
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
 	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
@@ -202,6 +217,18 @@ func runController(
 	)
 	if err != nil {
 		return fmt.Errorf("build instance-id cache options: %w", err)
+	}
+
+	// Namespace scoping composes with the instance-id partition above: DefaultNamespaces applies
+	// to every ByObject entry that does not set its own Namespaces. Cluster-scoped kinds (for
+	// example ClusterScmProvider) keep cluster-wide watches and still require ClusterRole RBAC.
+	if scope == promoterv1alpha1.ControllerScopeNamespace {
+		setupLog.Info("restricting controller-runtime cache to controller install namespace; "+
+			"list/watch requests will be namespace-scoped (compatible with a namespaced Role)",
+			"namespace", controllerNamespace)
+		cacheOpts.DefaultNamespaces = map[string]cache.Config{
+			controllerNamespace: {},
+		}
 	}
 
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
@@ -242,7 +269,9 @@ func runController(
 
 	localManager := mcMgr.GetLocalManager()
 
-	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
+	if err := localManager.Add(
+		metrics.NewResourceCountRunnable(localManager.GetCache(), clusterScmProviderEnabled),
+	); err != nil {
 		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
 	}
 
@@ -349,13 +378,15 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
-	if err = (&controller.ClusterScmProviderReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(runCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
+	if clusterScmProviderEnabled {
+		if err = (&controller.ClusterScmProviderReconciler{
+			Client:      localManager.GetClient(),
+			Scheme:      localManager.GetScheme(),
+			Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
+			SettingsMgr: settingsMgr,
+		}).SetupWithManager(runCtx, localManager); err != nil {
+			panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
+		}
 	}
 	if err := (&controller.TimedCommitStatusReconciler{
 		Client:      localManager.GetClient(),
@@ -461,6 +492,34 @@ func runController(
 		return fmt.Errorf("controller startup failed: %w", waitErr)
 	}
 	return nil
+}
+
+// getStartupSettings reads spec.scope and spec.clusterScmProvider.mode directly from the API server,
+// before the manager cache starts.
+func getStartupSettings(
+	ctx context.Context,
+	restCfg *rest.Config,
+	controllerNamespace string,
+) (promoterv1alpha1.ControllerScope, promoterv1alpha1.FeatureMode, error) {
+	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return "", "", fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+	}
+	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
+		ControllerNamespace: controllerNamespace,
+	})
+
+	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	scope, err := bootstrapSettings.GetScopeDirect(readCtx)
+	if err != nil {
+		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	clusterScmProviderMode, err := bootstrapSettings.GetClusterScmProviderModeDirect(readCtx)
+	if err != nil {
+		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return scope, clusterScmProviderMode, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -587,6 +646,20 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			}
 
 			ctx := ctrl.SetupSignalHandler()
+
+			namespace, _, err := clientConfig.Namespace()
+			if err != nil {
+				return fmt.Errorf("failed to get namespace: %w", err)
+			}
+			scope, clusterScmProviderMode, err := getStartupSettings(ctx, restConfig, namespace)
+			if err != nil {
+				return fmt.Errorf("read startup config: %w", err)
+			}
+			opts.ClusterScmProviderMode = clusterScmProviderMode
+			if scope == promoterv1alpha1.ControllerScopeNamespace {
+				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
+				opts.Namespace = namespace
+			}
 
 			setupLog.Info("starting dashboard aggregation apiserver")
 			if err := apiserver.Run(ctx, restConfig, opts); err != nil {

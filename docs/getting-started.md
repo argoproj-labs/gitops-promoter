@@ -16,6 +16,10 @@ installs the controller together with the dashboard aggregation API and uses
 [cert-manager](https://cert-manager.io/) to issue and rotate the apiserver serving cert
 automatically — a single apply with nothing else to set up.
 
+### Cluster-wide
+
+Reconciles resources in all namespaces. This is the default.
+
 /// tab | cert-manager (recommended)
 
 Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
@@ -23,7 +27,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -35,7 +39,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -46,7 +50,47 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-without-ui.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/install-without-ui.yaml
+```
+
+///
+
+### Namespaced
+
+Reconciles resources only in the `promoter-system` namespace, using a `Role` instead of a `ClusterRole`.
+See [Install modes](advanced-usage/multi-tenancy.md#install-modes) for details and limitations.
+
+/// tab | cert-manager (recommended)
+
+Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
+the dashboard API in one apply; cert-manager issues and rotates the serving cert (and keeps the
+`caBundle` injected) automatically:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-cert-manager-namespaced.yaml
+```
+
+///
+
+/// tab | Bring your own cert
+
+Installs the controller and the dashboard API without a cert-manager dependency. After applying,
+supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself
+(see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-with-dashboard-byo-cert-namespaced.yaml
+```
+
+///
+
+/// tab | Without the UI
+
+Installs only the controller, without the dashboard aggregation API. Choose this if you don't
+need the web UI:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.42.1/install-without-ui-namespaced.yaml
 ```
 
 ///
@@ -575,7 +619,8 @@ To configure a Bitbucket DataCenter/Server webhook:
 
 /// tab | Azure DevOps
 
-To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
+To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT). On a
+ClusterScmProvider you can use [Azure workload identity](#azure-workload-identity-clusterscmprovider-only) instead.
 
 **ScmProvider**
 
@@ -602,6 +647,40 @@ spec:
   azureDevOps:
     organization: <your-azdo-organization>
 ```
+
+### Azure workload identity (ClusterScmProvider only)
+
+Instead of a PAT, the controller can authenticate with a Microsoft Entra ID identity through
+[Azure workload identity](https://learn.microsoft.com/azure/aks/workload-identity-overview). This uses the
+controller's own identity, so it is only available on a ClusterScmProvider, which only cluster admins can create.
+
+1. Create a user-assigned managed identity (or an Entra application) and add a federated credential for the
+   controller's service account (`system:serviceaccount:<promoter-namespace>:<controller-service-account>`).
+2. [Add the identity to your Azure DevOps organization](https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/service-principal-managed-identity)
+   and give it 'Contribute', 'Create branch' and 'Contribute to pull requests' permissions on the repositories.
+3. Enable workload identity on the controller: annotate its service account with
+   `azure.workload.identity/client-id: <client-id>` and label its pod with `azure.workload.identity/use: "true"`.
+   The workload identity webhook then injects `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_FEDERATED_TOKEN_FILE`.
+
+No secret is needed:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ClusterScmProvider
+metadata:
+  name: <your-clusterscmprovider-name>
+spec:
+  azureDevOps:
+    organization: <your-azdo-organization>
+    workloadIdentity: {}
+```
+
+`workloadIdentity.clientID` and `workloadIdentity.tenantID` can be set to override the values injected by the
+webhook, for example to use a different identity per ClusterScmProvider. Each identity needs a federated credential
+for the controller's service account. Workload identity only works with Azure DevOps Services, so leave `domain`
+empty.
+
+Reference it from a GitRepository with `scmProviderRef.kind: ClusterScmProvider`.
 
 **GitRepository**
 
@@ -711,7 +790,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -722,7 +801,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.45.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.46.0/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
@@ -764,4 +843,4 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
 
-![Animation of the GitOps Promoter dashboard: a change with its deployment and code commits is promoted through development, staging, and production, then the promotion explorer shows the promotion timeline and the referenced code commit](assets/demo.gif)
+![Animation of the GitOps Promoter dashboard: the Promotion Explorer opens a promotion map where development fans out to two staging regions that both feed production, a new change is promoted through that graph while production waits for the slower staging soak, then the details panel shows the production deployment, its code commit, and where the change is live](assets/demo.gif)

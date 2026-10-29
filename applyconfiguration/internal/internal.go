@@ -155,6 +155,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: project
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
+  map:
+    fields:
+    - name: clientID
+      type:
+        scalar: string
+    - name: tenantID
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BasicAuth
   map:
     fields:
@@ -368,6 +377,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pullRequest
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestCommonStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterAzureDevOps
+  map:
+    fields:
+    - name: domain
+      type:
+        scalar: string
+    - name: organization
+      type:
+        scalar: string
+    - name: workloadIdentity
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AzureWorkloadIdentity
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProvider
   map:
     fields:
@@ -382,10 +403,47 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProviderSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderSpec
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProviderStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderConfiguration
+  map:
+    fields:
+    - name: mode
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+      default: Enabled
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderSpec
+  map:
+    fields:
+    - name: azureDevOps
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterAzureDevOps
+    - name: bitbucketCloud
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloud
+    - name: bitbucketDataCenter
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenter
+    - name: fake
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Fake
+    - name: forgejo
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Forgejo
+    - name: gitea
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Gitea
+    - name: github
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitHub
+    - name: gitlab
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitLab
+    - name: secretRef
+      type:
+        namedType: io.k8s.api.core.v1.LocalObjectReference
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitBranchState
   map:
     fields:
@@ -595,6 +653,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: changeTransferPolicyHistory
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
+    - name: clusterScmProvider
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderConfiguration
+      default: {}
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
@@ -619,6 +681,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
+    - name: scope
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
+      default: Cluster
     - name: timedCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusConfiguration
@@ -642,6 +708,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: observedGeneration
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CronWindow
   map:
     fields:
@@ -862,6 +930,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: slowDelay
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Forgejo
   map:
     fields:
@@ -1987,6 +2057,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusConfiguration
   map:
     fields:
+    - name: namespaceMetadata
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+      default: Enabled
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue

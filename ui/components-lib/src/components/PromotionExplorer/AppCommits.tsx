@@ -59,8 +59,8 @@ const AppCommitBlock: React.FC<{
 
 export const AppCommits: React.FC<{ references: RowReference[] }> = ({ references }) => {
   const [expanded, setExpanded] = useState(false);
+  if (references.length === 0) return null;
   const [first, ...rest] = references;
-  if (!first) return null;
   return (
     <div className="hp-row__app" role="group" aria-label="App commit">
       <AppCommitBlock

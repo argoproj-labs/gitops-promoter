@@ -83,7 +83,6 @@ import (
 
 	"golang.org/x/oauth2/clientcredentials"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -314,107 +313,6 @@ func GetSecretValue(secret *corev1.Secret, key string) (string, error) {
 // Convenience functions that combine secret fetching with authentication
 // -----------------------------------------------------------------------------
 
-// ApplyBasicAuthFromSecret fetches a secret and applies HTTP Basic Authentication to a request.
-//
-// This is a convenience function that combines secret fetching with authentication.
-// The secret must contain "username" and "password" keys.
-//
-// Parameters:
-//   - ctx: Context for the request
-//   - reader: Kubernetes client for reading secrets
-//   - namespace: Namespace of the secret
-//   - secretName: Name of the secret
-//   - req: The HTTP request to authenticate
-//
-// Returns an error if the secret cannot be read or authentication fails.
-func ApplyBasicAuthFromSecret(ctx context.Context, reader client.Reader, namespace, secretName string, req *http.Request) error {
-	secret, err := getSecret(ctx, reader, namespace, secretName)
-	if err != nil {
-		return fmt.Errorf("failed to get basic auth secret %q: %w", secretName, err)
-	}
-
-	return ApplyBasicAuth(ctx, secret, req)
-}
-
-// ApplyBearerAuthFromSecret fetches a secret and applies Bearer token authentication to a request.
-//
-// This is a convenience function that combines secret fetching with authentication.
-// The secret must contain a "token" key.
-//
-// Parameters:
-//   - ctx: Context for the request
-//   - reader: Kubernetes client for reading secrets
-//   - namespace: Namespace of the secret
-//   - secretName: Name of the secret
-//   - req: The HTTP request to authenticate
-//
-// Returns an error if the secret cannot be read or authentication fails.
-func ApplyBearerAuthFromSecret(ctx context.Context, reader client.Reader, namespace, secretName string, req *http.Request) error {
-	secret, err := getSecret(ctx, reader, namespace, secretName)
-	if err != nil {
-		return fmt.Errorf("failed to get bearer auth secret %q: %w", secretName, err)
-	}
-
-	return ApplyBearerAuth(ctx, secret, req)
-}
-
-// ApplyOAuth2AuthFromSecret fetches a secret and applies OAuth2 client credentials authentication to a request.
-//
-// This is a convenience function that combines secret fetching with authentication.
-// The secret must contain "clientID" and "clientSecret" keys.
-//
-// Parameters:
-//   - ctx: Context for the request and OAuth2 token exchange
-//   - reader: Kubernetes client for reading secrets
-//   - namespace: Namespace of the secret
-//   - config: Configuration with secret name, token URL, and scopes (required)
-//   - req: The HTTP request to authenticate
-//
-// Returns an error if the secret cannot be read, token exchange fails, or authentication fails.
-func ApplyOAuth2AuthFromSecret(ctx context.Context, reader client.Reader, namespace string, config *OAuth2Config, req *http.Request) error {
-	if config == nil {
-		return errors.New("OAuth2 config is required")
-	}
-
-	secret, err := getSecret(ctx, reader, namespace, config.SecretName)
-	if err != nil {
-		return fmt.Errorf("failed to get OAuth2 secret %q: %w", config.SecretName, err)
-	}
-
-	return ApplyOAuth2Auth(ctx, secret, config, req)
-}
-
-// BuildTLSClientFromSecret fetches a secret and creates an HTTP client with mutual TLS authentication.
-//
-// This is a convenience function that combines secret fetching with TLS client creation.
-// The secret must contain "tls.crt" and "tls.key" keys, and optionally "ca.crt".
-//
-// Parameters:
-//   - ctx: Context for the request
-//   - reader: Kubernetes client for reading secrets
-//   - namespace: Namespace of the secret
-//   - secretName: Name of the secret
-//   - timeout: HTTP client timeout
-//
-// Returns an HTTP client configured for mTLS, or an error if setup fails.
-func BuildTLSClientFromSecret(ctx context.Context, reader client.Reader, namespace, secretName string, timeout time.Duration) (*http.Client, error) {
-	secret, err := getSecret(ctx, reader, namespace, secretName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TLS secret %q: %w", secretName, err)
-	}
-
-	return BuildTLSClient(ctx, secret, timeout)
-}
-
-// getSecret retrieves a secret from Kubernetes.
-func getSecret(ctx context.Context, reader client.Reader, namespace, name string) (*corev1.Secret, error) {
-	secret := &corev1.Secret{}
-	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
-		return nil, fmt.Errorf("failed to get secret: %w", err)
-	}
-	return secret, nil
-}
-
 // -----------------------------------------------------------------------------
 // SCM provider authentication (uses PromotionStrategy's ScmProvider credentials)
 // -----------------------------------------------------------------------------
@@ -476,7 +374,7 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		return nil, nil
 
 	case spec.AzureDevOps != nil:
-		if err := azuredevops.ApplyHTTPAuth(secret, req); err != nil {
+		if err := azuredevops.ApplyHTTPAuth(ctx, scmProvider, secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Azure DevOps SCM auth: %w", err)
 		}
 		logger.V(4).Info("Applied SCM authentication", "provider", "AzureDevOps", "scmProvider", scmProvider.GetName())

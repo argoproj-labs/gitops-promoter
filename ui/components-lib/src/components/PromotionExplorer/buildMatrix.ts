@@ -6,6 +6,7 @@ import type {
   PullRequest,
   ReferenceCommit,
 } from '@shared/types/promotion';
+import type { ScmProviderSpec } from '@shared/types/view';
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn, RowReference } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
@@ -16,18 +17,21 @@ import { proposedIsBlocked } from '@shared/utils/environments';
  * attaching a resolved `url` per ref (refs are cross-repo, so each carries its own
  * `repoURL`). Empty refs (config-only changes) yield an empty array.
  */
-function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
+function toReferenceCommits(
+  dry: Commit | undefined,
+  scm: ScmProviderSpec | undefined,
+): ReferenceCommit[] {
   return (dry?.references ?? [])
     .map((r) => r.commit)
     .filter((c): c is NonNullable<typeof c> => !!c)
     .map((c) => ({
       ...c,
-      url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha) : undefined,
+      url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha, scm) : undefined,
     }));
 }
 
-function toRowReferences(dry: Commit): RowReference[] {
-  return toReferenceCommits(dry).map((c) => ({
+function toRowReferences(dry: Commit, scm: ScmProviderSpec | undefined): RowReference[] {
+  return toReferenceCommits(dry, scm).map((c) => ({
     shaShort: shortSha(c.sha),
     url: c.url,
     repoName:
@@ -48,7 +52,7 @@ function toRowReferences(dry: Commit): RowReference[] {
 type StatusEnvironment = Environment;
 
 function envHasContent(env: StatusEnvironment): boolean {
-  return (env.history?.length ?? 0) > 0 || !!env.active?.dry;
+  return (env.history?.length ?? 0) > 0 || !!env.active.dry;
 }
 
 function buildEnvColumn(
@@ -56,12 +60,12 @@ function buildEnvColumn(
   i: number,
   specByBranch: Map<string, { autoMerge?: boolean }>,
 ): EnvColumn {
-  const liveStatuses = env.active?.commitStatuses ?? [];
-  const proposedStatuses = env.proposed?.commitStatuses ?? [];
-  const liveSha = env.active?.dry?.sha;
-  const proposedSha = env.proposed?.dry?.sha;
+  const liveStatuses = env.active.commitStatuses ?? [];
+  const proposedStatuses = env.proposed.commitStatuses ?? [];
+  const liveSha = env.active.dry?.sha;
+  const proposedSha = env.proposed.dry?.sha;
   const proposedDistinct =
-    env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
+    env.proposed.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
   const pr = blockedEnvPullRequest(env);
 
   return {
@@ -70,7 +74,7 @@ function buildEnvColumn(
     instanceId: env.instanceId,
     autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
     color: LANE_COLORS[i % LANE_COLORS.length]!,
-    liveCommit: env.active?.dry,
+    liveCommit: env.active.dry,
     liveStatuses,
     liveHealth: healthFromStatuses(liveStatuses),
     proposedCommit: proposedDistinct,
@@ -104,8 +108,8 @@ function liveCommitPullRequest(env: StatusEnvironment): PullRequest | undefined 
 }
 
 function historyPullRequestForActive(env: StatusEnvironment): PullRequest | undefined {
-  const hydrated = env.active?.hydrated?.sha;
-  const dry = env.active?.dry?.sha;
+  const hydrated = env.active.hydrated?.sha;
+  const dry = env.active.dry?.sha;
   if (!hydrated && !dry) return undefined;
   for (const entry of env.history ?? []) {
     // A restore copies the restored version's pull request; that promotion already has a row.
@@ -123,6 +127,7 @@ function getRow(
   rowsById: Map<string, CommitRow>,
   commit: Commit | undefined,
   repoUrlFallback: string,
+  scm: ScmProviderSpec | undefined,
   pr?: PullRequest,
   keyOverride?: string,
 ): CommitRow | null {
@@ -139,7 +144,7 @@ function getRow(
       body: commit.body ? extractBodyPreTrailer(commit.body) : undefined,
       prId: pr?.id,
       prUrl: pr?.url,
-      references: toRowReferences(commit),
+      references: toRowReferences(commit, scm),
       repoUrl: commit.repoURL ?? repoUrlFallback,
       freshestAt: 0,
       earliestAt: 0,
@@ -176,11 +181,12 @@ function cellAtMs(cell: CellState): number {
 }
 
 function setCell(row: CommitRow, branch: string, next: CellState) {
-  const prev = row.cells[branch];
-  if (!prev) {
+  // The first cell for this branch on this row.
+  if (!(branch in row.cells)) {
     row.cells[branch] = next;
     return;
   }
+  const prev = row.cells[branch];
   const rankDiff = cellRank[next.kind] - cellRank[prev.kind];
   // History is walked newest-first, so an older entry of the same kind must not
   // overwrite a newer one. That happens when one environment restores the same dry
@@ -236,7 +242,11 @@ function applyRestoreIdentity(row: CommitRow, entry: HistoryEntry) {
   row.restoredFrom = entry.restoredFrom;
 }
 
-function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
+function processHistory(
+  rowsById: Map<string, CommitRow>,
+  env: StatusEnvironment,
+  scm: ScmProviderSpec | undefined,
+) {
   const branch = env.branch;
   const history = env.history ?? [];
   history.forEach((entry, idx) => {
@@ -262,6 +272,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       rowsById,
       commit,
       '',
+      scm,
       restoreKey ? undefined : entry.pullRequest,
       restoreKey ?? undefined,
     );
@@ -284,7 +295,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       kind,
       commit,
       hydrated: entry.active?.hydrated,
-      references: toReferenceCommits(commit),
+      references: toReferenceCommits(commit, scm),
       commitStatuses: statuses,
       health,
       pullRequest: restoreKey ? undefined : entry.pullRequest,
@@ -325,7 +336,7 @@ function computeHorizons(envs: StatusEnvironment[]): Map<string, EnvHorizon> {
       const t = new Date(raw).getTime();
       if (Number.isFinite(t)) times.push(t);
     };
-    push(env.active?.dry?.commitTime);
+    push(env.active.dry?.commitTime);
     for (const h of env.history ?? []) push(h.active?.dry?.commitTime);
     horizons.set(env.branch, {
       oldestKnownAt: times.length ? Math.min(...times) : Infinity,
@@ -342,12 +353,13 @@ function finalizeRow(
 ): CommitRow {
   const times: number[] = [];
   for (const branch of envs.map((e) => e.branch)) {
+    if (!(branch in row.cells)) continue;
     const c = row.cells[branch];
-    if (c?.at) {
+    if (c.at) {
       const t = new Date(c.at).getTime();
       if (Number.isFinite(t)) times.push(t);
     }
-    if (c?.commit?.commitTime) {
+    if (c.commit?.commitTime) {
       const t = new Date(c.commit.commitTime).getTime();
       if (Number.isFinite(t)) times.push(t);
     }
@@ -368,7 +380,7 @@ function finalizeRow(
   const rowCommitAt = row.freshestAt;
 
   for (const e of envs) {
-    if (!row.cells[e.branch]) {
+    if (!(e.branch in row.cells)) {
       const horizon = horizons.get(e.branch);
       const agedOut =
         !!horizon &&
@@ -394,14 +406,17 @@ function finalizeRow(
   return row;
 }
 
-export function buildMatrix(strategy: PromotionStrategy): {
+export function buildMatrix(
+  strategy: PromotionStrategy,
+  scm?: ScmProviderSpec,
+): {
   envs: EnvColumn[];
   rows: CommitRow[];
 } {
   const envs: StatusEnvironment[] = (strategy.status?.environments ?? []).filter(envHasContent);
 
   const specByBranch = new Map<string, { autoMerge?: boolean }>();
-  for (const e of strategy.spec.environments ?? []) specByBranch.set(e.branch, e);
+  for (const e of strategy.spec.environments) specByBranch.set(e.branch, e);
 
   const envColumns: EnvColumn[] = envs.map((env, i) => buildEnvColumn(env, i, specByBranch));
 
@@ -409,8 +424,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
 
   envs.forEach((env) => {
     const branch = env.branch;
-    const liveSha = env.active?.dry?.sha;
-    const proposedSha = env.proposed?.dry?.sha;
+    const liveSha = env.active.dry?.sha;
+    const proposedSha = env.proposed.dry?.sha;
     const proposedIsDistinct = !!proposedSha && proposedSha !== liveSha;
 
     // When the active tip is itself a restore commit, the live cell belongs on that
@@ -421,20 +436,20 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const hydratedSha = entry.active?.hydrated?.sha;
       if (restoreRowKey(entry) && hydratedSha) restoreByHydrated.set(hydratedSha, entry);
     }
-    const activeRestore = env.active?.hydrated?.sha
+    const activeRestore = env.active.hydrated?.sha
       ? restoreByHydrated.get(env.active.hydrated.sha)
       : undefined;
     const activeRestoreKey = activeRestore
       ? (restoreRowKey(activeRestore) ?? undefined)
       : undefined;
 
-    if (env.active?.dry) {
+    if (env.active.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       // The restore commit is written directly onto the active branch, so the policy's current
       // pull request is not its. That pull request stays on the commit it promoted.
       const livePullRequest = activeRestore ? undefined : liveCommitPullRequest(env);
-      const row = getRow(rowsById, env.active.dry, '', livePullRequest, activeRestoreKey);
+      const row = getRow(rowsById, env.active.dry, '', scm, livePullRequest, activeRestoreKey);
       if (row) {
         if (activeRestore) applyRestoreIdentity(row, activeRestore);
         const kind: CellKind = health === 'failure' ? 'failed' : 'live';
@@ -442,7 +457,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           kind,
           commit: env.active.dry,
           hydrated: env.active.hydrated,
-          references: toReferenceCommits(env.active.dry),
+          references: toReferenceCommits(env.active.dry, scm),
           commitStatuses: statuses,
           health,
           pullRequest: livePullRequest,
@@ -457,7 +472,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    if (proposedIsDistinct && env.proposed?.dry) {
+    if (proposedIsDistinct && env.proposed.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       const blockName = env.restoreActiveCommit?.name;
@@ -465,7 +480,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       // when the active tip is still the restore that moved this dry SHA off.
       const blocked = proposedIsBlocked(env);
       const pullRequest = blockedEnvPullRequest(env);
-      const row = getRow(rowsById, env.proposed.dry, '', pullRequest);
+      const row = getRow(rowsById, env.proposed.dry, '', scm, pullRequest);
       if (row) {
         const kind: CellKind =
           !blockName && !blocked && health === 'failure' ? 'failed' : 'in-flight';
@@ -473,7 +488,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
           kind,
           commit: env.proposed.dry,
           hydrated: env.proposed.hydrated,
-          references: toReferenceCommits(env.proposed.dry),
+          references: toReferenceCommits(env.proposed.dry, scm),
           commitStatuses: statuses,
           health,
           pullRequest,
@@ -485,7 +500,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    processHistory(rowsById, env);
+    processHistory(rowsById, env, scm);
   });
 
   const horizons = computeHorizons(envs);

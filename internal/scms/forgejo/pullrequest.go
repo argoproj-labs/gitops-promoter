@@ -191,9 +191,6 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	if !merged {
-		if resp == nil {
-			return scms.MergeResult{}, fmt.Errorf("forgejo refused to merge pull request %d", prID)
-		}
 		return scms.MergeResult{}, fmt.Errorf("forgejo refused to merge pull request %d: %s", prID, resp.Status)
 	}
 	if resp != nil {
@@ -280,10 +277,6 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest promoterv1alpha1.Pul
 		}
 		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
 	}
-	if existingPR == nil {
-		return scms.GetPullRequestResult{}, nil
-	}
-
 	return mapForgejoPullRequestToGetResult(existingPR), nil
 }
 
@@ -337,10 +330,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 
 // AddLabels adds labels to a pull request on Forgejo, creating missing repository labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
@@ -370,10 +359,6 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alph
 
 // RemoveLabels removes labels from a pull request on Forgejo.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
-	if len(labelNames) == 0 {
-		return nil
-	}
-
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
