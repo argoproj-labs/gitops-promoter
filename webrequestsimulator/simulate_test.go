@@ -510,8 +510,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(result.CommitStatuses).To(HaveLen(2))
 			for _, env := range result.Status.Environments {
 				Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				Expect(env.LastResponseStatusCode).ToNot(BeNil())
-				Expect(*env.LastResponseStatusCode).To(Equal(200))
+				Expect(env.LastRequest.ResponseStatusCode).ToNot(BeNil())
+				Expect(*env.LastRequest.ResponseStatusCode).To(Equal(200))
 				Expect(env.LastSuccessfulSha).ToNot(BeEmpty())
 			}
 			for _, req := range result.RenderedRequests {
@@ -647,8 +647,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			}
 			Expect(byBranch["dev"].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			Expect(byBranch["prod"].Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-			Expect(byBranch["prod"].LastResponseStatusCode).ToNot(BeNil())
-			Expect(*byBranch["prod"].LastResponseStatusCode).To(Equal(201))
+			Expect(byBranch["prod"].LastRequest.ResponseStatusCode).ToNot(BeNil())
+			Expect(*byBranch["prod"].LastRequest.ResponseStatusCode).To(Equal(201))
 		})
 
 		It("resolves failure from a { phase } object return", func() {
@@ -721,8 +721,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			for _, e := range result.Status.Environments {
 				byBranch[e.Branch] = e
 			}
-			Expect(byBranch["dev"].RenderedURL).To(Equal("https://example.com/dev"))
-			Expect(byBranch["prod"].RenderedURL).To(Equal("https://example.com/prod"))
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://example.com/dev"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://example.com/prod"))
 		})
 
 		It("stores RenderedURL per environment with HTTPRequestVariables fully substituted", func() {
@@ -750,8 +750,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			for _, e := range result.Status.Environments {
 				byBranch[e.Branch] = e
 			}
-			Expect(byBranch["dev"].RenderedURL).To(Equal("https://api.example.com/alerts?branch=dev&limit=10"))
-			Expect(byBranch["prod"].RenderedURL).To(Equal("https://api.example.com/alerts?branch=prod&limit=10"))
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://api.example.com/alerts?branch=dev&limit=10"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://api.example.com/alerts?branch=prod&limit=10"))
 		})
 
 		// urlTemplate is rendered exactly once: the same value lands in status.renderedURL and in
@@ -779,8 +779,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 				executedURLByBranch[req.Branch] = req.URL
 			}
 			for _, env := range result.Status.Environments {
-				Expect(env.RenderedURL).To(Equal(executedURLByBranch[env.Branch]),
-					"status.renderedURL must equal the URL the executor received for branch %q", env.Branch)
+				Expect(env.LastRequest.URL).To(Equal(executedURLByBranch[env.Branch]),
+					"status.lastRequest.url must equal the URL the executor received for branch %q", env.Branch)
 			}
 		})
 
@@ -792,15 +792,17 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 				}},
 				"true",
 			)
-			// Seed prior status that already has RenderedURL set.
+			// Seed prior status that already has a LastRequest.URL set.
 			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
 				{
 					Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/dev",
+					Phase:       promoterv1alpha1.CommitPhasePending,
+					LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/dev"},
 				},
 				{
 					Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-					Phase: promoterv1alpha1.CommitPhasePending, RenderedURL: "https://example.com/prod",
+					Phase:       promoterv1alpha1.CommitPhasePending,
+					LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/prod"},
 				},
 			}
 			ps := twoEnvPromotionStrategy()
@@ -816,8 +818,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			for _, e := range result.Status.Environments {
 				byBranch[e.Branch] = e
 			}
-			Expect(byBranch["dev"].RenderedURL).To(Equal("https://example.com/dev"))
-			Expect(byBranch["prod"].RenderedURL).To(Equal("https://example.com/prod"))
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://example.com/dev"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://example.com/prod"))
 		})
 	})
 
@@ -1017,7 +1019,7 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
-			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal("https://example.com/ps/check"))
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/ps/check"))
 		})
 
 		It("stores RenderedURL in PromotionStrategyContext with HTTPRequestVariables fully substituted", func() {
@@ -1041,7 +1043,7 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
-			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal("https://example.com/v2/checks"))
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/v2/checks"))
 		})
 
 		// Same single-render guarantee as the environments context: status.renderedURL and the URL
@@ -1066,8 +1068,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1))
 			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
-			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal(result.RenderedRequests[0].URL),
-				"status.renderedURL must equal the URL the executor received")
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal(result.RenderedRequests[0].URL),
+				"status.lastRequest.url must equal the URL the executor received")
 		})
 
 		It("carries forward RenderedURL in PromotionStrategyContext when the trigger does not fire", func() {
@@ -1081,9 +1083,9 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 				},
 				"true",
 			)
-			// Seed prior status with a RenderedURL from a previous reconcile.
+			// Seed prior status with a LastRequest.URL from a previous reconcile.
 			wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
-				RenderedURL: "https://example.com/prior",
+				LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/prior"},
 			}
 			ps := twoEnvPromotionStrategy()
 
@@ -1094,7 +1096,7 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(BeEmpty(), "trigger was false, no HTTP request should fire")
 			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
-			Expect(result.Status.PromotionStrategyContext.RenderedURL).To(Equal("https://example.com/prior"))
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/prior"))
 		})
 	})
 

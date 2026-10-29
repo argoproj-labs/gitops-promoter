@@ -223,18 +223,39 @@ Notable fields:
 
 - **`phasePerBranch`** — list of `{ branch, phase }` entries (Kubernetes list type **map**, merge key **`branch`**) with resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
 - **`lastSuccessfulShas`** — list of `{ branch, lastSuccessfulSha }` entries (list type **map**, merge key **`branch`**) recording the last SHA that reached **success** for each branch (used for optimizations below)
-- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`**, **`successOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
+- **`lastRequest`** — same role as per-environment `lastRequest` in the default context, but stored once for the shared request (see [Last Request](#last-request-lastrequest) below)
+- **`triggerOutput`**, **`responseOutput`**, **`successOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
 
 In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
 
-### Rendered URL (`renderedURL`)
+### Last Request (`lastRequest`)
 
-After each HTTP request the controller stores the fully-rendered `spec.httpRequest.urlTemplate` (including any `HTTPRequestVariables` substitutions) in the status:
+After each HTTP request the controller writes a `lastRequest` sub-object to the status. It groups metadata about the most recent outbound call and is set only when a request is actually sent — headers and body are intentionally omitted because they often contain secret values.
 
-- **`environments` context** — `status.environments[].renderedURL`, one entry per environment.
-- **`promotionstrategy` context** — `status.promotionStrategyContext.renderedURL`, shared across all environments.
+| Field | Type | Description |
+|---|---|---|
+| `time` | RFC 3339 timestamp | When the request was made |
+| `method` | string | HTTP method used (e.g. `GET`, `POST`) |
+| `url` | string | Fully-rendered `spec.httpRequest.urlTemplate`, including any `HTTPRequestVariables` substitutions |
+| `responseStatusCode` | integer | HTTP status code returned by the server |
 
-The field is empty until the first HTTP request fires and is carried forward unchanged on reconciles that skip the HTTP call (polling interval not elapsed, trigger returned false, or polling fast-path). Use it to verify that Go template logic and `HTTPRequestVariables` expressions resolve to the expected URL.
+**Location in status:**
+
+- **`environments` context** — `status.environments[].lastRequest`, one entry per environment.
+- **`promotionstrategy` context** — `status.promotionStrategyContext.lastRequest`, shared across all environments.
+
+All fields are empty until the first HTTP request fires. The entire sub-object carries forward unchanged on reconciles that skip the HTTP call (polling interval not elapsed, trigger returned false, or polling fast-path), so `time` and `responseStatusCode` always reflect the most recent actual request, not the current reconcile. Use `url` to verify that Go template logic and `HTTPRequestVariables` expressions resolve to the expected endpoint.
+
+```yaml
+status:
+  environments:
+    - branch: env/dev
+      lastRequest:
+        time: "2026-10-24T09:12:03Z"
+        method: GET
+        url: https://api.example.com/alerts?branch=env%2Fdev
+        responseStatusCode: 200
+```
 
 ### Polling optimization (`reportOn: proposed` only)
 
@@ -242,17 +263,17 @@ When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`
 
 ### Delivery semantics: at-least-once, not exactly-once
 
-The controller dedupes HTTP requests by comparing fresh state (e.g. each branch's current `Proposed.Hydrated.Sha`) against state it persisted in the `WebRequestCommitStatus.status` on the **previous** reconcile (e.g. `environments[].triggerOutput.trackedSha`, `environments[].lastRequestTime`, `promotionStrategyContext.lastSuccessfulShas`). The persisted state is written via a Server-Side Apply at the **end** of a reconcile and read from the controller's informer cache at the **start** of the next reconcile. There is a small but unavoidable window between those two events:
+The controller dedupes HTTP requests by comparing fresh state (e.g. each branch's current `Proposed.Hydrated.Sha`) against state it persisted in the `WebRequestCommitStatus.status` on the **previous** reconcile (e.g. `environments[].triggerOutput.trackedSha`, `environments[].lastRequest.time`, `promotionStrategyContext.lastSuccessfulShas`). The persisted state is written via a Server-Side Apply at the **end** of a reconcile and read from the controller's informer cache at the **start** of the next reconcile. There is a small but unavoidable window between those two events:
 
 1. Reconcile A writes status to the API server.
 2. The API server publishes the change to watchers; the controller's informer cache observes it.
 3. Reconcile B starts and reads from the cache.
 
-If reconcile B starts before its cache has observed A's status update — which can happen under cache-propagation lag, controller restarts, status-write retries (transient API errors, conflict retries, OpenAPI/CEL validation rejections that the controller retries with conditions-only fallback), or a brief WRCS object recreate — B will evaluate `trigger.when.expression` as if A's `triggerOutput`, `responseOutput`, and `lastRequestTime` had never been written, and may re-fire the HTTP request.
+If reconcile B starts before its cache has observed A's status update — which can happen under cache-propagation lag, controller restarts, status-write retries (transient API errors, conflict retries, OpenAPI/CEL validation rejections that the controller retries with conditions-only fallback), or a brief WRCS object recreate — B will evaluate `trigger.when.expression` as if A's `triggerOutput`, `responseOutput`, and `lastRequest.time` had never been written, and may re-fire the HTTP request.
 
 The same caveat applies to:
 
-- **Polling mode's `lastRequestTime` short-circuit.** If a reconcile starts before the previous reconcile's `lastRequestTime` is visible in cache, the within-interval skip cannot fire and the HTTP request is repeated.
+- **Polling mode's `lastRequest.time` short-circuit.** If a reconcile starts before the previous reconcile's `lastRequest.time` is visible in cache, the within-interval skip cannot fire and the HTTP request is repeated.
 - **`promotionstrategy`-context polling fast-path** (skip when every branch already succeeded for its current SHA). Same cache-propagation window — the fast path may not fire on a reconcile that hasn't yet seen the prior `lastSuccessfulShas` write.
 - **`success.when` carry-forward.** The success expression sees `Response == nil` plus the prior `Phase` / `ResponseOutput` / `SuccessOutput`. Stale cache means stale carry-forward inputs.
 

@@ -41,6 +41,7 @@ type lastReconciledState struct {
 	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
 	Phase                  string
 	RenderedURL            string
+	Method                 string
 }
 
 // lastReconciledStateFromEnvironment extracts the previous reconcile's state from a per-environment
@@ -52,9 +53,10 @@ func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1a
 	logger := log.FromContext(ctx)
 	s := lastReconciledState{
 		Phase:                  string(status.Phase),
-		RenderedURL:            status.RenderedURL,
-		LastRequestTime:        status.LastRequestTime,
-		LastResponseStatusCode: status.LastResponseStatusCode,
+		RenderedURL:            status.LastRequest.URL,
+		LastRequestTime:        status.LastRequest.Time,
+		LastResponseStatusCode: status.LastRequest.ResponseStatusCode,
+		Method:                 status.LastRequest.Method,
 		ResponseOutput:         status.ResponseOutput,
 		SuccessOutput:          status.SuccessOutput,
 	}
@@ -86,9 +88,10 @@ func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 	phaseMap := phasePerBranchMapFromSlice(status.PhasePerBranch)
 	s := lastReconciledState{
 		Phase:                  aggregatePhase(phaseMap),
-		RenderedURL:            status.RenderedURL,
-		LastRequestTime:        status.LastRequestTime,
-		LastResponseStatusCode: status.LastResponseStatusCode,
+		RenderedURL:            status.LastRequest.URL,
+		LastRequestTime:        status.LastRequest.Time,
+		LastResponseStatusCode: status.LastRequest.ResponseStatusCode,
+		Method:                 status.LastRequest.Method,
 		ResponseOutput:         status.ResponseOutput,
 		SuccessOutput:          status.SuccessOutput,
 		PhasePerBranch:         phaseMap,

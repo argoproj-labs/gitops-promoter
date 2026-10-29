@@ -2063,13 +2063,11 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this environment. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulSha is the last commit SHA that achieved success status for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             lastSuccessfulSha?: string;
             /**
@@ -2077,8 +2075,6 @@ export type components = {
              * @default
              */
             phase: string;
-            /** @description RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt for this environment (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
-            renderedURL?: string;
             /** @description ReportedSha is the commit SHA being reported on for this environment. This is determined by the reportOn field (proposed or active). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             reportedSha?: string;
             /** @description ResponseOutput is the map from spec.mode.trigger.response.output.expression when spec.mode.trigger.response is set; otherwise nil. */
@@ -2087,6 +2083,20 @@ export type components = {
             successOutput?: components["schemas"]["JSON"];
             /** @description TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys). */
             triggerOutput?: components["schemas"]["JSON"];
+        };
+        /** @description WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made. */
+        WebRequestCommitStatusLastRequest: {
+            /** @description Method is the static HTTP method. */
+            method?: string;
+            /**
+             * Format: int32
+             * @description ResponseStatusCode is the HTTP status code from the last request.
+             */
+            responseStatusCode?: number;
+            /** @description Time is when the last HTTP request was made. */
+            time?: components["schemas"]["Time"];
+            /** @description URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt for this environment (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            url?: string;
         };
         /** @description WebRequestCommitStatusLastSuccessfulShaItem records the last successful SHA for one branch in promotionstrategy context status. */
         WebRequestCommitStatusLastSuccessfulShaItem: {
@@ -2113,19 +2123,15 @@ export type components = {
         };
         /** @description WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus). */
         WebRequestCommitStatusPromotionStrategyContextStatus: {
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulShas tracks the last SHA that achieved success for each branch. Used with reportOn "proposed" + polling to skip HTTP requests when all environments have already succeeded for their current SHAs. */
             lastSuccessfulShas?: components["schemas"]["WebRequestCommitStatusLastSuccessfulShaItem"][];
             /** @description PhasePerBranch holds the resolved phase for each applicable branch. Every applicable branch is always present after reconciliation. */
             phasePerBranch?: components["schemas"]["WebRequestCommitStatusPhasePerBranchItem"][];
-            /** @description RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
-            renderedURL?: string;
             /** @description ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput, one shared map for context=promotionstrategy. */
             responseOutput?: components["schemas"]["JSON"];
             /** @description SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput, one shared map for context=promotionstrategy. */

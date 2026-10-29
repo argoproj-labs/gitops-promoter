@@ -19,8 +19,7 @@ package v1alpha1
 
 import (
 	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // WebRequestCommitStatusEnvironmentStatusApplyConfiguration represents a declarative configuration of the WebRequestCommitStatusEnvironmentStatus type for use
@@ -44,23 +43,17 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
 	// return form documented on SuccessSpec.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
-	// RenderedURL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
-	// for the last HTTP request attempt for this environment (empty when no request has been made yet).
-	// It carries forward the previous value when a reconcile skips the HTTP request
-	// (polling interval, trigger false, or already-successful SHA fast path).
-	RenderedURL *string `json:"renderedURL,omitempty"`
-	// LastRequestTime is when the last HTTP request was made.
-	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
-	// LastResponseStatusCode is the HTTP status code from the last request.
-	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
+	// LastRequest captures metadata about the most recent HTTP request for this environment.
+	// Populated on the first request; values carry forward on reconciles that skip the request.
+	LastRequest *WebRequestCommitStatusLastRequestApplyConfiguration `json:"lastRequest,omitempty"`
 	// TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys).
-	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
+	TriggerOutput *v1.JSON `json:"triggerOutput,omitempty"`
 	// ResponseOutput is the map from spec.mode.trigger.response.output.expression when spec.mode.trigger.response is set; otherwise nil.
-	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+	ResponseOutput *v1.JSON `json:"responseOutput,omitempty"`
 	// SuccessOutput is the map from spec.success.when.output.expression (arbitrary JSON keys).
 	// Evaluated every reconcile (whether or not an HTTP request was made). The result is stored here and
 	// exposed on the next reconcile as SuccessOutput in trigger/success expressions and templates.
-	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
+	SuccessOutput *v1.JSON `json:"successOutput,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusEnvironmentStatus type for use with
@@ -101,34 +94,18 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(va
 	return b
 }
 
-// WithRenderedURL sets the RenderedURL field in the declarative configuration to the given value
+// WithLastRequest sets the LastRequest field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the RenderedURL field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithRenderedURL(value string) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	b.RenderedURL = &value
-	return b
-}
-
-// WithLastRequestTime sets the LastRequestTime field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the LastRequestTime field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastRequestTime(value v1.Time) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	b.LastRequestTime = &value
-	return b
-}
-
-// WithLastResponseStatusCode sets the LastResponseStatusCode field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the LastResponseStatusCode field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastResponseStatusCode(value int) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	b.LastResponseStatusCode = &value
+// If called multiple times, the LastRequest field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastRequest(value *WebRequestCommitStatusLastRequestApplyConfiguration) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.LastRequest = value
 	return b
 }
 
 // WithTriggerOutput sets the TriggerOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TriggerOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerOutput(value v1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.TriggerOutput = &value
 	return b
 }
@@ -136,7 +113,7 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerO
 // WithResponseOutput sets the ResponseOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResponseOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseOutput(value v1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.ResponseOutput = &value
 	return b
 }
@@ -144,7 +121,7 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponse
 // WithSuccessOutput sets the SuccessOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SuccessOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithSuccessOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithSuccessOutput(value v1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.SuccessOutput = &value
 	return b
 }

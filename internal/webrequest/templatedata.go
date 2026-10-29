@@ -121,6 +121,7 @@ type reconcileOutcome struct {
 	SuccessVariables       map[string]any
 	Phase                  promoterv1alpha1.CommitStatusPhase
 	RenderedURL            string
+	Method                 string
 }
 
 // HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for a pre-rendered request
