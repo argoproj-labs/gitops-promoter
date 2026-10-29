@@ -517,13 +517,19 @@ func (r *TektonCommitStatusReconciler) getTektonRun(ctx context.Context, tcs *pr
 }
 
 // EvaluateExpression compiles (or loads from cache) and runs an expression that parses a single Tekton expression and returns if it was expected.
-func (r *TektonCommitStatusReconciler) EvaluateExpression(expression string, resultValue any) (bool, error) {
+func (r *TektonCommitStatusReconciler) EvaluateExpression(expression string, resultValue any, isCombinedExpression bool) (bool, error) {
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
 		return false, err
 	}
 
-	env := map[string]any{"Result": resultValue}
+	env := map[string]any{}
+	if resultsMap, ok := resultValue.(map[string]any); ok && isCombinedExpression {
+		env["Results"] = resultsMap
+	} else {
+		env["Result"] = resultValue
+	}
+
 	output, err := expr.Run(program, env)
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate expression: %w", err)
@@ -546,7 +552,7 @@ func (r *TektonCommitStatusReconciler) getCompiledExpression(expression string) 
 		return program, nil
 	}
 
-	program, err := expr.Compile(expression, expr.AsBool(), expr.Env(map[string]any{"Result": any(nil)}))
+	program, err := expr.Compile(expression, expr.AsBool(), expr.AllowUndefinedVariables())
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
@@ -585,7 +591,7 @@ func (r *TektonCommitStatusReconciler) evaluateTektonRunResults(tcs *promoterv1a
 			continue
 		}
 
-		evaluatedResult, err := r.EvaluateExpression(expression, allResults[result.Name])
+		evaluatedResult, err := r.EvaluateExpression(expression, allResults[result.Name], false)
 		if err != nil {
 			return nil, false, false, err
 		}
@@ -601,15 +607,15 @@ func (r *TektonCommitStatusReconciler) evaluateTektonRunResults(tcs *promoterv1a
 		})
 	}
 
-	// If the expected results and calculated individual results do not match in length then a result was missing so return an error
+	// If the expected results and calculated individual results do not match in length then a result was missing so return a failure no matter what
 	if len(tcs.Spec.ExpectedResults) != len(individualResults) {
-		return nil, false, false, fmt.Errorf("expected %d results but only evaluated %d", len(tcs.Spec.ExpectedResults), len(individualResults))
+		return individualResults, false, false, nil
 	}
 
 	generalOk := true
 	if tcs.Spec.Expression != "" {
 		var err error
-		generalOk, err = r.EvaluateExpression(tcs.Spec.Expression, allResults)
+		generalOk, err = r.EvaluateExpression(tcs.Spec.Expression, allResults, true)
 		if err != nil {
 			return nil, false, false, err
 		}
