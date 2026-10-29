@@ -33,7 +33,7 @@ type WebRequestCommitStatusLastRequestApplyConfiguration struct {
 	// Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
 	Method *string `json:"method,omitempty"`
 	// URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
-	// for the last HTTP request attempt for this environment (empty when no request has been made yet).
+	// for the last HTTP request attempt (empty when no request has been made yet).
 	// It carries forward the previous value when a reconcile skips the HTTP request
 	// (polling interval, trigger false, or already-successful SHA fast path).
 	URL *string `json:"url,omitempty"`

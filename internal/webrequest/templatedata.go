@@ -126,7 +126,7 @@ type reconcileOutcome struct {
 
 // HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for a pre-rendered request
 // (auth, transport). The caller is responsible for rendering templates before calling Execute so
-// that rendering happens exactly once and status.renderedURL reflects the URL that was actually
+// that rendering happens exactly once and status.lastRequest.url reflects the URL that was actually
 // requested. The simulator supplies an implementation that returns a mock response or
 // ErrHTTPResponseRequiredWhenTriggerFires when none is set.
 type HTTPEXecutor interface {
