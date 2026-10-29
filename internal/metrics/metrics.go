@@ -97,9 +97,12 @@ const (
 type GitHubSCMProviderOperation string
 
 const (
-	// GitHubSCMProviderOperationListInstallations lists GitHub App installations
-	// to resolve an org installation ID.
-	GitHubSCMProviderOperationListInstallations GitHubSCMProviderOperation = "list-installations"
+	// GitHubSCMProviderOperationGetOrgInstallation gets a GitHub App's installation
+	// on an organization to resolve its installation ID.
+	GitHubSCMProviderOperationGetOrgInstallation GitHubSCMProviderOperation = "get-org-installation"
+	// GitHubSCMProviderOperationGetUserInstallation gets a GitHub App's installation
+	// on a user account, when the repository owner is not an organization.
+	GitHubSCMProviderOperationGetUserInstallation GitHubSCMProviderOperation = "get-user-installation"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.

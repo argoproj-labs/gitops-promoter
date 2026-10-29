@@ -45,11 +45,11 @@ Labels:
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation lookup).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
-  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `get-org-installation` and `get-user-installation` are `GitHubSCMProviderOperation`s, recorded with `api` `Provider` when resolving a GitHub App installation ID for a repository owner. `get-user-installation` is only called when the owner is not an organization. They do not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -63,11 +63,11 @@ Labels:
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation lookup).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
-  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `get-org-installation` and `get-user-installation` are `GitHubSCMProviderOperation`s, recorded with `api` `Provider` when resolving a GitHub App installation ID for a repository owner. `get-user-installation` is only called when the owner is not an organization. They do not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
