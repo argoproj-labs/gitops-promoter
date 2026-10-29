@@ -1912,6 +1912,75 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(manifestOne).To(Equal(appOneBaselineManifest), "app-one manifest on active must be unchanged")
 			}, time.Second*5, time.Second*1).Should(Succeed())
 		})
+
+		It("should wake the sibling policy when a merged pull request pushes the shared active branch", func() {
+			ctpOneName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyOne.Name, testBranchDevelopment))
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			activeTip := func(g Gomega) string {
+				_, fetchErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(fetchErr).NotTo(HaveOccurred())
+				tip, revErr := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+				g.Expect(revErr).NotTo(HaveOccurred())
+				return strings.TrimSpace(tip)
+			}
+
+			By("Establishing a baseline: both apps hydrate and promote onto the shared active branch")
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry app-one baseline")
+			Expect(err).NotTo(HaveOccurred())
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry app-two baseline")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathOne), ActivePath: activePathOne, BootstrapBranch: testBranchDevelopment, DrySha: dryShaOne},
+				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwo},
+			}, "hydrate baseline for webhook fan-out test", 0)).To(Succeed())
+			Eventually(func(g Gomega) {
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				enqueueCTP(ctpOne.Namespace, ctpOne.Name)
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne))
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Letting app-one record the current shared tip as its active hydrated sha")
+			var sharedTip string
+			Eventually(func(g Gomega) {
+				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
+				sharedTip = activeTip(g)
+				g.Expect(getCTP(g, &promotionStrategyOne).Status.Active.Hydrated.Sha).To(Equal(sharedTip))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Only app-two is nudged from here on. Its merge pushes the shared active branch, and
+			// the SCM's push webhook carries the pre-merge tip as its before sha. That sha is also
+			// app-one's active hydrated sha, so the webhook must reach app-one as well.
+			By("Promoting a change for app-two only")
+			dryShaTwoNext, err := makeDryCommit(ctx, gitPath, "dry app-two follow-up change")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwoNext},
+			}, "hydrate app-two follow-up", 0)).To(Succeed())
+			Eventually(func(g Gomega) {
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwoNext), "app-two should promote its new change")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			var newTip string
+			Eventually(func(g Gomega) {
+				newTip = activeTip(g)
+				g.Expect(newTip).NotTo(Equal(sharedTip))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-one observes the new shared tip from the webhook alone, without a nudge")
+			Eventually(func(g Gomega) {
+				g.Expect(getCTP(g, &promotionStrategyOne).Status.Active.Hydrated.Sha).To(Equal(newTip),
+					"app-one should re-read the shared active branch when the merge webhook arrives")
+			}, 30*time.Second).Should(Succeed())
+		})
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
