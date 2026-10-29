@@ -342,6 +342,7 @@ func (p *BundleProvider) keysReferencingScmProvider(ctx context.Context, provide
 // Get builds the bundle for a single PromotionStrategy.
 func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*viewv1alpha1.PromotionStrategyDetails, error) {
 	if p.outOfScope(namespace) {
+		//nolint:wrapcheck // StatusError must be returned unwrapped for apiserver recognition
 		return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
 	}
 	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion(), p.clusterScmProviderEnabled)

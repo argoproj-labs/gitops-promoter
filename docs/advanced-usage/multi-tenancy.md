@@ -85,7 +85,7 @@ spec:
     namespaceMetadata: Disabled
 ```
 
-The `-namespaced` release bundles use this mode. See [Installation](../getting-started.md#namespace-isolated).
+The `-namespaced` release bundles use this mode. See [Installation](../getting-started.md#namespaced).
 
 ### Limitations of namespaced modes
 
