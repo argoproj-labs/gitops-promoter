@@ -70,7 +70,7 @@ This is a not supported configuration and will error if configured.
 The TektonCommitStatus controller also evaluates results from Tekton resources. If provided and results do not match the given [expr](https://expr-lang.org/)
 expression, the promotion will be blocked. Expressions can be written for individual results or generally with access to every result from the resource.
 
-When writing expressions the following variables are available to you depending on where which type of expression you're writing:
+When writing expressions, the available variables depend on the expression type:
 
 - General Expression
   - `Results` - a map in which the keys are each individual result.
@@ -243,7 +243,7 @@ spec:
     kind: Pipeline
     name: comprehensive-check-pipeline
     serviceAccount: default
-  expression: 'Results["tests-passed"] == "true" && Results["coverage"] > "80" && Results["quality-score"] > "7.5"'
+  expression: 'Results["tests-passed"] == true && float(Results["coverage"]) > 80 && float(Results["quality-score"]) > 7.5'
 ```
 
 ## Rerunning On A Failure
