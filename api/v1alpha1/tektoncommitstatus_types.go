@@ -120,7 +120,7 @@ type TektonParameter struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name,omitempty"`
 	// Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an
-	// array or object a json formated string for an array or object must be provided.
+	// array or object a json formatted string for an array or object must be provided.
 	// A parameter's value can use the following Go template values to inject information into a parameter.
 	//
 	// .TargetedSha - The SHA that the pipeline is being run on
@@ -144,7 +144,7 @@ type TektonParameter struct {
 	//
 	// +kubebuilder:validation:Required
 	Value string `json:"value,omitempty"`
-	// Type represents the type of the paramater. Tekton Parameters can be either a string, array, or object.
+	// Type represents the type of the parameter. Tekton Parameters can be either a string, array, or object.
 	// Defaults to string
 	// +kubebuilder:validation:Enum=string;array;object
 	// +kubebuilder:default="string"

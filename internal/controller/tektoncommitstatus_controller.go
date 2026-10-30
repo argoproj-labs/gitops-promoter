@@ -34,12 +34,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	sprig "github.com/go-task/slim-sprig/v3"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -227,7 +227,7 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 	// Parse the reportOn by checking the promotion strategy for where the key is
 	reportOn, err := utils.DetermineReportOn(ps, tcs.Spec.Key)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to determine ReportOn for TektonCommitStatus: %s", reportOn)
+		return nil, nil, fmt.Errorf("failed to determine ReportOn for TektonCommitStatus: %w", err)
 	}
 
 	// Reject when reportOn is active and target is proposed because this scenario does not make sense.
@@ -359,7 +359,7 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 	}
 
 	for _, param := range resourceRef.Params {
-		tmpl, err := template.New(param.Name).Parse(param.Value)
+		tmpl, err := template.New(param.Name).Funcs(sprig.TxtFuncMap()).Parse(param.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create template: %w", err)
 		}
@@ -394,7 +394,7 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 // environment by using the commit sha in the name. A TektonRun can only have a name of 63 or less characters so
 // the key is trimmed to fit.
 func createUniqueSafeRunName(tcs *promoterv1alpha1.TektonCommitStatus, sha string) string {
-	shaSuffix := fmt.Sprintf("sha%s-%s", sha[:8], rand.String(8))
+	shaSuffix := fmt.Sprintf("sha%s-%s", sha[:8], string(tcs.UID[:8]))
 	maxLen := maxRunNameLength - len(shaSuffix)
 	return utils.TruncateString(tcs.Spec.Key, maxLen) + shaSuffix
 }
@@ -427,7 +427,7 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 	return taskRun, nil
 }
 
-// buildPipelineRun builds a PipelinRun object with the information from the CommitStatus, the branch, and SHA.
+// buildPipelineRun builds a PipelineRun object with the information from the CommitStatus, the branch, and SHA.
 // It also parses the parameters provided and evaluates the templates that may be in them.
 func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) (*tekton.PipelineRun, error) {
 	pipelineRun := &tekton.PipelineRun{

@@ -311,6 +311,11 @@ func (in EnvironmentStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ExpectedResult) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ExpectedResult"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ExponentialFailure) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ExponentialFailure"
 }
@@ -453,6 +458,11 @@ func (in History) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in HydratorMetadata) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.HydratorMetadata"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in IndividualExpressionResult) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.IndividualExpressionResult"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -688,6 +698,46 @@ func (in SuccessSpec) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in TLSAuth) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.TLSAuth"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatusEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatusEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonParameter) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonParameter"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in TektonResourceRef) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.TektonResourceRef"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
