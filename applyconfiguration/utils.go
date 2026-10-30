@@ -83,6 +83,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ClusterAzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProvider"):
 		return &apiv1alpha1.ClusterScmProviderApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderConfiguration"):
+		return &apiv1alpha1.ClusterScmProviderConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ClusterScmProviderSpec"):
 		return &apiv1alpha1.ClusterScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitBranchState"):
@@ -183,6 +185,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPRequestVariablesSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MetricsConfiguration"):
+		return &apiv1alpha1.MetricsConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MetricsLabelsConfiguration"):
+		return &apiv1alpha1.MetricsLabelsConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):
 		return &apiv1alpha1.ModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2Auth"):

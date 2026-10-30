@@ -102,6 +102,94 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	RestoreActiveCommit RestoreActiveCommitConfiguration `json:"restoreActiveCommit"`
+
+	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
+	// +optional
+	// +kubebuilder:default={}
+	ClusterScmProvider ClusterScmProviderConfiguration `json:"clusterScmProvider,omitzero"`
+
+	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+	// Requires a controller restart.
+	// +optional
+	// +kubebuilder:default=Cluster
+	Scope ControllerScope `json:"scope,omitempty"`
+
+	// Metrics contains the configuration for the controller's Prometheus metrics.
+	// +optional
+	// +kubebuilder:default={}
+	Metrics MetricsConfiguration `json:"metrics,omitzero"`
+}
+
+// MetricsConfiguration defines the configuration for the controller's Prometheus metrics.
+type MetricsConfiguration struct {
+	// Labels controls which metrics carry selected Prometheus labels (not Kubernetes labels).
+	// +optional
+	// +kubebuilder:default={}
+	Labels MetricsLabelsConfiguration `json:"labels,omitzero"`
+}
+
+// MetricsLabelsConfiguration selects which metrics carry each configurable Prometheus label.
+type MetricsLabelsConfiguration struct {
+	// GitRepository controls which of git_operations_total, git_operations_duration_seconds,
+	// scm_calls_total, and scm_calls_duration_seconds set the git_repository and
+	// git_repository_namespace labels. These labels multiply series by the number of GitRepositories,
+	// and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges
+	// never carry these labels.
+	// Where a metric doesn't set the labels, the label names remain with empty values, aggregating
+	// series across repositories.
+	// All: all four metrics set the labels.
+	// Counters: only the two _total counters set them, so percentiles from the _duration_seconds
+	// histograms stay available at much lower cardinality.
+	// None: none of the four metrics set them.
+	// Changing this value resets the affected metrics.
+	// +optional
+	// +kubebuilder:default=All
+	GitRepository MetricLabelMode `json:"gitRepository,omitempty"`
+}
+
+// MetricLabelMode selects which of the affected metrics set a Prometheus label's value. Metrics that
+// don't set it keep the label name with an empty value.
+// +kubebuilder:validation:Enum=All;Counters;None
+type MetricLabelMode string
+
+const (
+	// MetricLabelModeAll sets the label's value on every affected metric.
+	MetricLabelModeAll MetricLabelMode = "All"
+	// MetricLabelModeCounters sets the label's value only on the affected counters and leaves it empty on the others.
+	MetricLabelModeCounters MetricLabelMode = "Counters"
+	// MetricLabelModeNone leaves the label's value empty on every affected metric.
+	MetricLabelModeNone MetricLabelMode = "None"
+)
+
+// ControllerScope is the scope of namespaced resources the controller watches.
+// +kubebuilder:validation:Enum=Cluster;Namespace
+type ControllerScope string
+
+const (
+	// ControllerScopeCluster watches namespaced resources in all namespaces.
+	ControllerScopeCluster ControllerScope = "Cluster"
+	// ControllerScopeNamespace watches namespaced resources only in the controller install namespace.
+	ControllerScopeNamespace ControllerScope = "Namespace"
+)
+
+// FeatureMode enables or disables a controller feature.
+// +kubebuilder:validation:Enum=Enabled;Disabled
+type FeatureMode string
+
+const (
+	// FeatureModeEnabled enables the feature.
+	FeatureModeEnabled FeatureMode = "Enabled"
+	// FeatureModeDisabled disables the feature.
+	FeatureModeDisabled FeatureMode = "Disabled"
+)
+
+// ClusterScmProviderConfiguration defines the configuration for ClusterScmProvider support.
+type ClusterScmProviderConfiguration struct {
+	// Mode enables or disables ClusterScmProvider support. When Disabled, ClusterScmProviders are not watched
+	// and references to them fail. Requires a controller restart.
+	// +optional
+	// +kubebuilder:default=Enabled
+	Mode FeatureMode `json:"mode,omitempty"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -225,6 +313,13 @@ type WebRequestCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+
+	// NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
+	// When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+	// Requires a controller restart.
+	// +optional
+	// +kubebuilder:default=Enabled
+	NamespaceMetadata FeatureMode `json:"namespaceMetadata,omitempty"`
 }
 
 // ScheduledCommitStatusConfiguration defines the configuration for the ScheduledCommitStatus controller.

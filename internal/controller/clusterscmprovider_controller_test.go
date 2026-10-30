@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -180,7 +181,7 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 		Expect(k8sClient.Create(ctx, repo)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, repo)).To(Succeed()) })
 
-		scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, "default", promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
+		scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}), promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(scmProvider.GetName()).To(Equal(provider.Name))
 		Expect(secret.Data).To(BeEmpty())
@@ -205,7 +206,7 @@ var _ = Describe("ClusterScmProvider azureDevOps.workloadIdentity validation", f
 		Expect(k8sClient.Create(ctx, repo)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, repo)).To(Succeed()) })
 
-		_, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, "default", promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
+		_, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, k8sClient, settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}), promoterv1alpha1.ObjectReference{Name: repo.Name}, repo)
 		Expect(err).To(MatchError(ContainSubstring("has no secretRef")))
 	})
 

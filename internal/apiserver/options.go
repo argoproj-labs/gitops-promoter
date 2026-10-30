@@ -28,6 +28,7 @@ import (
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilcompatibility "k8s.io/apiserver/pkg/util/compatibility"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
@@ -36,6 +37,10 @@ import (
 // virtual (computed on the fly from a controller-runtime cache).
 type Options struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
+	// Namespace, when set, restricts the read cache to this namespace.
+	Namespace string
+	// ClusterScmProviderMode controls whether ClusterScmProviders are read. Empty means enabled.
+	ClusterScmProviderMode promoterv1alpha1.FeatureMode
 }
 
 // NewOptions returns Options with sane defaults for the dashboard apiserver.

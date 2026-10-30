@@ -299,6 +299,94 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
+		It("deletes itself when the active tip already carries Promoter-restore-unblocked-at", func() {
+			ctx := context.Background()
+			name, scmSecret, scmProvider, gitRepo, _, ctp := changeTransferPolicyResources(ctx, "restore-released", "default")
+			strategyName := name + "-ps"
+			ctp.Name = utils.ChangeTransferPolicyNameForEnvironment(strategyName, testBranchDevelopment)
+			ctp.Spec.ActiveBranch = testBranchDevelopment
+			ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+			autoMerge := false
+			ctp.Spec.AutoMerge = &autoMerge
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, ctp)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, ctp)
+				_ = k8sClient.Delete(ctx, gitRepo)
+				_ = k8sClient.Delete(ctx, scmProvider)
+				_ = k8sClient.Delete(ctx, scmSecret)
+			})
+
+			gitPath, err := os.MkdirTemp("", "restore-released-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+
+			mustRun := func(args ...string) string {
+				GinkgoHelper()
+				out, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+				return strings.TrimSpace(out)
+			}
+
+			mustRun("clone", testGitRepoCloneURL(gitRepo), ".")
+			mustRun("config", "user.name", "testuser")
+			mustRun("config", "user.email", "testemail@test.com")
+			mustRun("config", "commit.gpgsign", "false")
+			mustRun("checkout", testBranchDevelopment)
+
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v1\n"), 0o644)).To(Succeed())
+			mustRun("add", "version.txt")
+			mustRun("commit", "-m", "version v1")
+			v1Sha := mustRun("rev-parse", "HEAD")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+
+			Expect(os.WriteFile(path.Join(gitPath, "version.txt"), []byte("v2\n"), 0o644)).To(Succeed())
+			mustRun("add", "version.txt")
+			mustRun("commit", "-m", "version v2")
+			mustRun("push", "origin", "HEAD:refs/heads/"+testBranchDevelopment)
+
+			// The tip is already this restore and already unblocked, the state a ChangeTransferPolicy
+			// adopt can observe after a RestoreActiveCommit stamped the note and deleted itself.
+			restoreSha := restoreActiveBranchViaGit(ctx, gitPath, testBranchDevelopment, v1Sha)
+			unblockAt := time.Date(2026, 10, 2, 18, 0, 0, 0, time.UTC)
+			unblockRestoreViaGit(ctx, gitPath, restoreSha, unblockAt)
+
+			ps := promotionStrategyForRestore(strategyName, gitRepo.Name, testBranchDevelopment)
+			Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ps) })
+
+			rcName := name + "-rc"
+			rc := &promoterv1alpha1.RestoreActiveCommit{
+				Name: rcName, Namespace: "default",
+				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategyName},
+					Branch:               testBranchDevelopment,
+					Sha:                  v1Sha,
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, rc) })
+
+			By("Deleting the RestoreActiveCommit without rewriting the existing unblock stamp")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: rcName, Namespace: "default"}, &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			mustRun("fetch", "origin", testBranchDevelopment)
+			mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
+			Expect(mustRun("rev-parse", "origin/"+testBranchDevelopment)).To(Equal(restoreSha))
+
+			rawNote := mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", restoreSha)
+			var got map[string][]string
+			Expect(json.Unmarshal([]byte(rawNote), &got)).To(Succeed())
+			Expect(got[constants.TrailerRestoredFrom]).To(Equal([]string{v1Sha}))
+			Expect(got[constants.TrailerRestoreUnblockedAt]).To(Equal([]string{unblockAt.Format(time.RFC3339)}))
+		})
+
 		It("records the restore before unblocking when blockEnvironment is false before activeSha is set", func() {
 			ctx := context.Background()
 			// The first reconcile sees blockEnvironment false with no activeSha yet, so it only
@@ -435,14 +523,20 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			_, err = time.Parse(time.RFC3339, got[constants.TrailerRestoreUnblockedAt][0])
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Leaving no RestoreActiveCommit for the policy, because the tip is already unblocked")
-			Consistently(func(g Gomega) {
-				var list promoterv1alpha1.RestoreActiveCommitList
-				g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace("default"))).To(Succeed())
-				for i := range list.Items {
-					g.Expect(changeTransferPolicyNameForRevert(&list.Items[i])).NotTo(Equal(ctp.Name))
-				}
-			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			// A ChangeTransferPolicy reconcile that snapshotted notes before the unblock stamp
+			// can adopt a RestoreActiveCommit once the original is deleting. That object
+			// deletes itself when the tip is already unblocked, and it stays in the list
+			// until its finalizer finishes. The policy must end with none, and stay that way.
+			By("Leaving no RestoreActiveCommit for the policy once the tip is unblocked")
+			Eventually(func(g Gomega) {
+				g.Consistently(func(g Gomega) {
+					var list promoterv1alpha1.RestoreActiveCommitList
+					g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace("default"))).To(Succeed())
+					for i := range list.Items {
+						g.Expect(changeTransferPolicyNameForRevert(&list.Items[i])).NotTo(Equal(ctp.Name))
+					}
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("releases the finalizer when the ChangeTransferPolicy is already gone", func() {

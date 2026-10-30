@@ -101,6 +101,15 @@ const (
 	// Args: RestoreActiveCommit name, its status.activeSha, the active tip.
 	RestoreSupersededMessage = "Deleted RestoreActiveCommit %s; its restore %s is behind active tip %s"
 
+	// RestoreAlreadyReleasedReason indicates that a RestoreActiveCommit was deleted because the active
+	// tip already restores spec.sha and its note already carries Promoter-restore-unblocked-at. The
+	// delete does not write that trailer again.
+	RestoreAlreadyReleasedReason = "RestoreAlreadyReleased"
+	// RestoreAlreadyReleasedMessage is the message for a RestoreActiveCommit deleted because the tip
+	// was already unblocked.
+	// Args: RestoreActiveCommit name, the active tip.
+	RestoreAlreadyReleasedMessage = "Deleted RestoreActiveCommit %s; active tip %s already carries Promoter-restore-unblocked-at"
+
 	// RestoreAdoptedReason indicates that a RestoreActiveCommit was created because the active tip is
 	// already a blocked restore commit (Promoter-restored-from without Promoter-restore-unblocked-at)
 	// and no RestoreActiveCommit existed for the policy — typically a restore written by hand.

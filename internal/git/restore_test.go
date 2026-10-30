@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -440,7 +441,10 @@ var _ = Describe("RestoreActiveBranch", func() {
 		// The tip is already this restore and the previous RestoreActiveCommit was released.
 		// A new restore of the same target is refused, and the unblock trailer stays on the note.
 		_, err = g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
-		Expect(err).To(MatchError(ContainSubstring(constants.TrailerRestoreUnblockedAt)))
+		var released *git.RestoreAlreadyReleasedError
+		Expect(errors.As(err, &released)).To(BeTrue())
+		Expect(released.ActiveTip).To(Equal(restored.ActiveSha))
+		Expect(released.TargetSha).To(Equal(v1))
 		Expect(strings.TrimSpace(mustGit(tempRepoDir, "rev-parse", "refs/heads/environment/development"))).To(Equal(restored.ActiveSha))
 
 		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())

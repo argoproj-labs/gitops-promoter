@@ -166,6 +166,11 @@ func (in ClusterScmProvider) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ClusterScmProviderConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ClusterScmProviderList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ClusterScmProviderList"
 }
@@ -448,6 +453,16 @@ func (in History) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in HydratorMetadata) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.HydratorMetadata"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in MetricsConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.MetricsConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in MetricsLabelsConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.MetricsLabelsConfiguration"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

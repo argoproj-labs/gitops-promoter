@@ -6,6 +6,29 @@ GitOps Promoter produces metrics counter and histogram metrics for all network-b
 > The metrics produced by GitOps Promoter are subject to change as the project evolves until the 1.0 release. 
 > Please refer to this document for the latest metrics.
 
+## Reducing cardinality
+
+`git_operations_total`, `git_operations_duration_seconds`, `scm_calls_total`, and `scm_calls_duration_seconds` carry
+`git_repository` and `git_repository_namespace` labels, so their series count grows with the number of GitRepositories.
+The `_duration_seconds` histograms multiply that again by their bucket count. Use `spec.metrics.labels.gitRepository`
+in the ControllerConfiguration to choose which of these four metrics set those labels:
+
+```yaml
+spec:
+  metrics:
+    labels:
+      gitRepository: Counters
+```
+
+* `All` (default): all four metrics set the GitRepository labels.
+* `Counters`: only `git_operations_total` and `scm_calls_total` set them. The `_duration_seconds` histograms are
+  aggregated across repositories, so per-repository rates and errors and overall latency percentiles stay available.
+* `None`: none of the four metrics set them.
+
+Where a metric doesn't set the GitRepository labels, the label names remain but their values are empty, so a selector
+such as `git_repository=""` matches the aggregated series. The `scm_calls_rate_limit_*` gauges never carry these labels.
+Changing the setting resets the metrics whose labels change.
+
 ## git_operations_total
 
 A counter of git clone operations.
@@ -45,11 +68,11 @@ Labels:
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation lookup).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
-  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `get-org-installation` and `get-user-installation` are `GitHubSCMProviderOperation`s, recorded with `api` `Provider` when resolving a GitHub App installation ID for a repository owner. `get-user-installation` is only called when the owner is not an organization. They do not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -63,11 +86,11 @@ Labels:
 * `scm_provider`: The name of the SCM provider in scope. For GitRepository-scoped calls, this is `spec.scmProviderRef.name`.
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. For a GitRepository, a namespaced provider is in the same namespace as the repository. Provider-only calls use the `ScmProvider` namespace.
 * `scm_provider_kind`: The kind of the SCM provider in scope. For GitRepository-scoped calls, this is the kind in `spec.scmProviderRef`. Provider-only calls use the resource kind (`ScmProvider` or `ClusterScmProvider`).
-* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation listing).
+* `api`: The SCM API being called (`CommitStatus`, `PullRequest`, or `Provider` for provider-specific calls outside those Promoter APIs, such as GitHub App installation lookup).
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, list, get, create-label, list-labels, add-labels, or remove-labels. GitHub records `list-labels` once per page when listing repository labels.
-  * `list-installations` is a `GitHubSCMProviderOperation`, recorded with `api` `Provider`. It does not update the rate-limit gauges.
+  * `get-org-installation` and `get-user-installation` are `GitHubSCMProviderOperation`s, recorded with `api` `Provider` when resolving a GitHub App installation ID for a repository owner. `get-user-installation` is only called when the owner is not an organization. They do not update the rate-limit gauges.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
@@ -177,7 +200,7 @@ No labels.
 
 A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
 
-The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration. `ControllerConfiguration` is omitted (it is a singleton and uses a multi-namespace informer that cannot be counted the same way).
+The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration. `ControllerConfiguration` is omitted (it is a singleton). When the controller runs with [namespace scope](../advanced-usage/multi-tenancy.md) (`ControllerConfiguration.spec.scope: Namespace`), the cache is limited to the controller install namespace, so namespaced kinds are counted only in that namespace; cluster-scoped kinds such as `ClusterScmProvider` are still counted cluster-wide. `ClusterScmProvider` is not counted when `spec.clusterScmProvider.mode` is `Disabled`.
 
 If reading from the informer store fails for a kind, that kind's gauge is set to `0` for all readiness values and an error is logged.
 

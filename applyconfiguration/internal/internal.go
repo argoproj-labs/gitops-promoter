@@ -407,6 +407,13 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProviderStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderConfiguration
+  map:
+    fields:
+    - name: mode
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+      default: Enabled
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderSpec
   map:
     fields:
@@ -646,6 +653,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: changeTransferPolicyHistory
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeTransferPolicyHistoryConfiguration
+    - name: clusterScmProvider
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ClusterScmProviderConfiguration
+      default: {}
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
@@ -658,6 +669,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: instanceID
       type:
         scalar: string
+    - name: metrics
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
+      default: {}
     - name: promotionStrategy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration
@@ -670,6 +685,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
+    - name: scope
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
+      default: Cluster
     - name: timedCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusConfiguration
@@ -693,6 +712,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: observedGeneration
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CronWindow
   map:
     fields:
@@ -913,6 +934,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: slowDelay
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Forgejo
   map:
     fields:
@@ -1255,6 +1278,22 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: subject
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricLabelMode
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
+  map:
+    fields:
+    - name: labels
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsLabelsConfiguration
+      default: {}
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsLabelsConfiguration
+  map:
+    fields:
+    - name: gitRepository
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricLabelMode
+      default: All
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ModeSpec
   map:
     fields:
@@ -2038,6 +2077,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusConfiguration
   map:
     fields:
+    - name: namespaceMetadata
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+      default: Enabled
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue

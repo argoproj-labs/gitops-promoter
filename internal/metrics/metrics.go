@@ -3,7 +3,9 @@ package metrics //nolint:revive // max-public-structs: counts every exported typ
 
 import (
 	"context"
+	"maps"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -97,9 +99,12 @@ const (
 type GitHubSCMProviderOperation string
 
 const (
-	// GitHubSCMProviderOperationListInstallations lists GitHub App installations
-	// to resolve an org installation ID.
-	GitHubSCMProviderOperationListInstallations GitHubSCMProviderOperation = "list-installations"
+	// GitHubSCMProviderOperationGetOrgInstallation gets a GitHub App's installation
+	// on an organization to resolve its installation ID.
+	GitHubSCMProviderOperationGetOrgInstallation GitHubSCMProviderOperation = "get-org-installation"
+	// GitHubSCMProviderOperationGetUserInstallation gets a GitHub App's installation
+	// on a user account, when the repository owner is not an organization.
+	GitHubSCMProviderOperationGetUserInstallation GitHubSCMProviderOperation = "get-user-installation"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.
@@ -271,6 +276,54 @@ func init() {
 	)
 }
 
+var (
+	// gitRepositoryLabelsMu is held for reading while recording, so SetGitRepositoryLabels cannot reset the
+	// metrics between a recorder reading the mode and writing a series under the old mode.
+	gitRepositoryLabelsMu  sync.RWMutex
+	gitRepositoryLabelMode = v1alpha1.MetricLabelModeAll
+)
+
+// SetGitRepositoryLabels sets which git_operations_* and scm_calls_* metrics carry the git_repository
+// and git_repository_namespace labels (ControllerConfiguration spec.metrics.labels.gitRepository).
+// When the value changes, metrics whose labels change are reset so series recorded under the old
+// value don't linger.
+func SetGitRepositoryLabels(mode v1alpha1.MetricLabelMode) {
+	gitRepositoryLabelsMu.Lock()
+	defer gitRepositoryLabelsMu.Unlock()
+
+	previous := gitRepositoryLabelMode
+	gitRepositoryLabelMode = mode
+	if countersKeepRepository(previous) != countersKeepRepository(mode) {
+		gitOperationsTotal.Reset()
+		scmCallsTotal.Reset()
+	}
+	if histogramsKeepRepository(previous) != histogramsKeepRepository(mode) {
+		gitOperationsDurationSeconds.Reset()
+		scmCallsDurationSeconds.Reset()
+	}
+}
+
+func countersKeepRepository(mode v1alpha1.MetricLabelMode) bool {
+	return mode != v1alpha1.MetricLabelModeNone
+}
+
+func histogramsKeepRepository(mode v1alpha1.MetricLabelMode) bool {
+	return mode != v1alpha1.MetricLabelModeCounters && mode != v1alpha1.MetricLabelModeNone
+}
+
+// withRepositoryLabels returns labels unchanged when keep is true, otherwise a copy with the
+// repository labels blanked. The label names stay so the series match the registered label set.
+func withRepositoryLabels(labels prometheus.Labels, keep bool) prometheus.Labels {
+	if keep {
+		return labels
+	}
+	blanked := make(prometheus.Labels, len(labels))
+	maps.Copy(blanked, labels)
+	blanked["git_repository"] = ""
+	blanked["git_repository_namespace"] = ""
+	return blanked
+}
+
 // RecordGitOperation records both the increment and observation for git operations.
 func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation, result GitOperationResult, duration time.Duration) {
 	labels := prometheus.Labels{
@@ -282,8 +335,10 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 		"operation":                string(operation),
 		"result":                   string(result),
 	}
-	gitOperationsTotal.With(labels).Inc()
-	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
+	gitRepositoryLabelsMu.RLock()
+	defer gitRepositoryLabelsMu.RUnlock()
+	gitOperationsTotal.With(withRepositoryLabels(labels, countersKeepRepository(gitRepositoryLabelMode))).Inc()
+	gitOperationsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(gitRepositoryLabelMode))).Observe(duration.Seconds())
 }
 
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
@@ -308,8 +363,10 @@ func RecordSCMCall[O ~string](ctx context.Context, scope v1alpha1.SCMCallScope, 
 		"operation":                string(operation),
 		"response_code":            strconv.Itoa(responseCode),
 	}
-	scmCallsTotal.With(labels).Inc()
-	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
+	gitRepositoryLabelsMu.RLock()
+	scmCallsTotal.With(withRepositoryLabels(labels, countersKeepRepository(gitRepositoryLabelMode))).Inc()
+	scmCallsDurationSeconds.With(withRepositoryLabels(labels, histogramsKeepRepository(gitRepositoryLabelMode))).Observe(duration.Seconds())
+	gitRepositoryLabelsMu.RUnlock()
 
 	log.FromContext(ctx).V(1).Info("SCM API call",
 		"git_repository", gitRepository,

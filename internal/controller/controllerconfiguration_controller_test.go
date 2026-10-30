@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,9 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
@@ -271,6 +274,78 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
+		})
+	})
+
+	Context("When spec.metrics.labels.gitRepository is set", func() {
+		const resourceName = settings.ControllerConfigurationName
+
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+		reconciler := func() *ControllerConfigurationReconciler {
+			return &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+			}
+		}
+		setGitRepositoryLabels := func(mode promoterv1alpha1.MetricLabelMode) {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.Metrics.Labels.GitRepository = mode
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+			_, err := reconciler().Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		// histogramRepositories returns the git_repository values on git_operations_duration_seconds series.
+		histogramRepositories := func() []string {
+			families, err := ctrlmetrics.Registry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+			var repositories []string
+			for _, family := range families {
+				if family.GetName() != "git_operations_duration_seconds" {
+					continue
+				}
+				for _, m := range family.GetMetric() {
+					for _, label := range m.GetLabel() {
+						if label.GetName() == "git_repository" {
+							repositories = append(repositories, label.GetValue())
+						}
+					}
+				}
+			}
+			return repositories
+		}
+
+		BeforeEach(func() {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, typeNamespacedName, cc)
+			if err != nil && errors.IsNotFound(err) {
+				resource, loadErr := loadShippedControllerConfigurationForTests(resourceName)
+				Expect(loadErr).NotTo(HaveOccurred())
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+			DeferCleanup(setGitRepositoryLabels, promoterv1alpha1.MetricLabelModeAll)
+		})
+
+		It("applies the setting to recorded metrics", func() {
+			setGitRepositoryLabels(promoterv1alpha1.MetricLabelModeCounters)
+
+			repo := &promoterv1alpha1.GitRepository{
+				Name: "repository-labels-test", Namespace: "default",
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Name: "repository-labels-test"},
+				},
+			}
+			metrics.RecordGitOperation(repo, metrics.GitOperationFetch, metrics.GitOperationResultSuccess, time.Millisecond)
+
+			Expect(histogramRepositories()).To(HaveEach(BeEmpty()))
+			Expect(histogramRepositories()).NotTo(BeEmpty())
 		})
 	})
 })

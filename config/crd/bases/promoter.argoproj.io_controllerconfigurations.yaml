@@ -685,6 +685,21 @@ spec:
                 required:
                 - workQueue
                 type: object
+              clusterScmProvider:
+                default: {}
+                description: ClusterScmProvider contains the configuration for ClusterScmProvider
+                  support.
+                properties:
+                  mode:
+                    default: Enabled
+                    description: |-
+                      Mode enables or disables ClusterScmProvider support. When Disabled, ClusterScmProviders are not watched
+                      and references to them fail. Requires a controller restart.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                type: object
               commitStatus:
                 description: |-
                   CommitStatus contains the configuration for the CommitStatus controller,
@@ -1324,6 +1339,38 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
+              metrics:
+                default: {}
+                description: Metrics contains the configuration for the controller's
+                  Prometheus metrics.
+                properties:
+                  labels:
+                    default: {}
+                    description: Labels controls which metrics carry selected Prometheus
+                      labels (not Kubernetes labels).
+                    properties:
+                      gitRepository:
+                        default: All
+                        description: |-
+                          GitRepository controls which of git_operations_total, git_operations_duration_seconds,
+                          scm_calls_total, and scm_calls_duration_seconds set the git_repository and
+                          git_repository_namespace labels. These labels multiply series by the number of GitRepositories,
+                          and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges
+                          never carry these labels.
+                          Where a metric doesn't set the labels, the label names remain with empty values, aggregating
+                          series across repositories.
+                          All: all four metrics set the labels.
+                          Counters: only the two _total counters set them, so percentiles from the _duration_seconds
+                          histograms stay available at much lower cardinality.
+                          None: none of the four metrics set them.
+                          Changing this value resets the affected metrics.
+                        enum:
+                        - All
+                        - Counters
+                        - None
+                        type: string
+                    type: object
+                type: object
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -2180,6 +2227,15 @@ spec:
                 required:
                 - workQueue
                 type: object
+              scope:
+                default: Cluster
+                description: |-
+                  Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
+                  Requires a controller restart.
+                enum:
+                - Cluster
+                - Namespace
+                type: string
               timedCommitStatus:
                 description: |-
                   TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
@@ -2394,6 +2450,16 @@ spec:
                   WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  namespaceMetadata:
+                    default: Enabled
+                    description: |-
+                      NamespaceMetadata enables or disables reading the Namespace for NamespaceMetadata in templates and expressions.
+                      When Disabled, Namespaces are not watched and NamespaceMetadata is empty.
+                      Requires a controller restart.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
