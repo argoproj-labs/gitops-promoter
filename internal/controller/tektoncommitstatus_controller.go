@@ -18,6 +18,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -271,22 +273,30 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 		// TektonRun has been pruned if sha is the same, prune run is enabled, and the commit status is successful
 		pruned := prevEnvStatus.TargetedSha == shaToRun && tcs.Spec.PruneRun && prevEnvStatus.Phase == promoterv1alpha1.CommitPhaseSuccess
 
-		// Get the currentStatus of the Tekton Resource
-		// If the object does not exist it gets created and the currentStatus will be empty
-		var currentStatus tekton.RunStatus
+		// Get the current status of the Tekton resource
 		runName := ""
+		var currentStatus tekton.RunStatus
 		if needToCreate {
+			// Create the run if it doesn't exist or SHA changed
 			runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
 			if k8s_errors.IsAlreadyExists(err) {
 				runName = prevEnvStatus.TektonRunName
 				currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
 			}
+			if err != nil {
+				return nil, nil, err
+			}
 		} else if !pruned {
+			// Get existing run status if not creating and not pruned
 			runName = prevEnvStatus.TektonRunName
 			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
-		}
-		if err != nil {
-			return nil, nil, err
+			if k8s_errors.IsNotFound(err) {
+				// Run was deleted, recreate it
+				runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
+			}
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 
 		var newEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus
@@ -359,7 +369,7 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 	}
 
 	for _, param := range resourceRef.Params {
-		tmpl, err := template.New(param.Name).Funcs(sprig.TxtFuncMap()).Parse(param.Value)
+		tmpl, err := template.New(param.Name).Funcs(sprig.HermeticTxtFuncMap()).Parse(param.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create template: %w", err)
 		}
@@ -393,8 +403,10 @@ func parseTektonParameterTemplates(resourceRef promoterv1alpha1.TektonResourceRe
 // createSafeRunName creates a safe and unique name for a TaskRun or PipelineRun. The name is unique for each
 // environment by using the commit sha in the name. A TektonRun can only have a name of 63 or less characters so
 // the key is trimmed to fit.
-func createUniqueSafeRunName(tcs *promoterv1alpha1.TektonCommitStatus, sha string) string {
-	shaSuffix := fmt.Sprintf("sha%s-%s", sha[:8], string(tcs.UID[:8]))
+func createUniqueSafeRunName(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) string {
+	identifier := fmt.Sprintf("%s-%s-%s", string(tcs.UID), branch, sha)
+	hash := sha256.Sum256([]byte(identifier))
+	shaSuffix := fmt.Sprintf("sha%s-%s", sha[:8], hex.EncodeToString(hash[:])[:8])
 	maxLen := maxRunNameLength - len(shaSuffix)
 	return utils.TruncateString(tcs.Spec.Key, maxLen) + shaSuffix
 }
@@ -405,7 +417,7 @@ func buildTaskRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string) 
 	taskRun := &tekton.TaskRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
-			Name:      createUniqueSafeRunName(tcs, sha),
+			Name:      createUniqueSafeRunName(tcs, branch, sha),
 			Labels: map[string]string{
 				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
@@ -433,7 +445,7 @@ func buildPipelineRun(tcs *promoterv1alpha1.TektonCommitStatus, branch, sha stri
 	pipelineRun := &tekton.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tcs.Namespace,
-			Name:      createUniqueSafeRunName(tcs, sha),
+			Name:      createUniqueSafeRunName(tcs, branch, sha),
 			Labels: map[string]string{
 				commitStatusLabelKey:              utils.KubeSafeLabel(tcs.Name),
 				promoterv1alpha1.EnvironmentLabel: utils.KubeSafeLabel(branch),
