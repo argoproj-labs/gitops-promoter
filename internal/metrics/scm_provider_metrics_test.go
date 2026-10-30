@@ -16,11 +16,11 @@ var _ = Describe("RecordSCMCall", func() {
 		provider := &promoterv1alpha1.ClusterScmProvider{
 			Name: "scm-provider-metrics-test",
 		}
-		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationListInstallations, 200, 50*time.Millisecond, nil)
-		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "scm-provider-metrics-test", "", "ClusterScmProvider", "Provider", "list-installations", "200"))).To(Equal(1.0))
+		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationGetOrgInstallation, 200, 50*time.Millisecond, nil)
+		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "scm-provider-metrics-test", "", "ClusterScmProvider", "Provider", "get-org-installation", "200"))).To(Equal(1.0))
 
-		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationListInstallations, 200, 25*time.Millisecond, nil)
-		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "scm-provider-metrics-test", "", "ClusterScmProvider", "Provider", "list-installations", "200"))).To(Equal(2.0))
+		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationGetOrgInstallation, 200, 25*time.Millisecond, nil)
+		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "scm-provider-metrics-test", "", "ClusterScmProvider", "Provider", "get-org-installation", "200"))).To(Equal(2.0))
 	})
 
 	It("keeps same-named namespaced resources on separate series", func() {
@@ -52,8 +52,8 @@ var _ = Describe("RecordSCMCall", func() {
 		provider := &promoterv1alpha1.ScmProvider{
 			Name: "namespaced-provider", Namespace: "team-a",
 		}
-		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationListInstallations, 200, time.Millisecond, nil)
-		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "namespaced-provider", "team-a", "ScmProvider", "Provider", "list-installations", "200"))).To(Equal(1.0))
+		RecordSCMCall(context.Background(), provider, SCMAPIProvider, GitHubSCMProviderOperationGetOrgInstallation, 200, time.Millisecond, nil)
+		Expect(testutil.ToFloat64(scmCallsTotal.WithLabelValues("", "", "namespaced-provider", "team-a", "ScmProvider", "Provider", "get-org-installation", "200"))).To(Equal(1.0))
 	})
 
 	It("leaves scm_provider_namespace empty for a GitRepository that references a ClusterScmProvider", func() {
