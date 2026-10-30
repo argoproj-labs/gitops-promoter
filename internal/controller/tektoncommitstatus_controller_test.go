@@ -1111,7 +1111,7 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				map[string]bool{"str": false, "arr": false, "obj": false},
 				promoterv1alpha1.CommitPhaseFailure,
 				getPipelineTCS),
-			Entry("TaskRun combined does not match but indiviual does",
+			Entry("TaskRun combined does not match but individual does",
 				taskKey,
 				tekton.TektonKindTask,
 				map[string]any{"str": "notright", "arr": []string{"zero"}, "obj": Object{Id: "notright"}},

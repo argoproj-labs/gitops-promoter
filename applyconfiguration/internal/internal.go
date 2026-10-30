@@ -35,10 +35,9 @@ func Parser() *typed.Parser {
 	return parser
 }
 
-var (
-	parserOnce sync.Once
-	parser     *typed.Parser
-	schemaYAML = typed.YAMLObject(`types:
+var parserOnce sync.Once
+var parser *typed.Parser
+var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ApplicationsSelected
   map:
     fields:
@@ -1291,6 +1290,15 @@ var (
     - name: subject
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.IndividualExpressionResult
+  map:
+    fields:
+    - name: expressionResult
+      type:
+        scalar: boolean
+    - name: key
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricLabelMode
   scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
@@ -1307,15 +1315,6 @@ var (
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricLabelMode
       default: All
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.IndividualExpressionResult
-  map:
-    fields:
-    - name: expressionResult
-      type:
-        scalar: boolean
-    - name: key
-      type:
-        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ModeSpec
   map:
     fields:
@@ -2697,4 +2696,3 @@ var (
       namedType: __untyped_deduced_
     elementRelationship: separable
 `)
-)

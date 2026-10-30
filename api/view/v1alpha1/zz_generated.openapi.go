@@ -93,6 +93,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName():       schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusUpstreamStatus(ref),
 		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
 		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
+		apiv1alpha1.ExpectedResult{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExpectedResult(ref),
 		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
 		apiv1alpha1.Fake{}.OpenAPIModelName():                                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_Fake(ref),
 		apiv1alpha1.FakeRepo{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FakeRepo(ref),
@@ -122,6 +123,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.HealthyDryShas{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
 		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
 		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
+		apiv1alpha1.IndividualExpressionResult{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_IndividualExpressionResult(ref),
 		apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsConfiguration(ref),
 		apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguration(ref),
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
@@ -169,6 +171,14 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
 		apiv1alpha1.SuccessSpec{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
 		apiv1alpha1.TLSAuth{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
+		apiv1alpha1.TektonCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatus(ref),
+		apiv1alpha1.TektonCommitStatusConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusConfiguration(ref),
+		apiv1alpha1.TektonCommitStatusEnvironmentStatus{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.TektonCommitStatusList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusList(ref),
+		apiv1alpha1.TektonCommitStatusSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusSpec(ref),
+		apiv1alpha1.TektonCommitStatusStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusStatus(ref),
+		apiv1alpha1.TektonParameter{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonParameter(ref),
+		apiv1alpha1.TektonResourceRef{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonResourceRef(ref),
 		apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref),
 		apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusConfiguration(ref),
 		apiv1alpha1.TimedCommitStatusEnvironments{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusEnvironments(ref),
@@ -2608,6 +2618,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"tektonCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TektonCommitStatus contains the configuration for the TektonCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.TektonCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
 					"clusterScmProvider": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ClusterScmProvider contains the configuration for ClusterScmProvider support.",
@@ -2630,11 +2647,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 						},
 					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit"},
+				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit", "tektonCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TektonCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -3294,6 +3311,36 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 		},
 		Dependencies: []string{
 			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.HealthyDryShas{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExpectedResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ExpectedResult holds information about what to expect from the results of a Tekton run",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the name of the result from the Tekton resource to use",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is an expr expression to be used with the result. Must return a boolean. The result can be accessed through the string variable Result. For example: expectedResults:\n  - key: testCoverage\n    expression: \"Result >= 80\"\n\nWould check to see if the Tekton run resource has the result testCoverage and if it does then it will evaluate whether the value is 80 or greater.\n\nTekton results are either a string, array, or object so casting will need to be done accordingly.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"key", "expression"},
+			},
+		},
 	}
 }
 
@@ -4509,6 +4556,36 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref comm
 		},
 		Dependencies: []string{
 			apiv1alpha1.RevisionReference{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_IndividualExpressionResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "IndividualExpressionResult holds the results of expressions run on an individual result",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the key of the result.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"expressionResult": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ExpressionResult is the result of the expression evaluated at the key",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"key", "expressionResult"},
+			},
+		},
 	}
 }
 
@@ -6626,6 +6703,420 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref common.Refere
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatus is the schema for the tektoncommitstatus API.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(apiv1alpha1.TektonCommitStatusSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(apiv1alpha1.TektonCommitStatusStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.TektonCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.TektonCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatusConfiguration defines the configuration for the TektonCommitStatus controller.\n\nThis configuration controls how the TektonCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the TektonCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusEnvironmentStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatusEnvironmentStatus defines the observed status for a specific environment based on specified result keys.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the name of the branch/environment.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"targetedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TargetedSha is the commit SHA that the Tekton resource was last run on. This will match either ProposedHydratedSha or ActiveHydratedSha depending on the Target setting (\"proposed\" or \"active\"). This field clarifies which commit's data was used in the expression evaluation. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase is the current phase of the commit status. Calculated by aggregating the expression results. If no expressions are provided it is determined via whether the run succeeded or failed.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tektonRunName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TektonRunName is the name of the run that was created",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tektonRunPhase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TektonRunPhase is the phase that the Tekton run is in",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"expressionResult": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ExpressionResult holds the result of the general expression used on all results.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"individualExpressionResults": {
+						SchemaProps: spec.SchemaProps{
+							Description: "IndividualExpressionResults holds all of the results of the expressions used on individual keys.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.IndividualExpressionResult{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch", "phase"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.IndividualExpressionResult{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatusList contains a list of TektonCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.TektonCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.TektonCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatusSpec defines the desired state of TektonCommitStatus",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"promotionStrategyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tektonResourceRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TektonResource is a reference to the TektonResource to run for the checks",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.TektonResourceRef{}.OpenAPIModelName()),
+						},
+					},
+					"expectedResults": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ExpectedResults are individual checks to make on results from the Tekton resource If left empty along with the general expression also being empty, whether this passes will be determined by the completion status of the Tekton run.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ExpectedResult{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean. The results values can be accessed through the map variable Results. If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of the Tekton run.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pruneRun": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PruneRun determines if the run of the Tekton Resource will be deleted after running. Defaults to false.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"target": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Target specifies which commit SHA to run the Tekton Pipeline/Task on. - \"proposed\": runs the pipeline on the proposed commit (default) - \"active\": runs the pipeline on the currently active/deployed commit\n\nThe commit SHA to report the validation on is determined by where the key is configured in the referenced PromotionStrategy:\n  - Case key is in proposedCommitStatuses - Will report on the proposed commit (gate an incoming promotion)\n  - Case key is in activeCommitStatuses - Will report on the active commit (gate downstream promotions)\nIf configuration for CommitStatuses is done via individual environments that will also be respected.\n\nExamples:\n  Target = \"proposed\", Report On = \"proposed\" - Run the pipeline on the proposed commit and don't promote if it fails.\n                                                An example pipeline that would be good here is a security scan.\n  Target = \"active\", Report On = \"proposed\" - Run the pipeline on the current commit in the environment and block promotion if it fails.\n                                              An example pipeline to use in this setup would be running a health check on the active environment\n                                              and block if it is not healthy.\n                                              If there is no active environment then this would be skipped.\n Target = \"active\", Report On = \"active\" - Run a pipeline on the active commit and then block future promotions if it fails\n                                           A pipeline that would be useful here is running tests on an active environment and blocking further\n                                           promotions if any of them fail.\n Target = \"proposed\", Report on = \"active\" - This case is not supported as it does not make logical sense. If used will give an error.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "tektonResourceRef"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ExpectedResult{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.TektonResourceRef{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonCommitStatusStatus is the Status for a commit status resource",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type":       "map",
+								"x-kubernetes-patch-merge-key": "type",
+								"x-kubernetes-patch-strategy":  "merge",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions Represents the observations of the current state.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"environments": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Results holds the results of each evaluation of expressions from the Tekton run.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.TektonCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.TektonCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonParameter(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonParameter defines a parameter to a Tekton Resource.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the name of the parameter",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"value": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an array or object a json formatted string for an array or object must be provided. A parameter's value can use the following Go template values to inject information into a parameter.\n\n.TargetedSha - The SHA that the pipeline is being run on .Branch - The name of the branch for the environment\n\nSo some examples would be: params:\n  - name: githubUrl\n    value: \"https://github.com/someuser/somerepo/tree/{{ .Branch }}\"\n    type: string\n  - name: shortSha\n    value: \"{{ .TargetedSha | trunc 8 }}\"\n    type: string\n  - name: architectures\n    value: |\n      [\"linux/amd64\", \"linux/arm64\"]\n    type: array\n  - name: objectExample\n    value: |\n      { \"sha\": \"{{ .TargetedSha }}\", \"branch\": \"{{ .Branch }}\" }",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Type represents the type of the parameter. Tekton Parameters can be either a string, array, or object. Defaults to string",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TektonResourceRef(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TektonResourceRef defines a reference to a Tekton resource that lives in the same namespace as the TektonCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is the kind of Tekton resource to target.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the name of the Tekton resource to target. It must be in the same namespace as the commit status.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"serviceAccount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ServiceAccount is a ServiceAccount in the same namespace as the Tekton resource and is passed to the resource to be used by it. on the targeted Tekton resource",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"params": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Parameters are the parameters that get passed to the Tekton resource run that is created.\n\nExample: params:\n  - name: someParameter\n    value: \"someValue\"\n    type: \"string\"",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.TektonParameter{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"kind", "name", "serviceAccount"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.TektonParameter{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -7844,6 +8335,19 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
+					"tektonCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TektonCommitStatuses are the TektonCommitStatus managers that reference the PromotionStrategy",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.TektonCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 					"gitRepository": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.",
@@ -7867,7 +8371,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TektonCommitStatus{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 

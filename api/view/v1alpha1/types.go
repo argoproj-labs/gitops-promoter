@@ -77,6 +77,9 @@ type PromotionStrategyDetails struct {
 	// ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.
 	ScheduledCommitStatuses []promoterv1alpha1.ScheduledCommitStatus `json:"scheduledCommitStatuses,omitempty"`
 
+	// TektonCommitStatuses are the TektonCommitStatus managers that reference the PromotionStrategy
+	TektonCommitStatuses []promoterv1alpha1.TektonCommitStatus `json:"tektonCommitStatuses,omitempty"`
+
 	// GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.
 	GitRepository *promoterv1alpha1.GitRepository `json:"gitRepository,omitempty"`
 

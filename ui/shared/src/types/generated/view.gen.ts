@@ -686,6 +686,25 @@ export type components = {
             /** @description PullRequest is the state of the pull request that was created for this environment. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
         };
+        /** @description ExpectedResult holds information about what to expect from the results of a Tekton run */
+        ExpectedResult: {
+            /**
+             * @description Expression is an expr expression to be used with the result. Must return a boolean. The result can be accessed through the string variable Result. For example: expectedResults:
+             *       - key: testCoverage
+             *         expression: "Result >= 80"
+             *
+             *     Would check to see if the Tekton run resource has the result testCoverage and if it does then it will evaluate whether the value is 80 or greater.
+             *
+             *     Tekton results are either a string, array, or object so casting will need to be done accordingly.
+             * @default
+             */
+            expression: string;
+            /**
+             * @description Key is the name of the result from the Tekton resource to use
+             * @default
+             */
+            key: string;
+        };
         /** @description Fake is a placeholder for a fake SCM provider, used for testing purposes. */
         Fake: {
             /** @description Domain is the domain of the fake SCM provider. This is used for testing purposes. */
@@ -1166,6 +1185,19 @@ export type components = {
             /** @description Subject is the subject line of the dry commit that was used to hydrate the branch. */
             subject?: string;
         };
+        /** @description IndividualExpressionResult holds the results of expressions run on an individual result */
+        IndividualExpressionResult: {
+            /**
+             * @description ExpressionResult is the result of the expression evaluated at the key
+             * @default false
+             */
+            expressionResult: boolean;
+            /**
+             * @description Key is the key of the result.
+             * @default
+             */
+            key: string;
+        };
         /** @description JSON represents any valid JSON value. These types are supported: bool, int64, float64, string, []interface{}, map[string]interface{} and nil. */
         JSON: unknown;
         /** @description A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects. */
@@ -1467,6 +1499,8 @@ export type components = {
             scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
             /** @description ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
             scmProvider?: components["schemas"]["ScmProvider"];
+            /** @description TektonCommitStatuses are the TektonCommitStatus managers that reference the PromotionStrategy */
+            tektonCommitStatuses?: components["schemas"]["TektonCommitStatus"][];
             /** @description TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy. */
             timedCommitStatuses?: components["schemas"]["TimedCommitStatus"][];
             /** @description WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy. */
@@ -1937,6 +1971,153 @@ export type components = {
         TLSAuth: {
             /** @description SecretRef references a secret containing TLS certificate and key. The secret should be of type kubernetes.io/tls or contain keys "tls.crt" and "tls.key", and optionally "ca.crt". */
             secretRef: components["schemas"]["LocalObjectReference"];
+        };
+        /** @description TektonCommitStatus is the schema for the tektoncommitstatus API. */
+        TektonCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /** @default {} */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /** @default {} */
+            spec?: components["schemas"]["TektonCommitStatusSpec"];
+            /** @default {} */
+            status?: components["schemas"]["TektonCommitStatusStatus"];
+        };
+        /** @description TektonCommitStatusEnvironmentStatus defines the observed status for a specific environment based on specified result keys. */
+        TektonCommitStatusEnvironmentStatus: {
+            /**
+             * @description Branch is the name of the branch/environment.
+             * @default
+             */
+            branch: string;
+            /** @description ExpressionResult holds the result of the general expression used on all results. */
+            expressionResult?: boolean;
+            /** @description IndividualExpressionResults holds all of the results of the expressions used on individual keys. */
+            individualExpressionResults?: components["schemas"]["IndividualExpressionResult"][];
+            /**
+             * @description Phase is the current phase of the commit status. Calculated by aggregating the expression results. If no expressions are provided it is determined via whether the run succeeded or failed.
+             * @default
+             */
+            phase: string;
+            /** @description TargetedSha is the commit SHA that the Tekton resource was last run on. This will match either ProposedHydratedSha or ActiveHydratedSha depending on the Target setting ("proposed" or "active"). This field clarifies which commit's data was used in the expression evaluation. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            targetedSha?: string;
+            /** @description TektonRunName is the name of the run that was created */
+            tektonRunName?: string;
+            /** @description TektonRunPhase is the phase that the Tekton run is in */
+            tektonRunPhase?: string;
+        };
+        /** @description TektonCommitStatusSpec defines the desired state of TektonCommitStatus */
+        TektonCommitStatusSpec: {
+            /** @description ExpectedResults are individual checks to make on results from the Tekton resource If left empty along with the general expression also being empty, whether this passes will be determined by the completion status of the Tekton run. */
+            expectedResults?: components["schemas"]["ExpectedResult"][];
+            /** @description Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean. The results values can be accessed through the map variable Results. If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of the Tekton run. */
+            expression?: string;
+            /** @description Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or proposedCommitStatuses. */
+            key?: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PruneRun determines if the run of the Tekton Resource will be deleted after running. Defaults to false. */
+            pruneRun?: boolean;
+            /**
+             * @description Target specifies which commit SHA to run the Tekton Pipeline/Task on. - "proposed": runs the pipeline on the proposed commit (default) - "active": runs the pipeline on the currently active/deployed commit
+             *
+             *     The commit SHA to report the validation on is determined by where the key is configured in the referenced PromotionStrategy:
+             *       - Case key is in proposedCommitStatuses - Will report on the proposed commit (gate an incoming promotion)
+             *       - Case key is in activeCommitStatuses - Will report on the active commit (gate downstream promotions)
+             *     If configuration for CommitStatuses is done via individual environments that will also be respected.
+             *
+             *     Examples:
+             *       Target = "proposed", Report On = "proposed" - Run the pipeline on the proposed commit and don't promote if it fails.
+             *                                                     An example pipeline that would be good here is a security scan.
+             *       Target = "active", Report On = "proposed" - Run the pipeline on the current commit in the environment and block promotion if it fails.
+             *                                                   An example pipeline to use in this setup would be running a health check on the active environment
+             *                                                   and block if it is not healthy.
+             *                                                   If there is no active environment then this would be skipped.
+             *      Target = "active", Report On = "active" - Run a pipeline on the active commit and then block future promotions if it fails
+             *                                                A pipeline that would be useful here is running tests on an active environment and blocking further
+             *                                                promotions if any of them fail.
+             *      Target = "proposed", Report on = "active" - This case is not supported as it does not make logical sense. If used will give an error.
+             */
+            target?: string;
+            /**
+             * @description TektonResource is a reference to the TektonResource to run for the checks
+             * @default {}
+             */
+            tektonResourceRef: components["schemas"]["TektonResourceRef"];
+        };
+        /** @description TektonCommitStatusStatus is the Status for a commit status resource */
+        TektonCommitStatusStatus: {
+            /** @description Conditions Represents the observations of the current state. */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Results holds the results of each evaluation of expressions from the Tekton run. */
+            environments?: components["schemas"]["TektonCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description TektonParameter defines a parameter to a Tekton Resource. */
+        TektonParameter: {
+            /** @description Name is the name of the parameter */
+            name?: string;
+            /** @description Type represents the type of the parameter. Tekton Parameters can be either a string, array, or object. Defaults to string */
+            type?: string;
+            /**
+             * @description Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an array or object a json formatted string for an array or object must be provided. A parameter's value can use the following Go template values to inject information into a parameter.
+             *
+             *     .TargetedSha - The SHA that the pipeline is being run on .Branch - The name of the branch for the environment
+             *
+             *     So some examples would be: params:
+             *       - name: githubUrl
+             *         value: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
+             *         type: string
+             *       - name: shortSha
+             *         value: "{{ .TargetedSha | trunc 8 }}"
+             *         type: string
+             *       - name: architectures
+             *         value: |
+             *           ["linux/amd64", "linux/arm64"]
+             *         type: array
+             *       - name: objectExample
+             *         value: |
+             *           { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
+             */
+            value?: string;
+        };
+        /** @description TektonResourceRef defines a reference to a Tekton resource that lives in the same namespace as the TektonCommitStatus. */
+        TektonResourceRef: {
+            /**
+             * @description Kind is the kind of Tekton resource to target.
+             * @default
+             */
+            kind: string;
+            /**
+             * @description Name is the name of the Tekton resource to target. It must be in the same namespace as the commit status.
+             * @default
+             */
+            name: string;
+            /**
+             * @description Parameters are the parameters that get passed to the Tekton resource run that is created.
+             *
+             *     Example: params:
+             *       - name: someParameter
+             *         value: "someValue"
+             *         type: "string"
+             */
+            params?: components["schemas"]["TektonParameter"][];
+            /**
+             * @description ServiceAccount is a ServiceAccount in the same namespace as the Tekton resource and is passed to the resource to be used by it. on the targeted Tekton resource
+             * @default
+             */
+            serviceAccount: string;
         };
         /**
          * Format: date-time
