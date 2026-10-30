@@ -56,10 +56,6 @@ type TektonCommitStatusSpec struct {
 	// +kubebuilder:default:=false
 	PruneRun bool `json:"pruneRun,omitempty"`
 
-	// URL generates the URL to use in the CommitStatus so something like a link to the Tekton Dashboard UI can be used
-	// +optional
-	URL URLConfig `json:"url,omitempty"`
-
 	// Target specifies which commit SHA to run the Tekton Pipeline/Task on.
 	// - "proposed": runs the pipeline on the proposed commit (default)
 	// - "active": runs the pipeline on the currently active/deployed commit

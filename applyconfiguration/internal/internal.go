@@ -2031,9 +2031,6 @@ var (
     - name: tektonResourceRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonResourceRef
-    - name: url
-      type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TektonCommitStatusStatus
   map:
     fields:

@@ -39,8 +39,6 @@ type TektonCommitStatusSpecApplyConfiguration struct {
 	Expression *string `json:"expression,omitempty"`
 	// PruneRun determines if the run of the Tekton Resource will be deleted after running. Defaults to false.
 	PruneRun *bool `json:"pruneRun,omitempty"`
-	// URL generates the URL to use in the CommitStatus so something like a link to the Tekton Dashboard UI can be used
-	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
 	// Target specifies which commit SHA to run the Tekton Pipeline/Task on.
 	// - "proposed": runs the pipeline on the proposed commit (default)
 	// - "active": runs the pipeline on the currently active/deployed commit
@@ -121,14 +119,6 @@ func (b *TektonCommitStatusSpecApplyConfiguration) WithExpression(value string) 
 // If called multiple times, the PruneRun field is set to the value of the last call.
 func (b *TektonCommitStatusSpecApplyConfiguration) WithPruneRun(value bool) *TektonCommitStatusSpecApplyConfiguration {
 	b.PruneRun = &value
-	return b
-}
-
-// WithURL sets the URL field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the URL field is set to the value of the last call.
-func (b *TektonCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *TektonCommitStatusSpecApplyConfiguration {
-	b.URL = value
 	return b
 }
 
