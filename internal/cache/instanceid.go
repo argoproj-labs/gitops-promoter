@@ -177,9 +177,11 @@ func TektonCRDsInstalled(cfg *rest.Config) (bool, error) {
 	}, tekton.SchemeGroupVersion.Version)
 	if meta.IsNoMatchError(err) {
 		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("RESTMapping for Tekton PipelineRun: %w", err)
 	}
 
-	return false, fmt.Errorf("RESTMapping for Tekton PipelineRun: %w", err)
+	return true, nil
 }
 
 func instanceIDSelector(instanceID *string) labels.Selector {
