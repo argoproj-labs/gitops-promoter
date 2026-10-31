@@ -1,9 +1,9 @@
 package resourcetemplate
 
 import (
-	"github.com/google/cel-go/cel"
-
 	"time"
+
+	"github.com/google/cel-go/cel"
 
 	"github.com/google/cel-go/common/types"
 	. "github.com/onsi/ginkgo/v2"
