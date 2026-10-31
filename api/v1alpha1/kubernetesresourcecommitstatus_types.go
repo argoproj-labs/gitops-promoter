@@ -157,9 +157,9 @@ type KubernetesResourceLifecycle struct {
 	Mode KubernetesResourceLifecycleMode `json:"mode,omitempty"`
 
 	// HistoryLimit is the number of per-SHA resources retained per environment, including the current one.
-	// Older resources are deleted once the current one exists. Only valid with mode PerSha.
+	// Older resources are deleted once the current one exists. Defaults to 1 when omitted (no schema default,
+	// so the field can stay unset for mode InPlace). Only valid with mode PerSha.
 	// +optional
-	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
 	HistoryLimit *int32 `json:"historyLimit,omitempty"`
