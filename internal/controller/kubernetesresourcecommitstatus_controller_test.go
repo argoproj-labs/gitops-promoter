@@ -281,7 +281,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.ShaLabel, firstSha))
 				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.EnvironmentLabel, utils.KubeSafeLabel(testBranchDevelopment)))
 				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.CommitStatusLabel, k8sResourceGateKey))
-				g.Expect(job.Labels).To(HaveKeyWithValue("promoter.argoproj.io/kubernetes-resource-commit-status", gateName))
+				g.Expect(job.Labels).To(HaveKeyWithValue("promoter.argoproj.io/kubernetes-resource-commit-status", utils.KubeSafeLabel(gateName)))
 				g.Expect(metav1.IsControlledBy(&job, krcs)).To(BeTrue())
 
 				var cs promoterv1alpha1.CommitStatus
@@ -419,7 +419,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "oldest Job is pruned once a third SHA arrives")
 				var jobs batchv1.JobList
 				g.Expect(k8sClient.List(ctx, &jobs, ctrlclient.InNamespace("default"), ctrlclient.MatchingLabels{
-					"promoter.argoproj.io/kubernetes-resource-commit-status": historyGate,
+					"promoter.argoproj.io/kubernetes-resource-commit-status": utils.KubeSafeLabel(historyGate),
 					promoterv1alpha1.EnvironmentLabel:                        utils.KubeSafeLabel(testBranchDevelopment),
 				})).To(Succeed())
 				g.Expect(jobs.Items).To(HaveLen(2))

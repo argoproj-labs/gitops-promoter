@@ -54,15 +54,13 @@ func TestConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 32)
 	for i := range 32 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			key := Key{Prefix: "p", Expression: []string{"1", "2", "3", "4", "5"}[i%5]}
 			if _, err := c.GetOrCompile(key); err != nil {
 				errs <- err
 			}
 			c.Get(key)
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

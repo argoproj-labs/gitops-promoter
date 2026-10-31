@@ -33,11 +33,50 @@ const (
 	maxInlineDepth = 48
 	// gvkExtension is the OpenAPI extension that names the group/version/kind(s) a schema component describes.
 	gvkExtension = "x-kubernetes-group-version-kind"
+
+	// JSON schema keywords and values used throughout the normalizer.
+	keyType                = "type"
+	keyProperties          = "properties"
+	keyItems               = "items"
+	keyAdditionalProps     = "additionalProperties"
+	keyRequired            = "required"
+	keyDefault             = "default"
+	keyFormat              = "format"
+	keyOneOf               = "oneOf"
+	keyAnyOf               = "anyOf"
+	keyAllOf               = "allOf"
+	keyNot                 = "not"
+	keyIntOrString         = "x-kubernetes-int-or-string"
+	keyPreserveUnknown     = "x-kubernetes-preserve-unknown-fields"
+	keyListType            = "x-kubernetes-list-type"
+	keyListMapKeys         = "x-kubernetes-list-map-keys"
+	typeObject             = "object"
+	typeArray              = "array"
+	typeString             = "string"
+	formatIntOrString      = "int-or-string"
+	unionIntegerString     = "integer,string"
+	unionNumberString      = "number,string"
+	rootPropertyMetadata   = "metadata"
+	rootPropertyStatus     = "status"
+	listTypeMap            = "map"
+	listTypeAtomic         = "atomic"
+	permissiveSpecProperty = "spec"
 )
 
 // crdFormatSafelist lists OpenAPI formats that CRD validation understands and that are worth keeping.
 // Every other format is stripped; the apiserver would ignore unknown formats anyway.
 var crdFormatSafelist = map[string]bool{"date-time": true, "date": true, "byte": true}
+
+// droppedKeywords are removed from every node: descriptive keywords that only add size, and extensions
+// that CRD schemas do not support (they would be lost in the JSONSchemaProps round-trip anyway).
+var droppedKeywords = []string{
+	"description", "title", "example", gvkExtension,
+	"x-kubernetes-patch-strategy", "x-kubernetes-patch-merge-key", "x-kubernetes-unions",
+	"$schema", "id", "$id",
+}
+
+// junctorKeywords cannot be expressed structurally without per-type analysis.
+var junctorKeywords = []string{keyOneOf, keyAnyOf, keyNot, keyAllOf, keyType, keyProperties, keyItems, keyAdditionalProps, keyRequired}
 
 // openAPIDocument is the subset of a kube-apiserver /openapi/v3 group-version document this package reads.
 type openAPIDocument struct {
@@ -53,12 +92,12 @@ type openAPIComponents struct {
 // structural schema: apiVersion/kind/metadata plus an unvalidated spec.
 func PermissiveSchema() *apiextensionsv1.JSONSchemaProps {
 	return &apiextensionsv1.JSONSchemaProps{
-		Type: "object",
+		Type: typeObject,
 		Properties: map[string]apiextensionsv1.JSONSchemaProps{
-			"apiVersion": {Type: "string"},
-			"kind":       {Type: "string"},
-			"metadata":   {Type: "object"},
-			"spec":       {Type: "object", XPreserveUnknownFields: new(true)},
+			"apiVersion":           {Type: typeString},
+			"kind":                 {Type: typeString},
+			rootPropertyMetadata:   {Type: typeObject},
+			permissiveSpecProperty: {Type: typeObject, XPreserveUnknownFields: new(true)},
 		},
 		XPreserveUnknownFields: new(true),
 	}
@@ -154,35 +193,7 @@ func (n *normalizer) inline(v any, visiting map[string]bool, depth int) (any, er
 	switch t := v.(type) {
 	case map[string]any:
 		if ref, ok := t["$ref"].(string); ok {
-			name := strings.TrimPrefix(ref, componentsSchemasRefPrefix)
-			if name == ref {
-				return nil, fmt.Errorf("unsupported $ref %q", ref)
-			}
-			target, ok := n.components[name].(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("unresolved $ref %q", ref)
-			}
-			if visiting[name] || depth >= maxInlineDepth {
-				return permissiveNode(), nil
-			}
-			visiting[name] = true
-			out, err := n.inline(target, visiting, depth+1)
-			delete(visiting, name)
-			if err != nil {
-				return nil, err
-			}
-			// Keep sibling keys of the $ref (OpenAPI 3.1 allows description/default next to $ref).
-			if outMap, ok := out.(map[string]any); ok {
-				for k, sibling := range t {
-					if k == "$ref" {
-						continue
-					}
-					if _, exists := outMap[k]; !exists {
-						outMap[k] = sibling
-					}
-				}
-			}
-			return out, nil
+			return n.inlineRef(t, ref, visiting, depth)
 		}
 		out := make(map[string]any, len(t))
 		for k, child := range t {
@@ -208,103 +219,142 @@ func (n *normalizer) inline(v any, visiting map[string]bool, depth int) (any, er
 	}
 }
 
+// inlineRef resolves one $ref node. Sibling keys of the $ref (OpenAPI 3.1 allows description/default next
+// to $ref) are kept when the target does not define them.
+func (n *normalizer) inlineRef(node map[string]any, ref string, visiting map[string]bool, depth int) (any, error) {
+	name := strings.TrimPrefix(ref, componentsSchemasRefPrefix)
+	if name == ref {
+		return nil, fmt.Errorf("unsupported $ref %q", ref)
+	}
+	target, ok := n.components[name].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unresolved $ref %q", ref)
+	}
+	if visiting[name] || depth >= maxInlineDepth {
+		return permissiveNode(), nil
+	}
+	visiting[name] = true
+	out, err := n.inline(target, visiting, depth+1)
+	delete(visiting, name)
+	if err != nil {
+		return nil, err
+	}
+	outMap, ok := out.(map[string]any)
+	if !ok {
+		return out, nil
+	}
+	for k, sibling := range node {
+		if k == "$ref" {
+			continue
+		}
+		if _, exists := outMap[k]; !exists {
+			outMap[k] = sibling
+		}
+	}
+	return outMap, nil
+}
+
 func permissiveNode() map[string]any {
-	return map[string]any{"type": "object", "x-kubernetes-preserve-unknown-fields": true}
+	return map[string]any{keyType: typeObject, keyPreserveUnknown: true}
 }
 
 // normalize rewrites a schema node (and its children) in place into structural form. root marks the
 // top-level object schema of the kind.
 func (n *normalizer) normalize(node map[string]any, root bool) {
 	n.flattenAllOf(node)
+	n.scrub(node)
+	n.convertUnions(node)
+	n.normalizeChildren(node, root)
+	ensureTyped(node)
+}
 
-	delete(node, "description")
-	delete(node, "title")
-	delete(node, "example")
-	delete(node, gvkExtension)
-	delete(node, "x-kubernetes-patch-strategy")
-	delete(node, "x-kubernetes-patch-merge-key")
-	delete(node, "x-kubernetes-unions")
-	delete(node, "$schema")
-	delete(node, "id")
-	delete(node, "$id")
+// scrub removes keywords that are not wanted or not allowed in a structural schema.
+func (n *normalizer) scrub(node map[string]any) {
+	for _, k := range droppedKeywords {
+		delete(node, k)
+	}
 	if n.dropDefaults {
-		delete(node, "default")
+		delete(node, keyDefault)
 	}
-	if f, ok := node["format"].(string); ok && !crdFormatSafelist[f] {
-		delete(node, "format")
+	if f, ok := node[keyFormat].(string); ok && !crdFormatSafelist[f] && f != formatIntOrString {
+		delete(node, keyFormat)
 	}
-	if ap, ok := node["additionalProperties"].(bool); ok && !ap {
+	if ap, ok := node[keyAdditionalProps].(bool); ok && !ap {
 		// additionalProperties: false is forbidden in structural schemas.
-		delete(node, "additionalProperties")
+		delete(node, keyAdditionalProps)
 	}
+	if n.dropDefaults {
+		if lt, ok := node[keyListType].(string); ok && lt == listTypeMap {
+			// list-type map requires its keys to have defaults or be required; without defaults, use atomic.
+			node[keyListType] = listTypeAtomic
+			delete(node, keyListMapKeys)
+		}
+	}
+}
 
+// convertUnions turns IntOrString/Quantity into x-kubernetes-int-or-string and collapses any other
+// junctor into a permissive object.
+func (n *normalizer) convertUnions(node map[string]any) {
 	switch {
 	case isIntOrString(node), isQuantity(node):
-		delete(node, "type")
-		delete(node, "oneOf")
-		delete(node, "anyOf")
-		delete(node, "format")
-		delete(node, "pattern")
-		node["x-kubernetes-int-or-string"] = true
-	case node["oneOf"] != nil || node["anyOf"] != nil || node["not"] != nil || node["allOf"] != nil:
-		// Remaining junctors cannot be expressed structurally without per-type analysis; accept anything.
-		for _, k := range []string{"oneOf", "anyOf", "not", "allOf", "type", "properties", "items", "additionalProperties", "required"} {
+		for _, k := range []string{keyType, keyOneOf, keyAnyOf, keyFormat, "pattern"} {
 			delete(node, k)
 		}
-		node["x-kubernetes-preserve-unknown-fields"] = true
+		node[keyIntOrString] = true
+	case node[keyOneOf] != nil || node[keyAnyOf] != nil || node[keyNot] != nil || node[keyAllOf] != nil:
+		for _, k := range junctorKeywords {
+			delete(node, k)
+		}
+		node[keyPreserveUnknown] = true
 	default:
 		// Plain typed node: nothing to convert.
 	}
+}
 
-	if n.dropDefaults {
-		if lt, ok := node["x-kubernetes-list-type"].(string); ok && lt == "map" {
-			node["x-kubernetes-list-type"] = "atomic"
-			delete(node, "x-kubernetes-list-map-keys")
-		}
-	}
-
-	if props, ok := node["properties"].(map[string]any); ok {
+// normalizeChildren recurses into properties, items, and additionalProperties, applying the root-only rules
+// (drop status, collapse metadata) on the way.
+func (n *normalizer) normalizeChildren(node map[string]any, root bool) {
+	if props, ok := node[keyProperties].(map[string]any); ok {
 		if root {
-			delete(props, "status")
-			props["metadata"] = map[string]any{"type": "object"}
-			node["required"] = removeFromStringList(node["required"], "status")
+			delete(props, rootPropertyStatus)
+			props[rootPropertyMetadata] = map[string]any{keyType: typeObject}
+			node[keyRequired] = removeFromStringList(node[keyRequired], rootPropertyStatus)
 		}
 		for k, child := range props {
 			childMap, ok := child.(map[string]any)
-			if !ok {
-				continue
-			}
-			if root && k == "metadata" {
+			if !ok || (root && k == rootPropertyMetadata) {
 				continue
 			}
 			n.normalize(childMap, false)
 		}
-		if _, hasType := node["type"]; !hasType {
-			node["type"] = "object"
-		}
+		setTypeIfMissing(node, typeObject)
 	}
-	if items, ok := node["items"].(map[string]any); ok {
+	if items, ok := node[keyItems].(map[string]any); ok {
 		n.normalize(items, false)
-		if _, hasType := node["type"]; !hasType {
-			node["type"] = "array"
-		}
+		setTypeIfMissing(node, typeArray)
 	}
-	if ap, ok := node["additionalProperties"].(map[string]any); ok {
+	if ap, ok := node[keyAdditionalProps].(map[string]any); ok {
 		n.normalize(ap, false)
-		if _, hasType := node["type"]; !hasType {
-			node["type"] = "object"
-		}
+		setTypeIfMissing(node, typeObject)
 	}
-
-	if req, ok := node["required"].([]any); ok && len(req) == 0 {
-		delete(node, "required")
+	if req, ok := node[keyRequired].([]any); ok && len(req) == 0 {
+		delete(node, keyRequired)
 	}
+}
 
-	_, hasType := node["type"]
-	_, intOrString := node["x-kubernetes-int-or-string"]
-	_, preserve := node["x-kubernetes-preserve-unknown-fields"]
+// ensureTyped gives untyped leaves a permissive marker so the schema stays structural.
+func ensureTyped(node map[string]any) {
+	_, hasType := node[keyType]
+	_, intOrString := node[keyIntOrString]
+	_, preserve := node[keyPreserveUnknown]
 	if !hasType && !intOrString && !preserve {
-		node["x-kubernetes-preserve-unknown-fields"] = true
+		node[keyPreserveUnknown] = true
+	}
+}
+
+func setTypeIfMissing(node map[string]any, t string) {
+	if _, hasType := node[keyType]; !hasType {
+		node[keyType] = t
 	}
 }
 
@@ -312,7 +362,7 @@ func (n *normalizer) normalize(node map[string]any, root bool) {
 // Keys present on node win over the wrapped schema, except description, which is dropped anyway.
 func (n *normalizer) flattenAllOf(node map[string]any) {
 	for {
-		allOf, ok := node["allOf"].([]any)
+		allOf, ok := node[keyAllOf].([]any)
 		if !ok || len(allOf) != 1 {
 			return
 		}
@@ -320,7 +370,7 @@ func (n *normalizer) flattenAllOf(node map[string]any) {
 		if !ok {
 			return
 		}
-		delete(node, "allOf")
+		delete(node, keyAllOf)
 		for k, v := range child {
 			if _, exists := node[k]; !exists {
 				node[k] = v
@@ -330,24 +380,24 @@ func (n *normalizer) flattenAllOf(node map[string]any) {
 }
 
 func isIntOrString(node map[string]any) bool {
-	if f, _ := node["format"].(string); f == "int-or-string" {
+	if f, _ := node[keyFormat].(string); f == formatIntOrString {
 		return true
 	}
-	if b, ok := node["x-kubernetes-int-or-string"].(bool); ok && b {
+	if b, ok := node[keyIntOrString].(bool); ok && b {
 		return true
 	}
-	return unionTypes(node) == "integer,string"
+	return unionTypes(node) == unionIntegerString
 }
 
 func isQuantity(node map[string]any) bool {
-	return unionTypes(node) == "number,string"
+	return unionTypes(node) == unionNumberString
 }
 
 // unionTypes returns the sorted comma-joined primitive types of a oneOf/anyOf whose members are bare types.
 func unionTypes(node map[string]any) string {
-	members, ok := node["oneOf"].([]any)
+	members, ok := node[keyOneOf].([]any)
 	if !ok {
-		members, ok = node["anyOf"].([]any)
+		members, ok = node[keyAnyOf].([]any)
 	}
 	if !ok || len(members) != 2 {
 		return ""
@@ -358,7 +408,7 @@ func unionTypes(node map[string]any) string {
 		if !ok || len(mm) != 1 {
 			return ""
 		}
-		t, ok := mm["type"].(string)
+		t, ok := mm[keyType].(string)
 		if !ok {
 			return ""
 		}

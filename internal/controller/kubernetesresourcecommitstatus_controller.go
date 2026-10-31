@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -344,6 +344,8 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		r.Recorder.Eventf(in.gate, nil, "Normal", constants.KubernetesResourceCreatedReason, "CreatingResource",
 			constants.KubernetesResourceCreatedMessage, in.sourceGVK.Kind, name, in.branch, in.sha)
 		live = desired
+	default:
+		// PerSha and the resource already exists: it is immutable from our side, evaluate it as is.
 	}
 
 	result, err := r.evaluatePhase(in, live, templateData)
@@ -549,12 +551,16 @@ func (r *KubernetesResourceCommitStatusReconciler) pruneResources(ctx context.Co
 
 	for env, items := range byEnv {
 		// Newest first; the current resource always sorts first so it is never pruned.
-		sort.SliceStable(items, func(i, j int) bool {
-			ci, cj := current[items[i].GetName()], current[items[j].GetName()]
-			if ci != cj {
-				return ci
+		slices.SortStableFunc(items, func(a, b unstructured.Unstructured) int {
+			ca, cb := current[a.GetName()], current[b.GetName()]
+			switch {
+			case ca && !cb:
+				return -1
+			case cb && !ca:
+				return 1
+			default:
+				return b.GetCreationTimestamp().Time.Compare(a.GetCreationTimestamp().Time)
 			}
-			return items[i].GetCreationTimestamp().After(items[j].GetCreationTimestamp().Time)
 		})
 		for i := historyLimit; i < len(items); i++ {
 			if current[items[i].GetName()] {
@@ -628,9 +634,9 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		}
 		r.configured[gvk] = struct{}{}
 
-		real := &unstructured.Unstructured{}
-		real.SetGroupVersionKind(gvk)
-		b = b.Watches(real, handler.EnqueueRequestForOwner(mgr.GetScheme(), mapper, &promoterv1alpha1.KubernetesResourceCommitStatus{}, handler.OnlyControllerOwner()))
+		realKind := &unstructured.Unstructured{}
+		realKind.SetGroupVersionKind(gvk)
+		b = b.Watches(realKind, handler.EnqueueRequestForOwner(mgr.GetScheme(), mapper, &promoterv1alpha1.KubernetesResourceCommitStatus{}, handler.OnlyControllerOwner()))
 
 		templateGVK := resourcetemplate.TemplateGVKFor(gvk)
 		if _, err := mapper.RESTMapping(templateGVK.GroupKind(), templateGVK.Version); err != nil {

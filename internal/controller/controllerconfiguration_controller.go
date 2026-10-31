@@ -46,13 +46,13 @@ type ControllerConfigurationReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
 
-	Shutdown          context.CancelFunc
-	StartupInstanceID *string
+	Shutdown            context.CancelFunc
+	StartupInstanceID   *string
+	ControllerNamespace string
 	// StartupKubernetesResourceCommitStatusResources is the resource list read at startup. The
 	// KubernetesResourceCommitStatus controller builds informers for these kinds when it starts, so a
 	// change triggers the same shutdown-for-restart as an instanceID change.
 	StartupKubernetesResourceCommitStatusResources []promoterv1alpha1.ResourceGroupVersionKind
-	ControllerNamespace                            string
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,resourceNames=promoter-controller-configuration,verbs=get;list;watch

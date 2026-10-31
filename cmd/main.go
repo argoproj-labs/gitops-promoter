@@ -515,10 +515,10 @@ func runController(
 // startupSettings holds the ControllerConfiguration fields that are read once before the manager starts and
 // require a controller restart to change.
 type startupSettings struct {
-	kubernetesResources    []promoterv1alpha1.ResourceGroupVersionKind
 	scope                  promoterv1alpha1.ControllerScope
 	clusterScmProviderMode promoterv1alpha1.FeatureMode
 	templateCRDs           promoterv1alpha1.FeatureMode
+	kubernetesResources    []promoterv1alpha1.ResourceGroupVersionKind
 }
 
 // getStartupSettings reads spec.scope, spec.clusterScmProvider.mode, and the KubernetesResourceCommitStatus

@@ -106,7 +106,11 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj := &unstructured.Unstructured{Object: rendered.(map[string]any)}
+	renderedBody, ok := rendered.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("rendered template body is %T, expected an object", rendered)
+	}
+	obj := &unstructured.Unstructured{Object: renderedBody}
 	obj.SetGroupVersionKind(p.SourceGVK)
 	obj.SetName(p.Name)
 	obj.SetNamespace(p.Namespace)
