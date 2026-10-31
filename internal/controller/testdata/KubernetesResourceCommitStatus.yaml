@@ -1,0 +1,32 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: smoke-test
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: demo
+  # Matched against PromotionStrategy proposedCommitStatuses / activeCommitStatuses.
+  key: smoke-test
+  # proposed (default) creates the resource for the proposed hydrated SHA; active uses the live SHA.
+  reportOn: proposed
+  # The template is an instance of the wrapped kind generated from
+  # ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources (here batch/v1 Job).
+  templateRef:
+    apiVersion: batch.templates.promoter.argoproj.io/v1
+    kind: Job
+    name: smoke-test
+  lifecycle:
+    # PerSha (default) creates one resource per SHA; InPlace re-applies a single resource per environment.
+    mode: PerSha
+    # Resources kept per environment, including the current one.
+    historyLimit: 1
+  phase:
+    # expr evaluated against the live resource. Guard optional fields with ?. and ??.
+    expression: |
+      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
+        ? {phase: 'success'}
+        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
+          ? {phase: 'failure', description: 'Smoke test is failing'}
+          : false
+  descriptionTemplate: "Smoke test {{ .ResourceName }} is {{ .Phase }}"

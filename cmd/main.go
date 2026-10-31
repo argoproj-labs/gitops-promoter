@@ -46,6 +46,7 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
@@ -200,14 +201,21 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
-	scope, clusterScmProviderMode, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
+	startup, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
 	if err != nil {
 		return fmt.Errorf("read startup config: %w", err)
 	}
-	clusterScmProviderEnabled := clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
+	scope := startup.scope
+	clusterScmProviderEnabled := startup.clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
 	if !clusterScmProviderEnabled {
 		setupLog.Info("ClusterScmProvider support disabled")
 	}
+
+	// Generate the wrapped template CRDs for KubernetesResourceCommitStatus before the manager starts so the
+	// gate controller can resolve template kinds as soon as it runs. Failures are logged, not fatal: gates that
+	// reference a kind whose CRD is missing report Ready=False until the configuration is fixed and the
+	// controller restarts.
+	ensureTemplateCRDs(processSignalsCtx, restConfig, startup)
 
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
@@ -374,7 +382,8 @@ func runController(
 		Recorder:            localManager.GetEventRecorder("ControllerConfiguration"),
 		ControllerNamespace: controllerNamespace,
 		StartupInstanceID:   instanceID,
-		Shutdown:            shutdown,
+		StartupKubernetesResourceCommitStatusResources: startup.kubernetesResources,
+		Shutdown: shutdown,
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
@@ -435,6 +444,15 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
+	if err := (&controller.KubernetesResourceCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("KubernetesResourceCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -494,16 +512,25 @@ func runController(
 	return nil
 }
 
-// getStartupSettings reads spec.scope and spec.clusterScmProvider.mode directly from the API server,
-// before the manager cache starts.
+// startupSettings holds the ControllerConfiguration fields that are read once before the manager starts and
+// require a controller restart to change.
+type startupSettings struct {
+	scope                  promoterv1alpha1.ControllerScope
+	clusterScmProviderMode promoterv1alpha1.FeatureMode
+	templateCRDs           promoterv1alpha1.FeatureMode
+	kubernetesResources    []promoterv1alpha1.ResourceGroupVersionKind
+}
+
+// getStartupSettings reads spec.scope, spec.clusterScmProvider.mode, and the KubernetesResourceCommitStatus
+// resource list directly from the API server, before the manager cache starts.
 func getStartupSettings(
 	ctx context.Context,
 	restCfg *rest.Config,
 	controllerNamespace string,
-) (promoterv1alpha1.ControllerScope, promoterv1alpha1.FeatureMode, error) {
+) (startupSettings, error) {
 	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
 	if err != nil {
-		return "", "", fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+		return startupSettings{}, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
 	}
 	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
@@ -511,15 +538,44 @@ func getStartupSettings(
 
 	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	scope, err := bootstrapSettings.GetScopeDirect(readCtx)
-	if err != nil {
-		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	var out startupSettings
+	if out.scope, err = bootstrapSettings.GetScopeDirect(readCtx); err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	clusterScmProviderMode, err := bootstrapSettings.GetClusterScmProviderModeDirect(readCtx)
-	if err != nil {
-		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	if out.clusterScmProviderMode, err = bootstrapSettings.GetClusterScmProviderModeDirect(readCtx); err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	return scope, clusterScmProviderMode, nil
+	out.kubernetesResources, err = bootstrapSettings.GetKubernetesResourceCommitStatusResourcesDirect(readCtx)
+	if err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	if out.templateCRDs, err = bootstrapSettings.GetKubernetesResourceCommitStatusTemplateCRDsDirect(readCtx); err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return out, nil
+}
+
+// ensureTemplateCRDs generates the wrapped template CRDs for every configured KubernetesResourceCommitStatus
+// resource kind. It never fails startup: problems are logged and surface later as Ready=False on the gates.
+func ensureTemplateCRDs(ctx context.Context, restCfg *rest.Config, startup startupSettings) {
+	if len(startup.kubernetesResources) == 0 {
+		return
+	}
+	if startup.templateCRDs == promoterv1alpha1.FeatureModeDisabled {
+		setupLog.Info("wrapped template CRD generation disabled; template kinds must be installed by other means",
+			"resources", len(startup.kubernetesResources))
+		return
+	}
+	generator, err := resourcetemplate.NewCRDGenerator(restCfg, setupLog.WithName("template-crds"))
+	if err != nil {
+		setupLog.Error(err, "unable to build the template CRD generator; skipping wrapped template CRD generation")
+		return
+	}
+	genCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := generator.Ensure(genCtx, startup.kubernetesResources); err != nil {
+		setupLog.Error(err, "one or more wrapped template CRDs could not be generated")
+	}
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -651,12 +707,12 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get namespace: %w", err)
 			}
-			scope, clusterScmProviderMode, err := getStartupSettings(ctx, restConfig, namespace)
+			startup, err := getStartupSettings(ctx, restConfig, namespace)
 			if err != nil {
 				return fmt.Errorf("read startup config: %w", err)
 			}
-			opts.ClusterScmProviderMode = clusterScmProviderMode
-			if scope == promoterv1alpha1.ControllerScopeNamespace {
+			opts.ClusterScmProviderMode = startup.clusterScmProviderMode
+			if startup.scope == promoterv1alpha1.ControllerScopeNamespace {
 				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
 				opts.Namespace = namespace
 			}

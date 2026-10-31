@@ -88,7 +88,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   nil,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: nil,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -136,7 +137,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   nil,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: nil,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -147,6 +149,26 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
 		})
 
+		It("shuts down when spec.kubernetesResourceCommitStatus.resources changes from startup", func() {
+			var shutdowns atomic.Int32
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				// The controller started with only batch/v1 Job; the live configuration also lists ConfigMap.
+				StartupKubernetesResourceCommitStatusResources: []promoterv1alpha1.ResourceGroupVersionKind{{Group: "batch", Version: "v1", Kind: "Job"}},
+				StartupInstanceID: nil,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
 		It("shuts down when spec.instanceID changes from default install", func() {
 			var shutdowns atomic.Int32
 			wave0 := "wave-0"
@@ -155,7 +177,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   nil,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: nil,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -180,7 +203,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   &wave0,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: &wave0,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -206,7 +230,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   &wave0,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: &wave0,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -231,7 +256,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   &wave0,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: &wave0,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -256,7 +282,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
-				StartupInstanceID:   nil,
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
+				StartupInstanceID: nil,
 				Shutdown: func() {
 					shutdowns.Add(1)
 				},
@@ -291,6 +318,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 				Scheme:              k8sClient.Scheme(),
 				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
+				StartupKubernetesResourceCommitStatusResources: kubernetesResourceCommitStatusResourcesForTests(),
 			}
 		}
 		setGitRepositoryLabels := func(mode promoterv1alpha1.MetricLabelMode) {

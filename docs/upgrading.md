@@ -2,6 +2,36 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.49 — KubernetesResourceCommitStatus configuration section
+
+`ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller
+section). The installation manifests include it with the standard work-queue defaults, an empty `resources` list, and
+`templateCRDs: Enabled`. If you maintain your own ControllerConfiguration, add:
+
+```yaml
+spec:
+  kubernetesResourceCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    resources: []
+    templateCRDs: Enabled
+```
+
+The controller ClusterRole gains `get`, `list`, `watch`, `create`, and `update` on `customresourcedefinitions` so it can
+generate the wrapped template CRDs for the kinds you list. Nothing is generated while `resources` is empty. The
+namespaced install bundle sets `templateCRDs: Disabled`. RBAC for the kinds you list (and their template kinds) is not
+generated; see [Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#rbac).
+
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 
 > [!IMPORTANT]
