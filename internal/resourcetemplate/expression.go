@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/cel-go/cel"
+
 	"github.com/google/cel-go/common/types"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	apiservercel "k8s.io/apiserver/pkg/cel"
@@ -132,17 +134,31 @@ func NewInterpolator(compiler *Compiler, set VariableSet, gvk schema.GroupVersio
 // other string concatenates its literal text with the stringified expression results. Strings without "${" are
 // returned unchanged. expected, when known, is the declared type of the field receiving the value.
 func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, error) {
-	return in.render(s, expected, true)
+	return in.render(s, expected, renderOptions{evaluate: true})
 }
 
 // Check compiles the expressions in s and checks them against expected exactly as Value does before evaluating,
-// without evaluating anything. It needs no activation, so it can run at admission time.
-func (in *Interpolator) Check(s string, expected *apiservercel.DeclType) error {
-	_, err := in.render(s, expected, false)
+// without evaluating anything, so it can run at admission time. required additionally rejects a standalone
+// expression that can remove the field (a null or an optional result).
+func (in *Interpolator) Check(s string, expected *apiservercel.DeclType, required bool) error {
+	_, err := in.render(s, expected, renderOptions{required: required})
 	return err
 }
 
-func (in *Interpolator) render(s string, expected *apiservercel.DeclType, evaluate bool) (any, error) {
+// CheckText is Check for a value that String will render: a standalone expression must produce text or a scalar
+// (string, int, double, bool), not a list, map, null, or an optional that may be absent.
+func (in *Interpolator) CheckText(s string) error {
+	_, err := in.render(s, nil, renderOptions{text: true})
+	return err
+}
+
+type renderOptions struct {
+	evaluate bool
+	required bool
+	text     bool
+}
+
+func (in *Interpolator) render(s string, expected *apiservercel.DeclType, opts renderOptions) (any, error) {
 	if !strings.Contains(s, "${") {
 		return s, nil
 	}
@@ -151,15 +167,9 @@ func (in *Interpolator) render(s string, expected *apiservercel.DeclType, evalua
 		return nil, err
 	}
 	if expression, ok := standaloneExpression(segments); ok {
-		program, err := in.compiler.Compile(in.set, in.gvk, expression)
-		if err != nil {
+		program, err := in.checkStandalone(expression, expected, opts)
+		if err != nil || !opts.evaluate {
 			return nil, err
-		}
-		if err := CheckOutputType(program.OutputType, expected); err != nil {
-			return nil, fmt.Errorf("expression %q %w", strings.TrimSpace(expression), err)
-		}
-		if !evaluate {
-			return nil, nil
 		}
 		return in.eval(program, expression)
 	}
@@ -179,7 +189,7 @@ func (in *Interpolator) render(s string, expected *apiservercel.DeclType, evalua
 		if program.OutputType.Kind() == types.NullTypeKind {
 			return nil, fmt.Errorf("expression %q: result is null; use orValue() to provide a default", strings.TrimSpace(seg.text))
 		}
-		if !evaluate {
+		if !opts.evaluate {
 			continue
 		}
 		out, err := in.eval(program, seg.text)
@@ -192,10 +202,47 @@ func (in *Interpolator) render(s string, expected *apiservercel.DeclType, evalua
 		}
 		b.WriteString(text)
 	}
-	if !evaluate {
+	if !opts.evaluate {
 		return nil, nil
 	}
 	return b.String(), nil
+}
+
+// checkStandalone compiles a standalone expression and checks its output type against expected and opts.
+func (in *Interpolator) checkStandalone(expression string, expected *apiservercel.DeclType, opts renderOptions) (*Program, error) {
+	program, err := in.compiler.Compile(in.set, in.gvk, expression)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckOutputType(program.OutputType, expected); err != nil {
+		return nil, fmt.Errorf("expression %q %w", strings.TrimSpace(expression), err)
+	}
+	if opts.required && canDropField(program.OutputType) {
+		return nil, fmt.Errorf("expression %q returns %s, which would remove a required field", strings.TrimSpace(expression), describeCelType(program.OutputType))
+	}
+	if opts.text && !rendersAsText(program.OutputType) {
+		return nil, fmt.Errorf("expression %q returns %s, but this value must be text", strings.TrimSpace(expression), describeCelType(program.OutputType))
+	}
+	return program, nil
+}
+
+// canDropField reports whether a standalone expression of type t can evaluate to "no value": null, or an optional.
+func canDropField(t *cel.Type) bool {
+	return t.Kind() == types.NullTypeKind || isOptionalType(t)
+}
+
+// rendersAsText reports whether a standalone expression of type t always stringifies to a sensible value.
+func rendersAsText(t *cel.Type) bool {
+	switch t.Kind() {
+	case types.StringKind, types.IntKind, types.UintKind, types.DoubleKind, types.BoolKind, types.DynKind, types.AnyKind:
+		return true
+	default:
+		return false
+	}
+}
+
+func isOptionalType(t *cel.Type) bool {
+	return t.Kind() == types.OpaqueKind && t.TypeName() == "optional_type"
 }
 
 // String renders s to text: like Value, but a standalone expression's result is stringified as well.

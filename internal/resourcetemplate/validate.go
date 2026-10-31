@@ -66,7 +66,7 @@ func ValidateSpec(compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchem
 				errs = append(errs, unknownField(templatePath.Child(key), gvk, key))
 				continue
 			}
-			errs = append(errs, checkValue(in, gvk, value, FieldType(decl, key), childSchema, templatePath.Child(key))...)
+			errs = append(errs, checkValue(in, gvk, value, FieldType(decl, key), childSchema, isRequired(decl, key), templatePath.Child(key))...)
 		}
 	}
 
@@ -83,12 +83,12 @@ func ValidateSpec(compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchem
 
 	report := NewInterpolator(compiler, ReportVariables, gvk, nil)
 	if krcsSpec.Description != "" {
-		if err := report.Check(krcsSpec.Description, nil); err != nil {
+		if err := report.CheckText(krcsSpec.Description); err != nil {
 			errs = append(errs, field.Invalid(fldPath.Child("description"), krcsSpec.Description, err.Error()))
 		}
 	}
 	if krcsSpec.Url != "" {
-		if err := report.Check(krcsSpec.Url, nil); err != nil {
+		if err := report.CheckText(krcsSpec.Url); err != nil {
 			errs = append(errs, field.Invalid(fldPath.Child("url"), krcsSpec.Url, err.Error()))
 		}
 	}
@@ -116,7 +116,7 @@ func checkMetadata(in *Interpolator, value any, path *field.Path) (warnings []st
 					errs = append(errs, field.Invalid(path.Child(key).Key(name), v, "must be a string"))
 					continue
 				}
-				if err := in.Check(s, nil); err != nil {
+				if err := in.CheckText(s); err != nil {
 					errs = append(errs, field.Invalid(path.Child(key).Key(name), s, err.Error()))
 				}
 			}
@@ -130,8 +130,9 @@ func checkMetadata(in *Interpolator, value any, path *field.Path) (warnings []st
 }
 
 // checkValue walks v in parallel with the kind's declaration and schema, checking expressions and literals
-// against the declared type at each path and flagging fields the schema does not know.
-func checkValue(in *Interpolator, gvk schema.GroupVersionKind, v any, decl *apiservercel.DeclType, sch *spec.Schema, path *field.Path) field.ErrorList {
+// against the declared type at each path and flagging fields the schema does not know. required says whether
+// the parent declares the field required, in which case an expression that can remove it is rejected.
+func checkValue(in *Interpolator, gvk schema.GroupVersionKind, v any, decl *apiservercel.DeclType, sch *spec.Schema, required bool, path *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	switch t := v.(type) {
 	case map[string]any:
@@ -144,18 +145,22 @@ func checkValue(in *Interpolator, gvk schema.GroupVersionKind, v any, decl *apis
 				errs = append(errs, unknownField(path.Child(key), gvk, key))
 				continue
 			}
-			errs = append(errs, checkValue(in, gvk, child, FieldType(decl, key), childSchema, path.Child(key))...)
+			if err := checkEnum(decl, key, child, path.Child(key)); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, checkValue(in, gvk, child, FieldType(decl, key), childSchema, isRequired(decl, key), path.Child(key))...)
 		}
 	case []any:
 		if decl != nil && !decl.IsList() && decl.CelType().Kind() != cel.DynKind {
 			return field.ErrorList{field.Invalid(path, "", fmt.Sprintf("the field expects %s but the value is a list", describeDeclType(decl)))}
 		}
 		for i, child := range t {
-			errs = append(errs, checkValue(in, gvk, child, ElemType(decl), schemaItems(sch), path.Index(i))...)
+			errs = append(errs, checkValue(in, gvk, child, ElemType(decl), schemaItems(sch), false, path.Index(i))...)
 		}
 	case string:
 		if strings.Contains(t, "${") {
-			if err := in.Check(t, decl); err != nil {
+			if err := in.Check(t, decl, required); err != nil {
 				errs = append(errs, field.Invalid(path, t, err.Error()))
 			}
 			return errs
@@ -171,6 +176,40 @@ func checkValue(in *Interpolator, gvk schema.GroupVersionKind, v any, decl *apis
 		// null and anything else are copied verbatim; the API server validates them.
 	}
 	return errs
+}
+
+// isRequired reports whether parent declares key as a required field.
+func isRequired(parent *apiservercel.DeclType, key string) bool {
+	if parent == nil || !parent.IsObject() {
+		return false
+	}
+	f, ok := parent.FindField(key)
+	return ok && f.Required
+}
+
+// checkEnum rejects a literal string that is not one of the field's enum values, when the schema declares any.
+func checkEnum(parent *apiservercel.DeclType, key string, v any, path *field.Path) *field.Error {
+	s, ok := v.(string)
+	if !ok || strings.Contains(s, "${") || parent == nil || !parent.IsObject() {
+		return nil
+	}
+	f, ok := parent.FindField(key)
+	if !ok || len(f.EnumValues()) == 0 {
+		return nil
+	}
+	allowed := make([]string, 0, len(f.EnumValues()))
+	for _, e := range f.EnumValues() {
+		if es, ok := e.Value().(string); ok {
+			if es == s {
+				return nil
+			}
+			allowed = append(allowed, es)
+		}
+	}
+	if len(allowed) == 0 {
+		return nil
+	}
+	return field.NotSupported(path, s, allowed)
 }
 
 func checkLiteral(t *cel.Type, v any, decl *apiservercel.DeclType, path *field.Path) field.ErrorList {

@@ -32,7 +32,7 @@ func jobSchema() *spec.Schema {
 			Type: []string{"object"}, Properties: map[string]spec.Schema{"name": *str, "value": *str},
 		}}}}},
 	}}}
-	podSpec := &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Properties: map[string]spec.Schema{
+	podSpec := &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Required: []string{"containers"}, Properties: map[string]spec.Schema{
 		"restartPolicy": *str,
 		"containers":    {SchemaProps: spec.SchemaProps{Type: []string{"array"}, Items: &spec.SchemaOrArray{Schema: container}}},
 		"nodeSelector":  {SchemaProps: spec.SchemaProps{Type: []string{"object"}, AdditionalProperties: &spec.SchemaOrBool{Schema: str}}},

@@ -200,9 +200,13 @@ OpenAPI v3 schema through discovery. Expressions are compiled against both, so t
 with the expression and the template path **before anything is created**:
 
 - a misspelled variable, or a misspelled field of a typed variable such as `Environment.propsed`;
-- a standalone expression whose type does not match the field it populates, for example a string for
-  `spec.parallelism` or an integer for `spec.suspend`;
-- text with embedded expressions in a non-string field.
+- a standalone expression or a literal whose type does not match the field it populates, for example a string for
+  `spec.parallelism` or an integer for `spec.suspend`, including the item type of a list and the value type of a
+  map (`args: ${ [1, 2] }` is rejected for a list of strings);
+- a literal that is not one of the field's enum values;
+- an expression that can remove a field the schema requires (a `null` or an optional result);
+- text with embedded expressions in a non-string field, and a list, map, or null in a label, annotation,
+  `description`, or `url`.
 
 Fields the schema does not describe (for example under `x-kubernetes-preserve-unknown-fields`, or untyped unions such
 as a Tekton param `value`) are dynamically typed: they are not checked in the template, and reading them from

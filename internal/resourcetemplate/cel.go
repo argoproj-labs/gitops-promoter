@@ -500,12 +500,13 @@ func ToActivationObject(obj any) (map[string]any, error) {
 // CheckOutputType reports whether a program whose output type is out can be assigned to a field declared as
 // expected. A nil or dyn expected type accepts anything; a null or dyn output is accepted everywhere (null drops
 // the field at render time), and an optional output is checked by its value type (an absent optional drops the
-// field too). Object and map fields accept any map, list fields any list, and double fields accept integers.
+// field too). Object fields accept any map; map and list fields accept maps and lists whose statically known value
+// or item type fits theirs; double fields accept integers.
 func CheckOutputType(out *cel.Type, expected *apiservercel.DeclType) error {
 	if expected == nil || out == nil {
 		return nil
 	}
-	if out.Kind() == types.OpaqueKind && out.TypeName() == "optional_type" && len(out.Parameters()) == 1 {
+	if isOptionalType(out) && len(out.Parameters()) == 1 {
 		return CheckOutputType(out.Parameters()[0], expected)
 	}
 	exp := expected.CelType()
@@ -514,19 +515,47 @@ func CheckOutputType(out *cel.Type, expected *apiservercel.DeclType) error {
 	}
 	var ok bool
 	switch {
-	case expected.IsObject(), expected.IsMap():
+	case expected.IsObject():
 		ok = out.Kind() == types.MapKind || out.Kind() == types.StructKind
+	case expected.IsMap():
+		ok = out.Kind() == types.MapKind || out.Kind() == types.StructKind
+		// map(string, V): V must fit the map's value type.
+		if ok && out.Kind() == types.MapKind && len(out.Parameters()) == 2 {
+			ok = CheckOutputType(out.Parameters()[1], expected.ElemType) == nil
+		}
 	case expected.IsList():
 		ok = out.Kind() == types.ListKind
+		// list(T): T must fit the list's item type.
+		if ok && len(out.Parameters()) == 1 {
+			ok = CheckOutputType(out.Parameters()[0], expected.ElemType) == nil
+		}
 	case exp.Kind() == types.DoubleKind:
 		ok = out.Kind() == types.DoubleKind || out.Kind() == types.IntKind || out.Kind() == types.UintKind
 	default:
 		ok = exp.IsAssignableType(out)
 	}
 	if !ok {
-		return fmt.Errorf("returns %s but the field expects %s", out.TypeName(), describeDeclType(expected))
+		return fmt.Errorf("returns %s but the field expects %s", describeCelType(out), describeDeclType(expected))
 	}
 	return nil
+}
+
+// describeCelType names a CEL type for error messages without the generated object type names.
+func describeCelType(t *cel.Type) string {
+	switch {
+	case isOptionalType(t) && len(t.Parameters()) == 1:
+		return "optional " + describeCelType(t.Parameters()[0])
+	case t.Kind() == types.ListKind && len(t.Parameters()) == 1:
+		return "list of " + describeCelType(t.Parameters()[0])
+	case t.Kind() == types.MapKind && len(t.Parameters()) == 2:
+		return "map of " + describeCelType(t.Parameters()[1])
+	case t.Kind() == types.StructKind:
+		return "object"
+	case t.Kind() == types.NullTypeKind:
+		return "null"
+	default:
+		return t.TypeName()
+	}
 }
 
 func describeDeclType(t *apiservercel.DeclType) string {
@@ -534,8 +563,14 @@ func describeDeclType(t *apiservercel.DeclType) string {
 	case t.IsObject():
 		return "an object"
 	case t.IsMap():
+		if t.ElemType != nil && t.ElemType.CelType().Kind() != types.DynKind {
+			return "a map of " + describeDeclType(t.ElemType)
+		}
 		return "a map"
 	case t.IsList():
+		if t.ElemType != nil && t.ElemType.CelType().Kind() != types.DynKind {
+			return "a list of " + describeDeclType(t.ElemType)
+		}
 		return "a list"
 	default:
 		return t.CelType().TypeName()

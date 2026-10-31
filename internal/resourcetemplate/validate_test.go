@@ -76,7 +76,11 @@ var _ = Describe("ValidateSpec", func() {
 				return
 			}
 		}
-		Fail("no error at " + path + " containing " + detail + "; errors: " + errs.ToAggregate().Error())
+		msg := "none"
+		if agg := errs.ToAggregate(); agg != nil {
+			msg = agg.Error()
+		}
+		Fail("no error at " + path + " containing " + detail + "; errors: " + msg)
 	}
 
 	It("accepts a template whose expressions and literals match the schema", func() {
@@ -188,6 +192,39 @@ spec:
 		})
 		errorAt(errs, "spec.description", "undeclared reference to 'Phasee'")
 		errorAt(errs, "spec.url", "undefined field 'nope'")
+	})
+
+	It("rejects expressions that can remove a required field", func() {
+		_, errs := validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers: "${ null }"
+`, okPhase, nil)
+		errorAt(errs, "spec.template.spec.template.spec.containers", "would remove a required field")
+		_, errs = validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers: "${ Branch == 'x' ? optional.of([]) : optional.none() }"
+`, okPhase, nil)
+		errorAt(errs, "spec.template.spec.template.spec.containers", "would remove a required field")
+	})
+
+	It("requires labels, annotations, description, and url expressions to render as text", func() {
+		_, errs := validate(`{apiVersion: batch/v1, kind: Job, metadata: {labels: {a: "${ PromotionStrategy.spec.environments }", b: "${ null }", c: "${ 1 + 1 }", d: "x-${ [1] }"}}}`, okPhase, func(s *promoterv1alpha1.KubernetesResourceCommitStatusSpec) {
+			s.Description = "${ Resource.?status.?conditions.orValue([]) }"
+			s.Url = "${ Resource.?status.?succeeded }"
+		})
+		errorAt(errs, "spec.template.metadata.labels[a]", "returns list of object, but this value must be text")
+		errorAt(errs, "spec.template.metadata.labels[b]", "returns null, but this value must be text")
+		errorAt(errs, "spec.description", "but this value must be text")
+		errorAt(errs, "spec.url", "returns optional int, but this value must be text")
+		Expect(errs).To(HaveLen(4), errs.ToAggregate())
 	})
 
 	It("checks only compilation when the kind's schema is unknown", func() {
