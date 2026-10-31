@@ -406,7 +406,8 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	// (for example a Job removed by ttlSecondsAfterFinished) must not be recreated, or the gate would loop.
 	if !exists && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
 		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", in.previous.Phase)
-		entry := *in.previous.DeepCopy()
+		var entry promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus
+		in.previous.DeepCopyInto(&entry)
 		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
