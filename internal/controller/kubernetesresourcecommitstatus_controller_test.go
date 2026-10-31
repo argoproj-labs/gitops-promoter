@@ -119,7 +119,10 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 		By("Setting up test git repository and resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "k8s-resource-commit-status-test", "default")
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: k8sResourceGateKey}, {Key: k8sResourceHistoryGateKey}, {Key: k8sResourceConfigMapGateKey}, {Key: k8sResourceFailureGateKey},
+			{Key: k8sResourceGateKey},
+			{Key: k8sResourceHistoryGateKey},
+			{Key: k8sResourceConfigMapGateKey},
+			{Key: k8sResourceFailureGateKey},
 			{Key: k8sResourceValidateGateKey},
 		}
 

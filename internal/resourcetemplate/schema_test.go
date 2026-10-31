@@ -23,14 +23,20 @@ const (
 	jobComponent     = "io.k8s.api.batch.v1.Job"
 )
 
+// fixtureDocument is the subset of a /openapi/v3 group-version document the tests read.
+type fixtureDocument struct {
+	Components fixtureComponentsSection `json:"components"`
+}
+
+// fixtureComponentsSection holds the reusable schema components of the fixture document.
+type fixtureComponentsSection struct {
+	Schemas map[string]*spec.Schema `json:"schemas"`
+}
+
 // fixtureComponents parses the embedded /openapi/v3 document the way the kube-apiserver serves it.
 func fixtureComponents() map[string]*spec.Schema {
 	GinkgoHelper()
-	var doc struct {
-		Components struct {
-			Schemas map[string]*spec.Schema `json:"schemas"`
-		} `json:"components"`
-	}
+	var doc fixtureDocument
 	Expect(json.Unmarshal(batchV1OpenAPI, &doc)).To(Succeed())
 	return doc.Components.Schemas
 }

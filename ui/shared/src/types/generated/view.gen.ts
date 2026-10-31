@@ -1274,12 +1274,14 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
+            /** @description TemplateValidation records the last server-side dry-run of the rendered template. See KubernetesResourceTemplateValidation. Absent until an environment has a reported SHA to render for. */
+            templateValidation?: components["schemas"]["KubernetesResourceTemplateValidation"];
         };
         /** @description KubernetesResourceLifecycle controls how created resources are managed over time. */
         KubernetesResourceLifecycle: {
             /**
              * Format: int32
-             * @description HistoryLimit is the number of per-SHA resources retained per environment, including the current one. Older resources are deleted once the current one exists. Only valid with mode PerSha.
+             * @description HistoryLimit is the number of per-SHA resources retained per environment, including the current one. Older resources are deleted once the current one exists. Defaults to 1 when omitted (no schema default, so the field can stay unset for mode InPlace). Only valid with mode PerSha.
              */
             historyLimit?: number;
             /** @description Mode is PerSha (default) or InPlace. See KubernetesResourceLifecycleMode. */
@@ -1353,6 +1355,27 @@ export type components = {
              * @default
              */
             name: string;
+        };
+        /**
+         * @description KubernetesResourceTemplateValidation records the last server-side dry-run of the rendered template.
+         *
+         *     The wrapped template CRD only validates the schema. Whenever the template's resourceVersion changes, the controller renders it for one environment and submits a dry-run create of the real kind with strict field validation, which runs the kind's native validation, defaulting, and admission (webhooks must declare sideEffects None or NoneOnDryRun). An invalid template sets Ready=False on the gate until it is fixed.
+         */
+        KubernetesResourceTemplateValidation: {
+            /** @description LastValidationTime is when the dry-run was performed. */
+            lastValidationTime?: components["schemas"]["Time"];
+            /** @description Message is the API server's error when Valid is false. */
+            message?: string;
+            /**
+             * @description ObservedResourceVersion is the template's metadata.resourceVersion that was validated.
+             * @default
+             */
+            observedResourceVersion: string;
+            /**
+             * @description Valid is true when the dry-run create of the rendered template succeeded.
+             * @default false
+             */
+            valid: boolean;
         };
         /** @description A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects. */
         LabelSelector: {

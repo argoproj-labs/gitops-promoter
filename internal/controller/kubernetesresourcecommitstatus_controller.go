@@ -67,6 +67,9 @@ type KubernetesResourceCommitStatusReconciler struct {
 	// read in SetupWithManager. Gates referencing a kind outside this set fail reconcile.
 	configured map[schema.GroupVersionKind]struct{}
 	exprCache  *exprcache.Cache
+	// dryRunClient is an uncached client used for template dry-run creates. The manager client's
+	// read-your-writes consistency rejects dry-run responses, which carry no resourceVersion.
+	dryRunClient client.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses,verbs=get;list;watch
@@ -229,12 +232,19 @@ func (r *KubernetesResourceCommitStatusReconciler) validateTemplate(
 		record(false, err.Error())
 		return fmt.Errorf("template %s %q is invalid: %w", templateRef.Kind, templateRef.Name, err)
 	}
-	err = r.Create(ctx, rendered, client.DryRunAll, client.FieldValidation(metav1.FieldValidationStrict))
-	if err != nil && !k8serrors.IsAlreadyExists(err) {
+	err = r.dryRunClient.Create(ctx, rendered, client.DryRunAll, client.FieldValidation(metav1.FieldValidationStrict))
+	switch {
+	case err == nil, k8serrors.IsAlreadyExists(err):
+		record(true, "")
+	case k8serrors.IsInvalid(err), k8serrors.IsBadRequest(err):
+		// The API server rejected the rendered object: a template problem, remembered for this resourceVersion.
 		record(false, err.Error())
 		return fmt.Errorf("template %s %q is invalid: %w", templateRef.Kind, templateRef.Name, err)
+	default:
+		// Transport, RBAC, or webhook availability problems are not template problems; retry without
+		// pinning the verdict to this resourceVersion.
+		return fmt.Errorf("failed to dry-run template %s %q: %w", templateRef.Kind, templateRef.Name, err)
 	}
-	record(true, "")
 	log.FromContext(ctx).Info("template validated with a server-side dry-run", "template", templateRef.Name, "resourceVersion", resourceVersion, "branch", in.branch)
 	return nil
 }
@@ -691,6 +701,13 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	logger := log.FromContext(ctx).WithName("kubernetesresourcecommitstatus-setup")
 	r.exprCache = exprcache.New(exprcache.DefaultMaxEntries)
+	if r.dryRunClient == nil {
+		dryRunClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
+		if err != nil {
+			return fmt.Errorf("failed to create dry-run client: %w", err)
+		}
+		r.dryRunClient = dryRunClient
+	}
 
 	resources, err := r.SettingsMgr.GetKubernetesResourceCommitStatusResourcesDirect(ctx)
 	if err != nil {
