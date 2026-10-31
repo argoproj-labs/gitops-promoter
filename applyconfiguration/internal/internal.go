@@ -1411,7 +1411,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: historyLimit
       type:
         scalar: numeric
-      default: 1
     - name: mode
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceLifecycleMode

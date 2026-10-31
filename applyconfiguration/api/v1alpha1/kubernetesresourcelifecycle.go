@@ -29,7 +29,8 @@ type KubernetesResourceLifecycleApplyConfiguration struct {
 	// Mode is PerSha (default) or InPlace. See KubernetesResourceLifecycleMode.
 	Mode *apiv1alpha1.KubernetesResourceLifecycleMode `json:"mode,omitempty"`
 	// HistoryLimit is the number of per-SHA resources retained per environment, including the current one.
-	// Older resources are deleted once the current one exists. Only valid with mode PerSha.
+	// Older resources are deleted once the current one exists. Defaults to 1 when omitted (no schema default,
+	// so the field can stay unset for mode InPlace). Only valid with mode PerSha.
 	HistoryLimit *int32 `json:"historyLimit,omitempty"`
 }
 
