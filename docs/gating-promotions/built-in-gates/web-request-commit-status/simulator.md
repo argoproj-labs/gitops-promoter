@@ -186,8 +186,8 @@ result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 | Field | What it contains |
 |---|---|
 | `result.Status` | Exact `WebRequestCommitStatus.Status` the controller would write. Feed back as `Input.WebRequestCommitStatus.Status` for round-tripping. |
-| `result.Status.Environments` | Per-branch `Phase`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `LastResponseStatusCode`, `LastSuccessfulSha`. Populated in `environments` context only. |
-| `result.Status.PromotionStrategyContext` | Aggregate phase, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `PhasePerBranch`, `LastSuccessfulShas`. Populated in `promotionstrategy` context only. |
+| `result.Status.Environments` | Per-branch `Phase`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `LastRequest`, `LastSuccessfulSha`. Populated in `environments` context only. |
+| `result.Status.PromotionStrategyContext` | Aggregate phase, `LastRequest`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `PhasePerBranch`, `LastSuccessfulShas`. Populated in `promotionstrategy` context only. |
 | `result.RenderedRequests` | The HTTP request(s) the controller would have sent — `Method`, `URL`, `Headers`, `Body`, `Branch`. Use to verify template rendering. |
 | `result.CommitStatuses` | The `*v1alpha1.CommitStatus` CRs the controller would have upserted — one per applicable environment. `ObjectMeta` (Name/Namespace/Labels) and `Spec` are fully populated; `OwnerReferences` and `Status` are left empty. |
 

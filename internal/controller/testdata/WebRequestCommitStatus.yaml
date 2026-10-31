@@ -80,8 +80,11 @@ status:
       reportedSha: abc123def456789012345678901234567890abcd
       lastSuccessfulSha: abc123def456789012345678901234567890abcd
       phase: success
-      lastRequestTime: "2024-01-15T10:30:00Z"
-      lastResponseStatusCode: 200
+      lastRequest:
+        time: "2024-01-15T10:30:00Z"
+        method: GET
+        url: "https://approvals.example.com/api/check/abc123def456789012345678901234567890abcd"
+        responseStatusCode: 200
       # triggerOutput (trigger mode): output from trigger.when.output.expression (available as TriggerOutput in expressions/templates)
       # responseOutput (trigger + response.output): output from response.output.expression (available as ResponseOutput in expressions/templates)
       # successOutput: output from success.when.output.expression (available as SuccessOutput in expressions/templates)
@@ -120,6 +123,9 @@ status:
 #     lastSuccessfulShas:
 #       - branch: environment/dev
 #         lastSuccessfulSha: abcdef1234567890abcdef1234567890abcdef12
-#     lastRequestTime: "2024-01-15T10:30:00Z"
-#     lastResponseStatusCode: 200
+#     lastRequest:
+#       time: "2024-01-15T10:30:00Z"
+#       method: GET
+#       url: "https://deployments.example.com/apps/my-app/status"
+#       responseStatusCode: 200
 #     # triggerOutput / responseOutput / successOutput: JSON maps from expr output expressions
