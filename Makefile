@@ -165,9 +165,10 @@ fmt: ## Run go fmt against code.
 	go fmt ./...
 
 .PHONY: mod-tidy
-mod-tidy: ## Tidy the root module and the celcost helper module.
+mod-tidy: ## Tidy the root module and the helper modules.
 	go mod tidy
 	cd hack/celcost && go mod tidy
+	cd hack/deadcode && go mod tidy
 
 .PHONY: go-fix
 go-fix: ## Apply stdlib go fix modernizations for the go.mod language version.
@@ -268,10 +269,20 @@ lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
 
 .PHONY: deadcode
-deadcode: ## Report unreachable functions in module internals (from cmd entrypoints).
-	$(MAKE) $(DEADCODE)
-	@out=$$($(DEADCODE) -test -filter='$(DEADCODE_FILTER)' ./... 2>&1); \
-	if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
+deadcode: ## Report functions production code cannot reach, including test-only and reflection-only functions.
+	GOMEMLIMIT=6GiB go -C hack/deadcode run . \
+		-dir $(CURDIR) \
+		-reflection \
+		-fail \
+		-allow $(CURDIR)/hack/deadcode/allowlist.txt \
+		-canary github.com/argoproj-labs/gitops-promoter/internal/controller.ChangeTransferPolicyReconciler.Reconcile \
+		-entry github.com/argoproj-labs/gitops-promoter/webrequestsimulator.Simulate \
+		-skip /test/ \
+		-skip /tmp/ \
+		-skip /node_modules/ \
+		-ignore-suffix ForTest \
+		-ignore-suffix ForTests \
+		./...
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
@@ -521,7 +532,6 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
-DEADCODE = $(LOCALBIN)/deadcode-$(DEADCODE_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
@@ -531,8 +541,6 @@ KUSTOMIZE_VERSION ?= v5.8.3
 CONTROLLER_TOOLS_VERSION ?= v0.23.0
 ENVTEST_VERSION ?= release-0.25
 GOLANGCI_LINT_VERSION ?= v2.15.0
-DEADCODE_VERSION ?= v0.52.0
-DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.1
 NILAWAY_VERSION ?= latest
 GORELEASER_VERSION ?= v2.19.0
@@ -560,9 +568,6 @@ setup-envtest: envtest ## configure envtest k8s directory.
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
-
-$(DEADCODE): $(LOCALBIN)
-	$(call go-install-tool,$(DEADCODE),golang.org/x/tools/cmd/deadcode,${DEADCODE_VERSION})
 
 .PHONY: mockery
 mockery:
