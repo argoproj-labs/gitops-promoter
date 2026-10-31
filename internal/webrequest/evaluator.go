@@ -68,7 +68,11 @@ var defaultExpressionEvaluator = NewExpressionEvaluator()
 // getCompiledExpression returns a compiled expr program from the evaluator's cache, or compiles the expression and caches it.
 // key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
 func (e *ExpressionEvaluator) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
-	return e.cache.GetOrCompile(key, opts...)
+	program, err := e.cache.GetOrCompile(key, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("%s expression: %w", key.Prefix, err)
+	}
+	return program, nil
 }
 
 // responseExprData builds the expression data map for validation and response-output expressions.

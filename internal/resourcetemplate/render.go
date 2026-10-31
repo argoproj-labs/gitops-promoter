@@ -17,6 +17,7 @@ limitations under the License.
 package resourcetemplate
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -92,7 +93,7 @@ type BuildParams struct {
 // string value containing "{{" is rendered as a Go template with Data. Non-string values are copied verbatim.
 func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	if p.Template == nil {
-		return nil, fmt.Errorf("template is nil")
+		return nil, errors.New("template is nil")
 	}
 	body := p.Template.DeepCopy().Object
 	delete(body, "status")

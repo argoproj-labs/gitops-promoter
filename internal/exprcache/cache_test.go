@@ -52,15 +52,21 @@ func TestConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	c := New(4)
 	var wg sync.WaitGroup
+	errs := make(chan error, 32)
 	for i := range 32 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			key := Key{Prefix: "p", Expression: []string{"1", "2", "3", "4", "5"}[i%5]}
-			_, err := c.GetOrCompile(key)
-			require.NoError(t, err)
+			if _, err := c.GetOrCompile(key); err != nil {
+				errs <- err
+			}
 			c.Get(key)
 		}()
 	}
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }

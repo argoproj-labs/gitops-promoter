@@ -131,13 +131,14 @@ func (g *CRDGenerator) ensureOne(ctx context.Context, group, kind string, versio
 	}
 
 	crd := buildCRD(group, names, crdVersions)
-	if err := g.apply(ctx, crd); err == nil {
+	err := g.apply(ctx, crd)
+	if err == nil {
 		return nil
-	} else if !isSchemaRejection(err) {
-		return err
-	} else {
-		g.Log.Error(err, "API server rejected the converted template schema; retrying with a permissive schema", "crd", crd.Name)
 	}
+	if !isSchemaRejection(err) {
+		return err
+	}
+	g.Log.Error(err, "API server rejected the converted template schema; retrying with a permissive schema", "crd", crd.Name)
 	for i := range crd.Spec.Versions {
 		crd.Spec.Versions[i].Schema = &apiextensionsv1.CustomResourceValidation{OpenAPIV3Schema: PermissiveSchema()}
 	}

@@ -91,13 +91,14 @@ func getK8sResourceGate(ctx context.Context, g Gomega, name string) *promoterv1a
 	return &krcs
 }
 
-func environmentStatusFor(g Gomega, krcs *promoterv1alpha1.KubernetesResourceCommitStatus, branch string) promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus {
+// devEnvironmentStatus returns the status entry for the development branch, failing the assertion when absent.
+func devEnvironmentStatus(g Gomega, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus {
 	for _, e := range krcs.Status.Environments {
-		if e.Branch == branch {
+		if e.Branch == testBranchDevelopment {
 			return e
 		}
 	}
-	g.Expect(krcs.Status.Environments).To(ContainElement(HaveField("Branch", branch)), "expected a status entry for %s", branch)
+	g.Expect(krcs.Status.Environments).To(ContainElement(HaveField("Branch", testBranchDevelopment)), "expected a status entry for %s", testBranchDevelopment)
 	return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}
 }
 
@@ -263,7 +264,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
 				g.Expect(krcs.Status.Environments).To(HaveLen(3))
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(dev.ReportedSha).NotTo(BeEmpty())
 				g.Expect(dev.Resource).NotTo(BeNil())
@@ -311,7 +312,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(dev.Description).To(Equal("Smoke test " + firstJob + " is success"))
 
@@ -348,7 +349,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 
 			Consistently(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(dev.ReportedSha).To(Equal(firstSha))
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &batchv1.Job{})
@@ -375,7 +376,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			var historyFirstJob string
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, historyGate)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Resource).NotTo(BeNil())
 				g.Expect(dev.ReportedSha).To(Equal(firstSha))
 				historyFirstJob = dev.Resource.Name
@@ -388,7 +389,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			var secondJob, secondSha string
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.ReportedSha).NotTo(Equal(firstSha))
 				g.Expect(dev.Resource).NotTo(BeNil())
 				g.Expect(dev.Resource.Name).NotTo(Equal(firstJob))
@@ -402,7 +403,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			By("Verifying the historyLimit 2 gate keeps both Jobs while the default gate would keep one")
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, historyGate)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.ReportedSha).To(Equal(secondSha))
 				g.Expect(dev.Resource.Name).NotTo(Equal(historyFirstJob))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -471,7 +472,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			var reportedSha string
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(dev.Resource).NotTo(BeNil())
 				g.Expect(dev.Resource.Name).To(Equal(cmName))
@@ -493,7 +494,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 
 			Eventually(func(g Gomega) {
 				krcs := getK8sResourceGate(ctx, g, gateName)
-				dev := environmentStatusFor(g, krcs, testBranchDevelopment)
+				dev := devEnvironmentStatus(g, krcs)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(dev.Url).To(Equal("https://example.com/" + testBranchDevelopment))
 				g.Expect(dev.Description).To(Equal("ConfigMap " + cmName + " reports success"))

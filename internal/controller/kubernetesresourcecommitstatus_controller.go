@@ -148,7 +148,7 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 func (r *KubernetesResourceCommitStatusReconciler) getTemplate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (*unstructured.Unstructured, schema.GroupVersionKind, error) {
 	templateGVK, sourceGVK, err := resourcetemplate.SourceGVKForTemplateRef(krcs.Spec.TemplateRef)
 	if err != nil {
-		return nil, schema.GroupVersionKind{}, err
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.templateRef: %w", err)
 	}
 	if _, ok := r.configured[sourceGVK]; !ok {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("resource kind %s is not listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources", sourceGVK)
@@ -322,7 +322,9 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
 		}
-		if err := r.Patch(ctx, desired, client.Apply, client.FieldOwner(constants.KubernetesResourceCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		// Server-Side Apply of the rendered template. The unstructured object was built from the template, not
+		// from a typed API object, so zero values are explicit and ApplyConfigurationFromUnstructured is safe.
+		if err := r.Apply(ctx, client.ApplyConfigurationFromUnstructured(desired), client.FieldOwner(constants.KubernetesResourceCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to apply %s %q: %w", in.sourceGVK.Kind, name, err)
 		}
 		if !exists {

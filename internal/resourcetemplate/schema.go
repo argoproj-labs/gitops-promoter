@@ -18,6 +18,7 @@ package resourcetemplate
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -37,6 +38,16 @@ const (
 // crdFormatSafelist lists OpenAPI formats that CRD validation understands and that are worth keeping.
 // Every other format is stripped; the apiserver would ignore unknown formats anyway.
 var crdFormatSafelist = map[string]bool{"date-time": true, "date": true, "byte": true}
+
+// openAPIDocument is the subset of a kube-apiserver /openapi/v3 group-version document this package reads.
+type openAPIDocument struct {
+	Components openAPIComponents `json:"components"`
+}
+
+// openAPIComponents holds the reusable schema components of an OpenAPI v3 document.
+type openAPIComponents struct {
+	Schemas map[string]any `json:"schemas"`
+}
 
 // PermissiveSchema returns the fallback schema used when the source schema cannot be converted into a
 // structural schema: apiVersion/kind/metadata plus an unvalidated spec.
@@ -66,16 +77,12 @@ func PermissiveSchema() *apiextensionsv1.JSONSchemaProps {
 //   - descriptions and non-safelisted formats are dropped to keep the CRD small
 //   - properties.status is removed and metadata collapses to {type: object}
 func StructuralSchemaFromOpenAPIV3(doc []byte, gvk schema.GroupVersionKind) (*apiextensionsv1.JSONSchemaProps, error) {
-	var root struct {
-		Components struct {
-			Schemas map[string]any `json:"schemas"`
-		} `json:"components"`
-	}
+	var root openAPIDocument
 	if err := json.Unmarshal(doc, &root); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAPI v3 document: %w", err)
 	}
 	if len(root.Components.Schemas) == 0 {
-		return nil, fmt.Errorf("OpenAPI v3 document has no components.schemas")
+		return nil, errors.New("OpenAPI v3 document has no components.schemas")
 	}
 
 	name, component := findComponentForGVK(root.Components.Schemas, gvk)
@@ -245,6 +252,8 @@ func (n *normalizer) normalize(node map[string]any, root bool) {
 			delete(node, k)
 		}
 		node["x-kubernetes-preserve-unknown-fields"] = true
+	default:
+		// Plain typed node: nothing to convert.
 	}
 
 	if n.dropDefaults {
