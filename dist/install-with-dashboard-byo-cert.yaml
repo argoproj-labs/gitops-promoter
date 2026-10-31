@@ -4808,6 +4808,215 @@ spec:
                 - Cluster
                 - Namespace
                 type: string
+              tektonCommitStatus:
+                description: |-
+                  TektonCommitStatus contains the configuration for the TektonCommitStatus controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the TektonCommitStatus controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               timedCommitStatus:
                 description: |-
                   TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
@@ -5247,6 +5456,7 @@ spec:
             - pullRequest
             - restoreActiveCommit
             - scheduledCommitStatus
+            - tektonCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus
             type: object
@@ -8837,6 +9047,395 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
+  name: tektoncommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: TektonCommitStatus
+    listKind: TektonCommitStatusList
+    plural: tektoncommitstatuses
+    singular: tektoncommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: PromotionStrategy
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TektonCommitStatus is the schema for the tektoncommitstatus API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#tektoncommitstatus
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TektonCommitStatusSpec defines the desired state of TektonCommitStatus
+            properties:
+              expectedResults:
+                description: |-
+                  ExpectedResults are individual checks to make on results from the Tekton resource
+                  If left empty along with the general expression also being empty, whether this passes will be determined by the completion status of
+                  the Tekton run.
+                items:
+                  description: ExpectedResult holds information about what to expect
+                    from the results of a Tekton run
+                  properties:
+                    expression:
+                      description: |-
+                        Expression is an expr expression to be used with the result. Must return a boolean.
+                        The result can be accessed through the string variable Result.
+                        For example:
+                        expectedResults:
+                          - key: testCoverage
+                            expression: "Result >= 80"
+
+                        Would check to see if the Tekton run resource has the result testCoverage and if it does
+                        then it will evaluate whether the value is 80 or greater.
+
+                        Tekton results are either a string, array, or object so casting will need to be done accordingly.
+                      type: string
+                    key:
+                      description: Key is the name of the result from the Tekton resource
+                        to use
+                      type: string
+                  required:
+                  - expression
+                  - key
+                  type: object
+                type: array
+              expression:
+                description: |-
+                  Expression is an expr expression that can be used for evaluation that requires multiple results values. It must return a boolean.
+                  The results values can be accessed through the map variable Results.
+                  If left empty along with the expected results array being empty, whether this passes will be determined by the completion status of
+                  the Tekton run.
+                type: string
+              key:
+                default: tekton-result
+                description: Key is the gate name referenced in the PromotionStrategy's
+                  activeCommitStatuses or proposedCommitStatuses.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: PromotionStrategyRef is a reference to the promotion
+                  strategy that this commit status applies to.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              pruneRun:
+                default: false
+                description: PruneRun determines if the run of the Tekton Resource
+                  will be deleted after running. Defaults to false.
+                type: boolean
+              target:
+                default: proposed
+                description: |-
+                  Target specifies which commit SHA to run the Tekton Pipeline/Task on.
+                  - "proposed": runs the pipeline on the proposed commit (default)
+                  - "active": runs the pipeline on the currently active/deployed commit
+
+                  The commit SHA to report the validation on is determined by where the key is configured in the referenced PromotionStrategy:
+                    - Case key is in proposedCommitStatuses - Will report on the proposed commit (gate an incoming promotion)
+                    - Case key is in activeCommitStatuses - Will report on the active commit (gate downstream promotions)
+                  If configuration for CommitStatuses is done via individual environments that will also be respected.
+
+                  Examples:
+                    Target = "proposed", Report On = "proposed" - Run the pipeline on the proposed commit and don't promote if it fails.
+                                                                  An example pipeline that would be good here is a security scan.
+                    Target = "active", Report On = "proposed" - Run the pipeline on the current commit in the environment and block promotion if it fails.
+                                                                An example pipeline to use in this setup would be running a health check on the active environment
+                                                                and block if it is not healthy.
+                                                                If there is no active environment then this would be skipped.
+                   Target = "active", Report On = "active" - Run a pipeline on the active commit and then block future promotions if it fails
+                                                             A pipeline that would be useful here is running tests on an active environment and blocking further
+                                                             promotions if any of them fail.
+                   Target = "proposed", Report on = "active" - This case is not supported as it does not make logical sense. If used will give an error.
+                enum:
+                - active
+                - proposed
+                type: string
+              tektonResourceRef:
+                description: TektonResource is a reference to the TektonResource to
+                  run for the checks
+                properties:
+                  kind:
+                    description: Kind is the kind of Tekton resource to target.
+                    enum:
+                    - Pipeline
+                    - Task
+                    type: string
+                  name:
+                    description: Name is the name of the Tekton resource to target.
+                      It must be in the same namespace as the commit status.
+                    type: string
+                  params:
+                    description: |-
+                      Parameters are the parameters that get passed to the Tekton resource run that is created.
+
+                      Example:
+                      params:
+                        - name: someParameter
+                          value: "someValue"
+                          type: "string"
+                    items:
+                      description: TektonParameter defines a parameter to a Tekton
+                        Resource.
+                      properties:
+                        name:
+                          description: Name is the name of the parameter
+                          type: string
+                        type:
+                          default: string
+                          description: |-
+                            Type represents the type of the parameter. Tekton Parameters can be either a string, array, or object.
+                            Defaults to string
+                          enum:
+                          - string
+                          - array
+                          - object
+                          type: string
+                        value:
+                          description: |-
+                            Value is what the value of the parameter is. The value must be passed as a string. If you are looking to use an
+                            array or object a json formatted string for an array or object must be provided.
+                            A parameter's value can use the following Go template values to inject information into a parameter.
+
+                            .TargetedSha - The SHA that the pipeline is being run on
+                            .Branch - The name of the branch for the environment
+
+                            So some examples would be:
+                            params:
+                              - name: githubUrl
+                                value: "https://github.com/someuser/somerepo/tree/{{ .Branch }}"
+                                type: string
+                              - name: shortSha
+                                value: "{{ .TargetedSha | trunc 8 }}"
+                                type: string
+                              - name: architectures
+                                value: |
+                                  ["linux/amd64", "linux/arm64"]
+                                type: array
+                              - name: objectExample
+                                value: |
+                                  { "sha": "{{ .TargetedSha }}", "branch": "{{ .Branch }}" }
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                  serviceAccount:
+                    default: default
+                    description: |-
+                      ServiceAccount is a ServiceAccount in the same namespace as the Tekton resource and is passed to the resource to be used by it.
+                      on the targeted Tekton resource
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - kind
+                - name
+                - serviceAccount
+                type: object
+            required:
+            - promotionStrategyRef
+            - tektonResourceRef
+            type: object
+          status:
+            description: TektonCommitStatusStatus is the Status for a commit status
+              resource
+            properties:
+              conditions:
+                description: Conditions Represents the observations of the current
+                  state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Results holds the results of each evaluation of expressions
+                  from the Tekton run.
+                items:
+                  description: TektonCommitStatusEnvironmentStatus defines the observed
+                    status for a specific environment based on specified result keys.
+                  properties:
+                    branch:
+                      description: Branch is the name of the branch/environment.
+                      minLength: 1
+                      type: string
+                    expressionResult:
+                      description: ExpressionResult holds the result of the general
+                        expression used on all results.
+                      type: boolean
+                    individualExpressionResults:
+                      description: IndividualExpressionResults holds all of the results
+                        of the expressions used on individual keys.
+                      items:
+                        description: IndividualExpressionResult holds the results
+                          of expressions run on an individual result
+                        properties:
+                          expressionResult:
+                            description: ExpressionResult is the result of the expression
+                              evaluated at the key
+                            type: boolean
+                          key:
+                            description: Key is the key of the result.
+                            type: string
+                        required:
+                        - expressionResult
+                        - key
+                        type: object
+                      type: array
+                    phase:
+                      description: |-
+                        Phase is the current phase of the commit status.
+                        Calculated by aggregating the expression results.
+                        If no expressions are provided it is determined via whether the run succeeded or failed.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    targetedSha:
+                      description: |-
+                        TargetedSha is the commit SHA that the Tekton resource was last run on.
+                        This will match either ProposedHydratedSha or ActiveHydratedSha depending on
+                        the Target setting ("proposed" or "active").
+                        This field clarifies which commit's data was used in the expression evaluation.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      type: string
+                    tektonRunName:
+                      description: TektonRunName is the name of the run that was created
+                      type: string
+                    tektonRunPhase:
+                      description: TektonRunPhase is the phase that the Tekton run
+                        is in
+                      enum:
+                      - Running
+                      - Succeeded
+                      - Failed
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  type: object
+                type: array
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -10073,6 +10672,7 @@ rules:
   - timedcommitstatuses
   - webrequestcommitstatuses
   - scheduledcommitstatuses
+  - tektoncommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitrepositories
   - scmproviders
@@ -10746,6 +11346,7 @@ rules:
   - gitcommitstatuses
   - promotionstrategies
   - scheduledcommitstatuses
+  - tektoncommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
@@ -10766,6 +11367,7 @@ rules:
   - pullrequests/finalizers
   - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
+  - tektoncommitstatuses/finalizers
   - timedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
   verbs:
@@ -10786,6 +11388,7 @@ rules:
   - restoreactivecommits/status
   - scheduledcommitstatuses/status
   - scmproviders/status
+  - tektoncommitstatuses/status
   - timedcommitstatuses/status
   - webrequestcommitstatuses/status
   verbs:
@@ -10849,6 +11452,17 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  - taskruns
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11961,6 +12575,19 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   scope: Cluster
+  tektonCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10

@@ -186,6 +186,14 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
+	Expect((&TektonCommitStatusReconciler{
+		Client:        localMgr.GetClient(),
+		RuntimeScheme: localMgr.GetScheme(),
+		Recorder:      localMgr.GetEventRecorder("TektonCommitStatus"),
+		SettingsMgr:   settingsMgr,
+		EnqueueCTP:    ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+
 	Expect(localMgr.AddHealthzCheck("healthz", healthz.Ping)).To(Succeed())
 
 	go func() {

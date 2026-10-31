@@ -435,6 +435,21 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
+	if ok, err := promotercache.TektonCRDsInstalled(restConfig); ok && err == nil {
+		if err := (&controller.TektonCommitStatusReconciler{
+			Client:        localManager.GetClient(),
+			RuntimeScheme: localManager.GetScheme(),
+			Recorder:      localManager.GetEventRecorder("TektonCommitStatus"),
+			SettingsMgr:   settingsMgr,
+			EnqueueCTP:    ctpReconciler.GetEnqueueFunc(),
+		}).SetupWithManager(runCtx, localManager); err != nil {
+			panic(fmt.Errorf("unable to create TektonCommitStatus controller: %w", err))
+		}
+	} else if err != nil {
+		setupLog.Error(err, "unable to check for Tekton CRs")
+	} else {
+		setupLog.Info("Tekton CRs not found, TektonCommitStatus controller will not run")
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

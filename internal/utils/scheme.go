@@ -9,6 +9,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	argocd "github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/tekton"
 )
 
 var (
@@ -24,6 +25,7 @@ func GetScheme() *runtime.Scheme {
 		utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 		utilruntime.Must(promoterv1alpha1.AddToScheme(scheme))
 		utilruntime.Must(argocd.AddToScheme(scheme))
+		utilruntime.Must(tekton.AddToScheme(scheme))
 	})
 	return scheme
 }

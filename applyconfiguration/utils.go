@@ -131,6 +131,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):
 		return &apiv1alpha1.EnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ExpectedResult"):
+		return &apiv1alpha1.ExpectedResultApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ExponentialFailure"):
 		return &apiv1alpha1.ExponentialFailureApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Fake"):
@@ -185,6 +187,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPRequestVariablesSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("IndividualExpressionResult"):
+		return &apiv1alpha1.IndividualExpressionResultApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsConfiguration"):
 		return &apiv1alpha1.MetricsConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsLabelsConfiguration"):
@@ -265,6 +269,20 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
 		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatus"):
+		return &apiv1alpha1.TektonCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusConfiguration"):
+		return &apiv1alpha1.TektonCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.TektonCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusSpec"):
+		return &apiv1alpha1.TektonCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonCommitStatusStatus"):
+		return &apiv1alpha1.TektonCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonParameter"):
+		return &apiv1alpha1.TektonParameterApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TektonResourceRef"):
+		return &apiv1alpha1.TektonResourceRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
 		return &apiv1alpha1.TimedCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatusConfiguration"):
