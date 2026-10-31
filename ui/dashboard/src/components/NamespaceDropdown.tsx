@@ -40,7 +40,7 @@ const NamespaceDropdown: React.FC = () => {
   //Rendering
   const Option = (props: OptionProps<SelectOption>) => (
     <components.Option {...props}>
-      <FaFolder style={{ marginRight: 8, color: '#7b8a97' }} />
+      <FaFolder style={{ marginRight: 8, color: 'var(--hp-text-muted)' }} />
       {props.data.label}
     </components.Option>
   );

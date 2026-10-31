@@ -15,6 +15,7 @@ import { CommitBlock } from './CommitBlock';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
+import '../../styles/theme.scss';
 import './index.scss';
 
 export interface CellSelection {
