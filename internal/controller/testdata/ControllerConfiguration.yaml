@@ -179,6 +179,21 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # KubernetesResourceCommitStatus controller creates real resources from inline templates and gates on their status
+  kubernetesResourceCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+    # Kinds gates may instantiate. Changing the list restarts the controller.
+    resources:
+      - group: batch
+        version: v1
+        kind: Job
+
   # RestoreActiveCommit controller restores an environment's active branch to a previous hydrated commit
   restoreActiveCommit:
     workQueue:

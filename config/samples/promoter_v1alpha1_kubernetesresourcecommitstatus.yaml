@@ -1,0 +1,35 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: kubernetesresourcecommitstatus-sample
+spec:
+  key: smoke-test
+  promotionStrategyRef:
+    name: promotionstrategy-sample
+  reportOn: proposed
+  # Requires batch/v1 Job in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources.
+  template:
+    apiVersion: batch/v1
+    kind: Job
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: test
+              image: ghcr.io/acme/smoke:latest
+              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
+  lifecycle:
+    mode: PerSha
+    historyLimit: 1
+  phase:
+    expression: |
+      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
+        ? {phase: 'success'}
+        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
+          ? {phase: 'failure', description: 'Smoke test is failing'}
+          : false

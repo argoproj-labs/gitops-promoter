@@ -1168,6 +1168,178 @@ export type components = {
         };
         /** @description JSON represents any valid JSON value. These types are supported: bool, int64, float64, string, []interface{}, map[string]interface{} and nil. */
         JSON: unknown;
+        /** @description KubernetesResourceCommitStatus is the Schema for the kubernetesresourcecommitstatuses API */
+        KubernetesResourceCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of KubernetesResourceCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["KubernetesResourceCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of KubernetesResourceCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["KubernetesResourceCommitStatusStatus"];
+        };
+        /** @description KubernetesResourceCommitStatusEnvironmentStatus is the observed state for one environment branch. */
+        KubernetesResourceCommitStatusEnvironmentStatus: {
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description LastEvaluationTime is when spec.phase.expression was last evaluated against the live resource. */
+            lastEvaluationTime?: components["schemas"]["Time"];
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description Resource identifies the real resource created for this environment and reportedSha. */
+            resource?: components["schemas"]["KubernetesResourceReference"];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
+        /**
+         * @description KubernetesResourceCommitStatusSpec defines the desired state of KubernetesResourceCommitStatus.
+         *
+         *     The controller creates one real Kubernetes resource per applicable PromotionStrategy environment from spec.template, then evaluates spec.phase.expression against the live resource to compute the phase reported on the child CommitStatus.
+         */
+        KubernetesResourceCommitStatusSpec: {
+            /**
+             * @description Description is the human-readable commit status description shown in the SCM provider. Supports the same ${ } expressions as Template, with these additional variables:
+             *       - Phase: the phase computed this reconcile (pending/success/failure)
+             *       - Resource: the live resource as a map (nil when it does not exist)
+             *       - ResourceName and ResourceKind: the name and Kind of the created resource
+             *       - ExpressionDescription and ExpressionUrl: the description and url returned by spec.phase.expression, if any
+             *     When empty, the description returned by spec.phase.expression is used, falling back to a message such as "Waiting for Job my-job" or "Job my-job reports success".
+             */
+            description?: string;
+            /**
+             * @description Key is the commit status key. It is matched against the PromotionStrategy's proposedCommitStatuses or activeCommitStatuses to determine which environments this gate applies to, and it is used as the promoter.argoproj.io/commit-status label and in the CommitStatus name shown in the SCM. Must be lowercase alphanumeric with hyphens, 1–63 characters.
+             * @default
+             */
+            key: string;
+            /**
+             * @description Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.
+             * @default {}
+             */
+            lifecycle?: components["schemas"]["KubernetesResourceLifecycle"];
+            /**
+             * @description Phase holds the expr expression that computes the commit status phase from the live resource. See KubernetesResourcePhaseSpec.
+             * @default {}
+             */
+            phase: components["schemas"]["KubernetesResourcePhaseSpec"];
+            /**
+             * @description PromotionStrategyRef references the PromotionStrategy this gate applies to. The controller gates every environment of the referenced PromotionStrategy where spec.key matches an entry in PromotionStrategy.spec.proposedCommitStatuses / activeCommitStatuses (global) or the environment's own proposedCommitStatuses / activeCommitStatuses.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. */
+            publishTo?: string[];
+            /** @description ReportOn selects which commit SHA the CommitStatus is reported on and which SHA the resource is created for. - "proposed": the proposed hydrated SHA (default). Use for checks that must pass before a change is promoted. - "active": the active hydrated SHA. Use for checks that run against what is currently live. */
+            reportOn?: string;
+            /**
+             * @description Template is the Kubernetes object the controller creates for every applicable environment. It must carry apiVersion and kind (a namespaced kind listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources); metadata.name, metadata.namespace, and status are ignored because the controller sets them. metadata.labels and metadata.annotations are kept and merged under the controller's own labels.
+             *
+             *     Any string value may contain expr (https://expr-lang.org) expressions wrapped in ${ }:
+             *       - A value that is exactly one expression, such as "${ Sha }" or "${ Environment.Proposed.Hydrated.Sha }", is
+             *         replaced by the expression's result with its type preserved, so integers, booleans, lists, and objects
+             *         can be computed. A nil result removes the field.
+             *       - A string with embedded expressions, such as "smoke-${ ShortSha }", concatenates the results as text.
+             *       - "$${" produces a literal "${".
+             *     Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile). Everything else is copied verbatim. The rendered object is validated by the API server when it is created.
+             */
+            template: components["schemas"]["JSON"];
+            /** @description Url is the commit status target URL shown in the SCM provider. Same ${ } expressions and variables as Description. When empty, the url returned by spec.phase.expression (if any) is used. */
+            url?: string;
+        };
+        /** @description KubernetesResourceCommitStatusStatus defines the observed state of KubernetesResourceCommitStatus. */
+        KubernetesResourceCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Environments holds the observed state of each applicable environment. */
+            environments?: components["schemas"]["KubernetesResourceCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description KubernetesResourceLifecycle controls how created resources are managed over time. */
+        KubernetesResourceLifecycle: {
+            /**
+             * Format: int32
+             * @description HistoryLimit is the number of per-SHA resources retained per environment, including the current one. Older resources are deleted once the current one exists. Defaults to 1 when omitted (no schema default, so the field can stay unset for mode InPlace). Only valid with mode PerSha.
+             */
+            historyLimit?: number;
+            /** @description Mode is PerSha (default) or InPlace. See KubernetesResourceLifecycleMode. */
+            mode?: string;
+            /** @description PruneOnSuccess deletes the created resource as soon as the environment's phase becomes success. Success is terminal for a SHA, so the gate keeps reporting it and does not recreate the resource. Use this for run-once kinds whose successful runs are not worth keeping. Only valid with mode PerSha. */
+            pruneOnSuccess?: boolean;
+            /** @description RetryOnDelete makes failure non-terminal: when the resource of a SHA whose phase is failure is deleted, the controller creates a new one for the same SHA and the phase returns to pending, so deleting the resource is how a failed check is rerun. Leave it off (default) for kinds that remove failed resources on their own, such as a Job with ttlSecondsAfterFinished, or every removal would start another run. Only valid with mode PerSha. */
+            retryOnDelete?: boolean;
+        };
+        /** @description KubernetesResourcePhaseSpec holds the expression that maps the live resource to a commit status phase. */
+        KubernetesResourcePhaseSpec: {
+            /**
+             * @description Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the created resource exists. Available variables:
+             *       - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,
+             *         for example Resource.status?.conditions ?? [], because member access through nil is an error.
+             *       - Branch (string), Sha (string), ReportOn (string)
+             *       - Environment: the PromotionStrategy status entry for Branch
+             *       - PromotionStrategy: the full PromotionStrategy spec and status
+             *       - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)
+             *       - keyBy(list, keyField, valueField): a function that turns a list of objects into a map, for example
+             *         keyBy(Resource.status?.results ?? [], 'name', 'value') for Tekton results
+             *
+             *     Return values:
+             *       - a boolean: true → success, false → pending
+             *       - an object { phase, description?, url? } where phase is "success", "pending", or "failure"
+             *         (an omitted or empty phase means "pending")
+             *     Any other return type, or an unrecognized phase string, fails the reconcile.
+             *
+             *     Example for a batch/v1 Job:
+             *
+             *     	any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
+             *     	  ? {phase: 'success'}
+             *     	  : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
+             *     	    ? {phase: 'failure', description: 'Smoke test is failing'}
+             *     	    : false
+             * @default
+             */
+            expression: string;
+        };
+        /** @description KubernetesResourceReference identifies a created resource. */
+        KubernetesResourceReference: {
+            /**
+             * @description APIVersion of the created resource (the real kind, for example batch/v1).
+             * @default
+             */
+            apiVersion: string;
+            /**
+             * @description Kind of the created resource.
+             * @default
+             */
+            kind: string;
+            /**
+             * @description Name of the created resource. It lives in the gate's namespace.
+             * @default
+             */
+            name: string;
+        };
         /** @description A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects. */
         LabelSelector: {
             /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
@@ -1452,6 +1624,8 @@ export type components = {
             gitRepository?: components["schemas"]["GitRepository"];
             /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
             kind: string;
+            /** @description KubernetesResourceCommitStatuses are the KubernetesResourceCommitStatus managers that reference the PromotionStrategy. */
+            kubernetesResourceCommitStatuses?: components["schemas"]["KubernetesResourceCommitStatus"][];
             /** @default {} */
             metadata: components["schemas"]["ObjectMeta"];
             /**

@@ -159,6 +159,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ScheduledCommitStatuses = nilIfEmpty(scheduledCSList.Items)
 
+	k8sResourceCSList := &promoterv1alpha1.KubernetesResourceCommitStatusList{}
+	if err := reader.List(ctx, k8sResourceCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list KubernetesResourceCommitStatuses: %w", err)
+	}
+	bundle.KubernetesResourceCommitStatuses = nilIfEmpty(k8sResourceCSList.Items)
+
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
 	if err := attachGitConfig(ctx, reader, namespace, ps, bundle, clusterScmProviderEnabled); err != nil {

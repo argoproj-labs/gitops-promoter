@@ -63,6 +63,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			"TimedCommitStatus",
 			"WebRequestCommitStatus",
 			"ScheduledCommitStatus",
+			"KubernetesResourceCommitStatus",
 		} {
 			Expect(got).To(HaveKey(want),
 				"scheme discovery should find %s. Add Spec.PromotionStrategyRef and register the type "+

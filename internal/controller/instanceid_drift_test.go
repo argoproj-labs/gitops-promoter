@@ -24,6 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -70,6 +71,7 @@ var _ = Describe("When ControllerConfiguration.spec.instanceID drifts from boots
 		Entry("ScheduledCommitStatus", setupInstanceIDDriftScheduledCommitStatus),
 		Entry("GitCommitStatus", setupInstanceIDDriftGitCommitStatus),
 		Entry("WebRequestCommitStatus", setupInstanceIDDriftWebRequestCommitStatus),
+		Entry("KubernetesResourceCommitStatus", setupInstanceIDDriftKubernetesResourceCommitStatus),
 		Entry("ArgoCDCommitStatus", setupInstanceIDDriftArgoCDCommitStatus),
 	)
 })
@@ -338,6 +340,22 @@ func setupInstanceIDDriftWebRequestCommitStatus(ctx context.Context) (utils.Prom
 	}
 	Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
 	return wrcs, key, func() { deleteIgnoringNotFound(ctx, wrcs) }
+}
+
+func setupInstanceIDDriftKubernetesResourceCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {
+	name := instanceIDDriftResourceName("KubernetesResourceCommitStatus")
+	key := types.NamespacedName{Name: name, Namespace: "default"}
+	krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+		Name: name, Namespace: "default",
+		Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
+			Key:                  "instance-id-drift",
+			Template:             apiextensionsv1.JSON{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","spec":{"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"t","image":"busybox"}]}}}}`)},
+			Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+		},
+	}
+	Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+	return krcs, key, func() { deleteIgnoringNotFound(ctx, krcs) }
 }
 
 func setupInstanceIDDriftArgoCDCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {

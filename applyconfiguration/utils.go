@@ -185,6 +185,22 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPRequestVariablesSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceCommitStatus"):
+		return &apiv1alpha1.KubernetesResourceCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceCommitStatusConfiguration"):
+		return &apiv1alpha1.KubernetesResourceCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceCommitStatusSpec"):
+		return &apiv1alpha1.KubernetesResourceCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceCommitStatusStatus"):
+		return &apiv1alpha1.KubernetesResourceCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceLifecycle"):
+		return &apiv1alpha1.KubernetesResourceLifecycleApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourcePhaseSpec"):
+		return &apiv1alpha1.KubernetesResourcePhaseSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceReference"):
+		return &apiv1alpha1.KubernetesResourceReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsConfiguration"):
 		return &apiv1alpha1.MetricsConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsLabelsConfiguration"):
@@ -227,6 +243,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimiterTypes"):
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ResourceGroupVersionKind"):
+		return &apiv1alpha1.ResourceGroupVersionKindApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ResponseOutputSpec"):
 		return &apiv1alpha1.ResponseOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RestoreActiveCommit"):

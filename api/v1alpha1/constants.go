@@ -77,6 +77,15 @@ const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.
 // without writing the note.
 const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/finalizer"
 
+// ShaLabel records the hydrated commit SHA a resource was created for. Set by KubernetesResourceCommitStatus
+// on the real resources it creates.
+const ShaLabel = "promoter.argoproj.io/sha"
+
+// ResourceCreatedAtAnnotation records, in RFC 3339 with nanoseconds, when KubernetesResourceCommitStatus created a
+// resource. metadata.creationTimestamp only has second granularity, so history pruning orders resources by this
+// annotation first.
+const ResourceCreatedAtAnnotation = "promoter.argoproj.io/created-at"
+
 // InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
