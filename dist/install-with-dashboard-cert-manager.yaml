@@ -3911,6 +3911,267 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
+              kubernetesResourceCommitStatus:
+                description: |-
+                  KubernetesResourceCommitStatus contains the configuration for the KubernetesResourceCommitStatus controller,
+                  including WorkQueue settings and the list of resource kinds the gate may instantiate.
+                properties:
+                  resources:
+                    description: |-
+                      Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.
+                      Each entry produces one wrapped template CRD and one informer on the real kind.
+                      Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
+                      process down when it detects a change, like spec.instanceID.
+                    items:
+                      description: ResourceGroupVersionKind identifies an API kind
+                        installed in the cluster.
+                      properties:
+                        group:
+                          description: Group is the API group. Use the empty string
+                            for the core group (for example core/v1 ConfigMap).
+                          maxLength: 253
+                          pattern: ^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$
+                          type: string
+                        kind:
+                          description: Kind is the API kind, for example Job.
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Z][A-Za-z0-9]*$
+                          type: string
+                        version:
+                          description: Version is the API version, for example v1
+                            or v1alpha1.
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]+$
+                          type: string
+                      required:
+                      - group
+                      - kind
+                      - version
+                      type: object
+                    maxItems: 50
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - group
+                    - version
+                    - kind
+                    x-kubernetes-list-type: map
+                  templateCRDs:
+                    default: Enabled
+                    description: |-
+                      TemplateCRDs enables or disables generation of the wrapped template CRDs at controller startup.
+                      Disable it for installs whose ServiceAccount cannot create cluster-scoped CustomResourceDefinitions
+                      (for example the namespaced install); the wrapped CRDs must then be created by other means.
+                      Requires a controller restart.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the KubernetesResourceCommitStatus controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               metrics:
                 default: {}
                 description: Metrics contains the configuration for the controller's
@@ -5243,6 +5504,7 @@ spec:
             - commitStatus
             - dependentsSuccessfulCommitStatus
             - gitCommitStatus
+            - kubernetesResourceCommitStatus
             - promotionStrategy
             - pullRequest
             - restoreActiveCommit
@@ -6321,6 +6583,389 @@ spec:
                 format: int64
                 type: integer
             type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: kubernetesresourcecommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: KubernetesResourceCommitStatus
+    listKind: KubernetesResourceCommitStatusList
+    plural: kubernetesresourcecommitstatuses
+    singular: kubernetesresourcecommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.key
+      name: Key
+      type: string
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: PromotionStrategy
+      type: string
+    - jsonPath: .spec.templateRef.name
+      name: Template
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KubernetesResourceCommitStatus is the Schema for the kubernetesresourcecommitstatuses
+          API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#kubernetesresourcecommitstatus
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of KubernetesResourceCommitStatus
+            properties:
+              descriptionTemplate:
+                description: |-
+                  DescriptionTemplate is the human-readable commit status description shown in the SCM provider.
+                  Uses Go templates with Sprig functions (env, expandenv, and getHostByName are removed). Template data:
+                    - {{ .Branch }}: the environment branch
+                    - {{ .Sha }}: the reported SHA; {{ .ShortSha }}: its first 7 characters
+                    - {{ .Phase }}: the phase computed this reconcile (pending/success/failure)
+                    - {{ .ResourceName }}: the name of the created resource; {{ .ResourceKind }}: its Kind
+                    - {{ .Resource }}: the live resource as a map (nil when it does not exist)
+                    - {{ .ExpressionDescription }}: the description returned by spec.phase.expression, if any
+                    - {{ .PromotionStrategy }}: the full PromotionStrategy
+                    - {{ .KubernetesResourceCommitStatus }}: this gate (snapshot from the previous reconcile)
+                  When empty, the controller derives a description such as "Waiting for Job my-job" or "Job my-job reports success".
+                type: string
+              key:
+                description: |-
+                  Key is the commit status key. It is matched against the PromotionStrategy's proposedCommitStatuses or
+                  activeCommitStatuses to determine which environments this gate applies to, and it is used as the
+                  promoter.argoproj.io/commit-status label and in the CommitStatus name shown in the SCM.
+                  Must be lowercase alphanumeric with hyphens, 1–63 characters.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              lifecycle:
+                default: {}
+                description: |-
+                  Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment
+                  is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.
+                properties:
+                  historyLimit:
+                    default: 1
+                    description: |-
+                      HistoryLimit is the number of per-SHA resources retained per environment, including the current one.
+                      Older resources are deleted once the current one exists. Only valid with mode PerSha.
+                    format: int32
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                  mode:
+                    default: PerSha
+                    description: Mode is PerSha (default) or InPlace. See KubernetesResourceLifecycleMode.
+                    enum:
+                    - PerSha
+                    - InPlace
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: historyLimit is only valid with mode PerSha
+                  rule: '!has(self.historyLimit) || !has(self.mode) || self.mode ==
+                    ''PerSha'''
+              phase:
+                description: |-
+                  Phase holds the expr expression that computes the commit status phase from the live resource.
+                  See KubernetesResourcePhaseSpec.
+                properties:
+                  expression:
+                    description: "Expression is an expr (https://expr-lang.org) expression
+                      evaluated on every reconcile while the\ncreated resource exists.
+                      Available variables:\n  - Resource (map): the live resource,
+                      including status. Guard optional fields with ?. and ??,\n    for
+                      example Resource.status?.conditions ?? [], because member access
+                      through nil is an error.\n  - Branch (string), Sha (string),
+                      ReportOn (string)\n  - Environment: the PromotionStrategy status
+                      entry for Branch\n  - PromotionStrategy: the full PromotionStrategy
+                      spec and status\n  - KubernetesResourceCommitStatus: this gate
+                      (snapshot from the previous reconcile)\n  - Template (map):
+                      the template object the resource was created from\n\nReturn
+                      values:\n  - a boolean: true → success, false → pending\n  -
+                      an object { phase, description?, url? } where phase is \"success\",
+                      \"pending\", or \"failure\"\n    (an omitted or empty phase
+                      means \"pending\")\nAny other return type, or an unrecognized
+                      phase string, fails the reconcile.\n\nExample for a batch/v1
+                      Job:\n\n\tany(Resource.status?.conditions ?? [], {.type == 'Complete'
+                      && .status == 'True'})\n\t  ? {phase: 'success'}\n\t  : any(Resource.status?.conditions
+                      ?? [], {.type == 'Failed' && .status == 'True'})\n\t    ? {phase:
+                      'failure', description: 'Smoke test is failing'}\n\t    : false"
+                    minLength: 1
+                    type: string
+                required:
+                - expression
+                type: object
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef references the PromotionStrategy this gate applies to.
+                  The controller gates every environment of the referenced PromotionStrategy where spec.key matches
+                  an entry in PromotionStrategy.spec.proposedCommitStatuses / activeCommitStatuses (global) or the
+                  environment's own proposedCommitStatuses / activeCommitStatuses.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
+              reportOn:
+                default: proposed
+                description: |-
+                  ReportOn selects which commit SHA the CommitStatus is reported on and which SHA the resource is created for.
+                  - "proposed": the proposed hydrated SHA (default). Use for checks that must pass before a change is promoted.
+                  - "active": the active hydrated SHA. Use for checks that run against what is currently live.
+                enum:
+                - proposed
+                - active
+                type: string
+              templateRef:
+                description: |-
+                  TemplateRef references the template object the real resource is created from. The template is an
+                  instance of a wrapped template kind generated by the controller from
+                  ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources. It must live in the same
+                  namespace as this gate. See KubernetesResourceTemplateReference.
+                properties:
+                  apiVersion:
+                    description: APIVersion of the wrapped template kind, for example
+                      batch.templates.promoter.argoproj.io/v1.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?\.templates\.promoter\.argoproj\.io/[a-z0-9]+$
+                    type: string
+                  kind:
+                    description: Kind of the template, identical to the Kind of the
+                      real resource (for example Job).
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[A-Z][A-Za-z0-9]*$
+                    type: string
+                  name:
+                    description: Name of the template object in the gate's namespace.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
+              urlTemplate:
+                description: |-
+                  UrlTemplate is the commit status target URL shown in the SCM provider. Same template data as DescriptionTemplate.
+                  When empty, the URL returned by spec.phase.expression (if any) is used.
+                type: string
+            required:
+            - key
+            - phase
+            - promotionStrategyRef
+            - templateRef
+            type: object
+          status:
+            description: status defines the observed state of KubernetesResourceCommitStatus
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Environments holds the observed state of each applicable
+                  environment.
+                items:
+                  description: KubernetesResourceCommitStatusEnvironmentStatus is
+                    the observed state for one environment branch.
+                  properties:
+                    branch:
+                      description: Branch is the environment branch name.
+                      minLength: 1
+                      type: string
+                    description:
+                      description: Description mirrors child CommitStatus.spec.description.
+                      type: string
+                    lastEvaluationTime:
+                      description: LastEvaluationTime is when spec.phase.expression
+                        was last evaluated against the live resource.
+                      format: date-time
+                      type: string
+                    phase:
+                      description: Phase mirrors child CommitStatus.spec.phase.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      - ""
+                      type: string
+                    reportedSha:
+                      description: |-
+                        ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+                        Semantics depend on the parent gate (proposed vs active hydrated SHA).
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                    resource:
+                      description: Resource identifies the real resource created for
+                        this environment and reportedSha.
+                      properties:
+                        apiVersion:
+                          description: APIVersion of the created resource (the real
+                            kind, for example batch/v1).
+                          type: string
+                        kind:
+                          description: Kind of the created resource.
+                          type: string
+                        name:
+                          description: Name of the created resource. It lives in the
+                            gate's namespace.
+                          type: string
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      type: object
+                    url:
+                      description: Url mirrors child CommitStatus.spec.url.
+                      pattern: ^(https?://.*)?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid URL
+                        rule: self == '' || isURL(self)
+                  required:
+                  - branch
+                  type: object
+                maxItems: 500
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -10073,6 +10718,7 @@ rules:
   - timedcommitstatuses
   - webrequestcommitstatuses
   - scheduledcommitstatuses
+  - kubernetesresourcecommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitrepositories
   - scmproviders
@@ -10703,6 +11349,80 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+  name: promoter-kubernetesresourcecommitstatus-admin-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses
+  verbs:
+  - '*'
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: promoter-kubernetesresourcecommitstatus-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: promoter-kubernetesresourcecommitstatus-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - kubernetesresourcecommitstatuses/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   name: promoter-manager-role
 rules:
 - apiGroups:
@@ -10731,6 +11451,16 @@ rules:
   - create
   - patch
 - apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - argoproj.io
   resources:
   - applications
@@ -10744,6 +11474,7 @@ rules:
   - argocdcommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
+  - kubernetesresourcecommitstatuses
   - promotionstrategies
   - scheduledcommitstatuses
   - timedcommitstatuses
@@ -10762,6 +11493,7 @@ rules:
   - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
+  - kubernetesresourcecommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - scheduledcommitstatuses/finalizers
@@ -10781,6 +11513,7 @@ rules:
   - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
+  - kubernetesresourcecommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
   - restoreactivecommits/status
@@ -11873,6 +12606,21 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   gitCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  kubernetesResourceCommitStatus:
+    resources: []
+    templateCRDs: Enabled
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

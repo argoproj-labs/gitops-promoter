@@ -201,6 +201,24 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  kubernetesResourceCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    # Resource kinds KubernetesResourceCommitStatus gates may create. Each entry generates a wrapped
+    # template CRD (<group>.templates.promoter.argoproj.io) and needs RBAC for the controller on both the
+    # real kind and the template kind. Changing this list restarts the controller.
+    resources: []
+    templateCRDs: Enabled
   restoreActiveCommit:
     workQueue:
       maxConcurrentReconciles: 10

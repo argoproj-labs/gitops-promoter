@@ -70,6 +70,7 @@ var _ = Describe("When ControllerConfiguration.spec.instanceID drifts from boots
 		Entry("ScheduledCommitStatus", setupInstanceIDDriftScheduledCommitStatus),
 		Entry("GitCommitStatus", setupInstanceIDDriftGitCommitStatus),
 		Entry("WebRequestCommitStatus", setupInstanceIDDriftWebRequestCommitStatus),
+		Entry("KubernetesResourceCommitStatus", setupInstanceIDDriftKubernetesResourceCommitStatus),
 		Entry("ArgoCDCommitStatus", setupInstanceIDDriftArgoCDCommitStatus),
 	)
 })
@@ -338,6 +339,26 @@ func setupInstanceIDDriftWebRequestCommitStatus(ctx context.Context) (utils.Prom
 	}
 	Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
 	return wrcs, key, func() { deleteIgnoringNotFound(ctx, wrcs) }
+}
+
+func setupInstanceIDDriftKubernetesResourceCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {
+	name := instanceIDDriftResourceName("KubernetesResourceCommitStatus")
+	key := types.NamespacedName{Name: name, Namespace: "default"}
+	krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+		Name: name, Namespace: "default",
+		Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
+			Key:                  "instance-id-drift",
+			TemplateRef: promoterv1alpha1.KubernetesResourceTemplateReference{
+				APIVersion: "batch.templates.promoter.argoproj.io/v1",
+				Kind:       "Job",
+				Name:       name + "-template",
+			},
+			Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+		},
+	}
+	Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+	return krcs, key, func() { deleteIgnoringNotFound(ctx, krcs) }
 }
 
 func setupInstanceIDDriftArgoCDCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {

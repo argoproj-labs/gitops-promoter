@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 )
 
 // urlValuesEncode URL-encodes a map of query-parameter key/value pairs and returns a
@@ -53,12 +54,12 @@ func urlValuesEncode(params map[string]any) string {
 //
 // Reconcile paths use defaultExpressionEvaluator (package singleton). Tests may call NewExpressionEvaluator for isolation.
 type ExpressionEvaluator struct {
-	cache *compileCache
+	cache *exprcache.Cache
 }
 
 // NewExpressionEvaluator returns a new ExpressionEvaluator with an empty compile cache.
 func NewExpressionEvaluator() *ExpressionEvaluator {
-	return &ExpressionEvaluator{cache: newCompileCache(maxCompiledExpressionCacheEntries)}
+	return &ExpressionEvaluator{cache: exprcache.New(maxCompiledExpressionCacheEntries)}
 }
 
 // defaultExpressionEvaluator is the process-wide compile cache used by ReconcileWebRequestCommitStatus*.
@@ -67,17 +68,7 @@ var defaultExpressionEvaluator = NewExpressionEvaluator()
 // getCompiledExpression returns a compiled expr program from the evaluator's cache, or compiles the expression and caches it.
 // key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
 func (e *ExpressionEvaluator) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
-	if program, ok := e.cache.get(key); ok {
-		return program, nil
-	}
-
-	program, err := expr.Compile(key.Expression, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile expression: %w", err)
-	}
-
-	e.cache.put(key, program)
-	return program, nil
+	return e.cache.GetOrCompile(key, opts...)
 }
 
 // responseExprData builds the expression data map for validation and response-output expressions.
