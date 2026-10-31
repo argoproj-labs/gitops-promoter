@@ -240,6 +240,7 @@ func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema
 		return nil, err //nolint:wrapcheck // the caller adds the kind
 	}
 	full := common.WithTypeAndObjectMeta(s)
+	markOpenSchemasDynamic(full)
 	raw, err := json.Marshal(full)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the schema: %w", err)
@@ -255,6 +256,46 @@ func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema
 	}
 	decl = decl.MaybeAssignTypeName(strings.ReplaceAll(gvk.String(), " ", "") + ".Resource")
 	return &KindSchema{Decl: decl, Schema: full, hash: hash}, nil
+}
+
+// markOpenSchemasDynamic makes every subschema that preserves unknown fields, or declares no type at all, a
+// dynamically typed value in CEL by tagging it x-kubernetes-int-or-string (the one shape SchemaDeclType maps to dyn).
+// The API server's own conversion exposes such objects as closed structs and drops untyped fields entirely, which is
+// right for validation rules over a CRD's own fields but wrong here: Tekton's params[].value and results[].value,
+// for example, are untyped unions, and Resource.status.results[0].value must compile. Declared properties inside an
+// open object lose their static types; the template walk treats the same schemas as accepting any key.
+func markOpenSchemasDynamic(s *spec.Schema) {
+	if s == nil {
+		return
+	}
+	for i := range s.AllOf {
+		markOpenSchemasDynamic(&s.AllOf[i])
+	}
+	for i := range s.AnyOf {
+		markOpenSchemasDynamic(&s.AnyOf[i])
+	}
+	for i := range s.OneOf {
+		markOpenSchemasDynamic(&s.OneOf[i])
+	}
+	for name, prop := range s.Properties {
+		markOpenSchemasDynamic(&prop)
+		s.Properties[name] = prop
+	}
+	if s.Items != nil {
+		markOpenSchemasDynamic(s.Items.Schema)
+		for i := range s.Items.Schemas {
+			markOpenSchemasDynamic(&s.Items.Schemas[i])
+		}
+	}
+	if s.AdditionalProperties != nil {
+		markOpenSchemasDynamic(s.AdditionalProperties.Schema)
+	}
+	preserve, _ := s.Extensions.GetBool("x-kubernetes-preserve-unknown-fields")
+	untyped := len(s.Type) == 0 && len(s.Properties) == 0 && s.Items == nil && s.AdditionalProperties == nil &&
+		len(s.AllOf)+len(s.AnyOf)+len(s.OneOf) == 0
+	if preserve || untyped {
+		s.AddExtension("x-kubernetes-int-or-string", true)
+	}
 }
 
 // ResourceType returns the CEL declaration of gvk from its OpenAPI schema, or nil when no resolver is configured

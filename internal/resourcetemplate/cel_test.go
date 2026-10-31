@@ -1,6 +1,8 @@
 package resourcetemplate
 
 import (
+	"github.com/google/cel-go/cel"
+
 	"time"
 
 	"github.com/google/cel-go/common/types"
@@ -242,5 +244,48 @@ var _ = Describe("Compiler kind schema cache", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.calls).To(Equal(4))
 		Expect(again).To(BeIdenticalTo(changedKS))
+	})
+})
+
+var _ = Describe("Compiler open schemas", func() {
+	It("types fields that preserve unknown fields or declare no type as dyn", func() {
+		sch := jobSchema()
+		jobSpec := sch.Properties["spec"]
+		jobSpec.Properties["params"] = spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"array"}, Items: &spec.SchemaOrArray{Schema: &spec.Schema{SchemaProps: spec.SchemaProps{
+			Type: []string{"object"}, Properties: map[string]spec.Schema{
+				"name":  *spec.StringProperty(),
+				"value": {VendorExtensible: spec.VendorExtensible{Extensions: spec.Extensions{"x-kubernetes-preserve-unknown-fields": true}}},
+				"extra": {},
+			},
+		}}}}}
+		open := spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Properties: map[string]spec.Schema{"known": *spec.Int32Property()}}}
+		open.AddExtension("x-kubernetes-preserve-unknown-fields", true)
+		jobSpec.Properties["podTemplate"] = open
+		sch.Properties["spec"] = jobSpec
+		res := &mutableResolver{schemas: map[schema.GroupVersionKind]*spec.Schema{jobGVK: sch}}
+		c, err := NewCompiler(res, log.Log)
+		Expect(err).NotTo(HaveOccurred())
+
+		for expr, typeName := range map[string]string{
+			"Resource.spec.params[0].value":      "dyn",
+			"int(Resource.spec.params[0].value)": "int",
+			"Resource.spec.params[0].extra":      "dyn",
+			"Resource.spec.params[0].name":       "string",
+			"Resource.spec.podTemplate":          "dyn",
+			"Resource.spec.podTemplate.anything": "dyn",
+			"Resource.spec.parallelism":          "int",
+		} {
+			program, err := c.Compile(PhaseVariables, jobGVK, expr)
+			Expect(err).NotTo(HaveOccurred(), expr)
+			Expect(program.OutputType.TypeName()).To(Equal(typeName), expr)
+		}
+		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.spec.params[0].nope")
+		Expect(err).To(MatchError(ContainSubstring("undefined field 'nope'")))
+
+		ks, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		value := FieldType(ElemType(FieldType(FieldType(ks.Decl, "spec"), "params")), "value")
+		Expect(CheckOutputType(cel.IntType, value)).To(Succeed(), "an int is fine for an untyped value")
+		Expect(CheckOutputType(cel.ListType(cel.StringType), value)).To(Succeed(), "so is a list")
 	})
 })

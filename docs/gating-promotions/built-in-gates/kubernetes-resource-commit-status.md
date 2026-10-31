@@ -204,8 +204,10 @@ with the expression and the template path **before anything is created**:
   `spec.parallelism` or an integer for `spec.suspend`;
 - text with embedded expressions in a non-string field.
 
-Fields the schema does not describe (for example under `x-kubernetes-preserve-unknown-fields`) are not checked. When
-the kind's schema cannot be resolved, `Resource` is untyped and only the API server validates the rendered object.
+Fields the schema does not describe (for example under `x-kubernetes-preserve-unknown-fields`, or untyped unions such
+as a Tekton param `value`) are dynamically typed: they are not checked in the template, and reading them from
+`Resource` compiles but is only type-checked at run time. When the kind's schema cannot be resolved at all, `Resource`
+is untyped and only the API server validates the rendered object.
 
 The library set is the Kubernetes one: `has()`, optionals (`.?`, `orValue()`, `optMap()`), list macros (`exists`,
 `all`, `map`, `filter`), `quantity()`, `semver()`, `url()`, `isURL()`, `format`, IP and CIDR helpers, and the string,
