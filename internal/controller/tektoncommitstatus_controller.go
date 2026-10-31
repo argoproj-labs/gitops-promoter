@@ -274,29 +274,9 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 		pruned := prevEnvStatus.TargetedSha == shaToRun && tcs.Spec.PruneRun && prevEnvStatus.Phase == promoterv1alpha1.CommitPhaseSuccess
 
 		// Get the current status of the Tekton resource
-		runName := ""
-		var currentStatus tekton.RunStatus
-		if needToCreate {
-			// Create the run if it doesn't exist or SHA changed
-			runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
-			if k8s_errors.IsAlreadyExists(err) {
-				runName = prevEnvStatus.TektonRunName
-				currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
-			}
-			if err != nil {
-				return nil, nil, err
-			}
-		} else if !pruned {
-			// Get existing run status if not creating and not pruned
-			runName = prevEnvStatus.TektonRunName
-			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
-			if k8s_errors.IsNotFound(err) {
-				// Run was deleted, recreate it
-				runName, currentStatus, err = r.createTektonRun(ctx, tcs, env.Branch, shaToRun)
-			}
-			if err != nil {
-				return nil, nil, err
-			}
+		runName, currentStatus, err := r.getOrCreateTektonRun(ctx, tcs, env.Branch, shaToRun, needToCreate, pruned, prevEnvStatus)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		var newEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus
@@ -746,6 +726,30 @@ func (r *TektonCommitStatusReconciler) determineEnvironmentPhases(tcs *promoterv
 		return promoterv1alpha1.TektonCommitStatusEnvironmentStatus{}, "", fmt.Errorf("condition status was an unknown type of %v", conditionStatus)
 	}
 	return newEnvStatus, description, nil
+}
+
+// getOrCreateTektonRun gets the current status of an existing Tekton run or creates a new one. Also takes into account if the
+// run needs to be created it
+func (r *TektonCommitStatusReconciler) getOrCreateTektonRun(ctx context.Context, tcs *promoterv1alpha1.TektonCommitStatus, branch, sha string, needToCreate, pruned bool, prevEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus) (string, tekton.RunStatus, error) {
+	if needToCreate {
+		runName, currentStatus, err := r.createTektonRun(ctx, tcs, branch, sha)
+		if k8s_errors.IsAlreadyExists(err) {
+			runName = prevEnvStatus.TektonRunName
+			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
+		}
+		return runName, currentStatus, err
+	}
+
+	if pruned {
+		return "", tekton.RunStatus{}, nil
+	}
+
+	runName := prevEnvStatus.TektonRunName
+	currentStatus, err := r.getTektonRun(ctx, tcs, prevEnvStatus)
+	if k8s_errors.IsNotFound(err) {
+		return r.createTektonRun(ctx, tcs, branch, sha)
+	}
+	return runName, currentStatus, err
 }
 
 // pruneTektonResource prunes a Tekton Resource
