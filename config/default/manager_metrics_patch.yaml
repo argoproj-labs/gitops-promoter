@@ -11,30 +11,19 @@ spec:
       containers:
       - name: manager
         image: quay.io/argoprojlabs/gitops-promoter:latest
+        env:
+          # Must match the metrics-reader ServiceAccount's actual metadata.name
+          # (config/rbac/metrics_reader_service_account.yaml) after this file's own
+          # namePrefix/nameSuffix is applied - "promoter-" per this kustomization's namePrefix.
+          - name: METRICS_TOKEN_SERVICE_ACCOUNT
+            value: promoter-metrics-reader
         args:
           - "--health-probe-bind-address=:8081"
-          - "--metrics-bind-address=127.0.0.1:8080"
+          - "--metrics-secure=true"
+          - "--metrics-bind-address=:8443"
+          - "--metrics-token-service-account=$(METRICS_TOKEN_SERVICE_ACCOUNT)"
           - "--leader-elect"
-      - name: kube-rbac-proxy
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - "ALL"
-        image: quay.io/brancz/kube-rbac-proxy:v0.23.1
-        args:
-          - "--secure-listen-address=0.0.0.0:8443"
-          - "--upstream=http://127.0.0.1:8080/"
-          - "--logtostderr=true"
-          - "--v=0"
         ports:
           - containerPort: 8443
             protocol: TCP
             name: https
-        resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
-          requests:
-            cpu: 5m
-            memory: 64Mi
