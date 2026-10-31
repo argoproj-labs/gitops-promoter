@@ -559,7 +559,7 @@ func (r *KubernetesResourceCommitStatusReconciler) pruneResources(ctx context.Co
 			case cb && !ca:
 				return 1
 			default:
-				return b.GetCreationTimestamp().Time.Compare(a.GetCreationTimestamp().Time)
+				return b.GetCreationTimestamp().Compare(a.GetCreationTimestamp().Time)
 			}
 		})
 		for i := historyLimit; i < len(items); i++ {

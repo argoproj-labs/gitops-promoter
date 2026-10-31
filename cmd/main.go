@@ -545,7 +545,8 @@ func getStartupSettings(
 	if out.clusterScmProviderMode, err = bootstrapSettings.GetClusterScmProviderModeDirect(readCtx); err != nil {
 		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	if out.kubernetesResources, err = bootstrapSettings.GetKubernetesResourceCommitStatusResourcesDirect(readCtx); err != nil {
+	out.kubernetesResources, err = bootstrapSettings.GetKubernetesResourceCommitStatusResourcesDirect(readCtx)
+	if err != nil {
 		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
 	if out.templateCRDs, err = bootstrapSettings.GetKubernetesResourceCommitStatusTemplateCRDsDirect(readCtx); err != nil {
