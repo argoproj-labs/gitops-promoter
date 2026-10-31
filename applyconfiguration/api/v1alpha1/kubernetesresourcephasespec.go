@@ -22,10 +22,11 @@ package v1alpha1
 //
 // KubernetesResourcePhaseSpec holds the expression that maps the live resource to a commit status phase.
 type KubernetesResourcePhaseSpecApplyConfiguration struct {
-	// Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the
-	// created resource exists. Available variables:
-	// - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,
-	// for example Resource.status?.conditions ?? [], because member access through nil is an error.
+	// Expression is a CEL expression (https://kubernetes.io/docs/reference/using-api/cel/) evaluated on every
+	// reconcile while the created resource exists. Available variables:
+	// - Resource: the live resource, including status, typed from the kind's OpenAPI schema when it can be
+	// resolved. Guard optional fields with .? and orValue(), for example Resource.?status.?conditions.orValue([]),
+	// because access to an absent field is an error.
 	// - Branch (string), Sha (string), ReportOn (string)
 	// - Environment: the PromotionStrategy status entry for Branch
 	// - PromotionStrategy: the full PromotionStrategy spec and status
@@ -35,15 +36,16 @@ type KubernetesResourcePhaseSpecApplyConfiguration struct {
 	// - a boolean: true → success, false → pending
 	// - an object { phase, description?, url? } where phase is "success", "pending", or "failure"
 	// (an omitted or empty phase means "pending")
-	// Any other return type, or an unrecognized phase string, fails the reconcile.
+	// CEL requires both branches of a conditional to have the same type, so an expression returns either booleans
+	// or objects throughout. Any other return type, or an unrecognized phase string, fails the reconcile.
 	//
 	// Example for a batch/v1 Job:
 	//
-	// any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
-	// ? {phase: 'success'}
-	// : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
-	// ? {phase: 'failure', description: 'Smoke test is failing'}
-	// : false
+	// Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Complete' && c.status == 'True')
+	// ? {'phase': 'success'}
+	// : Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Failed' && c.status == 'True')
+	// ? {'phase': 'failure', 'description': 'Smoke test is failing'}
+	// : {'phase': 'pending'}
 	//
 	Expression *string `json:"expression,omitempty"`
 }

@@ -23,18 +23,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/expr-lang/expr"
-	k8sjson "k8s.io/apimachinery/pkg/util/json"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
-)
-
-const (
-	// TemplateExpressionCachePrefix separates spec.template programs from other expr users sharing a cache.
-	TemplateExpressionCachePrefix = "kubernetesresource-template"
-	// ReportExpressionCachePrefix separates spec.description / spec.url programs, which see more variables than
-	// templates do, so a program compiled for one variable set is never reused for the other.
-	ReportExpressionCachePrefix = "kubernetesresource-report"
+	"github.com/google/cel-go/common/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	apiservercel "k8s.io/apiserver/pkg/cel"
 )
 
 // segment is one piece of a string that may contain ${ } expressions: either literal text or the source of
@@ -45,7 +36,7 @@ type segment struct {
 }
 
 // parseSegments splits s into literal and expression segments. An expression starts at "${" and ends at the
-// matching "}", skipping braces inside expr string literals ('...', "...", `...`). "$${" is the escape for a
+// matching "}", skipping braces inside CEL string literals ('...', "...", `...`). "$${" is the escape for a
 // literal "${".
 func parseSegments(s string) ([]segment, error) {
 	var segments []segment
@@ -120,26 +111,27 @@ func skipQuoted(s string, i int) (int, bool) {
 	return 0, false
 }
 
-// Interpolator evaluates ${ } expressions against a fixed variable set using a shared compile cache.
-// Expressions are compiled with the variable set declared, so unknown variables and unknown fields of typed
-// variables (for example Environment.Nope) are compile errors rather than silent nils.
+// Interpolator evaluates ${ } CEL expressions against a fixed variable set. Expressions are compiled against the
+// declared variables, so unknown variables and unknown fields of typed variables (for example
+// Environment.propsed) are compile errors rather than runtime nils, and a standalone expression's output type is
+// checked against the target field's declared type when the kind's schema is known.
 type Interpolator struct {
-	cache  *exprcache.Cache
-	env    map[string]any
-	prefix string
+	compiler   *Compiler
+	activation map[string]any
+	gvk        schema.GroupVersionKind
+	set        VariableSet
 }
 
-// NewInterpolator returns an Interpolator that evaluates expressions against env, compiling through cache
-// under prefix. Callers with different variable sets must use different prefixes.
-func NewInterpolator(cache *exprcache.Cache, prefix string, env map[string]any) *Interpolator {
-	return &Interpolator{cache: cache, prefix: prefix, env: env}
+// NewInterpolator returns an Interpolator over set with the given activation (variable values).
+func NewInterpolator(compiler *Compiler, set VariableSet, gvk schema.GroupVersionKind, activation map[string]any) *Interpolator {
+	return &Interpolator{compiler: compiler, set: set, gvk: gvk, activation: activation}
 }
 
 // Value renders s. A string that is exactly one expression (ignoring surrounding whitespace) evaluates to the
-// expression's result, converted to the JSON-compatible value set (int64, float64, bool, string, nil, []any,
-// map[string]any). Any other string concatenates its literal text with the stringified expression results.
-// Strings without "${" are returned unchanged.
-func (in *Interpolator) Value(s string) (any, error) {
+// expression's result with its type preserved (int64, float64, bool, string, nil, []any, map[string]any). Any
+// other string concatenates its literal text with the stringified expression results. Strings without "${" are
+// returned unchanged. expected, when known, is the declared type of the field receiving the value.
+func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, error) {
 	if !strings.Contains(s, "${") {
 		return s, nil
 	}
@@ -148,11 +140,17 @@ func (in *Interpolator) Value(s string) (any, error) {
 		return nil, err
 	}
 	if expression, ok := standaloneExpression(segments); ok {
-		out, err := in.eval(expression)
+		program, err := in.compiler.Compile(in.set, in.gvk, expression)
 		if err != nil {
 			return nil, err
 		}
-		return normalizeJSON(out)
+		if err := CheckOutputType(program.OutputType, expected); err != nil {
+			return nil, fmt.Errorf("expression %q %w", strings.TrimSpace(expression), err)
+		}
+		return in.eval(program, expression)
+	}
+	if expected != nil && !acceptsText(expected) {
+		return nil, fmt.Errorf("the field expects %s but the value is text with embedded expressions; use a single ${ } expression", describeDeclType(expected))
 	}
 	var b strings.Builder
 	for _, seg := range segments {
@@ -160,7 +158,11 @@ func (in *Interpolator) Value(s string) (any, error) {
 			b.WriteString(seg.text)
 			continue
 		}
-		out, err := in.eval(seg.text)
+		program, err := in.compiler.Compile(in.set, in.gvk, seg.text)
+		if err != nil {
+			return nil, err
+		}
+		out, err := in.eval(program, seg.text)
 		if err != nil {
 			return nil, err
 		}
@@ -175,7 +177,7 @@ func (in *Interpolator) Value(s string) (any, error) {
 
 // String renders s to text: like Value, but a standalone expression's result is stringified as well.
 func (in *Interpolator) String(s string) (string, error) {
-	v, err := in.Value(s)
+	v, err := in.Value(s, nil)
 	if err != nil {
 		return "", err
 	}
@@ -184,6 +186,20 @@ func (in *Interpolator) String(s string) (string, error) {
 		return "", fmt.Errorf("expression in %q: %w", s, err)
 	}
 	return text, nil
+}
+
+func (in *Interpolator) eval(program *Program, expression string) (any, error) {
+	out, err := program.Eval(in.activation)
+	if err != nil {
+		return nil, fmt.Errorf("expression %q failed: %w", strings.TrimSpace(expression), err)
+	}
+	return out, nil
+}
+
+// acceptsText reports whether a field declared as t can hold a rendered string.
+func acceptsText(t *apiservercel.DeclType) bool {
+	k := t.CelType().Kind()
+	return k == types.StringKind || k == types.DynKind || k == types.AnyKind
 }
 
 // standaloneExpression reports whether segments consist of one expression and only whitespace literals.
@@ -203,58 +219,19 @@ func standaloneExpression(segments []segment) (string, bool) {
 	return expression, count == 1
 }
 
-func (in *Interpolator) eval(expression string) (any, error) {
-	program, err := in.cache.GetOrCompile(exprcache.Key{Prefix: in.prefix, Expression: expression}, expr.Env(in.env))
-	if err != nil {
-		return nil, fmt.Errorf("expression %q: %w", strings.TrimSpace(expression), err)
-	}
-	out, err := expr.Run(program, in.env)
-	if err != nil {
-		return nil, fmt.Errorf("expression %q failed: %w", strings.TrimSpace(expression), err)
-	}
-	return out, nil
-}
-
-// normalizeJSON converts an arbitrary expr result into the value set unstructured objects use, through a JSON
-// round-trip: typed structs become maps keyed by their JSON names, integers become int64, and floats float64.
-func normalizeJSON(v any) (any, error) {
-	if v == nil {
-		return nil, nil
-	}
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("expression result of type %T cannot be encoded as JSON: %w", v, err)
-	}
-	var out any
-	if err := k8sjson.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("failed to decode expression result: %w", err)
-	}
-	return out, nil
-}
-
 // stringify converts an expression result to the text used inside a string with embedded expressions.
 func stringify(v any) (string, error) {
 	switch t := v.(type) {
 	case string:
 		return t, nil
 	case nil:
-		return "", errors.New("result is nil; use ?? to provide a default")
+		return "", errors.New("result is null; use orValue() to provide a default")
 	case bool:
 		return strconv.FormatBool(t), nil
-	case int:
-		return strconv.Itoa(t), nil
 	case int64:
 		return strconv.FormatInt(t, 10), nil
-	case int32:
-		return strconv.FormatInt(int64(t), 10), nil
-	case uint:
-		return strconv.FormatUint(uint64(t), 10), nil
-	case uint64:
-		return strconv.FormatUint(t, 10), nil
 	case float64:
 		return strconv.FormatFloat(t, 'f', -1, 64), nil
-	case float32:
-		return strconv.FormatFloat(float64(t), 'f', -1, 32), nil
 	default:
 		raw, err := json.Marshal(v)
 		if err != nil {

@@ -19,10 +19,10 @@ package resourcetemplate
 import (
 	"fmt"
 
-	"github.com/expr-lang/expr"
+	"github.com/google/cel-go/common/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 )
 
 // PhaseResult is the parsed result of spec.phase.expression.
@@ -32,17 +32,20 @@ type PhaseResult struct {
 	URL         string
 }
 
-// phaseExpressionCachePrefix separates phase programs from other expr users sharing a cache.
-const phaseExpressionCachePrefix = "kubernetesresource-phase"
-
-// EvaluatePhaseExpression compiles (through cache) and runs expression against env, then parses the result:
-// a boolean (true → success, false → pending) or an object { phase, description?, url? }.
-func EvaluatePhaseExpression(cache *exprcache.Cache, expression string, env map[string]any) (PhaseResult, error) {
-	program, err := cache.GetOrCompile(exprcache.Key{Prefix: phaseExpressionCachePrefix, Expression: expression})
+// EvaluatePhaseExpression compiles (through cache) and runs expression against activation, then parses the
+// result: a boolean (true → success, false → pending) or an object { phase, description?, url? }. The output type
+// is checked at compile time when it is statically known.
+func EvaluatePhaseExpression(compiler *Compiler, gvk schema.GroupVersionKind, expression string, activation map[string]any) (PhaseResult, error) {
+	program, err := compiler.Compile(PhaseVariables, gvk, expression)
 	if err != nil {
 		return PhaseResult{}, fmt.Errorf("phase expression: %w", err)
 	}
-	out, err := expr.Run(program, env)
+	switch program.OutputType.Kind() {
+	case types.BoolKind, types.MapKind, types.DynKind:
+	default:
+		return PhaseResult{}, fmt.Errorf("phase expression must return a boolean or an object with a phase key, but returns %s", program.OutputType.TypeName())
+	}
+	out, err := program.Eval(activation)
 	if err != nil {
 		return PhaseResult{}, fmt.Errorf("phase expression failed: %w", err)
 	}

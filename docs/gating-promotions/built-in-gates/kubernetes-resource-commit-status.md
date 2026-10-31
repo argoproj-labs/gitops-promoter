@@ -3,8 +3,11 @@
 `KubernetesResourceCommitStatus` gates a promotion on a Kubernetes resource the controller creates for you: a
 `batch/v1 Job` that runs a smoke test, an Argo Workflows `Workflow`, an Argo Rollouts `AnalysisRun`, or any other
 namespaced kind installed in the cluster. For every environment of the referenced `PromotionStrategy` the controller
-instantiates the resource from an inline **template**, then evaluates an [expr](https://expr-lang.org) expression
-against the live resource to compute the commit status phase (`pending`, `success`, or `failure`).
+instantiates the resource from an inline **template**, then evaluates a
+[CEL](https://kubernetes.io/docs/reference/using-api/cel/) expression against the live resource to compute the commit
+status phase (`pending`, `success`, or `failure`). The CEL environment is the one Kubernetes uses for CRD validation
+rules and admission policies, with the same extension libraries, and expressions are type-checked against the
+created kind's schema.
 
 ## How it works
 
@@ -21,7 +24,7 @@ against the live resource to compute the commit status phase (`pending`, `succes
 flowchart LR
   CC[ControllerConfiguration<br/>resources: batch/v1 Job] -->|allows| G
   G[KubernetesResourceCommitStatus<br/>spec.template] -->|creates per environment + SHA| J[batch/v1 Job]
-  J -->|status → expr| G
+  J -->|status → CEL| G
   G -->|upserts| CS[CommitStatus]
 ```
 
@@ -110,7 +113,7 @@ spec:
     spec:
       ttlSecondsAfterFinished: 3600
       backoffLimit: 0
-      suspend: ${ Branch == 'environment/production' && Environment.Active.Hydrated.Sha == '' }
+      suspend: ${ Branch == 'environment/production' && !has(Environment.active) }
       template:
         spec:
           restartPolicy: Never
@@ -118,17 +121,17 @@ spec:
             - name: test
               image: ghcr.io/acme/smoke:latest
               args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
-              env: ${ PromotionStrategy.Spec.Environments | map({name: 'ENV_' + string(#index), value: .Branch}) }
+              env: ${ PromotionStrategy.spec.environments.map(e, {'name': 'BRANCH_' + e.branch.replace('/', '_').upperAscii(), 'value': e.branch}) }
   lifecycle:
     mode: PerSha
     historyLimit: 1
   phase:
     expression: |
-      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
-        ? {phase: 'success'}
-        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
-          ? {phase: 'failure', description: 'Smoke test is failing'}
-          : false
+      Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Complete' && c.status == 'True')
+        ? {'phase': 'success'}
+        : Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Failed' && c.status == 'True')
+          ? {'phase': 'failure', 'description': 'Smoke test is failing'}
+          : {'phase': 'pending'}
   description: "Smoke test ${ ResourceName } is ${ Phase }"
 ```
 
@@ -152,7 +155,7 @@ spec:
 | `template` | The object to create, see below. Its `apiVersion`/`kind` must be listed in the ControllerConfiguration. |
 | `lifecycle.mode` | `PerSha` (default) or `InPlace`, see below. |
 | `lifecycle.historyLimit` | Resources kept per environment in `PerSha` mode, including the current one (default 1). |
-| `phase.expression` | expr expression, see below. |
+| `phase.expression` | CEL expression, see below. |
 | `description` / `url` | Optional CommitStatus description and URL, with `${ }` expressions. |
 
 ## The template
@@ -164,16 +167,22 @@ copied into the created resource.
 
 ### Expressions
 
-Any **string** value may contain [expr](https://expr-lang.org) expressions wrapped in `${ }`. Two forms exist:
+Any **string** value may contain [CEL](https://kubernetes.io/docs/reference/using-api/cel/) expressions wrapped in
+`${ }`. Two forms exist:
 
 - **Standalone.** A value that is exactly one expression, such as `suspend: ${ Branch == 'environment/production' }`
   or `env: ${ [...] }`, is replaced by the expression's result **with its type preserved**. This is how integers,
-  booleans, lists, and whole objects are computed. A result of `nil` removes the field (or the list item).
+  booleans, lists, and whole objects are computed. A result of `null`, or an absent optional such as
+  `optional.none()` or `Environment.?active.?hydrated.?sha`, removes the field (or the list item).
 - **Embedded.** A string that mixes text and expressions, such as `"smoke-${ ShortSha }"`, concatenates the pieces;
-  numbers and booleans are formatted as text, lists and objects as JSON, and `nil` is an error (use `??` for a
-  default).
+  numbers and booleans are formatted as text, lists and objects as JSON, and `null` is an error (use `orValue()` for
+  a default).
 
 `$${` produces a literal `${`. Values without `${` and non-string values are copied verbatim.
+
+Objects are addressed by their **JSON field names**, as in `kubectl` output: `Environment.proposed.hydrated.sha`,
+`PromotionStrategy.spec.environments`. CEL requires both branches of a conditional to have the same type; to set a
+field conditionally use optionals: `${ cond ? optional.of(value) : optional.none() }`.
 
 | Variable | Description |
 | --- | --- |
@@ -184,28 +193,40 @@ Any **string** value may contain [expr](https://expr-lang.org) expressions wrapp
 | `PromotionStrategy` | The full PromotionStrategy |
 | `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
 
-Expressions are compiled against this variable set, so a misspelled variable, or a misspelled field of a typed
-variable such as `Environment.Propsed`, fails the reconcile with a compile error that names the expression and the
-path in the template. The rendered object is validated by the API server when it is created, so an expression that
-produces the wrong type for a field (for example a string for `parallelism`) surfaces as `Ready=False` with the API
-server's message.
+### Type checking
+
+The Promoter variables are typed from the Promoter OpenAPI schema, and the controller resolves the created kind's
+OpenAPI v3 schema through discovery. Expressions are compiled against both, so these are reported as `Ready=False`
+with the expression and the template path **before anything is created**:
+
+- a misspelled variable, or a misspelled field of a typed variable such as `Environment.propsed`;
+- a standalone expression whose type does not match the field it populates, for example a string for
+  `spec.parallelism` or an integer for `spec.suspend`;
+- text with embedded expressions in a non-string field.
+
+Fields the schema does not describe (for example under `x-kubernetes-preserve-unknown-fields`) are not checked. When
+the kind's schema cannot be resolved, `Resource` is untyped and only the API server validates the rendered object.
+
+The library set is the Kubernetes one: `has()`, optionals (`.?`, `orValue()`, `optMap()`), list macros (`exists`,
+`all`, `map`, `filter`), `quantity()`, `semver()`, `url()`, `isURL()`, `format`, IP and CIDR helpers, and the string,
+math, sets, and encoders extensions.
 
 > [!NOTE]
-> The gate holds the whole template, so the CRD schema cannot validate the template against the target kind at
-> admission time. Typos in field names are caught when the resource is created, one reconcile later.
+> The gate holds the whole template, so the CRD schema cannot validate the template at admission time. Checking
+> happens on the first reconcile instead.
 
 Examples:
 
 ```yaml
 # A label-safe branch name
 labels:
-  environment: ${ Branch | replace('/', '-') }
+  environment: ${ Branch.replace('/', '-') }
 
 # Only set a field in one environment
-activeDeadlineSeconds: ${ Branch == 'environment/development' ? 600 : nil }
+activeDeadlineSeconds: ${ Branch == 'environment/development' ? optional.of(600) : optional.none() }
 
-# Pass the whole environment status as JSON
-args: ["--environment", "${ toJSON(Environment) }"]
+# A resource request computed from a quantity
+memory: ${ quantity('256Mi').add(quantity('64Mi')).asInteger() }
 ```
 
 ## Lifecycle modes
@@ -233,26 +254,31 @@ preserved unless the template also sets them. Use this for mutable kinds. Immuta
 | `Resource` | The live resource as a map, including `status` |
 
 Return either a boolean (`true` → `success`, `false` → `pending`) or an object `{ phase, description?, url? }` where
-`phase` is `success`, `pending`, or `failure` (omitted means `pending`). Any other value fails the reconcile.
+`phase` is `success`, `pending`, or `failure` (omitted means `pending`). Because CEL conditionals must have one type,
+an expression returns booleans throughout or objects throughout. Any other value fails the reconcile, and an
+expression whose type is statically neither is rejected at compile time.
 
 > [!WARNING]
-> expr raises an error when a member is accessed through a missing (`nil`) value. A freshly created Job has no
-> `status.conditions`, so always guard optional paths with `?.` and `??`, for example
-> `Resource.status?.conditions ?? []` or `(Resource.status?.succeeded ?? 0) > 0`.
+> CEL raises an error when an absent field is accessed. A freshly created Job has no `status.conditions`, so always
+> guard optional paths with `.?` and `orValue()`, for example `Resource.?status.?conditions.orValue([])` or
+> `Resource.?status.?succeeded.orValue(0) > 0`.
 
 Examples:
 
 ```text
 # Argo Workflows
-Resource.status?.phase == 'Succeeded' ? true
-  : (Resource.status?.phase in ['Failed', 'Error'] ? {phase: 'failure', description: Resource.status?.message ?? 'Workflow failed'} : false)
+Resource.?status.?phase.orValue('') == 'Succeeded' ? {'phase': 'success'}
+  : (Resource.?status.?phase.orValue('') in ['Failed', 'Error']
+      ? {'phase': 'failure', 'description': Resource.?status.?message.orValue('Workflow failed')}
+      : {'phase': 'pending'})
 
 # Argo Rollouts AnalysisRun
-Resource.status?.phase == 'Successful' ? {phase: 'success'}
-  : (Resource.status?.phase in ['Failed', 'Error', 'Inconclusive'] ? {phase: 'failure'} : false)
+Resource.?status.?phase.orValue('') == 'Successful' ? {'phase': 'success'}
+  : (Resource.?status.?phase.orValue('') in ['Failed', 'Error', 'Inconclusive'] ? {'phase': 'failure'} : {'phase': 'pending'})
 
 # Job, counting pods instead of conditions
-(Resource.status?.succeeded ?? 0) > 0 ? true : ((Resource.status?.failed ?? 0) > 0 ? {phase: 'failure'} : false)
+Resource.?status.?succeeded.orValue(0) > 0 ? {'phase': 'success'}
+  : (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure'} : {'phase': 'pending'})
 ```
 
 ## Description and URL
@@ -291,8 +317,8 @@ status:
 ```
 
 `Ready=False` reports configuration problems: a template without `apiVersion`/`kind`, a kind that is not listed in the
-ControllerConfiguration, an expression that does not compile or produces a value the API server rejects, an invalid
-phase expression result, or missing RBAC on the kind (the API server's `forbidden` error names the verb).
+ControllerConfiguration, an expression that does not compile or type-check, a rendered object the API server rejects,
+an invalid phase expression result, or missing RBAC on the kind (the API server's `forbidden` error names the verb).
 
 Created resources carry these labels, which also drive pruning:
 

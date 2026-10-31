@@ -54,20 +54,22 @@ type KubernetesResourceCommitStatusSpecApplyConfiguration struct {
 	// metadata.name, metadata.namespace, and status are ignored because the controller sets them. metadata.labels and
 	// metadata.annotations are kept and merged under the controller's own labels.
 	//
-	// Any string value may contain expr (https://expr-lang.org) expressions wrapped in ${ }:
-	// - A value that is exactly one expression, such as "${ Sha }" or "${ Environment.Proposed.Hydrated.Sha }", is
+	// Any string value may contain CEL expressions (https://kubernetes.io/docs/reference/using-api/cel/) wrapped in ${ }:
+	// - A value that is exactly one expression, such as "${ Sha }" or "${ Environment.proposed.hydrated.sha }", is
 	// replaced by the expression's result with its type preserved, so integers, booleans, lists, and objects
-	// can be computed. A nil result removes the field.
+	// can be computed. A null result or an absent optional (optional.none()) removes the field.
 	// - A string with embedded expressions, such as "smoke-${ ShortSha }", concatenates the results as text.
 	// - "$${" produces a literal "${".
 	// Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the
 	// branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
-	// Everything else is copied verbatim. The rendered object is validated by the API server when it is created.
+	// Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and
+	// the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is
+	// created. Everything else is copied verbatim.
 	Template *v1.JSON `json:"template,omitempty"`
 	// Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment
 	// is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.
 	Lifecycle *KubernetesResourceLifecycleApplyConfiguration `json:"lifecycle,omitempty"`
-	// Phase holds the expr expression that computes the commit status phase from the live resource.
+	// Phase holds the CEL expression that computes the commit status phase from the live resource.
 	// See KubernetesResourcePhaseSpec.
 	Phase *KubernetesResourcePhaseSpecApplyConfiguration `json:"phase,omitempty"`
 	// Description is the human-readable commit status description shown in the SCM provider. Supports the same

@@ -202,7 +202,7 @@ A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation.
 ### KubernetesResourceCommitStatus
 
 A KubernetesResourceCommitStatus creates a real Kubernetes resource (for example a `batch/v1 Job`) per environment from an
-inline template with `${ }` expr expressions and evaluates an expr expression against the live resource to compute the
+inline template with `${ }` CEL expressions and evaluates a CEL expression against the live resource to compute the
 commit status phase. The kinds a gate may create are listed in
 `ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources`. See
 [Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md) for the template

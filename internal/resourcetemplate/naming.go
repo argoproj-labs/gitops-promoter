@@ -1,5 +1,5 @@
 // Package resourcetemplate implements the template machinery behind KubernetesResourceCommitStatus:
-// parsing of spec.template, evaluation of its ${ } expr expressions, naming of the created resources, and
+// parsing of spec.template, evaluation of its ${ } CEL expressions, naming of the created resources, and
 // evaluation of the phase expression against the live resource.
 package resourcetemplate
 

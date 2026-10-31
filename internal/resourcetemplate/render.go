@@ -29,14 +29,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sjson "k8s.io/apimachinery/pkg/util/json"
+	apiservercel "k8s.io/apiserver/pkg/cel"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // TemplateData is the variable set available to ${ } expressions in spec.template and, with the report fields
-// filled in, to spec.description and spec.url.
+// filled in, to spec.description and spec.url. Objects are held in their JSON map form (see ToActivationObject)
+// because CEL expressions address fields by their JSON names.
 type TemplateData struct {
 	// Branch is the environment branch the resource is created for.
 	Branch string
@@ -46,11 +47,11 @@ type TemplateData struct {
 	// ReportOn is "proposed" or "active".
 	ReportOn string
 	// Environment is the PromotionStrategy status entry for Branch (nil when absent).
-	Environment *promoterv1alpha1.EnvironmentStatus
+	Environment map[string]any
 	// PromotionStrategy is the referenced PromotionStrategy.
-	PromotionStrategy *promoterv1alpha1.PromotionStrategy
+	PromotionStrategy map[string]any
 	// KubernetesResourceCommitStatus is the gate (snapshot from the previous reconcile).
-	KubernetesResourceCommitStatus *promoterv1alpha1.KubernetesResourceCommitStatus
+	KubernetesResourceCommitStatus map[string]any
 
 	// The remaining fields are set only for spec.description / spec.url rendering.
 
@@ -66,7 +67,7 @@ type TemplateData struct {
 	ExpressionURL         string
 }
 
-// Env returns the variables available to spec.template expressions.
+// Env returns the activation for spec.template expressions.
 func (d TemplateData) Env() map[string]any {
 	return map[string]any{
 		"Branch":                         d.Branch,
@@ -79,14 +80,20 @@ func (d TemplateData) Env() map[string]any {
 	}
 }
 
-// ReportEnv returns the variables available to spec.description and spec.url expressions: Env plus the
+// PhaseEnv returns the activation for spec.phase.expression: Env plus Resource.
+func (d TemplateData) PhaseEnv() map[string]any {
+	env := d.Env()
+	env["Resource"] = d.Resource
+	return env
+}
+
+// ReportEnv returns the activation for spec.description and spec.url expressions: PhaseEnv plus the
 // evaluation results.
 func (d TemplateData) ReportEnv() map[string]any {
-	env := d.Env()
+	env := d.PhaseEnv()
 	env["Phase"] = string(d.Phase)
 	env["ResourceName"] = d.ResourceName
 	env["ResourceKind"] = d.ResourceKind
-	env["Resource"] = d.Resource
 	env["ExpressionDescription"] = d.ExpressionDescription
 	env["ExpressionUrl"] = d.ExpressionURL
 	return env
@@ -144,8 +151,11 @@ func literalString(object map[string]any, key string) (string, error) {
 type BuildParams struct {
 	// Template is the parsed spec.template object.
 	Template map[string]any
-	// Cache compiles the template's expressions.
-	Cache *exprcache.Cache
+	// Compiler compiles the template's expressions.
+	Compiler *Compiler
+	// ResourceType is the CEL declaration of SourceGVK, used to check expression output types against the
+	// fields they populate. nil disables the check.
+	ResourceType *apiservercel.DeclType
 	// SourceGVK is the kind to create.
 	SourceGVK schema.GroupVersionKind
 	// Name and Namespace of the created resource.
@@ -164,7 +174,7 @@ type BuildParams struct {
 // BuildObject renders the resource to create from a template: the template body is copied without status
 // and metadata, apiVersion/kind are set from SourceGVK, metadata is rebuilt from the params (the template's
 // labels and annotations are rendered and merged under the controller's), and every string value is
-// interpolated (see Interpolator.Value). A standalone expression that evaluates to nil removes its field.
+// interpolated (see Interpolator.Value). A standalone expression that evaluates to null removes its field.
 func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	if p.Template == nil {
 		return nil, errors.New("template is nil")
@@ -176,8 +186,8 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	delete(body, "apiVersion")
 	delete(body, "kind")
 
-	in := NewInterpolator(p.Cache, TemplateExpressionCachePrefix, p.Data.Env())
-	rendered, _, err := interpolateValue(in, body, "")
+	in := NewInterpolator(p.Compiler, TemplateVariables, p.SourceGVK, p.Data.Env())
+	rendered, _, err := interpolateValue(in, body, p.ResourceType, "")
 	if err != nil {
 		return nil, err
 	}
@@ -229,14 +239,15 @@ func renderStringMap(in *Interpolator, meta map[string]any, key string) (map[str
 	return out, nil
 }
 
-// interpolateValue walks v and renders every string through in. omit is true when a standalone expression
-// evaluated to nil, telling the caller to drop the field.
-func interpolateValue(in *Interpolator, v any, path string) (out any, omit bool, err error) {
+// interpolateValue walks v and renders every string through in. expected is the declared type at path when the
+// kind's schema is known. omit is true when a standalone expression evaluated to null, telling the caller to
+// drop the field.
+func interpolateValue(in *Interpolator, v any, expected *apiservercel.DeclType, path string) (out any, omit bool, err error) {
 	switch t := v.(type) {
 	case map[string]any:
 		result := make(map[string]any, len(t))
 		for k, child := range t {
-			r, omitChild, err := interpolateValue(in, child, joinPath(path, k))
+			r, omitChild, err := interpolateValue(in, child, FieldType(expected, k), joinPath(path, k))
 			if err != nil {
 				return nil, false, err
 			}
@@ -249,7 +260,7 @@ func interpolateValue(in *Interpolator, v any, path string) (out any, omit bool,
 	case []any:
 		result := make([]any, 0, len(t))
 		for i, child := range t {
-			r, omitChild, err := interpolateValue(in, child, fmt.Sprintf("%s[%d]", path, i))
+			r, omitChild, err := interpolateValue(in, child, ElemType(expected), fmt.Sprintf("%s[%d]", path, i))
 			if err != nil {
 				return nil, false, err
 			}
@@ -260,7 +271,7 @@ func interpolateValue(in *Interpolator, v any, path string) (out any, omit bool,
 		}
 		return result, false, nil
 	case string:
-		r, err := in.Value(t)
+		r, err := in.Value(t, expected)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to render template value at %s: %w", path, err)
 		}

@@ -29,7 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -41,7 +43,6 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -62,7 +63,7 @@ type KubernetesResourceCommitStatusReconciler struct {
 	// configured is the startup snapshot of ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources,
 	// read in SetupWithManager. Gates referencing a kind outside this set fail reconcile.
 	configured map[schema.GroupVersionKind]struct{}
-	exprCache  *exprcache.Cache
+	compiler   *resourcetemplate.Compiler
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses,verbs=get;list;watch
@@ -160,7 +161,14 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 	template map[string]any,
 	sourceGVK schema.GroupVersionKind,
 ) ([]*promoterv1alpha1.CommitStatus, []string, error) {
-	snapshot := krcs.DeepCopy()
+	snapshot, err := resourcetemplate.ToActivationObject(krcs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert KubernetesResourceCommitStatus for expressions: %w", err)
+	}
+	psObject, err := resourcetemplate.ToActivationObject(ps)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert PromotionStrategy for expressions: %w", err)
+	}
 	previous := make(map[string]promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, len(krcs.Status.Environments))
 	for _, e := range krcs.Status.Environments {
 		previous[e.Branch] = e
@@ -195,7 +203,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 			prevPtr = &prev
 		}
 		entry, cs, err := r.reconcileEnvironment(ctx, environmentInput{
-			gate: krcs, snapshot: snapshot, ps: ps, template: template, sourceGVK: sourceGVK,
+			gate: krcs, snapshot: snapshot, ps: ps, psObject: psObject, template: template, sourceGVK: sourceGVK,
 			branch: env.Branch, envStatus: envStatus, sha: sha, previous: prevPtr,
 		})
 		if err != nil {
@@ -229,9 +237,12 @@ func reportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn string)
 
 // environmentInput bundles the per-environment reconcile inputs.
 type environmentInput struct {
-	gate      *promoterv1alpha1.KubernetesResourceCommitStatus
-	snapshot  *promoterv1alpha1.KubernetesResourceCommitStatus
-	ps        *promoterv1alpha1.PromotionStrategy
+	gate *promoterv1alpha1.KubernetesResourceCommitStatus
+	ps   *promoterv1alpha1.PromotionStrategy
+	// snapshot and psObject are the gate (as of the previous reconcile) and the PromotionStrategy in the map
+	// form expressions read.
+	snapshot  map[string]any
+	psObject  map[string]any
 	template  map[string]any
 	envStatus *promoterv1alpha1.EnvironmentStatus
 	previous  *promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus
@@ -287,13 +298,17 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		return entry, cs, nil
 	}
 
+	envObject, err := resourcetemplate.ToActivationObject(in.envStatus)
+	if err != nil {
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to convert environment status for expressions: %w", err)
+	}
 	templateData := resourcetemplate.TemplateData{
 		Branch:                         in.branch,
 		Sha:                            in.sha,
 		ShortSha:                       resourcetemplate.ShortSha(in.sha),
 		ReportOn:                       in.gate.Spec.ReportOn,
-		Environment:                    in.envStatus,
-		PromotionStrategy:              in.ps,
+		Environment:                    envObject,
+		PromotionStrategy:              in.psObject,
 		KubernetesResourceCommitStatus: in.snapshot,
 	}
 
@@ -364,13 +379,14 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData, createdAt time.Time) (*unstructured.Unstructured, error) {
 	gvk := promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.KubernetesResourceCommitStatus]().Name())
 	obj, err := resourcetemplate.BuildObject(resourcetemplate.BuildParams{
-		Template:    in.template,
-		Cache:       r.exprCache,
-		SourceGVK:   in.sourceGVK,
-		Name:        name,
-		Namespace:   in.gate.Namespace,
-		Labels:      resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
-		Annotations: resourcetemplate.ResourceAnnotations(createdAt),
+		Template:     in.template,
+		Compiler:     r.compiler,
+		ResourceType: r.compiler.ResourceType(in.sourceGVK),
+		SourceGVK:    in.sourceGVK,
+		Name:         name,
+		Namespace:    in.gate.Namespace,
+		Labels:       resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
+		Annotations:  resourcetemplate.ResourceAnnotations(createdAt),
 		Owner: metav1.OwnerReference{
 			APIVersion:         gvk.GroupVersion().String(),
 			Kind:               gvk.Kind,
@@ -388,9 +404,8 @@ func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInp
 }
 
 func (r *KubernetesResourceCommitStatusReconciler) evaluatePhase(in environmentInput, live *unstructured.Unstructured, data resourcetemplate.TemplateData) (resourcetemplate.PhaseResult, error) {
-	env := data.Env()
-	env["Resource"] = live.Object
-	result, err := resourcetemplate.EvaluatePhaseExpression(r.exprCache, in.gate.Spec.Phase.Expression, env)
+	data.Resource = live.Object
+	result, err := resourcetemplate.EvaluatePhaseExpression(r.compiler, in.sourceGVK, in.gate.Spec.Phase.Expression, data.PhaseEnv())
 	if err != nil {
 		return resourcetemplate.PhaseResult{}, fmt.Errorf("failed to evaluate phase for %s %q: %w", in.sourceGVK.Kind, live.GetName(), err)
 	}
@@ -406,7 +421,7 @@ func (r *KubernetesResourceCommitStatusReconciler) buildReport(in environmentInp
 	data.Resource = live.Object
 	data.ExpressionDescription = result.Description
 	data.ExpressionURL = result.URL
-	interpolator := resourcetemplate.NewInterpolator(r.exprCache, resourcetemplate.ReportExpressionCachePrefix, data.ReportEnv())
+	interpolator := resourcetemplate.NewInterpolator(r.compiler, resourcetemplate.ReportVariables, in.sourceGVK, data.ReportEnv())
 
 	description := result.Description
 	if in.gate.Spec.Description != "" {
@@ -573,7 +588,15 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 // are skipped with an error log.
 func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	logger := log.FromContext(ctx).WithName("kubernetesresourcecommitstatus-setup")
-	r.exprCache = exprcache.New(exprcache.DefaultMaxEntries)
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		return fmt.Errorf("failed to create discovery client: %w", err)
+	}
+	// Resource is typed from the created kind's OpenAPI v3 schema, resolved through discovery on first use.
+	r.compiler, err = resourcetemplate.NewCompiler(&resolver.ClientDiscoveryResolver{Discovery: discoveryClient}, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create expression compiler: %w", err)
+	}
 
 	resources, err := r.SettingsMgr.GetKubernetesResourceCommitStatusResourcesDirect(ctx)
 	if err != nil {

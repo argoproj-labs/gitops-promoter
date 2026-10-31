@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
@@ -45,8 +44,6 @@ var _ = Describe("ParseTemplate", func() {
 })
 
 var _ = Describe("BuildObject", func() {
-	jobGVK := schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"}
-
 	newTemplate := func() map[string]any {
 		return map[string]any{
 			"apiVersion": "batch/v1",
@@ -66,31 +63,33 @@ var _ = Describe("BuildObject", func() {
 						"containers": []any{map[string]any{
 							"name":  "test",
 							"image": "busybox",
-							"args":  []any{"--sha", "${ Sha }", "--env", "${ Branch | replace('/', '-') }"},
+							"args":  []any{"--sha", "${ Sha }", "--env", "${ Branch.replace('/', '-') }"},
 							"env": []any{
 								map[string]any{"name": "LITERAL", "value": "no $${ templating } here"},
-								"${ ReportOn == 'active' ? {name: 'ACTIVE', value: 'true'} : nil }",
+								"${ ReportOn == 'active' ? optional.of({'name': 'ACTIVE', 'value': 'true'}) : optional.none() }",
 							},
 						}},
 						"nodeSelector": "${ {'kubernetes.io/os': 'linux'} }",
 					},
 				},
-				"activeDeadlineSeconds": "${ nil }",
+				"activeDeadlineSeconds": "${ null }",
 			},
 			"status": map[string]any{"active": int64(1)},
 		}
 	}
 
 	params := func(t map[string]any) BuildParams {
+		compiler := newTestCompiler()
 		return BuildParams{
-			Template:    t,
-			Cache:       exprcache.New(16),
-			SourceGVK:   jobGVK,
-			Name:        "smoke-env-abc",
-			Namespace:   "team-a",
-			Labels:      map[string]string{promoterv1alpha1.EnvironmentLabel: "environment-development", "team": "override"},
-			Annotations: map[string]string{promoterv1alpha1.ResourceCreatedAtAnnotation: "2026-10-31T01:02:03.000000004Z"},
-			Owner:       metav1.OwnerReference{APIVersion: "promoter.argoproj.io/v1alpha1", Kind: "KubernetesResourceCommitStatus", Name: "smoke", UID: types.UID("uid")},
+			Template:     t,
+			Compiler:     compiler,
+			ResourceType: compiler.ResourceType(jobGVK),
+			SourceGVK:    jobGVK,
+			Name:         "smoke-env-abc",
+			Namespace:    "team-a",
+			Labels:       map[string]string{promoterv1alpha1.EnvironmentLabel: "environment-development", "team": "override"},
+			Annotations:  map[string]string{promoterv1alpha1.ResourceCreatedAtAnnotation: "2026-10-31T01:02:03.000000004Z"},
+			Owner:        metav1.OwnerReference{APIVersion: "promoter.argoproj.io/v1alpha1", Kind: "KubernetesResourceCommitStatus", Name: "smoke", UID: types.UID("uid")},
 			Data: TemplateData{
 				Branch:   "environment/development",
 				Sha:      "0123456789abcdef0123456789abcdef01234567",
@@ -158,9 +157,25 @@ var _ = Describe("BuildObject", func() {
 		Expect(err.Error()).To(ContainSubstring("spec.suspendReason"))
 	})
 
+	It("checks expression types against the kind's schema before anything is created", func() {
+		tpl := newTemplate()
+		_ = unstructured.SetNestedField(tpl, "${ 'two' }", "spec", "parallelism")
+		_, err := BuildObject(params(tpl))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("spec.parallelism"))
+		Expect(err.Error()).To(ContainSubstring("returns string but the field expects int"))
+
+		By("skipping the check for fields the schema does not know")
+		p := params(newTemplate())
+		p.ResourceType = nil
+		_ = unstructured.SetNestedField(p.Template, "${ 'two' }", "spec", "parallelism")
+		_, err = BuildObject(p)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("requires labels and annotations to render to strings", func() {
 		tpl := newTemplate()
-		_ = unstructured.SetNestedField(tpl, "${ {a: 1} }", "metadata", "labels", "bad")
+		_ = unstructured.SetNestedField(tpl, "${ {'a': 1} }", "metadata", "labels", "bad")
 		_, err := BuildObject(params(tpl))
 		Expect(err).NotTo(HaveOccurred(), "maps are stringified as JSON")
 		Expect(unstructured.SetNestedField(tpl, int64(1), "metadata", "labels", "bad")).To(Succeed())

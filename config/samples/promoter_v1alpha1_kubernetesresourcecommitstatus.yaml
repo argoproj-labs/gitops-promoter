@@ -28,8 +28,8 @@ spec:
     historyLimit: 1
   phase:
     expression: |
-      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
-        ? {phase: 'success'}
-        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
-          ? {phase: 'failure', description: 'Smoke test is failing'}
-          : false
+      Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Complete' && c.status == 'True')
+        ? {'phase': 'success'}
+        : Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Failed' && c.status == 'True')
+          ? {'phase': 'failure', 'description': 'Smoke test is failing'}
+          : {'phase': 'pending'}

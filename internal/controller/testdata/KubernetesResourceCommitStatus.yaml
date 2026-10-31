@@ -12,7 +12,7 @@ spec:
   reportOn: proposed
   # The object created per environment. Its kind must be listed in
   # ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources (here batch/v1 Job).
-  # String values may contain ${ } expr expressions; a value that is exactly one expression keeps its type.
+  # String values may contain ${ } CEL expressions; a value that is exactly one expression keeps its type.
   template:
     apiVersion: batch/v1
     kind: Job
@@ -33,11 +33,11 @@ spec:
     # Resources kept per environment, including the current one.
     historyLimit: 1
   phase:
-    # expr evaluated against the live resource. Guard optional fields with ?. and ??.
+    # CEL evaluated against the live resource. Guard optional fields with .? and orValue().
     expression: |
-      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
-        ? {phase: 'success'}
-        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
-          ? {phase: 'failure', description: 'Smoke test is failing'}
-          : false
+      Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Complete' && c.status == 'True')
+        ? {'phase': 'success'}
+        : Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Failed' && c.status == 'True')
+          ? {'phase': 'failure', 'description': 'Smoke test is failing'}
+          : {'phase': 'pending'}
   description: "Smoke test ${ ResourceName } is ${ Phase }"

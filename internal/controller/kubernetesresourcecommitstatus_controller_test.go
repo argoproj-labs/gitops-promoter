@@ -40,9 +40,9 @@ const (
 
 // jobPhaseExpression keys off status.succeeded / status.failed, which the JobManagedBy status validation
 // (enforced by the envtest API server) lets tests set without a fully consistent condition set.
-const jobPhaseExpression = `(Resource.status?.succeeded ?? 0) > 0
-	? {phase: 'success'}
-	: ((Resource.status?.failed ?? 0) > 0 ? {phase: 'failure', description: 'Smoke test is failing'} : false)`
+const jobPhaseExpression = `Resource.?status.?succeeded.orValue(0) > 0
+	? {'phase': 'success'}
+	: (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure', 'description': 'Smoke test is failing'} : {'phase': 'pending'})`
 
 // templateJSON encodes an inline spec.template.
 func templateJSON(object map[string]any) apiextensionsv1.JSON {
@@ -381,7 +381,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 					Lifecycle:            promoterv1alpha1.KubernetesResourceLifecycle{Mode: promoterv1alpha1.KubernetesResourceLifecycleInPlace},
 					// "external" is never set by the template, so another field manager can set it without
 					// the controller's Server-Side Apply overwriting it.
-					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `(Resource.data?.external ?? '') == 'ok' ? {phase: 'success', url: 'https://example.com/' + Branch} : false`},
+					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `Resource.?data.?external.orValue('') == 'ok' ? {'phase': 'success', 'url': 'https://example.com/' + Branch} : {'phase': 'pending'}`},
 				},
 			}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
@@ -485,7 +485,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("reports Ready=False with the API server's error when an expression produces the wrong type", func() {
+		It("reports Ready=False with a compile error when an expression produces the wrong type for a typed kind", func() {
 			template := jobTemplate()
 			var object map[string]any
 			Expect(json.Unmarshal(template.Raw, &object)).To(Succeed())
@@ -509,8 +509,8 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(ready).NotTo(BeNil())
 				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(ready.Message).To(ContainSubstring("failed to create Job"))
 				g.Expect(ready.Message).To(ContainSubstring("spec.parallelism"))
+				g.Expect(ready.Message).To(ContainSubstring("returns string but the field expects int"), "the Job schema was resolved through discovery, so the mismatch is caught before anything is created")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -543,7 +543,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  k8sResourceFailureGateKey,
 					Template:             jobTemplate(),
-					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `{phase: 'done'}`},
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `{'phase': 'done'}`},
 				},
 			}
 			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
