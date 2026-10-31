@@ -77,11 +77,34 @@ kubectl delete crd jobs.batch.templates.promoter.argoproj.io
 
 ### Schema of the wrapped kinds
 
-For CRD-backed kinds the schema is copied from the source CRD. For built-in kinds it is read from the API server's
-`/openapi/v3` document and converted into a structural CRD schema: `status` is removed, defaults and descriptions are
-dropped, `IntOrString` and `Quantity` become `x-kubernetes-int-or-string`, and recursive types collapse to
-`x-kubernetes-preserve-unknown-fields`. If the API server still rejects the converted schema, the controller falls back
-to a permissive schema (`spec` accepts anything) and logs the reason, so the kind remains usable without validation.
+For CRD-backed kinds the schema is copied from the source CRD. For built-in kinds the controller resolves the kind's
+`/openapi/v3` schema with Kubernetes' own resolver (the one ValidatingAdmissionPolicy type-checking uses), which inlines
+references and collapses recursion, then converts it into a structural CRD schema: `status` is removed, defaults and
+descriptions are dropped, `IntOrString` and `Quantity` become `x-kubernetes-int-or-string`, and property-less objects
+keep `x-kubernetes-preserve-unknown-fields`. The generated CRD is checked with the API server's own CRD validation
+in-process before it is applied; if that check or the server rejects it, the controller falls back to a permissive
+schema (`spec` accepts anything) and logs the reason, so the kind remains usable without schema validation.
+
+### Template validation by dry-run
+
+A copied schema cannot express a kind's native validation (for example `Job.spec.backoffLimit` must be non-negative),
+defaulting, CEL rules, or admission webhooks. Whenever a template's `resourceVersion` changes, the controller renders it
+for one environment and submits a **dry-run create** of the real kind with strict field validation. The outcome is
+recorded in `status.templateValidation`:
+
+```yaml
+status:
+  templateValidation:
+    observedResourceVersion: "4821"
+    valid: false
+    message: 'Job.batch "smoke-environment-development-0123456-dryrun" is invalid: spec.backoffLimit: Invalid value: -1: must be greater than or equal to 0'
+    lastValidationTime: "2026-10-31T01:00:00Z"
+```
+
+An invalid template sets `Ready=False` on the gate (message prefixed with `template <Kind> "<name>" is invalid`) and
+keeps the previous `status.environments[]` reports until the template is fixed. The dry-run uses the same `create`
+permission as the real resource. Admission webhooks on the real kind must declare `sideEffects: None` or
+`NoneOnDryRun`, otherwise the API server rejects dry-run requests and the gate reports that error.
 
 ### RBAC
 
@@ -292,6 +315,10 @@ status:
   conditions:
     - type: Ready
       status: "True"
+  templateValidation:
+    observedResourceVersion: "4820"
+    valid: true
+    lastValidationTime: "2026-10-31T00:59:00Z"
   environments:
     - branch: environment/development
       phase: success

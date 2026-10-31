@@ -120,6 +120,10 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		return ctrl.Result{}, err
 	}
 
+	if err := r.validateTemplate(ctx, &krcs, &ps, template, sourceGVK); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	commitStatuses, transitioned, err := r.processEnvironments(ctx, &krcs, &ps, template, sourceGVK)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -166,6 +170,101 @@ func (r *KubernetesResourceCommitStatusReconciler) getTemplate(ctx context.Conte
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("failed to get template %s %q: %w", templateGVK.Kind, krcs.Spec.TemplateRef.Name, err)
 	}
 	return template, sourceGVK, nil
+}
+
+// templateValidationMessageMaxLength bounds the API server error stored in status.templateValidation.message.
+const templateValidationMessageMaxLength = 2048
+
+// validateTemplate dry-runs a create of the rendered template against the real kind with strict field
+// validation once per template resourceVersion and records the outcome in status.templateValidation.
+//
+// Create and Apply already surface errors when a resource is created, but a template edited after the current
+// SHA's resource exists (or after a terminal phase) would otherwise go unnoticed until the next SHA. The
+// dry-run exercises the kind's native validation, defaulting, and admission, which the copied CRD schema
+// cannot. Validation is skipped until some environment has a reported SHA to render for.
+func (r *KubernetesResourceCommitStatusReconciler) validateTemplate(
+	ctx context.Context,
+	krcs *promoterv1alpha1.KubernetesResourceCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	template *unstructured.Unstructured,
+	sourceGVK schema.GroupVersionKind,
+) error {
+	templateRef := krcs.Spec.TemplateRef
+	resourceVersion := template.GetResourceVersion()
+	if prev := krcs.Status.TemplateValidation; prev != nil && prev.ObservedResourceVersion == resourceVersion {
+		if prev.Valid {
+			return nil
+		}
+		return fmt.Errorf("template %s %q is invalid: %s", templateRef.Kind, templateRef.Name, prev.Message)
+	}
+
+	in, ok := r.firstRenderableEnvironment(krcs, ps, template, sourceGVK)
+	if !ok {
+		return nil
+	}
+	name := utils.KubeSafeUniqueNameWithMaxLength(in.resourceName()+"-dryrun", resourcetemplate.ResourceNameMaxLength)
+	data := resourcetemplate.TemplateData{
+		Branch:                         in.branch,
+		Sha:                            in.sha,
+		ShortSha:                       resourcetemplate.ShortSha(in.sha),
+		ReportOn:                       krcs.Spec.ReportOn,
+		Environment:                    in.envStatus,
+		PromotionStrategy:              ps,
+		KubernetesResourceCommitStatus: in.snapshot,
+		Template:                       template.Object,
+	}
+
+	now := metav1.Now()
+	record := func(valid bool, message string) {
+		krcs.Status.TemplateValidation = &promoterv1alpha1.KubernetesResourceTemplateValidation{
+			ObservedResourceVersion: resourceVersion,
+			Valid:                   valid,
+			Message:                 utils.TruncateString(message, templateValidationMessageMaxLength),
+			LastValidationTime:      &now,
+		}
+	}
+
+	rendered, err := r.buildObject(in, name, data)
+	if err != nil {
+		record(false, err.Error())
+		return fmt.Errorf("template %s %q is invalid: %w", templateRef.Kind, templateRef.Name, err)
+	}
+	err = r.Create(ctx, rendered, client.DryRunAll, client.FieldValidation(metav1.FieldValidationStrict))
+	if err != nil && !k8serrors.IsAlreadyExists(err) {
+		record(false, err.Error())
+		return fmt.Errorf("template %s %q is invalid: %w", templateRef.Kind, templateRef.Name, err)
+	}
+	record(true, "")
+	log.FromContext(ctx).Info("template validated with a server-side dry-run", "template", templateRef.Name, "resourceVersion", resourceVersion, "branch", in.branch)
+	return nil
+}
+
+// firstRenderableEnvironment returns the input for the first applicable environment with a reported SHA.
+func (r *KubernetesResourceCommitStatusReconciler) firstRenderableEnvironment(
+	krcs *promoterv1alpha1.KubernetesResourceCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	template *unstructured.Unstructured,
+	sourceGVK schema.GroupVersionKind,
+) (environmentInput, bool) {
+	statusByBranch := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
+	for i := range ps.Status.Environments {
+		statusByBranch[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
+	}
+	for _, env := range utils.GetApplicableEnvironments(ps, krcs.Spec.Key, krcs.Spec.ReportOn) {
+		envStatus := statusByBranch[env.Branch]
+		if envStatus == nil {
+			continue
+		}
+		sha := reportedSha(envStatus, krcs.Spec.ReportOn)
+		if sha == "" {
+			continue
+		}
+		return environmentInput{
+			gate: krcs, snapshot: krcs.DeepCopy(), ps: ps, template: template, sourceGVK: sourceGVK,
+			branch: env.Branch, envStatus: envStatus, sha: sha,
+		}, true
+	}
+	return environmentInput{}, false
 }
 
 // processEnvironments reconciles every applicable environment and rebuilds krcs.Status.Environments. When an

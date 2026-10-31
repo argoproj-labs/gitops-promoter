@@ -20,20 +20,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/kube-openapi/pkg/validation/spec"
 )
 
 const (
-	// componentsSchemasRefPrefix is the $ref prefix used by the kube-apiserver /openapi/v3 documents.
-	componentsSchemasRefPrefix = "#/components/schemas/"
-	// maxInlineDepth bounds $ref inlining. Deeper subtrees collapse to a permissive object.
-	maxInlineDepth = 48
-	// gvkExtension is the OpenAPI extension that names the group/version/kind(s) a schema component describes.
-	gvkExtension = "x-kubernetes-group-version-kind"
-
 	// JSON schema keywords and values used throughout the normalizer.
 	keyType                = "type"
 	keyProperties          = "properties"
@@ -70,23 +62,13 @@ var crdFormatSafelist = map[string]bool{"date-time": true, "date": true, "byte":
 // droppedKeywords are removed from every node: descriptive keywords that only add size, and extensions
 // that CRD schemas do not support (they would be lost in the JSONSchemaProps round-trip anyway).
 var droppedKeywords = []string{
-	"description", "title", "example", gvkExtension,
+	"description", "title", "example", "x-kubernetes-group-version-kind",
 	"x-kubernetes-patch-strategy", "x-kubernetes-patch-merge-key", "x-kubernetes-unions",
 	"$schema", "id", "$id",
 }
 
 // junctorKeywords cannot be expressed structurally without per-type analysis.
 var junctorKeywords = []string{keyOneOf, keyAnyOf, keyNot, keyAllOf, keyType, keyProperties, keyItems, keyAdditionalProps, keyRequired}
-
-// openAPIDocument is the subset of a kube-apiserver /openapi/v3 group-version document this package reads.
-type openAPIDocument struct {
-	Components openAPIComponents `json:"components"`
-}
-
-// openAPIComponents holds the reusable schema components of an OpenAPI v3 document.
-type openAPIComponents struct {
-	Schemas map[string]any `json:"schemas"`
-}
 
 // PermissiveSchema returns the fallback schema used when the source schema cannot be converted into a
 // structural schema: apiVersion/kind/metadata plus an unvalidated spec.
@@ -103,159 +85,65 @@ func PermissiveSchema() *apiextensionsv1.JSONSchemaProps {
 	}
 }
 
-// StructuralSchemaFromOpenAPIV3 extracts the schema component for gvk from a kube-apiserver /openapi/v3
-// group-version document and converts it into a structural CRD schema suitable for a wrapped template kind.
+// StructuralSchemaFromOpenAPISchema converts the OpenAPI schema of a built-in kind, as returned by
+// k8s.io/apiserver/pkg/cel/openapi/resolver (refs inlined, allOf ref wrappers unwrapped, recursion
+// collapsed to {type: object}), into a structural CRD schema suitable for a wrapped template kind.
 //
 // Conversion rules (verified against apiextensions structural-schema validation):
-//   - $ref is inlined recursively (depth-limited, cycle-guarded) and single-element allOf wrappers are
-//     flattened into their parent, because type/default/description inside allOf are rejected
 //   - IntOrString (format int-or-string, oneOf integer|string) and Quantity (oneOf string|number) become
 //     x-kubernetes-int-or-string; any other oneOf/anyOf collapses to a preserve-unknown-fields object
 //   - defaults are dropped (they would fail CRD default validation, e.g. spec: {} against a required
 //     template, and would be materialized into stored templates), so list-type map becomes atomic
 //   - descriptions and non-safelisted formats are dropped to keep the CRD small
+//   - object nodes without properties (the resolver's recursion placeholder, RawExtension fields) get
+//     x-kubernetes-preserve-unknown-fields so pruning does not empty them
 //   - properties.status is removed and metadata collapses to {type: object}
-func StructuralSchemaFromOpenAPIV3(doc []byte, gvk schema.GroupVersionKind) (*apiextensionsv1.JSONSchemaProps, error) {
-	var root openAPIDocument
-	if err := json.Unmarshal(doc, &root); err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAPI v3 document: %w", err)
+func StructuralSchemaFromOpenAPISchema(resolved *spec.Schema) (*apiextensionsv1.JSONSchemaProps, error) {
+	if resolved == nil {
+		return nil, errors.New("resolved OpenAPI schema is nil")
 	}
-	if len(root.Components.Schemas) == 0 {
-		return nil, errors.New("OpenAPI v3 document has no components.schemas")
-	}
-
-	name, component := findComponentForGVK(root.Components.Schemas, gvk)
-	if component == nil {
-		return nil, fmt.Errorf("no schema component declares %s %s", gvkExtension, gvk)
-	}
-
-	n := &normalizer{components: root.Components.Schemas, dropDefaults: true}
-	inlined, err := n.inline(component, map[string]bool{name: true}, 0)
+	m, err := schemaToMap(resolved)
 	if err != nil {
 		return nil, err
 	}
-	rootMap, ok := inlined.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("schema component %s is not an object schema", name)
-	}
-	n.normalize(rootMap, true)
-	return toJSONSchemaProps(rootMap)
+	n := &normalizer{dropDefaults: true, preserveEmptyObjects: true}
+	n.normalize(m, true)
+	return toJSONSchemaProps(m)
 }
 
 // StructuralSchemaFromCRD adapts an existing CRD version schema for use as a wrapped template kind:
 // status is removed, metadata collapses to {type: object}, and descriptions are dropped. Defaults are kept
 // because they already passed CRD validation in the source CRD.
 func StructuralSchemaFromCRD(source *apiextensionsv1.JSONSchemaProps) (*apiextensionsv1.JSONSchemaProps, error) {
-	raw, err := json.Marshal(source)
+	m, err := schemaToMap(source)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal source CRD schema: %w", err)
-	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal source CRD schema: %w", err)
+		return nil, err
 	}
 	n := &normalizer{dropDefaults: false}
 	n.normalize(m, true)
 	return toJSONSchemaProps(m)
 }
 
-func findComponentForGVK(schemas map[string]any, gvk schema.GroupVersionKind) (string, map[string]any) {
-	for name, raw := range schemas {
-		m, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		gvks, ok := m[gvkExtension].([]any)
-		if !ok {
-			continue
-		}
-		for _, g := range gvks {
-			gm, ok := g.(map[string]any)
-			if !ok {
-				continue
-			}
-			if asString(gm["group"]) == gvk.Group && asString(gm["version"]) == gvk.Version && asString(gm["kind"]) == gvk.Kind {
-				return name, m
-			}
-		}
+// schemaToMap round-trips a typed schema (spec.Schema or JSONSchemaProps) into a generic JSON map. Both
+// types marshal x-kubernetes-* extensions as top-level keys, so the normalizer sees one shape.
+func schemaToMap(source any) (map[string]any, error) {
+	raw, err := json.Marshal(source)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal source schema: %w", err)
 	}
-	return "", nil
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal source schema: %w", err)
+	}
+	return m, nil
 }
 
 type normalizer struct {
-	components   map[string]any
 	dropDefaults bool
-}
-
-// inline returns a deep copy of v with every $ref replaced by the referenced component. visiting holds the
-// component names on the current path so recursive types collapse to a permissive object instead of looping.
-func (n *normalizer) inline(v any, visiting map[string]bool, depth int) (any, error) {
-	switch t := v.(type) {
-	case map[string]any:
-		if ref, ok := t["$ref"].(string); ok {
-			return n.inlineRef(t, ref, visiting, depth)
-		}
-		out := make(map[string]any, len(t))
-		for k, child := range t {
-			r, err := n.inline(child, visiting, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			out[k] = r
-		}
-		return out, nil
-	case []any:
-		out := make([]any, len(t))
-		for i, child := range t {
-			r, err := n.inline(child, visiting, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = r
-		}
-		return out, nil
-	default:
-		return v, nil
-	}
-}
-
-// inlineRef resolves one $ref node. Sibling keys of the $ref (OpenAPI 3.1 allows description/default next
-// to $ref) are kept when the target does not define them.
-func (n *normalizer) inlineRef(node map[string]any, ref string, visiting map[string]bool, depth int) (any, error) {
-	name := strings.TrimPrefix(ref, componentsSchemasRefPrefix)
-	if name == ref {
-		return nil, fmt.Errorf("unsupported $ref %q", ref)
-	}
-	target, ok := n.components[name].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unresolved $ref %q", ref)
-	}
-	if visiting[name] || depth >= maxInlineDepth {
-		return permissiveNode(), nil
-	}
-	visiting[name] = true
-	out, err := n.inline(target, visiting, depth+1)
-	delete(visiting, name)
-	if err != nil {
-		return nil, err
-	}
-	outMap, ok := out.(map[string]any)
-	if !ok {
-		return out, nil
-	}
-	for k, sibling := range node {
-		if k == "$ref" {
-			continue
-		}
-		if _, exists := outMap[k]; !exists {
-			outMap[k] = sibling
-		}
-	}
-	return outMap, nil
-}
-
-func permissiveNode() map[string]any {
-	return map[string]any{keyType: typeObject, keyPreserveUnknown: true}
+	// preserveEmptyObjects marks object nodes without properties/additionalProperties as
+	// x-kubernetes-preserve-unknown-fields. Used for OpenAPI input, where such nodes stand for recursion
+	// placeholders or RawExtension-like fields; CRD input is copied as is.
+	preserveEmptyObjects bool
 }
 
 // normalize rewrites a schema node (and its children) in place into structural form. root marks the
@@ -265,7 +153,7 @@ func (n *normalizer) normalize(node map[string]any, root bool) {
 	n.scrub(node)
 	n.convertUnions(node)
 	n.normalizeChildren(node, root)
-	ensureTyped(node)
+	n.ensureTyped(node)
 }
 
 // scrub removes keywords that are not wanted or not allowed in a structural schema.
@@ -342,12 +230,22 @@ func (n *normalizer) normalizeChildren(node map[string]any, root bool) {
 	}
 }
 
-// ensureTyped gives untyped leaves a permissive marker so the schema stays structural.
-func ensureTyped(node map[string]any) {
-	_, hasType := node[keyType]
+// ensureTyped gives untyped leaves a permissive marker so the schema stays structural, and (for OpenAPI
+// input) lets property-less objects keep their contents.
+func (n *normalizer) ensureTyped(node map[string]any) {
+	t, hasType := node[keyType].(string)
 	_, intOrString := node[keyIntOrString]
 	_, preserve := node[keyPreserveUnknown]
 	if !hasType && !intOrString && !preserve {
+		node[keyPreserveUnknown] = true
+		return
+	}
+	if !n.preserveEmptyObjects || t != typeObject || preserve {
+		return
+	}
+	_, hasProps := node[keyProperties]
+	_, hasAdditional := node[keyAdditionalProps]
+	if !hasProps && !hasAdditional {
 		node[keyPreserveUnknown] = true
 	}
 }
@@ -358,8 +256,8 @@ func setTypeIfMissing(node map[string]any, t string) {
 	}
 }
 
-// flattenAllOf merges a single-element allOf (the kube-apiserver's wrapper for struct-typed fields) into node.
-// Keys present on node win over the wrapped schema, except description, which is dropped anyway.
+// flattenAllOf merges a single-element allOf into node. The resolver already unwraps the kube-apiserver's
+// allOf ref wrappers; this covers any remaining single-element allOf. Keys present on node win.
 func (n *normalizer) flattenAllOf(node map[string]any) {
 	for {
 		allOf, ok := node[keyAllOf].([]any)
@@ -433,11 +331,6 @@ func removeFromStringList(raw any, remove string) any {
 		out = append(out, v)
 	}
 	return out
-}
-
-func asString(v any) string {
-	s, _ := v.(string)
-	return s
 }
 
 func toJSONSchemaProps(m map[string]any) (*apiextensionsv1.JSONSchemaProps, error) {

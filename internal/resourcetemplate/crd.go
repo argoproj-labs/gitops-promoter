@@ -23,10 +23,14 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsvalidation "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/validation"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,9 +49,12 @@ const managedByLabelValue = "gitops-promoter"
 type CRDGenerator struct {
 	// Client reads and writes CustomResourceDefinitions. It must not be a cache-backed client.
 	Client client.Client
-	// Discovery resolves resource names and serves the /openapi/v3 documents for built-in kinds.
+	// Discovery resolves resource names (plural, singular, scope) for the configured kinds.
 	Discovery discovery.DiscoveryInterfaceWithContext
-	Log       logr.Logger
+	// Resolver returns the OpenAPI schema of a built-in kind with refs inlined. The default is
+	// k8s.io/apiserver's ClientDiscoveryResolver, which reads /openapi/v3.
+	Resolver resolver.SchemaResolver
+	Log      logr.Logger
 }
 
 // NewCRDGenerator builds a CRDGenerator with uncached clients for cfg.
@@ -60,7 +67,12 @@ func NewCRDGenerator(cfg *rest.Config, log logr.Logger) (*CRDGenerator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create discovery client for template CRD generation: %w", err)
 	}
-	return &CRDGenerator{Client: c, Discovery: discovery.ToDiscoveryInterfaceWithContext(dc), Log: log}, nil
+	return &CRDGenerator{
+		Client:    c,
+		Discovery: discovery.ToDiscoveryInterfaceWithContext(dc),
+		Resolver:  &resolver.ClientDiscoveryResolver{Discovery: dc},
+		Log:       log,
+	}, nil
 }
 
 // sourceKind is a resolved configured kind.
@@ -131,6 +143,12 @@ func (g *CRDGenerator) ensureOne(ctx context.Context, group, kind string, versio
 	}
 
 	crd := buildCRD(group, names, crdVersions)
+	// Run the API server's own static CRD validation in-process first so a non-structural conversion is
+	// caught without a round-trip and the fallback is chosen deterministically.
+	if errs := validateCRD(ctx, crd); len(errs) > 0 {
+		g.Log.Error(errs.ToAggregate(), "converted template schema is not a valid CRD; using a permissive schema", "crd", crd.Name)
+		usePermissiveSchema(crd)
+	}
 	err := g.apply(ctx, crd)
 	if err == nil {
 		return nil
@@ -138,11 +156,29 @@ func (g *CRDGenerator) ensureOne(ctx context.Context, group, kind string, versio
 	if !isSchemaRejection(err) {
 		return err
 	}
+	// Last resort: the server disagreed with the in-process validator (version skew, feature gates).
 	g.Log.Error(err, "API server rejected the converted template schema; retrying with a permissive schema", "crd", crd.Name)
+	usePermissiveSchema(crd)
+	return g.apply(ctx, crd)
+}
+
+// validateCRD runs apiextensions' static CustomResourceDefinition validation (structural schema, defaults,
+// list-map keys, CEL cost) on a v1 CRD after applying v1 defaults, exactly as the API server would on create.
+func validateCRD(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) field.ErrorList {
+	defaulted := crd.DeepCopy()
+	apiextensionsv1.SetObjectDefaults_CustomResourceDefinition(defaulted)
+	internal := &apiextensions.CustomResourceDefinition{}
+	if err := apiextensionsv1.Convert_v1_CustomResourceDefinition_To_apiextensions_CustomResourceDefinition(defaulted, internal, nil); err != nil {
+		return field.ErrorList{field.InternalError(field.NewPath("spec"), err)}
+	}
+	return apiextensionsvalidation.ValidateCustomResourceDefinition(ctx, internal)
+}
+
+// usePermissiveSchema replaces every version's schema with PermissiveSchema.
+func usePermissiveSchema(crd *apiextensionsv1.CustomResourceDefinition) {
 	for i := range crd.Spec.Versions {
 		crd.Spec.Versions[i].Schema = &apiextensionsv1.CustomResourceValidation{OpenAPIV3Schema: PermissiveSchema()}
 	}
-	return g.apply(ctx, crd)
 }
 
 // isSchemaRejection reports whether err is an API server validation failure (as opposed to RBAC or transport
@@ -291,22 +327,12 @@ func (g *CRDGenerator) schemaFor(ctx context.Context, src sourceKind) (*apiexten
 	return g.schemaFromOpenAPI(ctx, src.gvk)
 }
 
-func (g *CRDGenerator) schemaFromOpenAPI(ctx context.Context, gvk schema.GroupVersionKind) (*apiextensionsv1.JSONSchemaProps, error) {
-	paths, err := g.Discovery.OpenAPIV3WithContext(ctx).PathsWithContext(ctx)
+// schemaFromOpenAPI resolves the built-in kind's OpenAPI schema (refs inlined by the resolver) and converts
+// it into a structural CRD schema.
+func (g *CRDGenerator) schemaFromOpenAPI(_ context.Context, gvk schema.GroupVersionKind) (*apiextensionsv1.JSONSchemaProps, error) {
+	resolved, err := g.Resolver.ResolveSchema(gvk)
 	if err != nil {
-		return nil, fmt.Errorf("list OpenAPI v3 paths: %w", err)
+		return nil, fmt.Errorf("resolve OpenAPI schema for %s: %w", gvk, err)
 	}
-	path := "apis/" + gvk.Group + "/" + gvk.Version
-	if gvk.Group == "" {
-		path = "api/" + gvk.Version
-	}
-	gv, ok := paths[path]
-	if !ok {
-		return nil, fmt.Errorf("OpenAPI v3 document %s not found", path)
-	}
-	doc, err := gv.SchemaWithContext(ctx, "application/json")
-	if err != nil {
-		return nil, fmt.Errorf("fetch OpenAPI v3 document %s: %w", path, err)
-	}
-	return StructuralSchemaFromOpenAPIV3(doc, gvk)
+	return StructuralSchemaFromOpenAPISchema(resolved)
 }

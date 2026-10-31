@@ -33,6 +33,9 @@ type KubernetesResourceCommitStatusStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Environments holds the observed state of each applicable environment.
 	Environments []KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	// TemplateValidation records the last server-side dry-run of the rendered template. See
+	// KubernetesResourceTemplateValidation. Absent until an environment has a reported SHA to render for.
+	TemplateValidation *KubernetesResourceTemplateValidationApplyConfiguration `json:"templateValidation,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -65,6 +68,14 @@ func (b *KubernetesResourceCommitStatusStatusApplyConfiguration) WithEnvironment
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithTemplateValidation sets the TemplateValidation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TemplateValidation field is set to the value of the last call.
+func (b *KubernetesResourceCommitStatusStatusApplyConfiguration) WithTemplateValidation(value *KubernetesResourceTemplateValidationApplyConfiguration) *KubernetesResourceCommitStatusStatusApplyConfiguration {
+	b.TemplateValidation = value
 	return b
 }
 

@@ -3,18 +3,49 @@ package resourcetemplate
 import (
 	_ "embed"
 	"encoding/json"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextschema "k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apiserver/pkg/cel/openapi/resolver"
+	"k8s.io/kube-openapi/pkg/validation/spec"
 )
 
 //go:embed testdata/batch_v1_openapi.json
 var batchV1OpenAPI []byte
+
+const (
+	componentsPrefix = "#/components/schemas/"
+	jobComponent     = "io.k8s.api.batch.v1.Job"
+)
+
+// fixtureComponents parses the embedded /openapi/v3 document the way the kube-apiserver serves it.
+func fixtureComponents() map[string]*spec.Schema {
+	GinkgoHelper()
+	var doc struct {
+		Components struct {
+			Schemas map[string]*spec.Schema `json:"schemas"`
+		} `json:"components"`
+	}
+	Expect(json.Unmarshal(batchV1OpenAPI, &doc)).To(Succeed())
+	return doc.Components.Schemas
+}
+
+// resolveFixture mirrors resolver.ClientDiscoveryResolver.ResolveSchema on the embedded document.
+func resolveFixture(component string) *spec.Schema {
+	GinkgoHelper()
+	schemas := fixtureComponents()
+	resolved, err := resolver.PopulateRefs(func(ref string) (*spec.Schema, bool) {
+		s, ok := schemas[strings.TrimPrefix(ref, componentsPrefix)]
+		return s, ok
+	}, component)
+	Expect(err).NotTo(HaveOccurred())
+	return resolved
+}
 
 // expectStructural asserts the converted schema satisfies the apiextensions structural-schema invariants,
 // which is what the API server enforces on CRD create.
@@ -27,11 +58,9 @@ func expectStructural(props *apiextensionsv1.JSONSchemaProps) {
 	Expect(apiextschema.ValidateStructural(field.NewPath("openAPIV3Schema"), structural)).To(BeEmpty())
 }
 
-var _ = Describe("StructuralSchemaFromOpenAPIV3", func() {
-	jobGVK := schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"}
-
-	It("converts the kube-apiserver document into a structural schema", func() {
-		props, err := StructuralSchemaFromOpenAPIV3(batchV1OpenAPI, jobGVK)
+var _ = Describe("StructuralSchemaFromOpenAPISchema", func() {
+	It("converts the resolver output into a structural schema", func() {
+		props, err := StructuralSchemaFromOpenAPISchema(resolveFixture(jobComponent))
 		Expect(err).NotTo(HaveOccurred())
 		expectStructural(props)
 
@@ -42,7 +71,7 @@ var _ = Describe("StructuralSchemaFromOpenAPIV3", func() {
 		Expect(props.Description).To(BeEmpty())
 
 		spec := props.Properties["spec"]
-		By("flattening allOf wrappers and dropping defaults")
+		By("keeping the inlined struct fields without allOf wrappers or defaults")
 		Expect(spec.AllOf).To(BeEmpty())
 		Expect(spec.Default).To(BeNil())
 		Expect(spec.Type).To(Equal("object"))
@@ -81,13 +110,14 @@ var _ = Describe("StructuralSchemaFromOpenAPIV3", func() {
 		Expect(resources.AdditionalProperties.Schema.XIntOrString).To(BeTrue())
 		Expect(resources.AdditionalProperties.Schema.OneOf).To(BeEmpty())
 
-		By("collapsing recursive references to a permissive object")
+		By("keeping the resolver's recursion placeholder permissive")
 		tree := spec.Properties["tree"]
 		Expect(tree.Type).To(Equal("object"))
 		Expect(tree.Properties).To(HaveKey("name"))
 		children := tree.Properties["children"]
 		Expect(children.Type).To(Equal("array"))
 		Expect(children.Items.Schema.Type).To(Equal("object"))
+		Expect(children.Items.Schema.Properties).To(BeEmpty())
 		Expect(children.Items.Schema.XPreserveUnknownFields).NotTo(BeNil())
 		Expect(*children.Items.Schema.XPreserveUnknownFields).To(BeTrue())
 
@@ -100,16 +130,28 @@ var _ = Describe("StructuralSchemaFromOpenAPIV3", func() {
 		Expect(string(raw)).NotTo(ContainSubstring("$ref"))
 	})
 
-	It("fails when the document does not declare the kind", func() {
-		_, err := StructuralSchemaFromOpenAPIV3(batchV1OpenAPI, schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "CronJob"})
-		Expect(err).To(MatchError(ContainSubstring("no schema component declares")))
+	It("marks property-less objects as preserve-unknown-fields", func() {
+		props, err := StructuralSchemaFromOpenAPISchema(&spec.Schema{SchemaProps: spec.SchemaProps{
+			Type: []string{"object"},
+			Properties: map[string]spec.Schema{
+				"spec": {SchemaProps: spec.SchemaProps{
+					Type: []string{"object"},
+					Properties: map[string]spec.Schema{
+						"raw": {SchemaProps: spec.SchemaProps{Type: []string{"object"}}},
+					},
+				}},
+			},
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		expectStructural(props)
+		raw := props.Properties["spec"].Properties["raw"]
+		Expect(raw.Type).To(Equal("object"))
+		Expect(raw.XPreserveUnknownFields).NotTo(BeNil())
 	})
 
-	It("fails on malformed documents", func() {
-		_, err := StructuralSchemaFromOpenAPIV3([]byte("{"), jobGVK)
-		Expect(err).To(MatchError(ContainSubstring("failed to parse")))
-		_, err = StructuralSchemaFromOpenAPIV3([]byte(`{"components":{"schemas":{}}}`), jobGVK)
-		Expect(err).To(MatchError(ContainSubstring("no components.schemas")))
+	It("rejects a nil schema", func() {
+		_, err := StructuralSchemaFromOpenAPISchema(nil)
+		Expect(err).To(MatchError(ContainSubstring("nil")))
 	})
 })
 
@@ -127,6 +169,7 @@ var _ = Describe("StructuralSchemaFromCRD", func() {
 					Properties: map[string]apiextensionsv1.JSONSchemaProps{
 						"replicas": {Type: "integer", Description: "count", Default: &apiextensionsv1.JSON{Raw: []byte("1")}},
 						"size":     {XIntOrString: true, AnyOf: []apiextensionsv1.JSONSchemaProps{{Type: "integer"}, {Type: "string"}}},
+						"opaque":   {Type: "object"},
 					},
 				},
 				"status": {Type: "object", XPreserveUnknownFields: new(true)},
@@ -143,6 +186,7 @@ var _ = Describe("StructuralSchemaFromCRD", func() {
 		Expect(replicas.Default).NotTo(BeNil())
 		Expect(string(replicas.Default.Raw)).To(Equal("1"))
 		Expect(props.Properties["spec"].Properties["size"].XIntOrString).To(BeTrue())
+		Expect(props.Properties["spec"].Properties["opaque"].XPreserveUnknownFields).To(BeNil(), "CRD schemas are copied as is")
 	})
 })
 

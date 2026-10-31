@@ -39,6 +39,7 @@ const (
 	k8sResourceHistoryGateKey   = "smoke-history"
 	k8sResourceConfigMapGateKey = "smoke-config"
 	k8sResourceFailureGateKey   = "smoke-failure"
+	k8sResourceValidateGateKey  = "smoke-validate"
 )
 
 // jobPhaseExpression keys off status.succeeded / status.failed, which the JobManagedBy status validation
@@ -119,6 +120,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "k8s-resource-commit-status-test", "default")
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: k8sResourceGateKey}, {Key: k8sResourceHistoryGateKey}, {Key: k8sResourceConfigMapGateKey}, {Key: k8sResourceFailureGateKey},
+			{Key: k8sResourceValidateGateKey},
 		}
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
@@ -517,6 +519,100 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: "default"}, &cm)).To(Succeed())
 				g.Expect(cm.Data).To(HaveKeyWithValue("extra", "v2"))
 				g.Expect(cm.Data).To(HaveKeyWithValue("external", "ok"), "fields owned by other managers survive the re-apply")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Template validation by dry-run", Ordered, func() {
+		var (
+			gateName string
+			template *unstructured.Unstructured
+			gate     *promoterv1alpha1.KubernetesResourceCommitStatus
+		)
+
+		BeforeAll(func() {
+			gateName = name + "-validate"
+			template = newJobTemplate(gateName + "-template")
+			Expect(k8sClient.Create(ctx, template)).To(Succeed())
+			gate = &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: gateName, Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceValidateGateKey,
+					TemplateRef:          promoterv1alpha1.KubernetesResourceTemplateReference{APIVersion: jobTemplateAPIVersion, Kind: "Job", Name: template.GetName()},
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: jobPhaseExpression},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, gate)
+			_ = k8sClient.Delete(ctx, template)
+		})
+
+		It("validates the template once per resourceVersion and reports native validation errors", func() {
+			var validatedAt metav1.Time
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Status.TemplateValidation).NotTo(BeNil())
+				g.Expect(krcs.Status.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(krcs.Status.TemplateValidation.ObservedResourceVersion).To(Equal(template.GetResourceVersion()))
+				g.Expect(krcs.Status.TemplateValidation.LastValidationTime).NotTo(BeNil())
+				validatedAt = *krcs.Status.TemplateValidation.LastValidationTime
+				g.Expect(krcs.Status.Environments).To(HaveLen(3))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Forcing a reconcile and confirming the dry-run is not repeated for the same template")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.UrlTemplate = "https://example.com/{{ .Branch }}"
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Status.TemplateValidation.LastValidationTime.Time).To(BeTemporally("==", validatedAt.Time))
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Breaking the template in a way the schema allows but native Job validation rejects")
+			var invalidRV string
+			Eventually(func(g Gomega) {
+				var tpl unstructured.Unstructured
+				tpl.SetGroupVersionKind(schema.GroupVersionKind{Group: "batch.templates.promoter.argoproj.io", Version: "v1", Kind: "Job"})
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: template.GetName(), Namespace: "default"}, &tpl)).To(Succeed())
+				g.Expect(unstructured.SetNestedField(tpl.Object, int64(-1), "spec", "backoffLimit")).To(Succeed())
+				g.Expect(k8sClient.Update(ctx, &tpl)).To(Succeed(), "the wrapped CRD has no minimum on backoffLimit")
+				invalidRV = tpl.GetResourceVersion()
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Status.TemplateValidation).NotTo(BeNil())
+				g.Expect(krcs.Status.TemplateValidation.Valid).To(BeFalse())
+				g.Expect(krcs.Status.TemplateValidation.ObservedResourceVersion).To(Equal(invalidRV))
+				g.Expect(krcs.Status.TemplateValidation.Message).To(ContainSubstring("backoffLimit"))
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("is invalid"))
+				g.Expect(krcs.Status.Environments).To(HaveLen(3), "previous environment reports are kept")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Fixing the template restores Ready=True")
+			Eventually(func(g Gomega) {
+				var tpl unstructured.Unstructured
+				tpl.SetGroupVersionKind(schema.GroupVersionKind{Group: "batch.templates.promoter.argoproj.io", Version: "v1", Kind: "Job"})
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: template.GetName(), Namespace: "default"}, &tpl)).To(Succeed())
+				g.Expect(unstructured.SetNestedField(tpl.Object, int64(0), "spec", "backoffLimit")).To(Succeed())
+				g.Expect(k8sClient.Update(ctx, &tpl)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Status.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(krcs.Status.TemplateValidation.ObservedResourceVersion).NotTo(Equal(invalidRV))
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

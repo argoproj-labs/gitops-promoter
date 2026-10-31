@@ -228,6 +228,31 @@ type KubernetesResourceCommitStatusEnvironmentStatus struct {
 	LastEvaluationTime *metav1.Time `json:"lastEvaluationTime,omitempty"`
 }
 
+// KubernetesResourceTemplateValidation records the last server-side dry-run of the rendered template.
+//
+// The wrapped template CRD only validates the schema. Whenever the template's resourceVersion changes, the
+// controller renders it for one environment and submits a dry-run create of the real kind with strict field
+// validation, which runs the kind's native validation, defaulting, and admission (webhooks must declare
+// sideEffects None or NoneOnDryRun). An invalid template sets Ready=False on the gate until it is fixed.
+type KubernetesResourceTemplateValidation struct {
+	// ObservedResourceVersion is the template's metadata.resourceVersion that was validated.
+	// +required
+	ObservedResourceVersion string `json:"observedResourceVersion"`
+
+	// Valid is true when the dry-run create of the rendered template succeeded.
+	// +required
+	Valid bool `json:"valid"`
+
+	// Message is the API server's error when Valid is false.
+	// +optional
+	// +kubebuilder:validation:MaxLength=2048
+	Message string `json:"message,omitempty"`
+
+	// LastValidationTime is when the dry-run was performed.
+	// +optional
+	LastValidationTime *metav1.Time `json:"lastValidationTime,omitempty"`
+}
+
 // KubernetesResourceCommitStatusStatus defines the observed state of KubernetesResourceCommitStatus.
 type KubernetesResourceCommitStatusStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -243,6 +268,11 @@ type KubernetesResourceCommitStatusStatus struct {
 	// +listType=map
 	// +listMapKey=branch
 	Environments []KubernetesResourceCommitStatusEnvironmentStatus `json:"environments,omitempty"`
+
+	// TemplateValidation records the last server-side dry-run of the rendered template. See
+	// KubernetesResourceTemplateValidation. Absent until an environment has a reported SHA to render for.
+	// +optional
+	TemplateValidation *KubernetesResourceTemplateValidation `json:"templateValidation,omitempty"`
 
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map

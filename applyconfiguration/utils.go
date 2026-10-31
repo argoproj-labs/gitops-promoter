@@ -203,6 +203,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.KubernetesResourceReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceTemplateReference"):
 		return &apiv1alpha1.KubernetesResourceTemplateReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("KubernetesResourceTemplateValidation"):
+		return &apiv1alpha1.KubernetesResourceTemplateValidationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsConfiguration"):
 		return &apiv1alpha1.MetricsConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MetricsLabelsConfiguration"):

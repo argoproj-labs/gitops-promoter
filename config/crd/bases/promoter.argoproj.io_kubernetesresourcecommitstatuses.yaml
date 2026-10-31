@@ -373,6 +373,31 @@ spec:
                   status writes: compare status.observedGeneration with metadata.generation.
                 format: int64
                 type: integer
+              templateValidation:
+                description: |-
+                  TemplateValidation records the last server-side dry-run of the rendered template. See
+                  KubernetesResourceTemplateValidation. Absent until an environment has a reported SHA to render for.
+                properties:
+                  lastValidationTime:
+                    description: LastValidationTime is when the dry-run was performed.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Message is the API server's error when Valid is false.
+                    maxLength: 2048
+                    type: string
+                  observedResourceVersion:
+                    description: ObservedResourceVersion is the template's metadata.resourceVersion
+                      that was validated.
+                    type: string
+                  valid:
+                    description: Valid is true when the dry-run create of the rendered
+                      template succeeded.
+                    type: boolean
+                required:
+                - observedResourceVersion
+                - valid
+                type: object
             type: object
         required:
         - spec
