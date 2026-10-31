@@ -802,12 +802,15 @@ func waitForRESTMapping(ctx context.Context, mapper meta.RESTMapper, gvk schema.
 		if meta.IsNoMatchError(lastErr) {
 			return false, nil
 		}
-		return false, lastErr
+		return false, fmt.Errorf("REST mapping for %s: %w", gvk, lastErr)
 	})
-	if err != nil && lastErr != nil {
-		return lastErr
+	if err == nil {
+		return nil
 	}
-	return err
+	if lastErr != nil {
+		return fmt.Errorf("REST mapping for %s not available after %s: %w", gvk, templateMappingWait, lastErr)
+	}
+	return fmt.Errorf("REST mapping for %s: %w", gvk, err)
 }
 
 // enqueueForTemplate returns reconcile requests for every gate in the template's namespace that references it.
