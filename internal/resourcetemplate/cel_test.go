@@ -3,6 +3,9 @@ package resourcetemplate
 import (
 	"time"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+
 	"github.com/google/cel-go/cel"
 
 	"github.com/google/cel-go/common/types"
@@ -271,9 +274,16 @@ var _ = Describe("Compiler open schemas", func() {
 			"int(Resource.spec.params[0].value)": "int",
 			"Resource.spec.params[0].extra":      "dyn",
 			"Resource.spec.params[0].name":       "string",
-			"Resource.spec.podTemplate":          "dyn",
-			"Resource.spec.podTemplate.anything": "dyn",
-			"Resource.spec.parallelism":          "int",
+			// An object that preserves unknown fields keeps its declared fields typed and opens the rest.
+			"Resource.spec.podTemplate":                          "batch/v1,Kind=Job.Resource.spec.podTemplate",
+			"Resource.spec.podTemplate.known":                    "int",
+			"Resource.spec.podTemplate.anything":                 "dyn",
+			"Resource.spec.podTemplate.anything.deeper":          "dyn",
+			"Resource.spec.parallelism":                          "int",
+			"cel.bind(p, Resource.spec.parallelism, p + p)":      "int",
+			"KubernetesResourceCommitStatus.spec.template.any":   "dyn",
+			"KubernetesResourceCommitStatus.spec.template.a.b":   "dyn",
+			"KubernetesResourceCommitStatus.spec.lifecycle.mode": "string",
 		} {
 			program, err := c.Compile(PhaseVariables, jobGVK, expr)
 			Expect(err).NotTo(HaveOccurred(), expr)
@@ -281,8 +291,21 @@ var _ = Describe("Compiler open schemas", func() {
 		}
 		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.spec.params[0].nope")
 		Expect(err).To(MatchError(ContainSubstring("undefined field 'nope'")))
+		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.spec.podTemplate.known.nope")
+		Expect(err).To(MatchError(ContainSubstring("does not support field selection")), "declared fields inside an open object stay typed")
+		_, err = c.Compile(PhaseVariables, jobGVK, "KubernetesResourceCommitStatus.spec.lifecycle.nope")
+		Expect(err).To(MatchError(ContainSubstring("undefined field 'nope'")))
 
+		// The template walk sees the same thing: declared fields are checked, undeclared ones are not.
 		ks, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		template := map[string]any{"apiVersion": "batch/v1", "kind": "Job", "spec": map[string]any{"podTemplate": map[string]any{"known": "${ Sha }", "other": "${ Sha }"}}}
+		_, errs := ValidateSpec(c, jobGVK, ks, template, &promoterv1alpha1.KubernetesResourceCommitStatusSpec{Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"}}, field.NewPath("spec"))
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Field).To(Equal("spec.template.spec.podTemplate.known"))
+		Expect(errs[0].Detail).To(ContainSubstring("returns string but the field expects int"))
+
+		ks, err = c.ResolveKindSchema(jobGVK)
 		Expect(err).NotTo(HaveOccurred())
 		value := FieldType(ElemType(FieldType(FieldType(ks.Decl, "spec"), "params")), "value")
 		Expect(CheckOutputType(cel.IntType, value)).To(Succeed(), "an int is fine for an untyped value")

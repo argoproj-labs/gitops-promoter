@@ -33,6 +33,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	"github.com/google/cel-go/ext"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -187,11 +188,14 @@ func promoterDeclTypes() (map[string]*apiservercel.DeclType, error) {
 		if td.root {
 			s = common.WithTypeAndObjectMeta(s)
 		}
+		markOpenSchemasDynamic(s)
 		t := common.SchemaDeclType(&openapi.Schema{Schema: s}, td.root)
 		if t == nil {
 			return nil, fmt.Errorf("OpenAPI definition for %s has no CEL declaration", name)
 		}
-		out[name] = t.MaybeAssignTypeName("promoter." + name)
+		t = t.MaybeAssignTypeName("promoter." + name)
+		markOpenObjects(t, s)
+		out[name] = t
 	}
 	return out, nil
 }
@@ -255,15 +259,16 @@ func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema
 		return nil, errors.New("the schema has no CEL declaration")
 	}
 	decl = decl.MaybeAssignTypeName(strings.ReplaceAll(gvk.String(), " ", "") + ".Resource")
+	markOpenObjects(decl, full)
 	return &KindSchema{Decl: decl, Schema: full, hash: hash}, nil
 }
 
-// markOpenSchemasDynamic makes every subschema that preserves unknown fields, or declares no type at all, a
-// dynamically typed value in CEL by tagging it x-kubernetes-int-or-string (the one shape SchemaDeclType maps to dyn).
-// The API server's own conversion exposes such objects as closed structs and drops untyped fields entirely, which is
-// right for validation rules over a CRD's own fields but wrong here: Tekton's params[].value and results[].value,
-// for example, are untyped unions, and Resource.status.results[0].value must compile. Declared properties inside an
-// open object lose their static types; the template walk treats the same schemas as accepting any key.
+// markOpenSchemasDynamic makes every subschema that declares no type at all (and no properties, items, or
+// composition) a dynamically typed value in CEL by tagging it x-kubernetes-int-or-string, the one shape
+// SchemaDeclType maps to dyn. The API server's own conversion drops such fields entirely, which is right for
+// validation rules over a CRD's own fields but wrong here: Tekton's params[].value and results[].value are untyped
+// unions, and Resource.status.results[0].value must compile. Objects that preserve unknown fields keep their declared
+// properties typed; see markOpenObjects for how their unknown fields become dyn.
 func markOpenSchemasDynamic(s *spec.Schema) {
 	if s == nil {
 		return
@@ -290,12 +295,67 @@ func markOpenSchemasDynamic(s *spec.Schema) {
 	if s.AdditionalProperties != nil {
 		markOpenSchemasDynamic(s.AdditionalProperties.Schema)
 	}
-	preserve, _ := s.Extensions.GetBool("x-kubernetes-preserve-unknown-fields")
 	untyped := len(s.Type) == 0 && len(s.Properties) == 0 && s.Items == nil && s.AdditionalProperties == nil &&
 		len(s.AllOf)+len(s.AnyOf)+len(s.OneOf) == 0
-	if preserve || untyped {
+	if untyped {
 		s.AddExtension("x-kubernetes-int-or-string", true)
 	}
+}
+
+// openObjectMetadata marks a DeclType whose schema preserves unknown fields.
+const openObjectMetadata = "x-kubernetes-preserve-unknown-fields"
+
+// markOpenObjects walks decl alongside the schema it was built from and records, in each object's Metadata, whether
+// the schema preserves unknown fields. SchemaDeclType exposes such objects as closed structs, so an undeclared field
+// is a compile error; openObjectProvider reads this mark to type undeclared fields as dyn while declared fields keep
+// their static types. Call it after MaybeAssignTypeName, which copies object types.
+//
+// This follows the approach of KRO's DeclTypeProvider (github.com/kubernetes-sigs/kro, pkg/cel/types.go and
+// pkg/cel/schemas.go, Apache-2.0), which carries the same mark through its copy of SchemaDeclType.
+func markOpenObjects(decl *apiservercel.DeclType, s *spec.Schema) {
+	if decl == nil || s == nil {
+		return
+	}
+	switch {
+	case decl.IsObject():
+		if preserve, _ := s.Extensions.GetBool(openObjectMetadata); preserve {
+			if decl.Metadata == nil {
+				decl.Metadata = map[string]string{}
+			}
+			decl.Metadata[openObjectMetadata] = "true"
+		}
+		for name, f := range decl.Fields {
+			if prop, ok := s.Properties[name]; ok {
+				markOpenObjects(f.Type, &prop)
+			}
+		}
+	case decl.IsMap():
+		if s.AdditionalProperties != nil {
+			markOpenObjects(decl.ElemType, s.AdditionalProperties.Schema)
+		}
+	case decl.IsList():
+		if s.Items != nil {
+			markOpenObjects(decl.ElemType, s.Items.Schema)
+		}
+	default:
+		// Scalars carry no fields.
+	}
+}
+
+// openObjectProvider wraps the API server's DeclTypeProvider so that an undeclared field of an object marked by
+// markOpenObjects resolves to dyn instead of failing to compile. Everything else is delegated.
+type openObjectProvider struct {
+	*apiservercel.DeclTypeProvider
+}
+
+func (p openObjectProvider) FindStructFieldType(typeName, fieldName string) (*types.FieldType, bool) {
+	if ft, ok := p.DeclTypeProvider.FindStructFieldType(typeName, fieldName); ok {
+		return ft, true
+	}
+	if st, ok := p.FindDeclType(typeName); ok && st.Metadata[openObjectMetadata] == "true" {
+		return &types.FieldType{Type: cel.DynType}, true
+	}
+	return nil, false
 }
 
 // ResourceType returns the CEL declaration of gvk from its OpenAPI schema, or nil when no resolver is configured
@@ -314,37 +374,49 @@ func (c *Compiler) env(key envKey, ks *KindSchema) (*cel.Env, error) {
 	if env, ok := c.envs[key]; ok {
 		return env, nil
 	}
-	var opts []cel.EnvOption
+	var variables []cel.EnvOption
 	var declTypes []*apiservercel.DeclType
 	for _, name := range templateStringVariables {
-		opts = append(opts, cel.Variable(name, cel.StringType))
+		variables = append(variables, cel.Variable(name, cel.StringType))
 	}
 	for name, t := range c.promoterTypes {
 		declTypes = append(declTypes, t)
-		opts = append(opts, cel.Variable(name, t.CelType()))
+		variables = append(variables, cel.Variable(name, t.CelType()))
 	}
 	if key.set >= PhaseVariables {
 		if ks != nil {
 			declTypes = append(declTypes, ks.Decl)
-			opts = append(opts, cel.Variable("Resource", ks.Decl.CelType()))
+			variables = append(variables, cel.Variable("Resource", ks.Decl.CelType()))
 		} else {
-			opts = append(opts, cel.Variable("Resource", cel.DynType))
+			variables = append(variables, cel.Variable("Resource", cel.DynType))
 		}
 	}
 	if key.set >= ReportVariables {
 		for _, name := range reportStringVariables {
-			opts = append(opts, cel.Variable(name, cel.StringType))
+			variables = append(variables, cel.Variable(name, cel.StringType))
 		}
 	}
+	// The Kubernetes base environment supplies the libraries and cost limits of CRD validation rules; cel.bind
+	// (ext.Bindings) is added because templates often reuse one lookup several times.
 	envSet, err := environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()).Extend(environment.VersionedOptions{
 		IntroducedVersion: version.MajorMinor(1, 0),
-		EnvOptions:        opts,
-		DeclTypes:         declTypes,
+		EnvOptions:        []cel.EnvOption{ext.Bindings()},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build CEL environment: %w", err)
 	}
-	env := envSet.NewExpressionsEnv()
+	base := envSet.NewExpressionsEnv()
+	// The type provider is registered by hand rather than through VersionedOptions.DeclTypes so that it can be
+	// wrapped by openObjectProvider.
+	provider, err := apiservercel.NewDeclTypeProvider(declTypes...).WithTypeProvider(base.CELTypeProvider())
+	if err != nil {
+		return nil, fmt.Errorf("failed to register object types: %w", err)
+	}
+	opts := append([]cel.EnvOption{cel.CustomTypeProvider(openObjectProvider{provider}), cel.CustomTypeAdapter(provider)}, variables...)
+	env, err := base.Extend(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build CEL environment: %w", err)
+	}
 	c.envs[key] = env
 	return env, nil
 }

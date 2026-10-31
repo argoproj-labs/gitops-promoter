@@ -39,6 +39,14 @@ spec:
               value: ${ PromotionStrategy.metadata.name }
 `
 
+// aggregate renders errs for an assertion description without panicking on an empty list.
+func aggregate(errs field.ErrorList) string {
+	if agg := errs.ToAggregate(); agg != nil {
+		return agg.Error()
+	}
+	return ""
+}
+
 var _ = Describe("ValidateSpec", func() {
 	var compiler *Compiler
 	var ks *KindSchema
@@ -88,7 +96,7 @@ var _ = Describe("ValidateSpec", func() {
 			s.Description = "Job ${ ResourceName } is ${ Phase } (${ Resource.?status.?succeeded.orValue(0) } succeeded)"
 			s.Url = "https://ci.example.com/${ Sha }"
 		})
-		Expect(errs).To(BeEmpty(), errs.ToAggregate())
+		Expect(errs).To(BeEmpty(), aggregate(errs))
 		Expect(warnings).To(BeEmpty())
 	})
 
@@ -161,7 +169,7 @@ spec:
 
 	It("warns about template fields the controller ignores", func() {
 		warnings, errs := validate(`{apiVersion: batch/v1, kind: Job, metadata: {name: x, namespace: y, finalizers: [f], labels: {ok: "1"}}, status: {succeeded: 1}}`, okPhase, nil)
-		Expect(errs).To(BeEmpty(), errs.ToAggregate())
+		Expect(errs).To(BeEmpty(), aggregate(errs))
 		Expect(warnings).To(ConsistOf(
 			ContainSubstring("spec.template.metadata.name is ignored"),
 			ContainSubstring("spec.template.metadata.namespace is ignored"),
@@ -182,7 +190,7 @@ spec:
 		_, errs = validate(validJobTemplate, "'success'", nil)
 		errorAt(errs, "spec.phase.expression", "must return a boolean or an object")
 		_, errs = validate(validJobTemplate, "{'phase': Resource.?status.?succeeded.orValue(0) > 0 ? 'success' : 'pending'}", nil)
-		Expect(errs).To(BeEmpty(), errs.ToAggregate())
+		Expect(errs).To(BeEmpty(), aggregate(errs))
 	})
 
 	It("checks description and url", func() {
@@ -224,7 +232,15 @@ spec:
 		errorAt(errs, "spec.template.metadata.labels[b]", "returns null, but this value must be text")
 		errorAt(errs, "spec.description", "but this value must be text")
 		errorAt(errs, "spec.url", "returns optional int, but this value must be text")
-		Expect(errs).To(HaveLen(4), errs.ToAggregate())
+		Expect(errs).To(HaveLen(4), aggregate(errs))
+	})
+
+	It("lets cel.bind name a lookup that description and url reuse", func() {
+		_, errs := validate(validJobTemplate, okPhase, func(s *promoterv1alpha1.KubernetesResourceCommitStatusSpec) {
+			s.Description = `${ cel.bind(c, Resource.?status.?conditions.orValue([]).filter(c, c.type == 'Failed'), c.size() > 0 ? c[0].status : 'ok') }`
+			s.Url = `https://ci.example.com/${ cel.bind(short, Sha.substring(0, 7), short + '/' + short) }`
+		})
+		Expect(errs).To(BeEmpty(), aggregate(errs))
 	})
 
 	It("checks only compilation when the kind's schema is unknown", func() {

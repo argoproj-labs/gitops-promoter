@@ -208,14 +208,22 @@ with the expression and the template path **before anything is created**:
 - text with embedded expressions in a non-string field, and a list, map, or null in a label, annotation,
   `description`, or `url`.
 
-Fields the schema does not describe (for example under `x-kubernetes-preserve-unknown-fields`, or untyped unions such
-as a Tekton param `value`) are dynamically typed: they are not checked in the template, and reading them from
-`Resource` compiles but is only type-checked at run time. When the kind's schema cannot be resolved at all, `Resource`
-is untyped and only the API server validates the rendered object.
+Fields the schema does not describe are dynamically typed: an object that preserves unknown fields keeps its declared
+fields typed and accepts anything else, and an untyped union such as a Tekton param `value` is `dyn`. Such fields are
+not checked in the template, and reading them from `Resource` compiles but is only type-checked at run time. When the
+kind's schema cannot be resolved at all, `Resource` is untyped and only the API server validates the rendered object.
 
 The library set is the Kubernetes one: `has()`, optionals (`.?`, `orValue()`, `optMap()`), list macros (`exists`,
-`all`, `map`, `filter`), `quantity()`, `semver()`, `url()`, `isURL()`, `format`, IP and CIDR helpers, and the string,
-math, sets, and encoders extensions.
+`all`, `map`, `filter`), two-variable comprehensions (`transformMap`, `transformList`), `quantity()`, `semver()`,
+`url()`, `isURL()`, `format`, IP and CIDR helpers, and the string, math, sets, and encoders extensions, plus
+`cel.bind(name, value, expression)` for naming a value an expression uses more than once:
+
+```yaml
+description: >-
+  ${ cel.bind(results, Resource.?status.?results.orValue([]),
+       cel.bind(vulns, (results.filter(r, r.name == 'vulnerabilities').map(r, string(r.value)) + ['0'])[0],
+         vulns == '0' ? 'No vulnerabilities' : vulns + ' vulnerabilities found')) }
+```
 
 ### Validation at admission time
 
