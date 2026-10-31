@@ -426,8 +426,14 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 
 	switch {
 	case in.mode() == promoterv1alpha1.KubernetesResourceLifecycleInPlace:
-		// Always re-apply so template changes and SHA changes propagate.
-		desired, err := r.buildObject(in, name, templateData)
+		// Always re-apply so template changes and SHA changes propagate. Keep the original created-at
+		// annotation so the apply is a no-op when nothing else changed (a new timestamp on every reconcile
+		// would make the resource change, fire the owner watch, and loop).
+		createdAt := time.Now()
+		if exists {
+			createdAt = resourcetemplate.ResourceCreationTime(live)
+		}
+		desired, err := r.buildObjectAt(in, name, templateData, createdAt)
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
 		}
@@ -484,6 +490,11 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 }
 
 func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData) (*unstructured.Unstructured, error) {
+	return r.buildObjectAt(in, name, data, time.Now())
+}
+
+// buildObjectAt renders the real resource with the given creation time stamped in the created-at annotation.
+func (r *KubernetesResourceCommitStatusReconciler) buildObjectAt(in environmentInput, name string, data resourcetemplate.TemplateData, createdAt time.Time) (*unstructured.Unstructured, error) {
 	gvk := promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.KubernetesResourceCommitStatus]().Name())
 	obj, err := resourcetemplate.BuildObject(resourcetemplate.BuildParams{
 		Template:    in.template,
@@ -491,7 +502,7 @@ func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInp
 		Name:        name,
 		Namespace:   in.gate.Namespace,
 		Labels:      resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
-		Annotations: resourcetemplate.ResourceAnnotations(time.Now()),
+		Annotations: resourcetemplate.ResourceAnnotations(createdAt),
 		Owner: metav1.OwnerReference{
 			APIVersion:         gvk.GroupVersion().String(),
 			Kind:               gvk.Kind,
@@ -699,7 +710,7 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 // every configured real kind (enqueuing the owning gate) and every wrapped template kind (enqueuing gates that
 // reference the template). Configured kinds that are not served by the API server are skipped with an error log.
 func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	logger := log.FromContext(ctx).WithName("kubernetesresourcecommitstatus-setup")
+	logger := mgr.GetLogger().WithName("kubernetesresourcecommitstatus-setup")
 	r.exprCache = exprcache.New(exprcache.DefaultMaxEntries)
 	if r.dryRunClient == nil {
 		dryRunClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
@@ -764,6 +775,7 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		template := &unstructured.Unstructured{}
 		template.SetGroupVersionKind(templateGVK)
 		b = b.Watches(template, handler.EnqueueRequestsFromMapFunc(r.enqueueForTemplate))
+		logger.Info("watching resource kind and its wrapped template kind", "gvk", gvk.String(), "templateGVK", templateGVK.String())
 	}
 
 	if err := b.WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
@@ -790,5 +802,7 @@ func (r *KubernetesResourceCommitStatusReconciler) enqueueForTemplate(ctx contex
 		}
 		requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
+	log.FromContext(ctx).V(1).Info("template changed; enqueuing referencing gates",
+		"template", client.ObjectKeyFromObject(obj).String(), "apiVersion", apiVersion, "kind", kind, "candidates", len(list.Items), "enqueued", len(requests))
 	return requests
 }
