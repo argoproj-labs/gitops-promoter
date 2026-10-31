@@ -20,6 +20,8 @@ metadata:
   labels:
     short-sha: ${ ShortSha }
     environment: ${ Branch.replace('/', '-') }
+  annotations:
+    team: ${ NamespaceMetadata.?labels[?'team'].orValue('none') }
 spec:
   parallelism: ${ 1 + 1 }
   backoffLimit: 0

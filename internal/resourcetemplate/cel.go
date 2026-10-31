@@ -197,7 +197,18 @@ func promoterDeclTypes() (map[string]*apiservercel.DeclType, error) {
 		markOpenObjects(t, s)
 		out[name] = t
 	}
+	out["NamespaceMetadata"] = namespaceMetadataDeclType()
 	return out, nil
+}
+
+// namespaceMetadataDeclType declares NamespaceMetadata: an object with labels and annotations string maps. It
+// has no OpenAPI definition of its own, so it is built by hand.
+func namespaceMetadataDeclType() *apiservercel.DeclType {
+	stringMap := apiservercel.NewMapType(apiservercel.StringType, apiservercel.StringType, 1024)
+	return apiservercel.NewObjectType("promoter.NamespaceMetadata", map[string]*apiservercel.DeclField{
+		labelsKey:      apiservercel.NewDeclField(labelsKey, stringMap, false, nil, nil),
+		annotationsKey: apiservercel.NewDeclField(annotationsKey, stringMap, false, nil, nil),
+	})
 }
 
 // ResolveKindSchema returns the schema of gvk, from cache when it was resolved within KindSchemaTTL. Errors from

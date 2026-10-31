@@ -1344,6 +1344,15 @@ spec:
                   KubernetesResourceCommitStatus contains the configuration for the KubernetesResourceCommitStatus controller,
                   including WorkQueue settings and the list of resource kinds the gate may instantiate.
                 properties:
+                  namespaceMetadata:
+                    default: Enabled
+                    description: |-
+                      NamespaceMetadata enables or disables reading the Namespace for the NamespaceMetadata expression variable
+                      (the labels and annotations of the gate's namespace). When Disabled, NamespaceMetadata is empty.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   resources:
                     description: |-
                       Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.

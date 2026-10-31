@@ -104,7 +104,7 @@ func checkMetadata(in *Interpolator, value any, path *field.Path) (warnings []st
 	}
 	for key, raw := range meta {
 		switch key {
-		case "labels", "annotations":
+		case labelsKey, annotationsKey:
 			entries, ok := raw.(map[string]any)
 			if !ok {
 				errs = append(errs, field.Invalid(path.Child(key), raw, "must be an object of strings"))

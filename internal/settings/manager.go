@@ -302,6 +302,15 @@ func (m *Manager) GetWebRequestCommitStatusNamespaceMetadata(ctx context.Context
 	return cc.Spec.WebRequestCommitStatus.NamespaceMetadata, nil
 }
 
+// GetKubernetesResourceCommitStatusNamespaceMetadata returns spec.kubernetesResourceCommitStatus.namespaceMetadata.
+func (m *Manager) GetKubernetesResourceCommitStatusNamespaceMetadata(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
+	cc, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.KubernetesResourceCommitStatus.NamespaceMetadata, nil
+}
+
 // GetKubernetesResourceCommitStatusResourcesDirect returns spec.kubernetesResourceCommitStatus.resources using a
 // non-cached read, so it is safe to call before the manager cache starts. The list is a startup setting: the
 // controller builds informers for these kinds in SetupWithManager.

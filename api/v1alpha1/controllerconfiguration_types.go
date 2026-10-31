@@ -360,6 +360,12 @@ type KubernetesResourceCommitStatusConfiguration struct {
 	// +listMapKey=kind
 	// +kubebuilder:validation:MaxItems=50
 	Resources []ResourceGroupVersionKind `json:"resources,omitempty"`
+
+	// NamespaceMetadata enables or disables reading the Namespace for the NamespaceMetadata expression variable
+	// (the labels and annotations of the gate's namespace). When Disabled, NamespaceMetadata is empty.
+	// +optional
+	// +kubebuilder:default=Enabled
+	NamespaceMetadata FeatureMode `json:"namespaceMetadata,omitempty"`
 }
 
 // ResourceGroupVersionKind identifies an API kind installed in the cluster.

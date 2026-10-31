@@ -4617,6 +4617,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 							},
 						},
 					},
+					"namespaceMetadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "NamespaceMetadata enables or disables reading the Namespace for the NamespaceMetadata expression variable (the labels and annotations of the gate's namespace). When Disabled, NamespaceMetadata is empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"workQueue"},
 			},
@@ -4788,7 +4795,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 					},
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is the Kubernetes object the controller creates for every applicable environment. It must carry apiVersion and kind (a namespaced kind listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources); metadata.name, metadata.namespace, and status are ignored because the controller sets them. metadata.labels and metadata.annotations are kept and merged under the controller's own labels.\n\nAny string value may contain CEL expressions (https://kubernetes.io/docs/reference/using-api/cel/) wrapped in ${ }:\n  - A value that is exactly one expression, such as \"${ Sha }\" or \"${ Environment.proposed.hydrated.sha }\", is\n    replaced by the expression's result with its type preserved, so integers, booleans, lists, and objects\n    can be computed. A null result or an absent optional (optional.none()) removes the field.\n  - A string with embedded expressions, such as \"smoke-${ ShortSha }\", concatenates the results as text.\n  - \"$${\" produces a literal \"${\".\nAvailable variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile). Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is created: at admission time when the validating webhook is installed, otherwise in status on the first reconcile. Everything else is copied verbatim.",
+							Description: "Template is the Kubernetes object the controller creates for every applicable environment. It must carry apiVersion and kind (a namespaced kind listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources); metadata.name, metadata.namespace, and status are ignored because the controller sets them. metadata.labels and metadata.annotations are kept and merged under the controller's own labels.\n\nAny string value may contain CEL expressions (https://kubernetes.io/docs/reference/using-api/cel/) wrapped in ${ }:\n  - A value that is exactly one expression, such as \"${ Sha }\" or \"${ Environment.proposed.hydrated.sha }\", is\n    replaced by the expression's result with its type preserved, so integers, booleans, lists, and objects\n    can be computed. A null result or an absent optional (optional.none()) removes the field.\n  - A string with embedded expressions, such as \"smoke-${ ShortSha }\", concatenates the results as text.\n  - \"$${\" produces a literal \"${\".\nAvailable variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, KubernetesResourceCommitStatus (this gate, as of the previous reconcile), and NamespaceMetadata (labels and annotations of the gate's namespace). Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is created: at admission time when the validating webhook is installed, otherwise in status on the first reconcile. Everything else is copied verbatim.",
 							Ref:         ref(apiextensionsv1.JSON{}.OpenAPIModelName()),
 						},
 					},

@@ -1302,6 +1302,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceCommitStatusConfiguration
   map:
     fields:
+    - name: namespaceMetadata
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
+      default: Enabled
     - name: resources
       type:
         list:

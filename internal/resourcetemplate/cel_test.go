@@ -284,6 +284,8 @@ var _ = Describe("Compiler open schemas", func() {
 			"KubernetesResourceCommitStatus.spec.template.any":   "dyn",
 			"KubernetesResourceCommitStatus.spec.template.a.b":   "dyn",
 			"KubernetesResourceCommitStatus.spec.lifecycle.mode": "string",
+			"NamespaceMetadata.labels['team']":                   "string",
+			"NamespaceMetadata.?annotations[?'owner']":           "optional_type",
 		} {
 			program, err := c.Compile(PhaseVariables, jobGVK, expr)
 			Expect(err).NotTo(HaveOccurred(), expr)
@@ -294,6 +296,8 @@ var _ = Describe("Compiler open schemas", func() {
 		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.spec.podTemplate.known.nope")
 		Expect(err).To(MatchError(ContainSubstring("does not support field selection")), "declared fields inside an open object stay typed")
 		_, err = c.Compile(PhaseVariables, jobGVK, "KubernetesResourceCommitStatus.spec.lifecycle.nope")
+		Expect(err).To(MatchError(ContainSubstring("undefined field 'nope'")))
+		_, err = c.Compile(TemplateVariables, jobGVK, "NamespaceMetadata.nope")
 		Expect(err).To(MatchError(ContainSubstring("undefined field 'nope'")))
 
 		// The template walk sees the same thing: declared fields are checked, undeclared ones are not.

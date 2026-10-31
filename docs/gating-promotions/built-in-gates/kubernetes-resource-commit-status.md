@@ -59,6 +59,9 @@ spec:
 the informers are rebuilt on restart (single-replica installs restart automatically; HA installs need a rolling
 restart, the same as [`instanceID`](../../multi-install.md)).
 
+`spec.kubernetesResourceCommitStatus.namespaceMetadata` (`Enabled` by default) controls whether the controller reads
+the gate's namespace to fill the `NamespaceMetadata` expression variable; set it to `Disabled` to skip the read.
+
 ### RBAC
 
 RBAC for the configured kinds cannot be generated ahead of time; grant the controller ServiceAccount
@@ -192,6 +195,7 @@ field conditionally use optionals: `${ cond ? optional.of(value) : optional.none
 | `Environment` | The `PromotionStrategy.status.environments[]` entry for the branch |
 | `PromotionStrategy` | The full PromotionStrategy |
 | `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
+| `NamespaceMetadata` | `labels` and `annotations` of the gate's namespace, for example `NamespaceMetadata.labels['team']`; both maps are empty when `namespaceMetadata` is `Disabled` in the ControllerConfiguration |
 
 ### Type checking
 
@@ -265,6 +269,13 @@ deleted down to `historyLimit`. Use this for immutable or run-once kinds (Job, W
 A SHA that reached `success` or `failure` is **terminal**: if its resource disappears afterwards (for example a Job
 removed by `ttlSecondsAfterFinished`), the gate keeps the last report and does not recreate the resource. A new SHA
 always starts over with a fresh resource and `pending`.
+
+Each per-SHA resource carries the finalizer `kubernetesresourcecommitstatus.promoter.argoproj.io/resource-finalizer`
+until the gate has recorded its terminal phase, so a TTL shorter than a controller outage cannot remove the result
+before it was observed and make the gate re-run the work. The finalizer is released on the reconcile after the
+terminal phase is written, when a resource is deleted before it finished (the gate then recreates it), when the
+resource is pruned, and for every resource when the gate itself is deleted (the gate holds
+`kubernetesresourcecommitstatus.promoter.argoproj.io/finalizer` for that). `InPlace` resources carry no finalizer.
 
 **`InPlace`** keeps a single resource per environment and re-applies the rendered template with Server-Side Apply on
 every reconcile, so SHA changes and template changes propagate into the same object. Fields set by other managers are

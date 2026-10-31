@@ -61,7 +61,8 @@ type KubernetesResourceCommitStatusSpecApplyConfiguration struct {
 	// - A string with embedded expressions, such as "smoke-${ ShortSha }", concatenates the results as text.
 	// - "$${" produces a literal "${".
 	// Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the
-	// branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
+	// branch), PromotionStrategy, KubernetesResourceCommitStatus (this gate, as of the previous reconcile), and
+	// NamespaceMetadata (labels and annotations of the gate's namespace).
 	// Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and
 	// the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is
 	// created: at admission time when the validating webhook is installed, otherwise in status on the first

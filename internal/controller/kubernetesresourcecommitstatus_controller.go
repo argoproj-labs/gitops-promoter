@@ -23,6 +23,7 @@ import (
 	"slices"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -69,6 +71,7 @@ type KubernetesResourceCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
@@ -99,6 +102,10 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&krcs)
 
+	if deleting, err := r.handleFinalizer(ctx, &krcs); err != nil || deleting {
+		return ctrl.Result{}, err
+	}
+
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -116,7 +123,12 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		return ctrl.Result{}, err
 	}
 
-	commitStatuses, transitioned, err := r.processEnvironments(ctx, &krcs, &ps, template, sourceGVK)
+	namespaceMeta, err := r.getNamespaceMetadata(ctx, krcs.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	commitStatuses, transitioned, requeueSoon, err := r.processEnvironments(ctx, &krcs, &ps, template, sourceGVK, namespaceMeta)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -137,7 +149,99 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration: %w", err)
 	}
+	if requeueSoon {
+		// A resource reached a terminal phase this reconcile; its finalizer is released on the next pass, once the
+		// deferred status write has recorded that phase.
+		requeueDuration = min(requeueDuration, time.Second)
+	}
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// handleFinalizer keeps KubernetesResourceCommitStatusCleanupFinalizer on the gate while it exists, and on deletion
+// releases the resource finalizers the gate left on its per-SHA resources so garbage collection can remove them.
+// The bool is true when Reconcile should stop because the gate is being deleted.
+func (r *KubernetesResourceCommitStatusReconciler) handleFinalizer(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (bool, error) {
+	finalizer := promoterv1alpha1.KubernetesResourceCommitStatusCleanupFinalizer
+	if krcs.DeletionTimestamp.IsZero() {
+		if !controllerutil.AddFinalizer(krcs, finalizer) {
+			return false, nil
+		}
+		// A single attempt: on conflict the workqueue retries with a fresh Get.
+		if err := r.Update(ctx, krcs); err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		return false, nil
+	}
+	if !controllerutil.ContainsFinalizer(krcs, finalizer) {
+		return true, nil
+	}
+	if err := r.releaseResourceFinalizers(ctx, krcs); err != nil {
+		return true, err
+	}
+	if controllerutil.RemoveFinalizer(krcs, finalizer) {
+		if err := r.Update(ctx, krcs); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+	}
+	return true, nil
+}
+
+// releaseResourceFinalizers releases the resource finalizer from every resource the gate controls, across all
+// configured kinds (the template may have changed kind over the gate's life).
+func (r *KubernetesResourceCommitStatusReconciler) releaseResourceFinalizers(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) error {
+	for gvk := range r.configured {
+		list := &unstructured.UnstructuredList{}
+		list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
+		if err := r.List(ctx, list, client.InNamespace(krcs.Namespace), client.MatchingLabels{
+			utils.CommitStatusGateLabelKeyForParent(krcs): utils.KubeSafeLabel(krcs.Name),
+		}); err != nil {
+			return fmt.Errorf("failed to list %s resources to release finalizers: %w", gvk.Kind, err)
+		}
+		for i := range list.Items {
+			if !metav1.IsControlledBy(&list.Items[i], krcs) {
+				continue
+			}
+			if err := r.releaseResourceFinalizer(ctx, &list.Items[i]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// releaseResourceFinalizer removes KubernetesResourceCommitStatusResourceFinalizer from obj if present.
+func (r *KubernetesResourceCommitStatusReconciler) releaseResourceFinalizer(ctx context.Context, obj *unstructured.Unstructured) error {
+	if !controllerutil.ContainsFinalizer(obj, promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer) {
+		return nil
+	}
+	patch := client.MergeFrom(obj.DeepCopy())
+	controllerutil.RemoveFinalizer(obj, promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer)
+	if err := r.Patch(ctx, obj, patch); err != nil && !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("failed to release the finalizer of %s %q: %w", obj.GetKind(), obj.GetName(), err)
+	}
+	log.FromContext(ctx).V(4).Info("released resource finalizer", "kind", obj.GetKind(), "resource", obj.GetName())
+	return nil
+}
+
+// getNamespaceMetadata returns the NamespaceMetadata variable for the gate's namespace, or empty maps when the
+// feature is disabled in ControllerConfiguration.
+func (r *KubernetesResourceCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (map[string]any, error) {
+	mode, err := r.SettingsMgr.GetKubernetesResourceCommitStatusNamespaceMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get namespace metadata setting: %w", err)
+	}
+	if mode == promoterv1alpha1.FeatureModeDisabled {
+		return resourcetemplate.NamespaceMetadataObject(nil, nil), nil
+	}
+	var ns corev1.Namespace
+	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, &ns); err != nil {
+		return nil, fmt.Errorf("failed to get namespace %q: %w", namespace, err)
+	}
+	return resourcetemplate.NamespaceMetadataObject(ns.Labels, ns.Annotations), nil
+}
+
+func isTerminalPhase(phase promoterv1alpha1.CommitStatusPhase) bool {
+	return phase == promoterv1alpha1.CommitPhaseSuccess || phase == promoterv1alpha1.CommitPhaseFailure
 }
 
 // parseTemplate decodes spec.template and checks that its kind is one the controller was configured to create.
@@ -160,14 +264,15 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 	ps *promoterv1alpha1.PromotionStrategy,
 	template map[string]any,
 	sourceGVK schema.GroupVersionKind,
-) ([]*promoterv1alpha1.CommitStatus, []string, error) {
+	namespaceMeta map[string]any,
+) (commitStatuses []*promoterv1alpha1.CommitStatus, transitioned []string, requeueSoon bool, err error) {
 	snapshot, err := resourcetemplate.ToActivationObject(krcs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert KubernetesResourceCommitStatus for expressions: %w", err)
+		return nil, nil, false, fmt.Errorf("failed to convert KubernetesResourceCommitStatus for expressions: %w", err)
 	}
 	psObject, err := resourcetemplate.ToActivationObject(ps)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert PromotionStrategy for expressions: %w", err)
+		return nil, nil, false, fmt.Errorf("failed to convert PromotionStrategy for expressions: %w", err)
 	}
 	previous := make(map[string]promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, len(krcs.Status.Environments))
 	for _, e := range krcs.Status.Environments {
@@ -180,8 +285,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 
 	applicable := utils.GetApplicableEnvironments(ps, krcs.Spec.Key, krcs.Spec.ReportOn)
 	newStatus := make([]promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, 0, len(applicable))
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicable))
-	var transitioned []string
+	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicable))
 
 	for i, env := range applicable {
 		envStatus := statusByBranch[env.Branch]
@@ -202,10 +306,11 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 		if hasPrev {
 			prevPtr = &prev
 		}
-		entry, cs, err := r.reconcileEnvironment(ctx, environmentInput{
-			gate: krcs, snapshot: snapshot, ps: ps, psObject: psObject, template: template, sourceGVK: sourceGVK,
+		entry, cs, envRequeueSoon, err := r.reconcileEnvironment(ctx, environmentInput{
+			gate: krcs, snapshot: snapshot, ps: ps, psObject: psObject, namespaceMeta: namespaceMeta, template: template, sourceGVK: sourceGVK,
 			branch: env.Branch, envStatus: envStatus, sha: sha, previous: prevPtr,
 		})
+		requeueSoon = requeueSoon || envRequeueSoon
 		if err != nil {
 			// Preserve the previous reports of the environments we did not reach.
 			for _, rest := range applicable[i:] {
@@ -214,7 +319,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 				}
 			}
 			krcs.Status.Environments = newStatus
-			return nil, nil, fmt.Errorf("environment %s: %w", env.Branch, err)
+			return nil, nil, false, fmt.Errorf("environment %s: %w", env.Branch, err)
 		}
 		newStatus = append(newStatus, entry)
 		commitStatuses = append(commitStatuses, cs)
@@ -225,7 +330,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 		}
 	}
 	krcs.Status.Environments = newStatus
-	return commitStatuses, transitioned, nil
+	return commitStatuses, transitioned, requeueSoon, nil
 }
 
 func reportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn string) string {
@@ -241,14 +346,15 @@ type environmentInput struct {
 	ps   *promoterv1alpha1.PromotionStrategy
 	// snapshot and psObject are the gate (as of the previous reconcile) and the PromotionStrategy in the map
 	// form expressions read.
-	snapshot  map[string]any
-	psObject  map[string]any
-	template  map[string]any
-	envStatus *promoterv1alpha1.EnvironmentStatus
-	previous  *promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus
-	sourceGVK schema.GroupVersionKind
-	branch    string
-	sha       string
+	snapshot      map[string]any
+	psObject      map[string]any
+	namespaceMeta map[string]any
+	template      map[string]any
+	envStatus     *promoterv1alpha1.EnvironmentStatus
+	previous      *promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus
+	sourceGVK     schema.GroupVersionKind
+	branch        string
+	sha           string
 }
 
 func (in environmentInput) mode() promoterv1alpha1.KubernetesResourceLifecycleMode {
@@ -275,7 +381,9 @@ func (in environmentInput) isTerminalForSha() bool {
 
 // reconcileEnvironment ensures the real resource exists for the environment (or re-applies it in InPlace mode),
 // evaluates the phase expression against the live object, and upserts the child CommitStatus.
-func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx context.Context, in environmentInput) (promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, *promoterv1alpha1.CommitStatus, error) {
+// The bool asks Reconcile to requeue soon: a phase became terminal in this pass and the resource finalizer is
+// released on the next one, after the status write.
+func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx context.Context, in environmentInput) (promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, *promoterv1alpha1.CommitStatus, bool, error) {
 	logger := log.FromContext(ctx).WithValues("branch", in.branch, "sha", in.sha)
 	name := in.resourceName()
 	live := &unstructured.Unstructured{}
@@ -283,7 +391,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	err := r.Get(ctx, client.ObjectKey{Namespace: in.gate.Namespace, Name: name}, live)
 	exists := err == nil
 	if err != nil && !k8serrors.IsNotFound(err) {
-		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to get %s %q: %w", in.sourceGVK.Kind, name, err)
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to get %s %q: %w", in.sourceGVK.Kind, name, err)
 	}
 
 	// Terminal-phase rule: once a SHA reached success or failure, a resource that disappeared afterwards
@@ -293,14 +401,14 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		entry := *in.previous.DeepCopy()
 		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
 		if err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 		}
-		return entry, cs, nil
+		return entry, cs, false, nil
 	}
 
 	envObject, err := resourcetemplate.ToActivationObject(in.envStatus)
 	if err != nil {
-		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to convert environment status for expressions: %w", err)
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to convert environment status for expressions: %w", err)
 	}
 	templateData := resourcetemplate.TemplateData{
 		Branch:                         in.branch,
@@ -310,6 +418,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		Environment:                    envObject,
 		PromotionStrategy:              in.psObject,
 		KubernetesResourceCommitStatus: in.snapshot,
+		NamespaceMetadata:              in.namespaceMeta,
 	}
 
 	switch {
@@ -322,12 +431,12 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		}
 		desired, err := r.buildObject(in, name, templateData, createdAt)
 		if err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 		}
 		// Server-Side Apply of the rendered template. The unstructured object was built from the template, not
 		// from a typed API object, so zero values are explicit and ApplyConfigurationFromUnstructured is safe.
 		if err := r.Apply(ctx, client.ApplyConfigurationFromUnstructured(desired), client.FieldOwner(constants.KubernetesResourceCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to apply %s %q: %w", in.sourceGVK.Kind, name, err)
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to apply %s %q: %w", in.sourceGVK.Kind, name, err)
 		}
 		if !exists {
 			r.Recorder.Eventf(in.gate, nil, "Normal", constants.KubernetesResourceCreatedReason, "CreatingResource",
@@ -337,10 +446,13 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	case !exists:
 		desired, err := r.buildObject(in, name, templateData, time.Now())
 		if err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 		}
+		// The finalizer keeps the resource around until the gate has recorded its terminal phase, so a
+		// ttlSecondsAfterFinished shorter than a controller outage cannot make the gate re-run the work.
+		desired.SetFinalizers([]string{promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer})
 		if err := r.Create(ctx, desired); err != nil && !k8serrors.IsAlreadyExists(err) {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to create %s %q: %w", in.sourceGVK.Kind, name, err)
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to create %s %q: %w", in.sourceGVK.Kind, name, err)
 		}
 		logger.Info("created resource from template", "kind", in.sourceGVK.Kind, "resource", name)
 		r.Recorder.Eventf(in.gate, nil, "Normal", constants.KubernetesResourceCreatedReason, "CreatingResource",
@@ -352,16 +464,33 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 
 	result, err := r.evaluatePhase(in, live, templateData)
 	if err != nil {
-		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+	}
+
+	requeueSoon := false
+	// Release the resource finalizer once the terminal phase is persisted in the gate's status (the previous
+	// report, written by the last reconcile), or right away when the resource is being deleted before it
+	// finished: there is nothing to protect then, and the gate recreates it. A phase that became terminal in
+	// this reconcile is persisted by the deferred status write, so the release waits for the next pass.
+	if in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && exists && controllerutil.ContainsFinalizer(live, promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer) {
+		switch {
+		case in.isTerminalForSha(), !live.GetDeletionTimestamp().IsZero() && !isTerminalPhase(result.Phase):
+			if err := r.releaseResourceFinalizer(ctx, live); err != nil {
+				return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+			}
+		case isTerminalPhase(result.Phase):
+			requeueSoon = true
+		default:
+		}
 	}
 
 	report, err := r.buildReport(in, name, live, result, templateData)
 	if err != nil {
-		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
 	cs, err := r.upsertCommitStatus(ctx, in, report)
 	if err != nil {
-		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
 	now := metav1.Now()
 	return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{
@@ -373,7 +502,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 			Name:       name,
 		},
 		LastEvaluationTime: &now,
-	}, cs, nil
+	}, cs, requeueSoon, nil
 }
 
 func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData, createdAt time.Time) (*unstructured.Unstructured, error) {
@@ -575,6 +704,9 @@ func (r *KubernetesResourceCommitStatusReconciler) pruneResources(ctx context.Co
 }
 
 func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus, obj *unstructured.Unstructured, reason string) error {
+	if err := r.releaseResourceFinalizer(ctx, obj); err != nil {
+		return err
+	}
 	if err := r.Delete(ctx, obj, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete %s %q: %w", obj.GetKind(), obj.GetName(), err)
 	}

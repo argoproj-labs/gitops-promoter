@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // KubernetesResourceCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the KubernetesResourceCommitStatusConfiguration type for use
 // with apply.
 //
@@ -34,6 +38,9 @@ type KubernetesResourceCommitStatusConfigurationApplyConfiguration struct {
 	// Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
 	// process down when it detects a change, like spec.instanceID.
 	Resources []ResourceGroupVersionKindApplyConfiguration `json:"resources,omitempty"`
+	// NamespaceMetadata enables or disables reading the Namespace for the NamespaceMetadata expression variable
+	// (the labels and annotations of the gate's namespace). When Disabled, NamespaceMetadata is empty.
+	NamespaceMetadata *apiv1alpha1.FeatureMode `json:"namespaceMetadata,omitempty"`
 }
 
 // KubernetesResourceCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the KubernetesResourceCommitStatusConfiguration type for use with
@@ -60,5 +67,13 @@ func (b *KubernetesResourceCommitStatusConfigurationApplyConfiguration) WithReso
 		}
 		b.Resources = append(b.Resources, *values[i])
 	}
+	return b
+}
+
+// WithNamespaceMetadata sets the NamespaceMetadata field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the NamespaceMetadata field is set to the value of the last call.
+func (b *KubernetesResourceCommitStatusConfigurationApplyConfiguration) WithNamespaceMetadata(value apiv1alpha1.FeatureMode) *KubernetesResourceCommitStatusConfigurationApplyConfiguration {
+	b.NamespaceMetadata = &value
 	return b
 }

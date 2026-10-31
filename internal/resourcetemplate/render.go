@@ -52,6 +52,8 @@ type TemplateData struct {
 	PromotionStrategy map[string]any
 	// KubernetesResourceCommitStatus is the gate (snapshot from the previous reconcile).
 	KubernetesResourceCommitStatus map[string]any
+	// NamespaceMetadata holds the labels and annotations of the gate's namespace (see NamespaceMetadataObject).
+	NamespaceMetadata map[string]any
 
 	// The remaining fields are set only for spec.description / spec.url rendering.
 
@@ -77,7 +79,25 @@ func (d TemplateData) Env() map[string]any {
 		"Environment":                    d.Environment,
 		"PromotionStrategy":              d.PromotionStrategy,
 		"KubernetesResourceCommitStatus": d.KubernetesResourceCommitStatus,
+		"NamespaceMetadata":              d.NamespaceMetadata,
 	}
+}
+
+const (
+	labelsKey      = "labels"
+	annotationsKey = "annotations"
+)
+
+// NamespaceMetadataObject returns the NamespaceMetadata variable for a namespace's labels and annotations. Both
+// maps are always present so NamespaceMetadata.labels['team'] fails with a missing key, not a missing field.
+func NamespaceMetadataObject(labels, annotations map[string]string) map[string]any {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	return map[string]any{labelsKey: labels, annotationsKey: annotations}
 }
 
 // PhaseEnv returns the activation for spec.phase.expression: Env plus Resource.
@@ -200,11 +220,11 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	obj.SetName(p.Name)
 	obj.SetNamespace(p.Namespace)
 
-	labels, err := renderStringMap(in, templateMeta, "labels")
+	labels, err := renderStringMap(in, templateMeta, labelsKey)
 	if err != nil {
 		return nil, err
 	}
-	annotations, err := renderStringMap(in, templateMeta, "annotations")
+	annotations, err := renderStringMap(in, templateMeta, annotationsKey)
 	if err != nil {
 		return nil, err
 	}

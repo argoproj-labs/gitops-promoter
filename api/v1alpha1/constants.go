@@ -59,6 +59,16 @@ const ChangeTransferPolicyPullRequestCleanupFinalizer = "changetransferpolicy.pr
 // GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
 const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"
 
+// KubernetesResourceCommitStatusResourceFinalizer is set on the per-SHA resources a KubernetesResourceCommitStatus
+// creates so the controller observes their terminal state before anything else (for example a Job's
+// ttlSecondsAfterFinished) removes them. It is released once the gate's status records that state.
+const KubernetesResourceCommitStatusResourceFinalizer = "kubernetesresourcecommitstatus.promoter.argoproj.io/resource-finalizer"
+
+// KubernetesResourceCommitStatusCleanupFinalizer is set on a KubernetesResourceCommitStatus while its resources may
+// carry KubernetesResourceCommitStatusResourceFinalizer. On gate deletion, the controller releases those finalizers
+// before the gate goes away, so garbage collection can remove the resources.
+const KubernetesResourceCommitStatusCleanupFinalizer = "kubernetesresourcecommitstatus.promoter.argoproj.io/finalizer"
+
 // ScmProviderFinalizer prevents deletion of ScmProvider while GitRepositories reference it
 const ScmProviderFinalizer = "scmprovider.promoter.argoproj.io/finalizer"
 
