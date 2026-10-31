@@ -3,32 +3,24 @@
 `KubernetesResourceCommitStatus` gates a promotion on a Kubernetes resource the controller creates for you: a
 `batch/v1 Job` that runs a smoke test, an Argo Workflows `Workflow`, an Argo Rollouts `AnalysisRun`, or any other
 namespaced kind installed in the cluster. For every environment of the referenced `PromotionStrategy` the controller
-instantiates the real resource from a **template**, then evaluates an [expr](https://expr-lang.org) expression against
-the live resource to compute the commit status phase (`pending`, `success`, or `failure`).
+instantiates the resource from an inline **template**, then evaluates an [expr](https://expr-lang.org) expression
+against the live resource to compute the commit status phase (`pending`, `success`, or `failure`).
 
 ## How it works
 
 1. **Configure the kinds.** List the resource kinds gates may create in
    `ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources`.
-2. **Wrapped template CRDs are generated.** At startup the controller generates one CustomResourceDefinition per
-   configured kind in the API group `<group>.templates.promoter.argoproj.io` (`core.templates.promoter.argoproj.io` for
-   the core group). The Kind, version, and schema match the source kind, so `batch/v1 Job` becomes
-   `batch.templates.promoter.argoproj.io/v1 Job`. Because the group differs, the real controller (here the Job
-   controller) never reconciles these objects: they are inert templates with schema validation.
-3. **Write a template.** Create an instance of the wrapped kind. String values may contain Go templates such as
-   `{{ .Sha }}` and `{{ .Branch }}`.
-4. **Create the gate.** `KubernetesResourceCommitStatus` references the template, declares the commit status `key`, and
-   holds the phase expression.
-5. **The controller reconciles.** Per applicable environment it creates (or re-applies) the real resource in the gate's
-   namespace, evaluates the expression against the live object, writes a child `CommitStatus`, and mirrors the result in
-   `status.environments[]`. Status changes on the real resource trigger a reconcile immediately through a watch.
+2. **Write the gate.** `KubernetesResourceCommitStatus` holds the template (an ordinary Kubernetes object whose
+   string values may contain `${ }` expressions), declares the commit status `key`, and holds the phase expression.
+3. **The controller reconciles.** Per applicable environment it renders the template, creates (or re-applies) the
+   resource in the gate's namespace, evaluates the phase expression against the live object, writes a child
+   `CommitStatus`, and mirrors the result in `status.environments[]`. Status changes on the resource trigger a
+   reconcile immediately through a watch.
 
 ```mermaid
 flowchart LR
-  CC[ControllerConfiguration<br/>resources: batch/v1 Job] -->|generates| CRD[CRD jobs.batch.templates.promoter.argoproj.io]
-  CRD -->|user creates| T[Template<br/>batch.templates.promoter.argoproj.io/v1 Job]
-  G[KubernetesResourceCommitStatus] -->|templateRef| T
-  G -->|creates per environment + SHA| J[batch/v1 Job]
+  CC[ControllerConfiguration<br/>resources: batch/v1 Job] -->|allows| G
+  G[KubernetesResourceCommitStatus<br/>spec.template] -->|creates per environment + SHA| J[batch/v1 Job]
   J -->|status → expr| G
   G -->|upserts| CS[CommitStatus]
 ```
@@ -54,45 +46,21 @@ spec:
       - group: ""            # core group, for example core/v1 ConfigMap
         version: v1
         kind: ConfigMap
-    templateCRDs: Enabled    # Disabled when the controller may not create CRDs
 ```
 
 | Field | Values | Description |
 | --- | --- | --- |
-| `resources[]` | `{group, version, kind}` | Namespaced kinds gates may create. Each entry produces one wrapped template CRD and one informer on the real kind. Cluster-scoped kinds are rejected. |
-| `templateCRDs` | `Enabled` (default), `Disabled` | Whether the controller generates the wrapped template CRDs at startup. The namespaced install sets `Disabled` because a `Role` cannot create cluster-scoped CRDs; the wrapped CRDs must then be provided by other means. |
+| `resources[]` | `{group, version, kind}` | Namespaced kinds gates may create. Each entry produces one informer on the kind. Cluster-scoped kinds are rejected. |
 
-Both fields are **startup settings**. The ControllerConfiguration controller shuts the process down when `resources`
-changes so the informers and CRDs are rebuilt on restart (single-replica installs restart automatically; HA installs need
-a rolling restart, the same as [`instanceID`](../../multi-install.md)).
-
-Listing several versions of the same group and kind produces one CRD with several served versions; the first listed
-version is the storage version. Removing a kind never deletes its wrapped CRD (that would delete user templates); remove
-it by hand:
-
-```bash
-kubectl get crd -l promoter.argoproj.io/template-crd=true
-kubectl delete crd jobs.batch.templates.promoter.argoproj.io
-```
-
-### Schema of the wrapped kinds
-
-For CRD-backed kinds the schema is copied from the source CRD. For built-in kinds it is read from the API server's
-`/openapi/v3` document and converted into a structural CRD schema: `status` is removed, defaults and descriptions are
-dropped, `IntOrString` and `Quantity` become `x-kubernetes-int-or-string`, and recursive types collapse to
-`x-kubernetes-preserve-unknown-fields`. If the API server still rejects the converted schema, the controller falls back
-to a permissive schema (`spec` accepts anything) and logs the reason, so the kind remains usable without validation.
+`resources` is a **startup setting**: the ControllerConfiguration controller shuts the process down when it changes so
+the informers are rebuilt on restart (single-replica installs restart automatically; HA installs need a rolling
+restart, the same as [`instanceID`](../../multi-install.md)).
 
 ### RBAC
 
-The shipped ClusterRole grants `customresourcedefinitions` `get`, `list`, `watch`, `create`, and `update` for CRD
-generation. RBAC for the configured kinds cannot be generated ahead of time; grant the controller ServiceAccount
-(`promoter-controller-manager` in `promoter-system`) these verbs for every listed kind:
-
-| Resource | Verbs | Why |
-| --- | --- | --- |
-| the real kind (`batch` / `jobs`) | `get`, `list`, `watch`, `create`, `patch`, `delete` | create, watch, re-apply (InPlace), and prune resources |
-| the template kind (`batch.templates.promoter.argoproj.io` / `jobs`) | `get`, `list`, `watch` | read templates and reconcile on template changes |
+RBAC for the configured kinds cannot be generated ahead of time; grant the controller ServiceAccount
+(`promoter-controller-manager` in `promoter-system`) `get`, `list`, `watch`, `create`, `patch`, and `delete` on every
+listed kind:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -103,9 +71,6 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
-  - apiGroups: ["batch.templates.promoter.argoproj.io"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -121,56 +86,10 @@ subjects:
     namespace: promoter-system
 ```
 
-Users who write templates need `create`/`update` on the template kind. Because the wrapped API group is derived from
-the source group, a single rule cannot cover every template kind; add one rule per configured group.
-
 > [!IMPORTANT]
-> Anyone who can create a `KubernetesResourceCommitStatus` and a template can make the controller create the configured
-> kinds in that namespace with the controller's permissions. Only list kinds you are comfortable delegating this way, and
+> Anyone who can create a `KubernetesResourceCommitStatus` can make the controller create the configured kinds in
+> that namespace with the controller's permissions. Only list kinds you are comfortable delegating this way, and
 > prefer kinds whose impact is bounded to the namespace (Jobs, Workflows, AnalysisRuns).
-
-## Templates
-
-A template is an ordinary object of the wrapped kind. Its body (everything except `apiVersion`, `kind`, `metadata`, and
-`status`) is copied into the real resource. `metadata.labels` and `metadata.annotations` from the template are preserved
-and merged under the controller's labels.
-
-```yaml
-apiVersion: batch.templates.promoter.argoproj.io/v1
-kind: Job
-metadata:
-  name: smoke-test
-  namespace: team-a
-spec:
-  ttlSecondsAfterFinished: 3600
-  backoffLimit: 0
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: test
-          image: ghcr.io/acme/smoke:latest
-          args: ["--sha", "{{ .Sha }}", "--env", "{{ .Branch }}"]
-```
-
-### Template variables
-
-Every **string** value in the template that contains `{{` is rendered as a Go template with
-[Sprig](https://masterminds.github.io/sprig/) functions (`env`, `expandenv`, and `getHostByName` are removed;
-`urlQueryEscape` is added). Values without `{{` and non-string values are copied verbatim, so only string fields can be
-parameterized. Unknown variables fail the reconcile (`missingkey=error`).
-
-| Variable | Description |
-| --- | --- |
-| `.Branch` | Environment branch, for example `environment/development` |
-| `.Sha` / `.ShortSha` | Reported hydrated SHA and its first 7 characters |
-| `.ReportOn` | `proposed` or `active` |
-| `.Environment` | The `PromotionStrategy.status.environments[]` entry for the branch |
-| `.PromotionStrategy` | The full PromotionStrategy |
-| `.KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
-| `.Template` | The template object as a map |
-
-Example: a label-safe branch name with Sprig: `{{ .Branch | replace "/" "-" }}`.
 
 ## The gate
 
@@ -185,10 +104,21 @@ spec:
     name: demo
   key: smoke-test
   reportOn: proposed
-  templateRef:
-    apiVersion: batch.templates.promoter.argoproj.io/v1
+  template:
+    apiVersion: batch/v1
     kind: Job
-    name: smoke-test
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 0
+      suspend: ${ Branch == 'environment/production' && Environment.Active.Hydrated.Sha == '' }
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: test
+              image: ghcr.io/acme/smoke:latest
+              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
+              env: ${ PromotionStrategy.Spec.Environments | map({name: 'ENV_' + string(#index), value: .Branch}) }
   lifecycle:
     mode: PerSha
     historyLimit: 1
@@ -199,7 +129,7 @@ spec:
         : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
           ? {phase: 'failure', description: 'Smoke test is failing'}
           : false
-  descriptionTemplate: "Smoke test {{ .ResourceName }} is {{ .Phase }}"
+  description: "Smoke test ${ ResourceName } is ${ Phase }"
 ```
 
 Declare the key on the PromotionStrategy as usual:
@@ -219,13 +149,66 @@ spec:
 | `key` | Commit status key matched against `proposedCommitStatuses` / `activeCommitStatuses`. |
 | `reportOn` | `proposed` (default) creates the resource for the proposed hydrated SHA and reports on it; `active` uses the active hydrated SHA. |
 | `publishTo` | Copied to the child CommitStatus. Default `["scm"]`. |
-| `templateRef` | `apiVersion`, `kind`, `name` of the template in the gate's namespace. The `apiVersion` must be a wrapped template group. |
+| `template` | The object to create, see below. Its `apiVersion`/`kind` must be listed in the ControllerConfiguration. |
 | `lifecycle.mode` | `PerSha` (default) or `InPlace`, see below. |
 | `lifecycle.historyLimit` | Resources kept per environment in `PerSha` mode, including the current one (default 1). |
 | `phase.expression` | expr expression, see below. |
-| `descriptionTemplate` / `urlTemplate` | Optional Go templates for the CommitStatus description and URL. |
+| `description` / `url` | Optional CommitStatus description and URL, with `${ }` expressions. |
 
-### Lifecycle modes
+## The template
+
+`spec.template` is an ordinary Kubernetes object. `apiVersion` and `kind` must be literal and name a configured
+kind. `metadata.name`, `metadata.namespace`, and `status` are ignored because the controller sets them;
+`metadata.labels` and `metadata.annotations` are kept and merged under the controller's labels. Everything else is
+copied into the created resource.
+
+### Expressions
+
+Any **string** value may contain [expr](https://expr-lang.org) expressions wrapped in `${ }`. Two forms exist:
+
+- **Standalone.** A value that is exactly one expression, such as `suspend: ${ Branch == 'environment/production' }`
+  or `env: ${ [...] }`, is replaced by the expression's result **with its type preserved**. This is how integers,
+  booleans, lists, and whole objects are computed. A result of `nil` removes the field (or the list item).
+- **Embedded.** A string that mixes text and expressions, such as `"smoke-${ ShortSha }"`, concatenates the pieces;
+  numbers and booleans are formatted as text, lists and objects as JSON, and `nil` is an error (use `??` for a
+  default).
+
+`$${` produces a literal `${`. Values without `${` and non-string values are copied verbatim.
+
+| Variable | Description |
+| --- | --- |
+| `Branch` | Environment branch, for example `environment/development` |
+| `Sha` / `ShortSha` | Reported hydrated SHA and its first 7 characters |
+| `ReportOn` | `proposed` or `active` |
+| `Environment` | The `PromotionStrategy.status.environments[]` entry for the branch |
+| `PromotionStrategy` | The full PromotionStrategy |
+| `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
+
+Expressions are compiled against this variable set, so a misspelled variable, or a misspelled field of a typed
+variable such as `Environment.Propsed`, fails the reconcile with a compile error that names the expression and the
+path in the template. The rendered object is validated by the API server when it is created, so an expression that
+produces the wrong type for a field (for example a string for `parallelism`) surfaces as `Ready=False` with the API
+server's message.
+
+> [!NOTE]
+> The gate holds the whole template, so the CRD schema cannot validate the template against the target kind at
+> admission time. Typos in field names are caught when the resource is created, one reconcile later.
+
+Examples:
+
+```yaml
+# A label-safe branch name
+labels:
+  environment: ${ Branch | replace('/', '-') }
+
+# Only set a field in one environment
+activeDeadlineSeconds: ${ Branch == 'environment/development' ? 600 : nil }
+
+# Pass the whole environment status as JSON
+args: ["--environment", "${ toJSON(Environment) }"]
+```
+
+## Lifecycle modes
 
 **`PerSha`** (default) creates a new resource for every (environment, SHA) pair and never mutates it afterwards. The
 name is derived from the gate name, branch, and SHA and is bounded to 63 characters so it is valid for kinds such as Job
@@ -241,18 +224,13 @@ every reconcile, so SHA changes and template changes propagate into the same obj
 preserved unless the template also sets them. Use this for mutable kinds. Immutable-field changes surface as
 `Ready=False` on the gate.
 
-### Phase expression
+## Phase expression
 
-`spec.phase.expression` runs on every reconcile while the resource exists. Variables:
+`spec.phase.expression` runs on every reconcile while the resource exists. It sees the template variables plus:
 
 | Variable | Description |
 | --- | --- |
 | `Resource` | The live resource as a map, including `status` |
-| `Branch`, `Sha`, `ReportOn` | As in the template variables |
-| `Environment` | `PromotionStrategy.status.environments[]` entry for the branch |
-| `PromotionStrategy` | The full PromotionStrategy |
-| `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
-| `Template` | The template object as a map |
 
 Return either a boolean (`true` → `success`, `false` → `pending`) or an object `{ phase, description?, url? }` where
 `phase` is `success`, `pending`, or `failure` (omitted means `pending`). Any other value fails the reconcile.
@@ -277,12 +255,20 @@ Resource.status?.phase == 'Successful' ? {phase: 'success'}
 (Resource.status?.succeeded ?? 0) > 0 ? true : ((Resource.status?.failed ?? 0) > 0 ? {phase: 'failure'} : false)
 ```
 
-### Description and URL
+## Description and URL
 
-When `descriptionTemplate` is empty, the description returned by the expression is used, falling back to
-`Waiting for Job <name>`, `Job <name> reports success`, or `Job <name> reports failure`. `descriptionTemplate` and
-`urlTemplate` receive the template variables above plus `.Phase`, `.ResourceName`, `.ResourceKind`, `.Resource`, and
-`.ExpressionDescription`. When `urlTemplate` is empty, the `url` returned by the expression is used.
+`spec.description` and `spec.url` use the same `${ }` expressions as the template and see the template variables plus:
+
+| Variable | Description |
+| --- | --- |
+| `Phase` | The phase computed this reconcile |
+| `Resource` | The live resource as a map (nil when it does not exist) |
+| `ResourceName` / `ResourceKind` | The created resource's name and Kind |
+| `ExpressionDescription` / `ExpressionUrl` | The description and url returned by the phase expression, if any |
+
+When `description` is empty, the description returned by the expression is used, falling back to
+`Waiting for Job <name>`, `Job <name> reports success`, or `Job <name> reports failure`. When `url` is empty, the
+`url` returned by the expression is used.
 
 ## Status
 
@@ -304,9 +290,9 @@ status:
       lastEvaluationTime: "2026-10-31T01:00:00Z"
 ```
 
-`Ready=False` reports configuration problems: a missing template, a template kind that is not listed in the
-ControllerConfiguration, a wrapped CRD that has not been generated yet, an invalid expression result, or missing RBAC
-on the real kind (the API server's `forbidden` error names the verb).
+`Ready=False` reports configuration problems: a template without `apiVersion`/`kind`, a kind that is not listed in the
+ControllerConfiguration, an expression that does not compile or produces a value the API server rejects, an invalid
+phase expression result, or missing RBAC on the kind (the API server's `forbidden` error names the verb).
 
 Created resources carry these labels, which also drive pruning:
 
@@ -326,15 +312,14 @@ collects them.
 
 ## Multiple controller installs
 
-Templates are read through the instance-id partitioned cache like every other Promoter CR. In multi-install mode label
-templates with `promoter.argoproj.io/instance-id: <value>`; in the default install leave the label off. Created
-resources are stamped with the label automatically.
+Created resources are stamped with the `promoter.argoproj.io/instance-id` label automatically when the controller runs
+with one; no extra labeling is needed.
 
 ## Events
 
 | Event Type | Event Reason | Description |
 | --- | --- | --- |
-| Normal | KubernetesResourceCreated | The real resource was created for an environment and SHA. |
+| Normal | KubernetesResourceCreated | The resource was created for an environment and SHA. |
 | Normal | KubernetesResourcePruned | A created resource was deleted because it exceeded `historyLimit` or its environment is no longer gated. |
 | Normal/Warning | CommitStatusPhaseChanged | The phase for an environment changed. Warning when the new phase is `failure`. |
 | Warning | CommitStatusesNotReady | A managed CommitStatus is not Ready. |

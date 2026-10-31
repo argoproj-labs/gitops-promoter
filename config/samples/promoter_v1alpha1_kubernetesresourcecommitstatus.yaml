@@ -11,10 +11,18 @@ spec:
     name: promotionstrategy-sample
   reportOn: proposed
   # Requires batch/v1 Job in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources.
-  templateRef:
-    apiVersion: batch.templates.promoter.argoproj.io/v1
+  template:
+    apiVersion: batch/v1
     kind: Job
-    name: smoke-test
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: test
+              image: ghcr.io/acme/smoke:latest
+              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
   lifecycle:
     mode: PerSha
     historyLimit: 1

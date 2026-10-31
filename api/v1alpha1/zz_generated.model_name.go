@@ -501,11 +501,6 @@ func (in KubernetesResourceReference) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in KubernetesResourceTemplateReference) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.KubernetesResourceTemplateReference"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in MetricsConfiguration) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.MetricsConfiguration"
 }

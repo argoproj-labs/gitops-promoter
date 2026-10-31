@@ -1347,7 +1347,7 @@ spec:
                   resources:
                     description: |-
                       Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.
-                      Each entry produces one wrapped template CRD and one informer on the real kind.
+                      Each entry produces one informer on the kind.
                       Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
                       process down when it detects a change, like spec.instanceID.
                     items:
@@ -1385,17 +1385,6 @@ spec:
                     - version
                     - kind
                     x-kubernetes-list-type: map
-                  templateCRDs:
-                    default: Enabled
-                    description: |-
-                      TemplateCRDs enables or disables generation of the wrapped template CRDs at controller startup.
-                      Disable it for installs whose ServiceAccount cannot create cluster-scoped CustomResourceDefinitions
-                      (for example the namespaced install); the wrapped CRDs must then be created by other means.
-                      Requires a controller restart.
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the KubernetesResourceCommitStatus controller.

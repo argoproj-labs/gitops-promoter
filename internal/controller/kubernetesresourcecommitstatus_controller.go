@@ -49,12 +49,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// KubernetesResourceTemplateRefField is the field index on KubernetesResourceCommitStatus.spec.templateRef.name,
-// used to enqueue gates when their template object changes.
-const KubernetesResourceTemplateRefField = ".spec.templateRef.name"
-
 // KubernetesResourceCommitStatusReconciler reconciles KubernetesResourceCommitStatus resources: for every
-// applicable PromotionStrategy environment it instantiates the real resource from the referenced template,
+// applicable PromotionStrategy environment it instantiates the real resource from spec.template,
 // evaluates spec.phase.expression against the live resource, and upserts the child CommitStatus.
 type KubernetesResourceCommitStatusReconciler struct {
 	client.Client
@@ -74,9 +70,8 @@ type KubernetesResourceCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update
 
-// Reconcile fetches the KubernetesResourceCommitStatus, its PromotionStrategy and template, processes each
+// Reconcile fetches the KubernetesResourceCommitStatus and its PromotionStrategy, parses the template, processes each
 // applicable environment (create or apply the real resource, evaluate the phase expression, upsert the
 // CommitStatus), prunes resources beyond the history limit, cleans up orphaned CommitStatuses, and enqueues
 // ChangeTransferPolicies when an environment transitions to success.
@@ -115,7 +110,7 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", krcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	template, sourceGVK, err := r.getTemplate(ctx, &krcs)
+	template, sourceGVK, err := r.parseTemplate(&krcs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -144,26 +139,14 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
-// getTemplate resolves spec.templateRef to the template object and the real GVK it stands for.
-func (r *KubernetesResourceCommitStatusReconciler) getTemplate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (*unstructured.Unstructured, schema.GroupVersionKind, error) {
-	templateGVK, sourceGVK, err := resourcetemplate.SourceGVKForTemplateRef(krcs.Spec.TemplateRef)
+// parseTemplate decodes spec.template and checks that its kind is one the controller was configured to create.
+func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (map[string]any, schema.GroupVersionKind, error) {
+	template, sourceGVK, err := resourcetemplate.ParseTemplate(krcs.Spec.Template)
 	if err != nil {
-		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.templateRef: %w", err)
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.template: %w", err)
 	}
 	if _, ok := r.configured[sourceGVK]; !ok {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("resource kind %s is not listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources", sourceGVK)
-	}
-
-	template := &unstructured.Unstructured{}
-	template.SetGroupVersionKind(templateGVK)
-	err = r.Get(ctx, client.ObjectKey{Namespace: krcs.Namespace, Name: krcs.Spec.TemplateRef.Name}, template)
-	switch {
-	case k8serrors.IsNotFound(err):
-		return nil, schema.GroupVersionKind{}, fmt.Errorf("template %s %q not found in namespace %s: %w", templateGVK.Kind, krcs.Spec.TemplateRef.Name, krcs.Namespace, err)
-	case meta.IsNoMatchError(err):
-		return nil, schema.GroupVersionKind{}, fmt.Errorf("template kind %s is not installed; the wrapped template CRD has not been generated yet: %w", templateGVK, err)
-	case err != nil:
-		return nil, schema.GroupVersionKind{}, fmt.Errorf("failed to get template %s %q: %w", templateGVK.Kind, krcs.Spec.TemplateRef.Name, err)
 	}
 	return template, sourceGVK, nil
 }
@@ -174,7 +157,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 	ctx context.Context,
 	krcs *promoterv1alpha1.KubernetesResourceCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-	template *unstructured.Unstructured,
+	template map[string]any,
 	sourceGVK schema.GroupVersionKind,
 ) ([]*promoterv1alpha1.CommitStatus, []string, error) {
 	snapshot := krcs.DeepCopy()
@@ -249,7 +232,7 @@ type environmentInput struct {
 	gate      *promoterv1alpha1.KubernetesResourceCommitStatus
 	snapshot  *promoterv1alpha1.KubernetesResourceCommitStatus
 	ps        *promoterv1alpha1.PromotionStrategy
-	template  *unstructured.Unstructured
+	template  map[string]any
 	envStatus *promoterv1alpha1.EnvironmentStatus
 	previous  *promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus
 	sourceGVK schema.GroupVersionKind
@@ -312,13 +295,17 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		Environment:                    in.envStatus,
 		PromotionStrategy:              in.ps,
 		KubernetesResourceCommitStatus: in.snapshot,
-		Template:                       in.template.Object,
 	}
 
 	switch {
 	case in.mode() == promoterv1alpha1.KubernetesResourceLifecycleInPlace:
-		// Always re-apply so template changes and SHA changes propagate.
-		desired, err := r.buildObject(in, name, templateData)
+		// Always re-apply so template changes and SHA changes propagate. Keep the original created-at
+		// annotation: a fresh timestamp would modify the object on every reconcile.
+		createdAt := time.Now()
+		if exists {
+			createdAt = resourcetemplate.ResourceCreationTime(live)
+		}
+		desired, err := r.buildObject(in, name, templateData, createdAt)
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
 		}
@@ -333,7 +320,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		}
 		live = desired
 	case !exists:
-		desired, err := r.buildObject(in, name, templateData)
+		desired, err := r.buildObject(in, name, templateData, time.Now())
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
 		}
@@ -374,15 +361,16 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	}, cs, nil
 }
 
-func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData) (*unstructured.Unstructured, error) {
+func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData, createdAt time.Time) (*unstructured.Unstructured, error) {
 	gvk := promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.KubernetesResourceCommitStatus]().Name())
 	obj, err := resourcetemplate.BuildObject(resourcetemplate.BuildParams{
 		Template:    in.template,
+		Cache:       r.exprCache,
 		SourceGVK:   in.sourceGVK,
 		Name:        name,
 		Namespace:   in.gate.Namespace,
 		Labels:      resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
-		Annotations: resourcetemplate.ResourceAnnotations(time.Now()),
+		Annotations: resourcetemplate.ResourceAnnotations(createdAt),
 		Owner: metav1.OwnerReference{
 			APIVersion:         gvk.GroupVersion().String(),
 			Kind:               gvk.Kind,
@@ -394,22 +382,14 @@ func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInp
 		Data: data,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to render template %s %q: %w", in.gate.Spec.TemplateRef.Kind, in.gate.Spec.TemplateRef.Name, err)
+		return nil, fmt.Errorf("failed to render template: %w", err)
 	}
 	return obj, nil
 }
 
 func (r *KubernetesResourceCommitStatusReconciler) evaluatePhase(in environmentInput, live *unstructured.Unstructured, data resourcetemplate.TemplateData) (resourcetemplate.PhaseResult, error) {
-	env := map[string]any{
-		"Resource":                       live.Object,
-		"Branch":                         in.branch,
-		"Sha":                            in.sha,
-		"ReportOn":                       in.gate.Spec.ReportOn,
-		"Environment":                    data.Environment,
-		"PromotionStrategy":              in.ps,
-		"KubernetesResourceCommitStatus": in.snapshot,
-		"Template":                       in.template.Object,
-	}
+	env := data.Env()
+	env["Resource"] = live.Object
 	result, err := resourcetemplate.EvaluatePhaseExpression(r.exprCache, in.gate.Spec.Phase.Expression, env)
 	if err != nil {
 		return resourcetemplate.PhaseResult{}, fmt.Errorf("failed to evaluate phase for %s %q: %w", in.sourceGVK.Kind, live.GetName(), err)
@@ -417,20 +397,22 @@ func (r *KubernetesResourceCommitStatusReconciler) evaluatePhase(in environmentI
 	return result, nil
 }
 
-// buildReport renders the description and URL for the CommitStatus from the templates, the expression result,
-// or the built-in defaults.
+// buildReport renders the description and URL for the CommitStatus from spec.description / spec.url, the
+// expression result, or the built-in defaults.
 func (r *KubernetesResourceCommitStatusReconciler) buildReport(in environmentInput, name string, live *unstructured.Unstructured, result resourcetemplate.PhaseResult, data resourcetemplate.TemplateData) (promoterv1alpha1.GateEnvironmentCommitStatus, error) {
 	data.Phase = result.Phase
 	data.ResourceName = name
 	data.ResourceKind = in.sourceGVK.Kind
 	data.Resource = live.Object
 	data.ExpressionDescription = result.Description
+	data.ExpressionURL = result.URL
+	interpolator := resourcetemplate.NewInterpolator(r.exprCache, resourcetemplate.ReportExpressionCachePrefix, data.ReportEnv())
 
 	description := result.Description
-	if in.gate.Spec.DescriptionTemplate != "" {
-		rendered, err := utils.RenderStringTemplate(in.gate.Spec.DescriptionTemplate, data)
+	if in.gate.Spec.Description != "" {
+		rendered, err := interpolator.String(in.gate.Spec.Description)
 		if err != nil {
-			return promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render description template: %w", err)
+			return promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render spec.description: %w", err)
 		}
 		description = rendered
 	}
@@ -439,10 +421,10 @@ func (r *KubernetesResourceCommitStatusReconciler) buildReport(in environmentInp
 	}
 
 	url := result.URL
-	if in.gate.Spec.UrlTemplate != "" {
-		rendered, err := utils.RenderStringTemplate(in.gate.Spec.UrlTemplate, data)
+	if in.gate.Spec.Url != "" {
+		rendered, err := interpolator.String(in.gate.Spec.Url)
 		if err != nil {
-			return promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL template: %w", err)
+			return promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render spec.url: %w", err)
 		}
 		url = rendered
 	}
@@ -586,9 +568,9 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 	return nil
 }
 
-// SetupWithManager registers the controller: it watches KubernetesResourceCommitStatus, PromotionStrategy,
-// every configured real kind (enqueuing the owning gate) and every wrapped template kind (enqueuing gates that
-// reference the template). Configured kinds that are not served by the API server are skipped with an error log.
+// SetupWithManager registers the controller: it watches KubernetesResourceCommitStatus, PromotionStrategy, and
+// every configured kind (enqueuing the owning gate). Configured kinds that are not served by the API server
+// are skipped with an error log.
 func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	logger := log.FromContext(ctx).WithName("kubernetesresourcecommitstatus-setup")
 	r.exprCache = exprcache.New(exprcache.DefaultMaxEntries)
@@ -604,17 +586,6 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.KubernetesResourceCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return fmt.Errorf("failed to get KubernetesResourceCommitStatus max concurrent reconciles: %w", err)
-	}
-
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.KubernetesResourceCommitStatus{}, KubernetesResourceTemplateRefField,
-		func(rawObj client.Object) []string {
-			krcs, ok := rawObj.(*promoterv1alpha1.KubernetesResourceCommitStatus)
-			if !ok || krcs.Spec.TemplateRef.Name == "" {
-				return nil
-			}
-			return []string{krcs.Spec.TemplateRef.Name}
-		}); err != nil {
-		return fmt.Errorf("failed to set field index %s: %w", KubernetesResourceTemplateRefField, err)
 	}
 
 	b := ctrl.NewControllerManagedBy(mgr).
@@ -639,15 +610,6 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		realKind := &unstructured.Unstructured{}
 		realKind.SetGroupVersionKind(gvk)
 		b = b.Watches(realKind, handler.EnqueueRequestForOwner(mgr.GetScheme(), mapper, &promoterv1alpha1.KubernetesResourceCommitStatus{}, handler.OnlyControllerOwner()))
-
-		templateGVK := resourcetemplate.TemplateGVKFor(gvk)
-		if _, err := mapper.RESTMapping(templateGVK.GroupKind(), templateGVK.Version); err != nil {
-			logger.Error(err, "wrapped template kind is not installed; template changes will not trigger reconciles until restart", "gvk", templateGVK.String())
-			continue
-		}
-		template := &unstructured.Unstructured{}
-		template.SetGroupVersionKind(templateGVK)
-		b = b.Watches(template, handler.EnqueueRequestsFromMapFunc(r.enqueueForTemplate))
 	}
 
 	if err := b.WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
@@ -656,23 +618,4 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-// enqueueForTemplate returns reconcile requests for every gate in the template's namespace that references it.
-func (r *KubernetesResourceCommitStatusReconciler) enqueueForTemplate(ctx context.Context, obj client.Object) []ctrl.Request {
-	var list promoterv1alpha1.KubernetesResourceCommitStatusList
-	if err := r.List(ctx, &list, client.InNamespace(obj.GetNamespace()), client.MatchingFields{KubernetesResourceTemplateRefField: obj.GetName()}); err != nil {
-		log.FromContext(ctx).Error(err, "failed to list KubernetesResourceCommitStatus resources for template watch")
-		return nil
-	}
-	apiVersion, kind := obj.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
-	requests := make([]ctrl.Request, 0, len(list.Items))
-	for i := range list.Items {
-		ref := list.Items[i].Spec.TemplateRef
-		if ref.APIVersion != apiVersion || ref.Kind != kind {
-			continue
-		}
-		requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return requests
 }

@@ -98,7 +98,6 @@ Controllers propagate `instance-id` from parent to child for `PromotionStrategy`
 - `ScmProvider`
 - `ClusterScmProvider`
 - Out-of-tree `orderCommitStatusRef` gate CRs (watched with the same instance-id selector as promoter CRDs)
-- [KubernetesResourceCommitStatus](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md) template objects (the wrapped `*.templates.promoter.argoproj.io` kinds). The real resources the gate creates from them are labeled automatically.
 
 If a `PromotionStrategy` is labeled but its `GitRepository` is not, promotion fails with confusing `NotFound` errors even though the repository exists in the API.
 

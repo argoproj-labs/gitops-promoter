@@ -71,7 +71,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -350,9 +349,6 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	// The gate controller resolves template kinds through the RESTMapper in SetupWithManager, so the wrapped
-	// template CRDs must exist first (cmd/main.go generates them before the manager starts the same way).
-	ensureTemplateCRDsForTests(ctx, cfg)
 	err = (&KubernetesResourceCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
@@ -853,15 +849,6 @@ func kubernetesResourceCommitStatusResourcesForTests() []promoterv1alpha1.Resour
 		{Group: "batch", Version: "v1", Kind: "Job"},
 		{Group: "", Version: "v1", Kind: "ConfigMap"},
 	}
-}
-
-// ensureTemplateCRDsForTests generates the wrapped template CRDs for kubernetesResourceCommitStatusResourcesForTests
-// against the envtest API server, mirroring what cmd/main.go does before the manager starts.
-func ensureTemplateCRDsForTests(ctx context.Context, restCfg *rest.Config) {
-	GinkgoHelper()
-	generator, err := resourcetemplate.NewCRDGenerator(restCfg, GinkgoLogr.WithName("template-crds"))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(generator.Ensure(ctx, kubernetesResourceCommitStatusResourcesForTests())).To(Succeed())
 }
 
 // withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.

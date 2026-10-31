@@ -304,27 +304,13 @@ func (m *Manager) GetWebRequestCommitStatusNamespaceMetadata(ctx context.Context
 
 // GetKubernetesResourceCommitStatusResourcesDirect returns spec.kubernetesResourceCommitStatus.resources using a
 // non-cached read, so it is safe to call before the manager cache starts. The list is a startup setting: the
-// controller builds informers for these kinds in SetupWithManager and generates the wrapped template CRDs
-// before the manager starts.
+// controller builds informers for these kinds in SetupWithManager.
 func (m *Manager) GetKubernetesResourceCommitStatusResourcesDirect(ctx context.Context) ([]promoterv1alpha1.ResourceGroupVersionKind, error) {
 	cc, err := m.getControllerConfigurationDirect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 	return cc.Spec.KubernetesResourceCommitStatus.Resources, nil
-}
-
-// GetKubernetesResourceCommitStatusTemplateCRDsDirect returns spec.kubernetesResourceCommitStatus.templateCRDs
-// using a non-cached read. An empty value (older ControllerConfiguration objects) means Enabled.
-func (m *Manager) GetKubernetesResourceCommitStatusTemplateCRDsDirect(ctx context.Context) (promoterv1alpha1.FeatureMode, error) {
-	cc, err := m.getControllerConfigurationDirect(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-	if cc.Spec.KubernetesResourceCommitStatus.TemplateCRDs == "" {
-		return promoterv1alpha1.FeatureModeEnabled, nil
-	}
-	return cc.Spec.KubernetesResourceCommitStatus.TemplateCRDs, nil
 }
 
 // getWorkQueueForController retrieves the WorkQueue configuration for a specific controller type.

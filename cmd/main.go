@@ -46,7 +46,6 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
@@ -210,12 +209,6 @@ func runController(
 	if !clusterScmProviderEnabled {
 		setupLog.Info("ClusterScmProvider support disabled")
 	}
-
-	// Generate the wrapped template CRDs for KubernetesResourceCommitStatus before the manager starts so the
-	// gate controller can resolve template kinds as soon as it runs. Failures are logged, not fatal: gates that
-	// reference a kind whose CRD is missing report Ready=False until the configuration is fixed and the
-	// controller restarts.
-	ensureTemplateCRDs(processSignalsCtx, restConfig, startup)
 
 	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
 	// below and must not inherit a ByObject key that depends on the local Application CRD.
@@ -517,7 +510,6 @@ func runController(
 type startupSettings struct {
 	scope                  promoterv1alpha1.ControllerScope
 	clusterScmProviderMode promoterv1alpha1.FeatureMode
-	templateCRDs           promoterv1alpha1.FeatureMode
 	kubernetesResources    []promoterv1alpha1.ResourceGroupVersionKind
 }
 
@@ -549,33 +541,7 @@ func getStartupSettings(
 	if err != nil {
 		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	if out.templateCRDs, err = bootstrapSettings.GetKubernetesResourceCommitStatusTemplateCRDsDirect(readCtx); err != nil {
-		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
-	}
 	return out, nil
-}
-
-// ensureTemplateCRDs generates the wrapped template CRDs for every configured KubernetesResourceCommitStatus
-// resource kind. It never fails startup: problems are logged and surface later as Ready=False on the gates.
-func ensureTemplateCRDs(ctx context.Context, restCfg *rest.Config, startup startupSettings) {
-	if len(startup.kubernetesResources) == 0 {
-		return
-	}
-	if startup.templateCRDs == promoterv1alpha1.FeatureModeDisabled {
-		setupLog.Info("wrapped template CRD generation disabled; template kinds must be installed by other means",
-			"resources", len(startup.kubernetesResources))
-		return
-	}
-	generator, err := resourcetemplate.NewCRDGenerator(restCfg, setupLog.WithName("template-crds"))
-	if err != nil {
-		setupLog.Error(err, "unable to build the template CRD generator; skipping wrapped template CRD generation")
-		return
-	}
-	genCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	if err := generator.Ensure(genCtx, startup.kubernetesResources); err != nil {
-		setupLog.Error(err, "one or more wrapped template CRDs could not be generated")
-	}
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {

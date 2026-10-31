@@ -24,6 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -349,12 +350,8 @@ func setupInstanceIDDriftKubernetesResourceCommitStatus(ctx context.Context) (ut
 		Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			Key:                  "instance-id-drift",
-			TemplateRef: promoterv1alpha1.KubernetesResourceTemplateReference{
-				APIVersion: "batch.templates.promoter.argoproj.io/v1",
-				Kind:       "Job",
-				Name:       name + "-template",
-			},
-			Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+			Template:             apiextensionsv1.JSON{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","spec":{"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"t","image":"busybox"}]}}}}`)},
+			Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
 		},
 	}
 	Expect(k8sClient.Create(ctx, krcs)).To(Succeed())

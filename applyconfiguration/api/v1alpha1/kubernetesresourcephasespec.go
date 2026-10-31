@@ -30,7 +30,6 @@ type KubernetesResourcePhaseSpecApplyConfiguration struct {
 	// - Environment: the PromotionStrategy status entry for Branch
 	// - PromotionStrategy: the full PromotionStrategy spec and status
 	// - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)
-	// - Template (map): the template object the resource was created from
 	//
 	// Return values:
 	// - a boolean: true → success, false → pending

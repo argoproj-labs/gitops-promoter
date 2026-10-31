@@ -9,6 +9,3 @@ spec:
     mode: Disabled
   webRequestCommitStatus:
     namespaceMetadata: Disabled
-  # A namespaced Role cannot create cluster-scoped CustomResourceDefinitions.
-  kubernetesResourceCommitStatus:
-    templateCRDs: Disabled

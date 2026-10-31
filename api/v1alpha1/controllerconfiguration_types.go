@@ -341,11 +341,8 @@ type ScheduledCommitStatusConfiguration struct {
 // KubernetesResourceCommitStatusConfiguration defines the configuration for the KubernetesResourceCommitStatus controller.
 //
 // Besides the WorkQueue, it lists the resource kinds (group/version/kind) that KubernetesResourceCommitStatus
-// gates may instantiate. For each listed kind the controller generates a wrapped template CRD in the API
-// group "<group>.templates.promoter.argoproj.io" ("core.templates.promoter.argoproj.io" for the core group)
-// with the same Kind, version, and schema as the source kind, and watches both the real kind and the
-// template kind. The controller needs RBAC on every listed kind (get, list, watch, create, patch, delete),
-// on its template kind (get, list, watch), and on customresourcedefinitions when TemplateCRDs is Enabled.
+// gates may instantiate. The controller watches every listed kind and needs RBAC on it (get, list, watch,
+// create, patch, delete).
 type KubernetesResourceCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the KubernetesResourceCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
@@ -353,7 +350,7 @@ type KubernetesResourceCommitStatusConfiguration struct {
 	WorkQueue WorkQueue `json:"workQueue"`
 
 	// Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.
-	// Each entry produces one wrapped template CRD and one informer on the real kind.
+	// Each entry produces one informer on the kind.
 	// Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
 	// process down when it detects a change, like spec.instanceID.
 	// +optional
@@ -363,14 +360,6 @@ type KubernetesResourceCommitStatusConfiguration struct {
 	// +listMapKey=kind
 	// +kubebuilder:validation:MaxItems=50
 	Resources []ResourceGroupVersionKind `json:"resources,omitempty"`
-
-	// TemplateCRDs enables or disables generation of the wrapped template CRDs at controller startup.
-	// Disable it for installs whose ServiceAccount cannot create cluster-scoped CustomResourceDefinitions
-	// (for example the namespaced install); the wrapped CRDs must then be created by other means.
-	// Requires a controller restart.
-	// +optional
-	// +kubebuilder:default=Enabled
-	TemplateCRDs FeatureMode `json:"templateCRDs,omitempty"`
 }
 
 // ResourceGroupVersionKind identifies an API kind installed in the cluster.

@@ -3,7 +3,6 @@ package utils
 import (
 	"sync"
 
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -25,8 +24,6 @@ func GetScheme() *runtime.Scheme {
 		utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 		utilruntime.Must(promoterv1alpha1.AddToScheme(scheme))
 		utilruntime.Must(argocd.AddToScheme(scheme))
-		// CustomResourceDefinition is read and written by the KubernetesResourceCommitStatus template CRD generator.
-		utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	})
 	return scheme
 }

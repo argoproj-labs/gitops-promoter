@@ -131,7 +131,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.KubernetesResourceLifecycle{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceLifecycle(ref),
 		apiv1alpha1.KubernetesResourcePhaseSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourcePhaseSpec(ref),
 		apiv1alpha1.KubernetesResourceReference{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceReference(ref),
-		apiv1alpha1.KubernetesResourceTemplateReference{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceTemplateReference(ref),
 		apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsConfiguration(ref),
 		apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguration(ref),
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
@@ -4585,7 +4584,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "KubernetesResourceCommitStatusConfiguration defines the configuration for the KubernetesResourceCommitStatus controller.\n\nBesides the WorkQueue, it lists the resource kinds (group/version/kind) that KubernetesResourceCommitStatus gates may instantiate. For each listed kind the controller generates a wrapped template CRD in the API group \"<group>.templates.promoter.argoproj.io\" (\"core.templates.promoter.argoproj.io\" for the core group) with the same Kind, version, and schema as the source kind, and watches both the real kind and the template kind. The controller needs RBAC on every listed kind (get, list, watch, create, patch, delete), on its template kind (get, list, watch), and on customresourcedefinitions when TemplateCRDs is Enabled.",
+				Description: "KubernetesResourceCommitStatusConfiguration defines the configuration for the KubernetesResourceCommitStatus controller.\n\nBesides the WorkQueue, it lists the resource kinds (group/version/kind) that KubernetesResourceCommitStatus gates may instantiate. The controller watches every listed kind and needs RBAC on it (get, list, watch, create, patch, delete).",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"workQueue": {
@@ -4607,7 +4606,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create. Each entry produces one wrapped template CRD and one informer on the real kind. Changing this list requires a controller restart; the ControllerConfiguration controller shuts the process down when it detects a change, like spec.instanceID.",
+							Description: "Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create. Each entry produces one informer on the kind. Changing this list requires a controller restart; the ControllerConfiguration controller shuts the process down when it detects a change, like spec.instanceID.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -4616,13 +4615,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 									},
 								},
 							},
-						},
-					},
-					"templateCRDs": {
-						SchemaProps: spec.SchemaProps{
-							Description: "TemplateCRDs enables or disables generation of the wrapped template CRDs at controller startup. Disable it for installs whose ServiceAccount cannot create cluster-scoped CustomResourceDefinitions (for example the namespaced install); the wrapped CRDs must then be created by other means. Requires a controller restart.",
-							Type:        []string{"string"},
-							Format:      "",
 						},
 					},
 				},
@@ -4750,7 +4742,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "KubernetesResourceCommitStatusSpec defines the desired state of KubernetesResourceCommitStatus.\n\nThe controller creates one real Kubernetes resource per applicable PromotionStrategy environment from the referenced template, then evaluates spec.phase.expression against the live resource to compute the phase reported on the child CommitStatus.",
+				Description: "KubernetesResourceCommitStatusSpec defines the desired state of KubernetesResourceCommitStatus.\n\nThe controller creates one real Kubernetes resource per applicable PromotionStrategy environment from spec.template, then evaluates spec.phase.expression against the live resource to compute the phase reported on the child CommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"promotionStrategyRef": {
@@ -4794,11 +4786,10 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 							},
 						},
 					},
-					"templateRef": {
+					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "TemplateRef references the template object the real resource is created from. The template is an instance of a wrapped template kind generated by the controller from ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources. It must live in the same namespace as this gate. See KubernetesResourceTemplateReference.",
-							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.KubernetesResourceTemplateReference{}.OpenAPIModelName()),
+							Description: "Template is the Kubernetes object the controller creates for every applicable environment. It must carry apiVersion and kind (a namespaced kind listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources); metadata.name, metadata.namespace, and status are ignored because the controller sets them. metadata.labels and metadata.annotations are kept and merged under the controller's own labels.\n\nAny string value may contain expr (https://expr-lang.org) expressions wrapped in ${ }:\n  - A value that is exactly one expression, such as \"${ Sha }\" or \"${ Environment.Proposed.Hydrated.Sha }\", is\n    replaced by the expression's result with its type preserved, so integers, booleans, lists, and objects\n    can be computed. A nil result removes the field.\n  - A string with embedded expressions, such as \"smoke-${ ShortSha }\", concatenates the results as text.\n  - \"$${\" produces a literal \"${\".\nAvailable variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile). Everything else is copied verbatim. The rendered object is validated by the API server when it is created.",
+							Ref:         ref(apiextensionsv1.JSON{}.OpenAPIModelName()),
 						},
 					},
 					"lifecycle": {
@@ -4815,26 +4806,26 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 							Ref:         ref(apiv1alpha1.KubernetesResourcePhaseSpec{}.OpenAPIModelName()),
 						},
 					},
-					"descriptionTemplate": {
+					"description": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DescriptionTemplate is the human-readable commit status description shown in the SCM provider. Uses Go templates with Sprig functions (env, expandenv, and getHostByName are removed). Template data:\n  - {{ .Branch }}: the environment branch\n  - {{ .Sha }}: the reported SHA; {{ .ShortSha }}: its first 7 characters\n  - {{ .Phase }}: the phase computed this reconcile (pending/success/failure)\n  - {{ .ResourceName }}: the name of the created resource; {{ .ResourceKind }}: its Kind\n  - {{ .Resource }}: the live resource as a map (nil when it does not exist)\n  - {{ .ExpressionDescription }}: the description returned by spec.phase.expression, if any\n  - {{ .PromotionStrategy }}: the full PromotionStrategy\n  - {{ .KubernetesResourceCommitStatus }}: this gate (snapshot from the previous reconcile)\nWhen empty, the controller derives a description such as \"Waiting for Job my-job\" or \"Job my-job reports success\".",
+							Description: "Description is the human-readable commit status description shown in the SCM provider. Supports the same ${ } expressions as Template, with these additional variables:\n  - Phase: the phase computed this reconcile (pending/success/failure)\n  - Resource: the live resource as a map (nil when it does not exist)\n  - ResourceName and ResourceKind: the name and Kind of the created resource\n  - ExpressionDescription and ExpressionUrl: the description and url returned by spec.phase.expression, if any\nWhen empty, the description returned by spec.phase.expression is used, falling back to a message such as \"Waiting for Job my-job\" or \"Job my-job reports success\".",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
-					"urlTemplate": {
+					"url": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UrlTemplate is the commit status target URL shown in the SCM provider. Same template data as DescriptionTemplate. When empty, the URL returned by spec.phase.expression (if any) is used.",
+							Description: "Url is the commit status target URL shown in the SCM provider. Same ${ } expressions and variables as Description. When empty, the url returned by spec.phase.expression (if any) is used.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
-				Required: []string{"promotionStrategyRef", "key", "templateRef", "phase"},
+				Required: []string{"promotionStrategyRef", "key", "template", "phase"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.KubernetesResourceLifecycle{}.OpenAPIModelName(), apiv1alpha1.KubernetesResourcePhaseSpec{}.OpenAPIModelName(), apiv1alpha1.KubernetesResourceTemplateReference{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.KubernetesResourceLifecycle{}.OpenAPIModelName(), apiv1alpha1.KubernetesResourcePhaseSpec{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName()},
 	}
 }
 
@@ -4945,7 +4936,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourcePhaseSp
 				Properties: map[string]spec.Schema{
 					"expression": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the created resource exists. Available variables:\n  - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,\n    for example Resource.status?.conditions ?? [], because member access through nil is an error.\n  - Branch (string), Sha (string), ReportOn (string)\n  - Environment: the PromotionStrategy status entry for Branch\n  - PromotionStrategy: the full PromotionStrategy spec and status\n  - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)\n  - Template (map): the template object the resource was created from\n\nReturn values:\n  - a boolean: true → success, false → pending\n  - an object { phase, description?, url? } where phase is \"success\", \"pending\", or \"failure\"\n    (an omitted or empty phase means \"pending\")\nAny other return type, or an unrecognized phase string, fails the reconcile.\n\nExample for a batch/v1 Job:\n\n\tany(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})\n\t  ? {phase: 'success'}\n\t  : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})\n\t    ? {phase: 'failure', description: 'Smoke test is failing'}\n\t    : false",
+							Description: "Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the created resource exists. Available variables:\n  - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,\n    for example Resource.status?.conditions ?? [], because member access through nil is an error.\n  - Branch (string), Sha (string), ReportOn (string)\n  - Environment: the PromotionStrategy status entry for Branch\n  - PromotionStrategy: the full PromotionStrategy spec and status\n  - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)\n\nReturn values:\n  - a boolean: true → success, false → pending\n  - an object { phase, description?, url? } where phase is \"success\", \"pending\", or \"failure\"\n    (an omitted or empty phase means \"pending\")\nAny other return type, or an unrecognized phase string, fails the reconcile.\n\nExample for a batch/v1 Job:\n\n\tany(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})\n\t  ? {phase: 'success'}\n\t  : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})\n\t    ? {phase: 'failure', description: 'Smoke test is failing'}\n\t    : false",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -4984,44 +4975,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceReferen
 					"name": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Name of the created resource. It lives in the gate's namespace.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-				},
-				Required: []string{"apiVersion", "kind", "name"},
-			},
-		},
-	}
-}
-
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceTemplateReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "KubernetesResourceTemplateReference identifies the template object a KubernetesResourceCommitStatus instantiates. Templates are instances of wrapped kinds that the controller generates from ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources: the API group is the source group followed by \".templates.promoter.argoproj.io\" (the core group becomes \"core.templates.promoter.argoproj.io\"), while Kind and version are unchanged. For example a batch/v1 Job template is apiVersion: batch.templates.promoter.argoproj.io/v1, kind: Job.\n\nOnly string values of the template body are rendered as Go templates (same Sprig rules as DescriptionTemplate) before the real resource is created. Template data: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, KubernetesResourceCommitStatus, and Template (the template object as a map). Values without \"{{\" are copied verbatim.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"apiVersion": {
-						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion of the wrapped template kind, for example batch.templates.promoter.argoproj.io/v1.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"kind": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Kind of the template, identical to the Kind of the real resource (for example Job).",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"name": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Name of the template object in the gate's namespace.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

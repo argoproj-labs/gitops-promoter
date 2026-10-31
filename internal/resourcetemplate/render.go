@@ -23,16 +23,20 @@ import (
 	"strings"
 	"time"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8sjson "k8s.io/apimachinery/pkg/util/json"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// TemplateData is the data available to Go templates in template string values and in the gate's
-// descriptionTemplate / urlTemplate.
+// TemplateData is the variable set available to ${ } expressions in spec.template and, with the report fields
+// filled in, to spec.description and spec.url.
 type TemplateData struct {
 	// Branch is the environment branch the resource is created for.
 	Branch string
@@ -47,10 +51,8 @@ type TemplateData struct {
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	// KubernetesResourceCommitStatus is the gate (snapshot from the previous reconcile).
 	KubernetesResourceCommitStatus *promoterv1alpha1.KubernetesResourceCommitStatus
-	// Template is the template object as a map.
-	Template map[string]any
 
-	// The remaining fields are set only for descriptionTemplate / urlTemplate rendering.
+	// The remaining fields are set only for spec.description / spec.url rendering.
 
 	// Phase is the phase computed this reconcile.
 	Phase promoterv1alpha1.CommitStatusPhase
@@ -59,8 +61,35 @@ type TemplateData struct {
 	ResourceKind string
 	// Resource is the live resource as a map (nil when it does not exist).
 	Resource map[string]any
-	// ExpressionDescription is the description returned by spec.phase.expression, if any.
+	// ExpressionDescription and ExpressionURL are the description and url returned by spec.phase.expression, if any.
 	ExpressionDescription string
+	ExpressionURL         string
+}
+
+// Env returns the variables available to spec.template expressions.
+func (d TemplateData) Env() map[string]any {
+	return map[string]any{
+		"Branch":                         d.Branch,
+		"Sha":                            d.Sha,
+		"ShortSha":                       d.ShortSha,
+		"ReportOn":                       d.ReportOn,
+		"Environment":                    d.Environment,
+		"PromotionStrategy":              d.PromotionStrategy,
+		"KubernetesResourceCommitStatus": d.KubernetesResourceCommitStatus,
+	}
+}
+
+// ReportEnv returns the variables available to spec.description and spec.url expressions: Env plus the
+// evaluation results.
+func (d TemplateData) ReportEnv() map[string]any {
+	env := d.Env()
+	env["Phase"] = string(d.Phase)
+	env["ResourceName"] = d.ResourceName
+	env["ResourceKind"] = d.ResourceKind
+	env["Resource"] = d.Resource
+	env["ExpressionDescription"] = d.ExpressionDescription
+	env["ExpressionUrl"] = d.ExpressionURL
+	return env
 }
 
 // ShortSha returns the first seven characters of sha (or sha itself when shorter).
@@ -71,11 +100,53 @@ func ShortSha(sha string) string {
 	return sha
 }
 
+// ParseTemplate decodes spec.template and returns the object together with the GVK it declares. apiVersion and
+// kind must be literal strings: they identify the kind before any expression is evaluated.
+func ParseTemplate(raw apiextensionsv1.JSON) (map[string]any, schema.GroupVersionKind, error) {
+	if len(raw.Raw) == 0 {
+		return nil, schema.GroupVersionKind{}, errors.New("template is empty")
+	}
+	var object map[string]any
+	if err := k8sjson.Unmarshal(raw.Raw, &object); err != nil {
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("template is not an object: %w", err)
+	}
+	apiVersion, err := literalString(object, "apiVersion")
+	if err != nil {
+		return nil, schema.GroupVersionKind{}, err
+	}
+	kind, err := literalString(object, "kind")
+	if err != nil {
+		return nil, schema.GroupVersionKind{}, err
+	}
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("template apiVersion %q is invalid: %w", apiVersion, err)
+	}
+	return object, gv.WithKind(kind), nil
+}
+
+func literalString(object map[string]any, key string) (string, error) {
+	raw, ok := object[key]
+	if !ok {
+		return "", fmt.Errorf("template is missing %s", key)
+	}
+	s, ok := raw.(string)
+	if !ok || s == "" {
+		return "", fmt.Errorf("template %s must be a non-empty string", key)
+	}
+	if strings.Contains(s, "${") {
+		return "", fmt.Errorf("template %s must be a literal, not an expression", key)
+	}
+	return s, nil
+}
+
 // BuildParams are the inputs to BuildObject.
 type BuildParams struct {
-	// Template is the template object (wrapped kind).
-	Template *unstructured.Unstructured
-	// SourceGVK is the real kind to create.
+	// Template is the parsed spec.template object.
+	Template map[string]any
+	// Cache compiles the template's expressions.
+	Cache *exprcache.Cache
+	// SourceGVK is the kind to create.
 	SourceGVK schema.GroupVersionKind
 	// Name and Namespace of the created resource.
 	Name      string
@@ -86,26 +157,27 @@ type BuildParams struct {
 	Annotations map[string]string
 	// Owner is set as the controlling owner reference.
 	Owner metav1.OwnerReference
-	// Data is the Go-template data for string values.
+	// Data supplies the expression variables.
 	Data TemplateData
 }
 
-// BuildObject renders the real resource from a template object: the template body is copied without status
-// and metadata, apiVersion/kind are replaced with the source kind, metadata is rebuilt from the params (the
-// template's labels and annotations are preserved and merged under the controller's labels), and every
-// string value containing "{{" is rendered as a Go template with Data. Non-string values are copied verbatim.
+// BuildObject renders the resource to create from a template: the template body is copied without status
+// and metadata, apiVersion/kind are set from SourceGVK, metadata is rebuilt from the params (the template's
+// labels and annotations are rendered and merged under the controller's), and every string value is
+// interpolated (see Interpolator.Value). A standalone expression that evaluates to nil removes its field.
 func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	if p.Template == nil {
 		return nil, errors.New("template is nil")
 	}
-	body := p.Template.DeepCopy().Object
+	body := runtime.DeepCopyJSON(p.Template)
 	delete(body, "status")
 	templateMeta, _ := body["metadata"].(map[string]any)
 	delete(body, "metadata")
 	delete(body, "apiVersion")
 	delete(body, "kind")
 
-	rendered, err := renderStrings(body, p.Data, "")
+	in := NewInterpolator(p.Cache, TemplateExpressionCachePrefix, p.Data.Env())
+	rendered, _, err := interpolateValue(in, body, "")
 	if err != nil {
 		return nil, err
 	}
@@ -118,26 +190,13 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	obj.SetName(p.Name)
 	obj.SetNamespace(p.Namespace)
 
-	labels := map[string]string{}
-	annotations := map[string]string{}
-	if templateMeta != nil {
-		copyStringMap(templateMeta["labels"], labels)
-		copyStringMap(templateMeta["annotations"], annotations)
+	labels, err := renderStringMap(in, templateMeta, "labels")
+	if err != nil {
+		return nil, err
 	}
-	// Render template labels and annotations too: they are string leaves users may want to parameterize.
-	for k, v := range labels {
-		s, err := renderString(v, p.Data, "metadata.labels."+k)
-		if err != nil {
-			return nil, err
-		}
-		labels[k] = s
-	}
-	for k, v := range annotations {
-		s, err := renderString(v, p.Data, "metadata.annotations."+k)
-		if err != nil {
-			return nil, err
-		}
-		annotations[k] = s
+	annotations, err := renderStringMap(in, templateMeta, "annotations")
+	if err != nil {
+		return nil, err
 	}
 	maps.Copy(labels, p.Labels)
 	obj.SetLabels(labels)
@@ -149,57 +208,66 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	return obj, nil
 }
 
-func copyStringMap(src any, dst map[string]string) {
-	m, ok := src.(map[string]any)
+// renderStringMap renders metadata.<key> (labels or annotations) into a string map. Values must render to text.
+func renderStringMap(in *Interpolator, meta map[string]any, key string) (map[string]string, error) {
+	out := map[string]string{}
+	raw, ok := meta[key].(map[string]any)
 	if !ok {
-		return
+		return out, nil
 	}
-	for k, v := range m {
-		if s, ok := v.(string); ok {
-			dst[k] = s
+	for k, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("metadata.%s.%s must be a string, got %T", key, k, v)
 		}
+		rendered, err := in.String(s)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render metadata.%s.%s: %w", key, k, err)
+		}
+		out[k] = rendered
 	}
+	return out, nil
 }
 
-// renderStrings walks v and renders every string containing "{{" as a Go template.
-func renderStrings(v any, data TemplateData, path string) (any, error) {
+// interpolateValue walks v and renders every string through in. omit is true when a standalone expression
+// evaluated to nil, telling the caller to drop the field.
+func interpolateValue(in *Interpolator, v any, path string) (out any, omit bool, err error) {
 	switch t := v.(type) {
 	case map[string]any:
-		out := make(map[string]any, len(t))
+		result := make(map[string]any, len(t))
 		for k, child := range t {
-			r, err := renderStrings(child, data, joinPath(path, k))
+			r, omitChild, err := interpolateValue(in, child, joinPath(path, k))
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
-			out[k] = r
+			if omitChild {
+				continue
+			}
+			result[k] = r
 		}
-		return out, nil
+		return result, false, nil
 	case []any:
-		out := make([]any, len(t))
+		result := make([]any, 0, len(t))
 		for i, child := range t {
-			r, err := renderStrings(child, data, fmt.Sprintf("%s[%d]", path, i))
+			r, omitChild, err := interpolateValue(in, child, fmt.Sprintf("%s[%d]", path, i))
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
-			out[i] = r
+			if omitChild {
+				continue
+			}
+			result = append(result, r)
 		}
-		return out, nil
+		return result, false, nil
 	case string:
-		return renderString(t, data, path)
+		r, err := in.Value(t)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to render template value at %s: %w", path, err)
+		}
+		return r, r == nil, nil
 	default:
-		return v, nil
+		return v, false, nil
 	}
-}
-
-func renderString(s string, data TemplateData, path string) (string, error) {
-	if !strings.Contains(s, "{{") {
-		return s, nil
-	}
-	rendered, err := utils.RenderStringTemplate(s, data, "missingkey=error")
-	if err != nil {
-		return "", fmt.Errorf("failed to render template value at %s: %w", path, err)
-	}
-	return rendered, nil
 }
 
 func joinPath(base, key string) string {

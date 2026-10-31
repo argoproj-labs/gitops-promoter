@@ -214,11 +214,9 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-    # Resource kinds KubernetesResourceCommitStatus gates may create. Each entry generates a wrapped
-    # template CRD (<group>.templates.promoter.argoproj.io) and needs RBAC for the controller on both the
-    # real kind and the template kind. Changing this list restarts the controller.
+    # Resource kinds KubernetesResourceCommitStatus gates may create. The controller needs RBAC on each
+    # listed kind. Changing this list restarts the controller.
     resources: []
-    templateCRDs: Enabled
   restoreActiveCommit:
     workQueue:
       maxConcurrentReconciles: 10

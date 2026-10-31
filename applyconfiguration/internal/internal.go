@@ -1312,10 +1312,6 @@ var schemaYAML = typed.YAMLObject(`types:
           - group
           - version
           - kind
-    - name: templateCRDs
-      type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FeatureMode
-      default: Enabled
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
@@ -1346,7 +1342,7 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceCommitStatusSpec
   map:
     fields:
-    - name: descriptionTemplate
+    - name: description
       type:
         scalar: string
     - name: key
@@ -1374,10 +1370,20 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: proposed
-    - name: templateRef
+    - name: template
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceTemplateReference
-    - name: urlTemplate
+        map:
+          elementType:
+            scalar: untyped
+            list:
+              elementType:
+                namedType: __untyped_atomic_
+              elementRelationship: atomic
+            map:
+              elementType:
+                namedType: __untyped_deduced_
+              elementRelationship: separable
+    - name: url
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceCommitStatusStatus
@@ -1424,18 +1430,6 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceReference
-  map:
-    fields:
-    - name: apiVersion
-      type:
-        scalar: string
-    - name: kind
-      type:
-        scalar: string
-    - name: name
-      type:
-        scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceTemplateReference
   map:
     fields:
     - name: apiVersion

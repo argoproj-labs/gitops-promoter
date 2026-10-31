@@ -10,12 +10,23 @@ spec:
   key: smoke-test
   # proposed (default) creates the resource for the proposed hydrated SHA; active uses the live SHA.
   reportOn: proposed
-  # The template is an instance of the wrapped kind generated from
+  # The object created per environment. Its kind must be listed in
   # ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources (here batch/v1 Job).
-  templateRef:
-    apiVersion: batch.templates.promoter.argoproj.io/v1
+  # String values may contain ${ } expr expressions; a value that is exactly one expression keeps its type.
+  template:
+    apiVersion: batch/v1
     kind: Job
-    name: smoke-test
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 0
+      suspend: ${ Branch == 'environment/production' }
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: test
+              image: ghcr.io/acme/smoke:latest
+              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
   lifecycle:
     # PerSha (default) creates one resource per SHA; InPlace re-applies a single resource per environment.
     mode: PerSha
@@ -29,4 +40,4 @@ spec:
         : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
           ? {phase: 'failure', description: 'Smoke test is failing'}
           : false
-  descriptionTemplate: "Smoke test {{ .ResourceName }} is {{ .Phase }}"
+  description: "Smoke test ${ ResourceName } is ${ Phase }"

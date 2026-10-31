@@ -17,35 +17,23 @@ limitations under the License.
 
 package v1alpha1
 
-import (
-	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-)
-
 // KubernetesResourceCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the KubernetesResourceCommitStatusConfiguration type for use
 // with apply.
 //
 // KubernetesResourceCommitStatusConfiguration defines the configuration for the KubernetesResourceCommitStatus controller.
 //
 // Besides the WorkQueue, it lists the resource kinds (group/version/kind) that KubernetesResourceCommitStatus
-// gates may instantiate. For each listed kind the controller generates a wrapped template CRD in the API
-// group "<group>.templates.promoter.argoproj.io" ("core.templates.promoter.argoproj.io" for the core group)
-// with the same Kind, version, and schema as the source kind, and watches both the real kind and the
-// template kind. The controller needs RBAC on every listed kind (get, list, watch, create, patch, delete),
-// on its template kind (get, list, watch), and on customresourcedefinitions when TemplateCRDs is Enabled.
+// gates may instantiate. The controller watches every listed kind and needs RBAC on it (get, list, watch,
+// create, patch, delete).
 type KubernetesResourceCommitStatusConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the KubernetesResourceCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 	// Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.
-	// Each entry produces one wrapped template CRD and one informer on the real kind.
+	// Each entry produces one informer on the kind.
 	// Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
 	// process down when it detects a change, like spec.instanceID.
 	Resources []ResourceGroupVersionKindApplyConfiguration `json:"resources,omitempty"`
-	// TemplateCRDs enables or disables generation of the wrapped template CRDs at controller startup.
-	// Disable it for installs whose ServiceAccount cannot create cluster-scoped CustomResourceDefinitions
-	// (for example the namespaced install); the wrapped CRDs must then be created by other means.
-	// Requires a controller restart.
-	TemplateCRDs *apiv1alpha1.FeatureMode `json:"templateCRDs,omitempty"`
 }
 
 // KubernetesResourceCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the KubernetesResourceCommitStatusConfiguration type for use with
@@ -72,13 +60,5 @@ func (b *KubernetesResourceCommitStatusConfigurationApplyConfiguration) WithReso
 		}
 		b.Resources = append(b.Resources, *values[i])
 	}
-	return b
-}
-
-// WithTemplateCRDs sets the TemplateCRDs field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the TemplateCRDs field is set to the value of the last call.
-func (b *KubernetesResourceCommitStatusConfigurationApplyConfiguration) WithTemplateCRDs(value apiv1alpha1.FeatureMode) *KubernetesResourceCommitStatusConfigurationApplyConfiguration {
-	b.TemplateCRDs = &value
 	return b
 }
