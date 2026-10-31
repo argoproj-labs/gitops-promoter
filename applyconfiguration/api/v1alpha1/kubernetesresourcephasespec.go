@@ -30,6 +30,8 @@ type KubernetesResourcePhaseSpecApplyConfiguration struct {
 	// - Environment: the PromotionStrategy status entry for Branch
 	// - PromotionStrategy: the full PromotionStrategy spec and status
 	// - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)
+	// - keyBy(list, keyField, valueField): a function that turns a list of objects into a map, for example
+	// keyBy(Resource.status?.results ?? [], 'name', 'value') for Tekton results
 	//
 	// Return values:
 	// - a boolean: true → success, false → pending

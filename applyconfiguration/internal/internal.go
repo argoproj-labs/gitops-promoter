@@ -1421,6 +1421,12 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceLifecycleMode
       default: PerSha
+    - name: pruneOnSuccess
+      type:
+        scalar: boolean
+    - name: retryOnDelete
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceLifecycleMode
   scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourcePhaseSpec

@@ -152,6 +152,8 @@ spec:
 | `template` | The object to create, see below. Its `apiVersion`/`kind` must be listed in the ControllerConfiguration. |
 | `lifecycle.mode` | `PerSha` (default) or `InPlace`, see below. |
 | `lifecycle.historyLimit` | Resources kept per environment in `PerSha` mode, including the current one (default 1). |
+| `lifecycle.pruneOnSuccess` | `PerSha` only. Delete the resource as soon as the phase becomes `success`; the gate keeps reporting success. |
+| `lifecycle.retryOnDelete` | `PerSha` only. Deleting the resource of a failed SHA creates a new one and the phase returns to `pending`. |
 | `phase.expression` | expr expression, see below. |
 | `description` / `url` | Optional CommitStatus description and URL, with `${ }` expressions. |
 
@@ -217,7 +219,14 @@ deleted down to `historyLimit`. Use this for immutable or run-once kinds (Job, W
 
 A SHA that reached `success` or `failure` is **terminal**: if its resource disappears afterwards (for example a Job
 removed by `ttlSecondsAfterFinished`), the gate keeps the last report and does not recreate the resource. A new SHA
-always starts over with a fresh resource and `pending`.
+always starts over with a fresh resource and `pending`. Two options adjust this:
+
+- `pruneOnSuccess: true` deletes the resource as soon as the phase becomes `success`. Success stays terminal, so the
+  report is kept and nothing is recreated. Use it when successful runs are not worth keeping around.
+- `retryOnDelete: true` makes failure non-terminal: deleting the resource of a failed SHA makes the controller create a
+  new one and the phase returns to `pending`, so deleting the resource is how you rerun a failed check. Leave it off
+  for kinds that remove failed resources on their own, such as a Job with `ttlSecondsAfterFinished`, or every removal
+  starts another run.
 
 **`InPlace`** keeps a single resource per environment and re-applies the rendered template with Server-Side Apply on
 every reconcile, so SHA changes and template changes propagate into the same object. Fields set by other managers are
@@ -231,6 +240,7 @@ preserved unless the template also sets them. Use this for mutable kinds. Immuta
 | Variable | Description |
 | --- | --- |
 | `Resource` | The live resource as a map, including `status` |
+| `keyBy(list, keyField, valueField)` | Turns a list of objects into a map, for name/value lists such as Tekton results or container env. An empty `valueField` keeps the whole item. |
 
 Return either a boolean (`true` → `success`, `false` → `pending`) or an object `{ phase, description?, url? }` where
 `phase` is `success`, `pending`, or `failure` (omitted means `pending`). Any other value fails the reconcile.
@@ -254,6 +264,57 @@ Resource.status?.phase == 'Successful' ? {phase: 'success'}
 # Job, counting pods instead of conditions
 (Resource.status?.succeeded ?? 0) > 0 ? true : ((Resource.status?.failed ?? 0) > 0 ? {phase: 'failure'} : false)
 ```
+
+## Example: a Tekton Pipeline
+
+Tekton `PipelineRun` and `TaskRun` are ordinary kinds, so gating on a Pipeline needs no Tekton-specific support. List
+`tekton.dev/v1 PipelineRun` in the ControllerConfiguration, grant the controller RBAC on `pipelineruns`, and write the
+run you would write by hand, with the SHA and branch as parameters. Tekton results are a name/value list on
+`status.results`; `keyBy` turns them into a map.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: security-scan
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: security-scan
+  reportOn: proposed
+  template:
+    apiVersion: tekton.dev/v1
+    kind: PipelineRun
+    spec:
+      pipelineRef:
+        name: security-scan
+      taskRunTemplate:
+        serviceAccountName: tekton-runner
+      params:
+        - name: gitUrl
+          value: "https://github.com/myorg/myrepo/commit/${ Sha }"
+        - name: branch
+          value: ${ Branch }
+        - name: endpoints
+          value: ["api/health", "api/users"]
+  lifecycle:
+    pruneOnSuccess: true
+    retryOnDelete: true
+  phase:
+    expression: |
+      let conditions = Resource.status?.conditions ?? [];
+      let results = keyBy(Resource.status?.results ?? [], 'name', 'value');
+      any(conditions, .type == 'Succeeded' && .status == 'False')
+        ? {phase: 'failure', description: find(conditions, .type == 'Succeeded').message}
+        : !any(conditions, .type == 'Succeeded' && .status == 'True') ? false
+        : !('vulnerabilities' in results) ? {phase: 'failure', description: 'Result vulnerabilities is missing'}
+        : results.vulnerabilities == '0' ? {phase: 'success'}
+        : {phase: 'failure', description: results.vulnerabilities + ' vulnerabilities found'}
+```
+
+Setting `reportOn: proposed` runs the pipeline against the proposed commit and gates it; `reportOn: active` runs it
+against what is live and gates the environments after it. To run against the active commit while gating the proposed
+one, keep `reportOn: proposed` and pass `${ Environment.Active.Hydrated.Sha }` as the parameter.
 
 ## Description and URL
 

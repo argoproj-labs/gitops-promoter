@@ -66,9 +66,10 @@ type TemplateData struct {
 	ExpressionURL         string
 }
 
-// Env returns the variables available to spec.template expressions.
+// Env returns the variables available to spec.template expressions, plus the keyBy helper function.
 func (d TemplateData) Env() map[string]any {
 	return map[string]any{
+		"keyBy":                          keyBy,
 		"Branch":                         d.Branch,
 		"Sha":                            d.Sha,
 		"ShortSha":                       d.ShortSha,
@@ -90,6 +91,32 @@ func (d TemplateData) ReportEnv() map[string]any {
 	env["ExpressionDescription"] = d.ExpressionDescription
 	env["ExpressionUrl"] = d.ExpressionURL
 	return env
+}
+
+// keyBy turns a list of objects into a map: each item's keyField value becomes a key whose value is the item's
+// valueField (or the whole item when valueField is empty). Items that are not objects, lack a string keyField, or
+// lack valueField are skipped. It exists because expr cannot build a map from a list, and name/value lists such as
+// Tekton results or container env are common in Kubernetes status.
+func keyBy(list []any, keyField, valueField string) map[string]any {
+	out := make(map[string]any, len(list))
+	for _, item := range list {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, ok := obj[keyField].(string)
+		if !ok {
+			continue
+		}
+		if valueField == "" {
+			out[key] = obj
+			continue
+		}
+		if v, ok := obj[valueField]; ok {
+			out[key] = v
+		}
+	}
+	return out
 }
 
 // ShortSha returns the first seven characters of sha (or sha itself when shorter).

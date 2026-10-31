@@ -127,6 +127,8 @@ type KubernetesResourceCommitStatusSpec struct {
 
 // KubernetesResourceLifecycle controls how created resources are managed over time.
 // +kubebuilder:validation:XValidation:rule="!has(self.historyLimit) || !has(self.mode) || self.mode == 'PerSha'",message="historyLimit is only valid with mode PerSha"
+// +kubebuilder:validation:XValidation:rule="!has(self.pruneOnSuccess) || !self.pruneOnSuccess || !has(self.mode) || self.mode == 'PerSha'",message="pruneOnSuccess is only valid with mode PerSha"
+// +kubebuilder:validation:XValidation:rule="!has(self.retryOnDelete) || !self.retryOnDelete || !has(self.mode) || self.mode == 'PerSha'",message="retryOnDelete is only valid with mode PerSha"
 type KubernetesResourceLifecycle struct {
 	// Mode is PerSha (default) or InPlace. See KubernetesResourceLifecycleMode.
 	// +optional
@@ -140,6 +142,19 @@ type KubernetesResourceLifecycle struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
 	HistoryLimit *int32 `json:"historyLimit,omitempty"`
+
+	// PruneOnSuccess deletes the created resource as soon as the environment's phase becomes success. Success is
+	// terminal for a SHA, so the gate keeps reporting it and does not recreate the resource. Use this for
+	// run-once kinds whose successful runs are not worth keeping. Only valid with mode PerSha.
+	// +optional
+	PruneOnSuccess bool `json:"pruneOnSuccess,omitempty"`
+
+	// RetryOnDelete makes failure non-terminal: when the resource of a SHA whose phase is failure is deleted, the
+	// controller creates a new one for the same SHA and the phase returns to pending, so deleting the resource
+	// is how a failed check is rerun. Leave it off (default) for kinds that remove failed resources on their own,
+	// such as a Job with ttlSecondsAfterFinished, or every removal would start another run. Only valid with mode PerSha.
+	// +optional
+	RetryOnDelete bool `json:"retryOnDelete,omitempty"`
 }
 
 // KubernetesResourcePhaseSpec holds the expression that maps the live resource to a commit status phase.
@@ -152,6 +167,8 @@ type KubernetesResourcePhaseSpec struct {
 	//   - Environment: the PromotionStrategy status entry for Branch
 	//   - PromotionStrategy: the full PromotionStrategy spec and status
 	//   - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)
+	//   - keyBy(list, keyField, valueField): a function that turns a list of objects into a map, for example
+	//     keyBy(Resource.status?.results ?? [], 'name', 'value') for Tekton results
 	//
 	// Return values:
 	//   - a boolean: true → success, false → pending

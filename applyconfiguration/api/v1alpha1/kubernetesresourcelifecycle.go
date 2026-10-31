@@ -32,6 +32,15 @@ type KubernetesResourceLifecycleApplyConfiguration struct {
 	// Older resources are deleted once the current one exists. Defaults to 1 when omitted (no schema default,
 	// so the field can stay unset for mode InPlace). Only valid with mode PerSha.
 	HistoryLimit *int32 `json:"historyLimit,omitempty"`
+	// PruneOnSuccess deletes the created resource as soon as the environment's phase becomes success. Success is
+	// terminal for a SHA, so the gate keeps reporting it and does not recreate the resource. Use this for
+	// run-once kinds whose successful runs are not worth keeping. Only valid with mode PerSha.
+	PruneOnSuccess *bool `json:"pruneOnSuccess,omitempty"`
+	// RetryOnDelete makes failure non-terminal: when the resource of a SHA whose phase is failure is deleted, the
+	// controller creates a new one for the same SHA and the phase returns to pending, so deleting the resource
+	// is how a failed check is rerun. Leave it off (default) for kinds that remove failed resources on their own,
+	// such as a Job with ttlSecondsAfterFinished, or every removal would start another run. Only valid with mode PerSha.
+	RetryOnDelete *bool `json:"retryOnDelete,omitempty"`
 }
 
 // KubernetesResourceLifecycleApplyConfiguration constructs a declarative configuration of the KubernetesResourceLifecycle type for use with
@@ -53,5 +62,21 @@ func (b *KubernetesResourceLifecycleApplyConfiguration) WithMode(value apiv1alph
 // If called multiple times, the HistoryLimit field is set to the value of the last call.
 func (b *KubernetesResourceLifecycleApplyConfiguration) WithHistoryLimit(value int32) *KubernetesResourceLifecycleApplyConfiguration {
 	b.HistoryLimit = &value
+	return b
+}
+
+// WithPruneOnSuccess sets the PruneOnSuccess field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PruneOnSuccess field is set to the value of the last call.
+func (b *KubernetesResourceLifecycleApplyConfiguration) WithPruneOnSuccess(value bool) *KubernetesResourceLifecycleApplyConfiguration {
+	b.PruneOnSuccess = &value
+	return b
+}
+
+// WithRetryOnDelete sets the RetryOnDelete field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RetryOnDelete field is set to the value of the last call.
+func (b *KubernetesResourceLifecycleApplyConfiguration) WithRetryOnDelete(value bool) *KubernetesResourceLifecycleApplyConfiguration {
+	b.RetryOnDelete = &value
 	return b
 }

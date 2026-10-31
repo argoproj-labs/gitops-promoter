@@ -85,6 +85,21 @@ var _ = Describe("Interpolator", func() {
 		Expect(err).To(MatchError(ContainSubstring("result is nil")))
 	})
 
+	It("offers keyBy for name/value lists", func() {
+		in = NewInterpolator(exprcache.New(16), TemplateExpressionCachePrefix, TemplateData{Resource: map[string]any{"status": map[string]any{
+			"results": []any{
+				map[string]any{"name": "vulnerabilities", "value": "0"},
+				map[string]any{"name": "endpoints", "value": []any{"a", "b"}},
+				map[string]any{"value": "no name"},
+				"not an object",
+			},
+		}}}.ReportEnv())
+		Expect(in.Value("${ keyBy(Resource.status.results, 'name', 'value') }")).To(Equal(map[string]any{"vulnerabilities": "0", "endpoints": []any{"a", "b"}}))
+		Expect(in.Value("${ keyBy(Resource.status.results, 'name', '').endpoints.name }")).To(Equal("endpoints"))
+		Expect(in.Value("${ keyBy(Resource.status?.missing ?? [], 'name', 'value') }")).To(Equal(map[string]any{}))
+		Expect(in.Value("${ let r = keyBy(Resource.status.results, 'name', 'value'); r.vulnerabilities == '0' && len(r.endpoints) == 2 }")).To(BeTrue())
+	})
+
 	It("stringifies standalone results in String", func() {
 		Expect(in.String("${ 42 }")).To(Equal("42"))
 		Expect(in.String("${ {a: 1} }")).To(Equal(`{"a":1}`))

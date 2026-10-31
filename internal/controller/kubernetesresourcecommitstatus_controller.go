@@ -255,11 +255,19 @@ func (in environmentInput) resourceName() string {
 }
 
 // isTerminalForSha reports whether the previous report already reached a terminal phase for the current SHA.
+// Success is always terminal; failure is terminal unless spec.lifecycle.retryOnDelete asks for a rerun.
 func (in environmentInput) isTerminalForSha() bool {
 	if in.previous == nil || in.previous.ReportedSha != in.sha {
 		return false
 	}
-	return in.previous.Phase == promoterv1alpha1.CommitPhaseSuccess || in.previous.Phase == promoterv1alpha1.CommitPhaseFailure
+	switch in.previous.Phase {
+	case promoterv1alpha1.CommitPhaseSuccess:
+		return true
+	case promoterv1alpha1.CommitPhaseFailure:
+		return !in.gate.Spec.Lifecycle.RetryOnDelete
+	default:
+		return false
+	}
 }
 
 // reconcileEnvironment ensures the real resource exists for the environment (or re-applies it in InPlace mode),
@@ -347,6 +355,13 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	cs, err := r.upsertCommitStatus(ctx, in, report)
 	if err != nil {
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+	}
+	// Prune on success once the report is persisted: success is terminal, so the next reconcile keeps this
+	// report instead of recreating the resource.
+	if report.Phase == promoterv1alpha1.CommitPhaseSuccess && in.gate.Spec.Lifecycle.PruneOnSuccess && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha {
+		if err := r.deleteResource(ctx, in.gate, live, "pruneOnSuccess"); err != nil {
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
+		}
 	}
 	now := metav1.Now()
 	return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{

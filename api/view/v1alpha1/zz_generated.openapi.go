@@ -4921,6 +4921,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceLifecyc
 							Format:      "int32",
 						},
 					},
+					"pruneOnSuccess": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PruneOnSuccess deletes the created resource as soon as the environment's phase becomes success. Success is terminal for a SHA, so the gate keeps reporting it and does not recreate the resource. Use this for run-once kinds whose successful runs are not worth keeping. Only valid with mode PerSha.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"retryOnDelete": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RetryOnDelete makes failure non-terminal: when the resource of a SHA whose phase is failure is deleted, the controller creates a new one for the same SHA and the phase returns to pending, so deleting the resource is how a failed check is rerun. Leave it off (default) for kinds that remove failed resources on their own, such as a Job with ttlSecondsAfterFinished, or every removal would start another run. Only valid with mode PerSha.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -4936,7 +4950,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourcePhaseSp
 				Properties: map[string]spec.Schema{
 					"expression": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the created resource exists. Available variables:\n  - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,\n    for example Resource.status?.conditions ?? [], because member access through nil is an error.\n  - Branch (string), Sha (string), ReportOn (string)\n  - Environment: the PromotionStrategy status entry for Branch\n  - PromotionStrategy: the full PromotionStrategy spec and status\n  - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)\n\nReturn values:\n  - a boolean: true → success, false → pending\n  - an object { phase, description?, url? } where phase is \"success\", \"pending\", or \"failure\"\n    (an omitted or empty phase means \"pending\")\nAny other return type, or an unrecognized phase string, fails the reconcile.\n\nExample for a batch/v1 Job:\n\n\tany(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})\n\t  ? {phase: 'success'}\n\t  : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})\n\t    ? {phase: 'failure', description: 'Smoke test is failing'}\n\t    : false",
+							Description: "Expression is an expr (https://expr-lang.org) expression evaluated on every reconcile while the created resource exists. Available variables:\n  - Resource (map): the live resource, including status. Guard optional fields with ?. and ??,\n    for example Resource.status?.conditions ?? [], because member access through nil is an error.\n  - Branch (string), Sha (string), ReportOn (string)\n  - Environment: the PromotionStrategy status entry for Branch\n  - PromotionStrategy: the full PromotionStrategy spec and status\n  - KubernetesResourceCommitStatus: this gate (snapshot from the previous reconcile)\n  - keyBy(list, keyField, valueField): a function that turns a list of objects into a map, for example\n    keyBy(Resource.status?.results ?? [], 'name', 'value') for Tekton results\n\nReturn values:\n  - a boolean: true → success, false → pending\n  - an object { phase, description?, url? } where phase is \"success\", \"pending\", or \"failure\"\n    (an omitted or empty phase means \"pending\")\nAny other return type, or an unrecognized phase string, fails the reconcile.\n\nExample for a batch/v1 Job:\n\n\tany(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})\n\t  ? {phase: 'success'}\n\t  : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})\n\t    ? {phase: 'failure', description: 'Smoke test is failing'}\n\t    : false",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

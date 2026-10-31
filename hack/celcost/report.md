@@ -18,7 +18,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 16 | 0.00% |
-| KubernetesResourceCommitStatus | v1alpha1 | 1,507 | 0.00% |
+| KubernetesResourceCommitStatus | v1alpha1 | 1,527 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RestoreActiveCommit | v1alpha1 | 165 | 0.00% |
@@ -222,8 +222,10 @@ Source: `promoter.argoproj.io_kubernetesresourcecommitstatuses.yaml`
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
 | `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.spec.lifecycle` | 10 | 0.00% | `!has(self.pruneOnSuccess) \|\| !self.pruneOnSuccess \|\| !has(self.mode) \|\| self.mode == 'PerSha'` |
+| `.spec.lifecycle` | 10 | 0.00% | `!has(self.retryOnDelete) \|\| !self.retryOnDelete \|\| !has(self.mode) \|\| self.mode == 'PerSha'` |
 | `.spec.lifecycle` | 7 | 0.00% | `!has(self.historyLimit) \|\| !has(self.mode) \|\| self.mode == 'PerSha'` |
-| **Total** | **1,507** | **0.00%** | |
+| **Total** | **1,527** | **0.00%** | |
 
 #### PromotionStrategy
 
