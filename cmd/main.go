@@ -49,6 +49,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	promoterwebhook "github.com/argoproj-labs/gitops-promoter/internal/webhook"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -84,6 +85,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var admissionWebhook admissionWebhookOptions
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -96,6 +98,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				admissionWebhook,
 				clientConfig,
 			)
 		},
@@ -111,8 +114,23 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().BoolVar(&admissionWebhook.enabled, "enable-admission-webhooks", false,
+		"Serve the validating admission webhook for KubernetesResourceCommitStatus. Requires the serving certificate "+
+			"in --admission-webhook-cert-dir and the ValidatingWebhookConfiguration from config/webhook.")
+	cmd.Flags().StringVar(&admissionWebhook.certDir, "admission-webhook-cert-dir", "",
+		"Directory containing tls.crt and tls.key for the admission webhook server. "+
+			"Defaults to <temp dir>/k8s-webhook-server/serving-certs.")
+	cmd.Flags().IntVar(&admissionWebhook.port, "admission-webhook-port", 9443,
+		"Port the admission webhook server listens on.")
 
 	return cmd
+}
+
+// admissionWebhookOptions configures the admission webhook server (see --enable-admission-webhooks).
+type admissionWebhookOptions struct {
+	certDir string
+	port    int
+	enabled bool
 }
 
 //nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
@@ -123,6 +141,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	admissionWebhook admissionWebhookOptions,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -164,7 +183,10 @@ func runController(
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	// The server only starts when a webhook is registered (see --enable-admission-webhooks).
 	webhookServer := webhook.NewServer(webhook.Options{
+		Port:    admissionWebhook.port,
+		CertDir: admissionWebhook.certDir,
 		TLSOpts: tlsOpts,
 	})
 
@@ -437,14 +459,24 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
-	if err := (&controller.KubernetesResourceCommitStatusReconciler{
+	krcsReconciler := &controller.KubernetesResourceCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("KubernetesResourceCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(runCtx, localManager); err != nil {
+	}
+	if err := krcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
+	}
+	if admissionWebhook.enabled {
+		// Shares the controller's compiler and kind list so admission and reconciliation agree.
+		if err := (&promoterwebhook.KubernetesResourceCommitStatusValidator{
+			Compiler:   krcsReconciler.Compiler(),
+			Configured: krcsReconciler.ConfiguredKinds(),
+		}).SetupWithManager(localManager); err != nil {
+			panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus admission webhook: %w", err))
+		}
 	}
 	//+kubebuilder:scaffold:builder
 

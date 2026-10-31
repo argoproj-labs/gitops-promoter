@@ -211,9 +211,21 @@ The library set is the Kubernetes one: `has()`, optionals (`.?`, `orValue()`, `o
 `all`, `map`, `filter`), `quantity()`, `semver()`, `url()`, `isURL()`, `format`, IP and CIDR helpers, and the string,
 math, sets, and encoders extensions.
 
-> [!NOTE]
-> The gate holds the whole template, so the CRD schema cannot validate the template at admission time. Checking
-> happens on the first reconcile instead.
+### Validation at admission time
+
+The gate holds the whole template, so the CRD schema cannot validate it. The controller can instead serve a
+[validating admission webhook](../../advanced-usage/admission-webhook.md) that runs the same compile-time checks
+when the gate is created or updated, plus a check that every template field exists in the kind's schema (the API
+server would otherwise drop a misspelled field silently). A bad gate is then rejected by `kubectl apply` or shown as
+a sync error by Argo CD:
+
+```text
+The KubernetesResourceCommitStatus "smoke-test" is invalid:
+spec.template.spec.parallelism: Invalid value: "${ Sha }": expression "Sha" returns string but the field expects int
+```
+
+The webhook is included in the `install-with-dashboard-*` bundles. Without it, the same errors appear as
+`Ready=False` on the first reconcile.
 
 Examples:
 

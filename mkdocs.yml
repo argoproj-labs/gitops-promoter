@@ -83,6 +83,7 @@ nav:
       - Configuring Multi-Tenancy: advanced-usage/multi-tenancy.md
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
+      - Admission Webhook: advanced-usage/admission-webhook.md
       - Rolling Back an Environment: advanced-usage/rolling-back.md
       - Dynamic Pull Request Labels: advanced-usage/pull-request-labels.md
   - CRD Specs: crd-specs.md

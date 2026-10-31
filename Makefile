@@ -68,7 +68,7 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..."
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." output:webhook:artifacts:config=config/webhook/base
 	# CRD generation is scoped to the packages that actually define CRDs. The
 	# view aggregation API (api/view/...) is served by an extension
 	# apiserver, not as CRDs; including it would make controller-gen's CRD generator
@@ -159,6 +159,10 @@ mockery-gen: mockery
 .PHONY: apiserver-certs
 apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserver and patch the APIService caBundle (manual cert path).
 	./hack/gen-apiserver-certs.sh
+
+.PHONY: webhook-certs
+webhook-certs: ## Generate self-signed serving certs for the admission webhook and patch the ValidatingWebhookConfiguration caBundle (manual cert path).
+	./hack/gen-webhook-certs.sh
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

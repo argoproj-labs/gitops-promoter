@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Manual / scripted serving cert for the admission webhook (no cert-manager dependency).
+#
+# 1. Apply this overlay:        kubectl apply -k config/webhook/certs-manual
+# 2. Generate certs + caBundle: make webhook-certs
+#    (hack/gen-webhook-certs.sh creates the promoter-webhook-server-cert Secret and patches
+#     the ValidatingWebhookConfiguration caBundle with the generated CA).
+#
+# This overlay is identical to the base; it exists as the documented entrypoint for the
+# manual cert workflow. Add the config/webhook/manager-patch component to the install so the
+# controller mounts the Secret and serves the webhook.
+
+resources:
+  - ../base

@@ -19,6 +19,7 @@ package resourcetemplate
 import (
 	"fmt"
 
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -40,16 +41,25 @@ func EvaluatePhaseExpression(compiler *Compiler, gvk schema.GroupVersionKind, ex
 	if err != nil {
 		return PhaseResult{}, fmt.Errorf("phase expression: %w", err)
 	}
-	switch program.OutputType.Kind() {
-	case types.BoolKind, types.MapKind, types.DynKind:
-	default:
-		return PhaseResult{}, fmt.Errorf("phase expression must return a boolean or an object with a phase key, but returns %s", program.OutputType.TypeName())
+	if err := CheckPhaseOutputType(program.OutputType); err != nil {
+		return PhaseResult{}, fmt.Errorf("phase expression %w", err)
 	}
 	out, err := program.Eval(activation)
 	if err != nil {
 		return PhaseResult{}, fmt.Errorf("phase expression failed: %w", err)
 	}
 	return ParsePhaseResult(out)
+}
+
+// CheckPhaseOutputType reports whether a phase expression with the statically inferred output type t can
+// produce a valid result: a boolean, an object, or a dynamically typed value.
+func CheckPhaseOutputType(t *cel.Type) error {
+	switch t.Kind() {
+	case types.BoolKind, types.MapKind, types.DynKind:
+		return nil
+	default:
+		return fmt.Errorf("must return a boolean or an object with a phase key, but returns %s", t.TypeName())
+	}
 }
 
 // ParsePhaseResult converts the raw expression output to a PhaseResult.

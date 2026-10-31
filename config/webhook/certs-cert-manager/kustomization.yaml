@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# cert-manager-managed serving cert for the admission webhook (requires cert-manager).
+#
+#   kubectl apply -k config/webhook/certs-cert-manager
+#
+# A self-signed Issuer + Certificate produce the promoter-webhook-server-cert Secret, and the
+# cert-manager.io/inject-ca-from annotation makes ca-injector keep the
+# ValidatingWebhookConfiguration caBundle in sync (including on rotation). Add the
+# config/webhook/manager-patch component to the install so the controller mounts the Secret
+# and serves the webhook.
+
+resources:
+  - ../base
+  - issuer.yaml
+  - certificate.yaml
+
+patches:
+  - path: webhook_cainjection_patch.yaml
+    target:
+      group: admissionregistration.k8s.io
+      version: v1
+      kind: ValidatingWebhookConfiguration
+      name: promoter-validating-webhook-configuration

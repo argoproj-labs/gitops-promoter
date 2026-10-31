@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Turns the admission webhook on in the controller Deployment: passes --enable-admission-webhooks,
+# exposes the webhook port, and mounts the promoter-webhook-server-cert Secret where
+# controller-runtime looks for tls.crt / tls.key. Used with config/webhook/certs-cert-manager or
+# config/webhook/certs-manual, which provide the Secret.
+
+patches:
+  # args is a plain list, so a strategic merge would replace it; append instead.
+  - target:
+      kind: Deployment
+      name: promoter-controller-manager
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --enable-admission-webhooks
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: promoter-controller-manager
+        namespace: promoter-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                ports:
+                  - name: webhook-server
+                    containerPort: 9443
+                    protocol: TCP
+                volumeMounts:
+                  - name: webhook-server-cert
+                    mountPath: /tmp/k8s-webhook-server/serving-certs
+                    readOnly: true
+            volumes:
+              - name: webhook-server-cert
+                secret:
+                  secretName: promoter-webhook-server-cert
+                  defaultMode: 420

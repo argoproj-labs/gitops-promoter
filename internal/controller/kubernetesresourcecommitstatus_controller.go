@@ -583,6 +583,18 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 	return nil
 }
 
+// Compiler returns the expression compiler. It is set by SetupWithManager and is shared with the admission
+// webhook so both type-check against the same kind schemas.
+func (r *KubernetesResourceCommitStatusReconciler) Compiler() *resourcetemplate.Compiler {
+	return r.compiler
+}
+
+// ConfiguredKinds returns the kinds gates may create: the namespaced kinds listed in
+// ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources that were served when SetupWithManager ran.
+func (r *KubernetesResourceCommitStatusReconciler) ConfiguredKinds() map[schema.GroupVersionKind]struct{} {
+	return r.configured
+}
+
 // SetupWithManager registers the controller: it watches KubernetesResourceCommitStatus, PromotionStrategy, and
 // every configured kind (enqueuing the owning gate). Configured kinds that are not served by the API server
 // are skipped with an error log.

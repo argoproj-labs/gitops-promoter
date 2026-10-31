@@ -55,6 +55,10 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
+The `install-with-dashboard-*` bundles also serve the
+[admission webhook](advanced-usage/admission-webhook.md) that validates `KubernetesResourceCommitStatus` gates when
+they are applied, using the same certificate strategy. `install-without-ui.yaml` leaves it out.
+
 ### Namespaced
 
 Reconciles resources only in the `promoter-system` namespace, using a `Role` instead of a `ClusterRole`.

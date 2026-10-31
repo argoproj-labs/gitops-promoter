@@ -1,0 +1,10 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: promoter-webhook-selfsigned
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/part-of: promoter
+spec:
+  selfSigned: {}

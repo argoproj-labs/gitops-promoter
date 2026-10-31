@@ -5,12 +5,18 @@ kind: Kustomization
 # Builds the published install-with-dashboard-byo-cert-namespaced.yaml. The dashboard
 # apiserver reads only promoter-system but still uses cluster-scoped delegated authentication.
 
+#
+# The admission webhook is included as in release-combined-byo-cert and limited to promoter-system.
+
 resources:
   - ../../namespaced
   - ../certs-manual
+  - ../../webhook/certs-manual
 
 components:
   - ../namespaced-rbac
+  - ../../webhook/manager-patch
+  - ../../webhook/namespaced
 
 images:
   - name: quay.io/argoprojlabs/gitops-promoter

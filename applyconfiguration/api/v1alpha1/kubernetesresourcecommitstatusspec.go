@@ -64,7 +64,8 @@ type KubernetesResourceCommitStatusSpecApplyConfiguration struct {
 	// branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
 	// Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and
 	// the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is
-	// created. Everything else is copied verbatim.
+	// created: at admission time when the validating webhook is installed, otherwise in status on the first
+	// reconcile. Everything else is copied verbatim.
 	Template *v1.JSON `json:"template,omitempty"`
 	// Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment
 	// is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.

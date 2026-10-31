@@ -132,6 +132,17 @@ func NewInterpolator(compiler *Compiler, set VariableSet, gvk schema.GroupVersio
 // other string concatenates its literal text with the stringified expression results. Strings without "${" are
 // returned unchanged. expected, when known, is the declared type of the field receiving the value.
 func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, error) {
+	return in.render(s, expected, true)
+}
+
+// Check compiles the expressions in s and checks them against expected exactly as Value does before evaluating,
+// without evaluating anything. It needs no activation, so it can run at admission time.
+func (in *Interpolator) Check(s string, expected *apiservercel.DeclType) error {
+	_, err := in.render(s, expected, false)
+	return err
+}
+
+func (in *Interpolator) render(s string, expected *apiservercel.DeclType, evaluate bool) (any, error) {
 	if !strings.Contains(s, "${") {
 		return s, nil
 	}
@@ -146,6 +157,9 @@ func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, e
 		}
 		if err := CheckOutputType(program.OutputType, expected); err != nil {
 			return nil, fmt.Errorf("expression %q %w", strings.TrimSpace(expression), err)
+		}
+		if !evaluate {
+			return nil, nil
 		}
 		return in.eval(program, expression)
 	}
@@ -162,6 +176,12 @@ func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, e
 		if err != nil {
 			return nil, err
 		}
+		if program.OutputType.Kind() == types.NullTypeKind {
+			return nil, fmt.Errorf("expression %q: result is null; use orValue() to provide a default", strings.TrimSpace(seg.text))
+		}
+		if !evaluate {
+			continue
+		}
 		out, err := in.eval(program, seg.text)
 		if err != nil {
 			return nil, err
@@ -171,6 +191,9 @@ func (in *Interpolator) Value(s string, expected *apiservercel.DeclType) (any, e
 			return nil, fmt.Errorf("expression %q: %w", strings.TrimSpace(seg.text), err)
 		}
 		b.WriteString(text)
+	}
+	if !evaluate {
+		return nil, nil
 	}
 	return b.String(), nil
 }

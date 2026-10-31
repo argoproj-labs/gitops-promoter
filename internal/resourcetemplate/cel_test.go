@@ -1,6 +1,8 @@
 package resourcetemplate
 
 import (
+	"time"
+
 	"github.com/google/cel-go/common/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -174,5 +176,71 @@ var _ = Describe("CheckOutputType", func() {
 		Expect(err).To(MatchError(ContainSubstring("returns string but the field expects int")))
 		err = CheckOutputType(compile("'x'").OutputType, FieldType(podSpec, "containers"))
 		Expect(err).To(MatchError(ContainSubstring("expects a list")))
+	})
+})
+
+// mutableResolver serves whatever schema the test currently assigns to a kind.
+type mutableResolver struct {
+	schemas map[schema.GroupVersionKind]*spec.Schema
+	calls   int
+}
+
+func (r *mutableResolver) ResolveSchema(gvk schema.GroupVersionKind) (*spec.Schema, error) {
+	r.calls++
+	if s, ok := r.schemas[gvk]; ok {
+		return s, nil
+	}
+	return nil, resolver.ErrSchemaNotFound
+}
+
+var _ = Describe("Compiler kind schema cache", func() {
+	It("retries a failed resolution after KindSchemaErrorTTL and picks up schema changes after KindSchemaTTL", func() {
+		res := &mutableResolver{schemas: map[schema.GroupVersionKind]*spec.Schema{}}
+		c, err := NewCompiler(res, log.Log)
+		Expect(err).NotTo(HaveOccurred())
+		now := time.Now()
+		c.now = func() time.Time { return now }
+
+		_, err = c.ResolveKindSchema(jobGVK)
+		Expect(err).To(MatchError(resolver.ErrSchemaNotFound))
+		_, err = c.ResolveKindSchema(jobGVK)
+		Expect(err).To(MatchError(resolver.ErrSchemaNotFound))
+		Expect(res.calls).To(Equal(1), "failures are cached")
+
+		res.schemas[jobGVK] = jobSchema()
+		_, err = c.ResolveKindSchema(jobGVK)
+		Expect(err).To(MatchError(resolver.ErrSchemaNotFound), "still cached before the error TTL")
+		now = now.Add(KindSchemaErrorTTL)
+		ks, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ks.Decl).NotTo(BeNil())
+		Expect(res.calls).To(Equal(2))
+
+		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.status.brandNew")
+		Expect(err).To(MatchError(ContainSubstring("undefined field 'brandNew'")))
+
+		changed := jobSchema()
+		status := changed.Properties["status"]
+		status.Properties["brandNew"] = *spec.StringProperty()
+		changed.Properties["status"] = status
+		res.schemas[jobGVK] = changed
+		_, err = c.Compile(PhaseVariables, jobGVK, "Resource.status.brandNew")
+		Expect(err).To(HaveOccurred(), "the previous schema is reused until the TTL")
+
+		now = now.Add(KindSchemaTTL)
+		program, err := c.Compile(PhaseVariables, jobGVK, "Resource.status.brandNew")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(program.OutputType.TypeName()).To(Equal("string"))
+		Expect(res.calls).To(Equal(3))
+		changedKS, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changedKS.hash).NotTo(Equal(ks.hash))
+
+		// An unchanged schema keeps the same KindSchema, so cached environments and programs stay valid.
+		now = now.Add(KindSchemaTTL)
+		again, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.calls).To(Equal(4))
+		Expect(again).To(BeIdenticalTo(changedKS))
 	})
 })

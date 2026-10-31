@@ -6775,7 +6775,8 @@ spec:
                   branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
                   Objects are addressed by their JSON field names. Expressions are compiled against the declared variables and
                   the created kind's OpenAPI schema, so unknown fields and type mismatches are reported before anything is
-                  created. Everything else is copied verbatim.
+                  created: at admission time when the validating webhook is installed, otherwise in status on the first
+                  reconcile. Everything else is copied verbatim.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               url:
@@ -12260,6 +12261,22 @@ spec:
   selector:
     control-plane: controller-manager
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-service
+  namespace: promoter-system
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    control-plane: controller-manager
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12387,6 +12404,7 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+        - --enable-admission-webhooks
         command:
         - /usr/bin/tini
         - --
@@ -12400,6 +12418,10 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
@@ -12418,6 +12440,10 @@ spec:
           capabilities:
             drop:
             - ALL
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-server-cert
+          readOnly: true
       - args:
         - --secure-listen-address=0.0.0.0:8443
         - --upstream=http://127.0.0.1:8080/
@@ -12447,6 +12473,11 @@ spec:
           type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
+      volumes:
+      - name: webhook-server-cert
+        secret:
+          defaultMode: 420
+          secretName: promoter-webhook-server-cert
 ---
 apiVersion: apiregistration.k8s.io/v1
 kind: APIService
@@ -12706,3 +12737,33 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: promoter-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: promoter-webhook-service
+      namespace: promoter-system
+      path: /validate-promoter-argoproj-io-v1alpha1-kubernetesresourcecommitstatus
+  failurePolicy: Fail
+  name: vkubernetesresourcecommitstatus.promoter.argoproj.io
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: promoter-system
+  rules:
+  - apiGroups:
+    - promoter.argoproj.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - kubernetesresourcecommitstatuses
+  sideEffects: None
+  timeoutSeconds: 10

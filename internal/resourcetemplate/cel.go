@@ -17,8 +17,11 @@ limitations under the License.
 package resourcetemplate
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -61,6 +64,18 @@ const (
 // DefaultMaxPrograms bounds the compiled-program cache.
 const DefaultMaxPrograms = 4096
 
+const (
+	// KindSchemaTTL is how long a resolved kind schema is reused before it is fetched again through discovery.
+	// It bounds how long a CRD schema change goes unnoticed by the type checks.
+	KindSchemaTTL = time.Minute
+	// KindSchemaErrorTTL is how long a failed resolution is remembered: short enough that a kind whose CRD is being
+	// installed is retried promptly, long enough that repeated reconciles of a broken gate do not hammer discovery.
+	KindSchemaErrorTTL = 5 * time.Second
+)
+
+// ErrNoSchemaResolver is returned by ResolveKindSchema when the Compiler was built without a resolver.
+var ErrNoSchemaResolver = errors.New("no schema resolver is configured")
+
 // promoterTypeDefinitions maps variable names to the OpenAPI definition each is typed from.
 var promoterTypeDefinitions = map[string]struct {
 	definition string
@@ -75,24 +90,52 @@ var templateStringVariables = []string{"Branch", "Sha", "ShortSha", "ReportOn"}
 
 var reportStringVariables = []string{"Phase", "ResourceName", "ResourceKind", "ExpressionDescription", "ExpressionUrl"}
 
+// KindSchema is the resolved OpenAPI schema of a kind. Decl is the CEL declaration that types the Resource variable
+// and the fields of spec.template for static checks; Schema is the source schema with apiVersion, kind, and metadata
+// added at the root, which keeps the information the declaration drops (for example whether an object preserves
+// unknown fields).
+type KindSchema struct {
+	Decl   *apiservercel.DeclType
+	Schema *spec.Schema
+	hash   string
+}
+
+func (ks *KindSchema) hashOrEmpty() string {
+	if ks == nil {
+		return ""
+	}
+	return ks.hash
+}
+
+type kindSchemaEntry struct {
+	schema  *KindSchema
+	err     error
+	expires time.Time
+}
+
 // Compiler builds typed CEL environments for KubernetesResourceCommitStatus expressions and caches the compiled
 // programs. The environment is the Kubernetes base environment used by CRD validation rules and admission
 // policies (optional types, the Kubernetes extension libraries, and per-call cost limits). Promoter variables are
 // typed from the generated OpenAPI definitions, and Resource is typed from the created kind's schema when a
 // resolver is configured and the schema can be found; otherwise it is dyn.
+//
+// Kind schemas are re-resolved after KindSchemaTTL (KindSchemaErrorTTL after a failure). When a schema changes,
+// the environments built from the previous one are dropped and their programs age out of the cache.
 type Compiler struct {
 	resolver      resolver.SchemaResolver
 	promoterTypes map[string]*apiservercel.DeclType
-	resourceTypes map[schema.GroupVersionKind]*apiservercel.DeclType
+	kindSchemas   map[schema.GroupVersionKind]kindSchemaEntry
 	envs          map[envKey]*cel.Env
 	programs      *lru.Cache
+	now           func() time.Time
 	log           logr.Logger
 	mu            sync.Mutex
 }
 
 type envKey struct {
-	gvk schema.GroupVersionKind
-	set VariableSet
+	gvk  schema.GroupVersionKind
+	hash string
+	set  VariableSet
 }
 
 type programKey struct {
@@ -115,9 +158,10 @@ func NewCompiler(schemaResolver resolver.SchemaResolver, log logr.Logger) (*Comp
 	return &Compiler{
 		resolver:      schemaResolver,
 		promoterTypes: promoterTypes,
-		resourceTypes: map[schema.GroupVersionKind]*apiservercel.DeclType{},
+		kindSchemas:   map[schema.GroupVersionKind]kindSchemaEntry{},
 		envs:          map[envKey]*cel.Env{},
 		programs:      lru.New(DefaultMaxPrograms),
+		now:           time.Now,
 		log:           log,
 	}, nil
 }
@@ -152,36 +196,78 @@ func promoterDeclTypes() (map[string]*apiservercel.DeclType, error) {
 	return out, nil
 }
 
-// ResourceType returns the CEL declaration of gvk from its OpenAPI schema, or nil when no resolver is configured
-// or the schema cannot be resolved (logged once per kind). Results are cached for the lifetime of the Compiler.
-func (c *Compiler) ResourceType(gvk schema.GroupVersionKind) *apiservercel.DeclType {
+// ResolveKindSchema returns the schema of gvk, from cache when it was resolved within KindSchemaTTL. Errors from
+// the resolver are wrapped; errors.Is(err, resolver.ErrSchemaNotFound) means the cluster does not serve the kind.
+func (c *Compiler) ResolveKindSchema(gvk schema.GroupVersionKind) (*KindSchema, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.resourceTypeLocked(gvk)
+	return c.resolveKindSchemaLocked(gvk)
 }
 
-func (c *Compiler) resourceTypeLocked(gvk schema.GroupVersionKind) *apiservercel.DeclType {
-	if t, ok := c.resourceTypes[gvk]; ok {
-		return t
+func (c *Compiler) resolveKindSchemaLocked(gvk schema.GroupVersionKind) (*KindSchema, error) {
+	if c.resolver == nil {
+		return nil, ErrNoSchemaResolver
 	}
-	var t *apiservercel.DeclType
-	if c.resolver != nil {
-		s, err := c.resolver.ResolveSchema(gvk)
-		switch {
-		case err != nil:
-			c.log.Info("could not resolve the OpenAPI schema for a resource kind; its expressions are type-checked dynamically", "gvk", gvk.String(), "error", err.Error())
-		default:
-			t = common.SchemaDeclType(&openapi.Schema{Schema: common.WithTypeAndObjectMeta(s)}, true)
-			if t != nil {
-				t = t.MaybeAssignTypeName(strings.ReplaceAll(gvk.String(), " ", "") + ".Resource")
+	now := c.now()
+	prev, cached := c.kindSchemas[gvk]
+	if cached && now.Before(prev.expires) {
+		return prev.schema, prev.err
+	}
+	ks, err := c.buildKindSchema(gvk, prev.schema)
+	if err != nil {
+		err = fmt.Errorf("failed to resolve the OpenAPI schema of %s: %w", gvk, err)
+		c.log.Info("could not resolve the OpenAPI schema for a resource kind; its expressions are type-checked dynamically", "gvk", gvk.String(), "error", err.Error())
+		c.kindSchemas[gvk] = kindSchemaEntry{err: err, expires: now.Add(KindSchemaErrorTTL)}
+		return nil, err
+	}
+	if prev.schema != nil && prev.schema.hash != ks.hash {
+		// Environments typed from the previous schema are stale; their programs age out of the LRU.
+		for key := range c.envs {
+			if key.gvk == gvk && key.hash != ks.hash {
+				delete(c.envs, key)
 			}
 		}
 	}
-	c.resourceTypes[gvk] = t
-	return t
+	c.kindSchemas[gvk] = kindSchemaEntry{schema: ks, expires: now.Add(KindSchemaTTL)}
+	return ks, nil
 }
 
-func (c *Compiler) env(key envKey) (*cel.Env, error) {
+// buildKindSchema resolves gvk and converts it; prev is returned unchanged when the schema has not changed, so
+// callers can detect changes by pointer identity or hash.
+func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema) (*KindSchema, error) {
+	s, err := c.resolver.ResolveSchema(gvk)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the caller adds the kind
+	}
+	full := common.WithTypeAndObjectMeta(s)
+	raw, err := json.Marshal(full)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode the schema: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	hash := hex.EncodeToString(sum[:])
+	if prev != nil && prev.hash == hash {
+		return prev, nil
+	}
+	decl := common.SchemaDeclType(&openapi.Schema{Schema: full}, true)
+	if decl == nil {
+		return nil, errors.New("the schema has no CEL declaration")
+	}
+	decl = decl.MaybeAssignTypeName(strings.ReplaceAll(gvk.String(), " ", "") + ".Resource")
+	return &KindSchema{Decl: decl, Schema: full, hash: hash}, nil
+}
+
+// ResourceType returns the CEL declaration of gvk from its OpenAPI schema, or nil when no resolver is configured
+// or the schema cannot be resolved. Callers that need to know why use ResolveKindSchema.
+func (c *Compiler) ResourceType(gvk schema.GroupVersionKind) *apiservercel.DeclType {
+	ks, err := c.ResolveKindSchema(gvk)
+	if err != nil {
+		return nil
+	}
+	return ks.Decl
+}
+
+func (c *Compiler) env(key envKey, ks *KindSchema) (*cel.Env, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if env, ok := c.envs[key]; ok {
@@ -197,9 +283,9 @@ func (c *Compiler) env(key envKey) (*cel.Env, error) {
 		opts = append(opts, cel.Variable(name, t.CelType()))
 	}
 	if key.set >= PhaseVariables {
-		if t := c.resourceTypeLocked(key.gvk); t != nil {
-			declTypes = append(declTypes, t)
-			opts = append(opts, cel.Variable("Resource", t.CelType()))
+		if ks != nil {
+			declTypes = append(declTypes, ks.Decl)
+			opts = append(opts, cel.Variable("Resource", ks.Decl.CelType()))
 		} else {
 			opts = append(opts, cel.Variable("Resource", cel.DynType))
 		}
@@ -223,12 +309,16 @@ func (c *Compiler) env(key envKey) (*cel.Env, error) {
 }
 
 // Compile returns the compiled program for expression under the given variable set, from cache when possible.
-// gvk selects the Resource type and is ignored for TemplateVariables.
+// gvk selects the Resource type and is ignored for TemplateVariables. A kind whose schema cannot be resolved
+// leaves Resource untyped.
 func (c *Compiler) Compile(set VariableSet, gvk schema.GroupVersionKind, expression string) (*Program, error) {
+	var ks *KindSchema
 	if set == TemplateVariables {
 		gvk = schema.GroupVersionKind{}
+	} else {
+		ks, _ = c.ResolveKindSchema(gvk)
 	}
-	key := programKey{envKey: envKey{gvk: gvk, set: set}, expression: expression}
+	key := programKey{envKey: envKey{gvk: gvk, set: set, hash: ks.hashOrEmpty()}, expression: expression}
 	c.mu.Lock()
 	cached, ok := c.programs.Get(key)
 	c.mu.Unlock()
@@ -237,7 +327,7 @@ func (c *Compiler) Compile(set VariableSet, gvk schema.GroupVersionKind, express
 			return p, nil
 		}
 	}
-	env, err := c.env(key.envKey)
+	env, err := c.env(key.envKey, ks)
 	if err != nil {
 		return nil, err
 	}
