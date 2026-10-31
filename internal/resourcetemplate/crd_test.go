@@ -69,7 +69,8 @@ var _ = Describe("CRDGenerator", func() {
 			Resolver: stubResolver{schemas: map[schema.GroupVersionKind]*spec.Schema{
 				{Group: "batch", Version: "v1", Kind: "Job"}: resolveFixture(jobComponent),
 			}},
-			Log: GinkgoLogr,
+			Log:           GinkgoLogr,
+			SkipReadyWait: true,
 		}
 	})
 

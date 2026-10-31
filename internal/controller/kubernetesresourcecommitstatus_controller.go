@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -768,7 +769,7 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		b = b.Watches(realKind, handler.EnqueueRequestForOwner(mgr.GetScheme(), mapper, &promoterv1alpha1.KubernetesResourceCommitStatus{}, handler.OnlyControllerOwner()))
 
 		templateGVK := resourcetemplate.TemplateGVKFor(gvk)
-		if _, err := mapper.RESTMapping(templateGVK.GroupKind(), templateGVK.Version); err != nil {
+		if err := waitForRESTMapping(ctx, mapper, templateGVK); err != nil {
 			logger.Error(err, "wrapped template kind is not installed; template changes will not trigger reconciles until restart", "gvk", templateGVK.String())
 			continue
 		}
@@ -784,6 +785,29 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
+}
+
+// templateMappingWait bounds how long SetupWithManager retries the RESTMapper lookup of a wrapped template kind.
+// The CRD generator waits for the CRD to be served, but discovery caches can lag by a few seconds.
+const templateMappingWait = 15 * time.Second
+
+// waitForRESTMapping retries mapper.RESTMapping while it reports no match, up to templateMappingWait.
+func waitForRESTMapping(ctx context.Context, mapper meta.RESTMapper, gvk schema.GroupVersionKind) error {
+	var lastErr error
+	err := wait.PollUntilContextTimeout(ctx, time.Second, templateMappingWait, true, func(context.Context) (bool, error) {
+		_, lastErr = mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if lastErr == nil {
+			return true, nil
+		}
+		if meta.IsNoMatchError(lastErr) {
+			return false, nil
+		}
+		return false, lastErr
+	})
+	if err != nil && lastErr != nil {
+		return lastErr
+	}
+	return err
 }
 
 // enqueueForTemplate returns reconcile requests for every gate in the template's namespace that references it.

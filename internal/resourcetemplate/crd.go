@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -30,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
@@ -55,7 +57,16 @@ type CRDGenerator struct {
 	// k8s.io/apiserver's ClientDiscoveryResolver, which reads /openapi/v3.
 	Resolver resolver.SchemaResolver
 	Log      logr.Logger
+	// ReadyTimeout bounds how long Ensure waits for each written CRD to become Established and show up in
+	// discovery, so callers can set up watches on the template kinds right after Ensure returns. Zero uses
+	// DefaultReadyTimeout.
+	ReadyTimeout time.Duration
+	// SkipReadyWait disables the readiness wait (unit tests with fake clients).
+	SkipReadyWait bool
 }
+
+// DefaultReadyTimeout is the default CRD readiness wait.
+const DefaultReadyTimeout = 60 * time.Second
 
 // NewCRDGenerator builds a CRDGenerator with uncached clients for cfg.
 func NewCRDGenerator(cfg *rest.Config, log logr.Logger) (*CRDGenerator, error) {
@@ -150,16 +161,69 @@ func (g *CRDGenerator) ensureOne(ctx context.Context, group, kind string, versio
 		usePermissiveSchema(crd)
 	}
 	err := g.apply(ctx, crd)
-	if err == nil {
+	if err != nil {
+		if !isSchemaRejection(err) {
+			return err
+		}
+		// Last resort: the server disagreed with the in-process validator (version skew, feature gates).
+		g.Log.Error(err, "API server rejected the converted template schema; retrying with a permissive schema", "crd", crd.Name)
+		usePermissiveSchema(crd)
+		if err := g.apply(ctx, crd); err != nil {
+			return err
+		}
+	}
+	return g.waitUntilServed(ctx, crd)
+}
+
+// waitUntilServed blocks until the CRD reports Established and every version is listed by discovery, so a
+// RESTMapper lookup of the template kind succeeds as soon as Ensure returns.
+func (g *CRDGenerator) waitUntilServed(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) error {
+	if g.SkipReadyWait {
 		return nil
 	}
-	if !isSchemaRejection(err) {
-		return err
+	timeout := g.ReadyTimeout
+	if timeout <= 0 {
+		timeout = DefaultReadyTimeout
 	}
-	// Last resort: the server disagreed with the in-process validator (version skew, feature gates).
-	g.Log.Error(err, "API server rejected the converted template schema; retrying with a permissive schema", "crd", crd.Name)
-	usePermissiveSchema(crd)
-	return g.apply(ctx, crd)
+	err := wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
+		current := &apiextensionsv1.CustomResourceDefinition{}
+		if err := g.Client.Get(ctx, client.ObjectKey{Name: crd.Name}, current); err != nil {
+			return false, nil //nolint:nilerr // transient read errors are retried until the timeout
+		}
+		if !crdEstablished(current) {
+			return false, nil
+		}
+		for _, v := range crd.Spec.Versions {
+			list, err := g.Discovery.ServerResourcesForGroupVersionWithContext(ctx, schema.GroupVersion{Group: crd.Spec.Group, Version: v.Name}.String())
+			if err != nil {
+				return false, nil //nolint:nilerr // the group version is not served yet
+			}
+			served := false
+			for _, r := range list.APIResources {
+				if r.Name == crd.Spec.Names.Plural {
+					served = true
+					break
+				}
+			}
+			if !served {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("CRD %s was written but is not served after %s: %w", crd.Name, timeout, err)
+	}
+	return nil
+}
+
+func crdEstablished(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	for _, c := range crd.Status.Conditions {
+		if c.Type == apiextensionsv1.Established && c.Status == apiextensionsv1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // validateCRD runs apiextensions' static CustomResourceDefinition validation (structural schema, defaults,
