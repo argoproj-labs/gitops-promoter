@@ -57,7 +57,7 @@ func getCurrentShasByBranch(
 // resolveReportedSha returns the SHA to report on based on the reportOn setting.
 func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn string) string {
 	if reportOn == constants.CommitRefActive {
-		return envStatus.Active.Hydrated.Sha
+		return envStatus.Active.Hydrated.Sha //nolint:forbidigo // statuses are reported on the branch tip
 	}
 	return envStatus.Proposed.Hydrated.Sha
 }

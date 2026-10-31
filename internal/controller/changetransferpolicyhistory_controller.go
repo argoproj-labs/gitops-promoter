@@ -151,7 +151,7 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 	// the remote tip). GetRevListFirstParent requires the branch commits to be present in the local clone.
 	lastSeenSha := ""
 	if len(ctph.Status.History) > 0 {
-		lastSeenSha = ctph.Status.History[0].Active.Hydrated.Sha
+		lastSeenSha = ctph.Status.History[0].Active.Hydrated.Sha //nolint:forbidigo // last-seen branch commit lets GetBranchSha skip the fetch
 	}
 	activeSha, err := gitOperations.GetBranchSha(ctx, ctph.Spec.ActiveBranch, lastSeenSha)
 	if err != nil {
@@ -382,7 +382,7 @@ func shouldSkipHistoryRecalculation(history []promoterv1alpha1.History, activeSh
 	newest := history[0]
 	return newest.PullRequest != nil && newest.PullRequest.ID != "" &&
 		newest.PullRequest.MergedTargetSha == activeSha &&
-		newest.Active.Hydrated.Sha == activeSha
+		newest.Active.Hydrated.Sha == activeSha //nolint:forbidigo // the entry's own commit, compared with the environment's anchor
 }
 
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
