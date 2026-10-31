@@ -1907,6 +1907,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref com
 							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
+					"pathHydrated": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is only set when spec.activePath is set, and is nil when no commit on the branch has touched that path. On an active branch shared by several policies it stays put while sibling policies merge, whereas Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any promoter conflict-resolution merges.",
+							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
+						},
+					},
 					"note": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Note is the hydrator metadata from the git note attached to the hydrated commit.",
