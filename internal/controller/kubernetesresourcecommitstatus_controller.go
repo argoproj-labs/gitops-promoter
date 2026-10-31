@@ -377,11 +377,12 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 func (r *KubernetesResourceCommitStatusReconciler) buildObject(in environmentInput, name string, data resourcetemplate.TemplateData) (*unstructured.Unstructured, error) {
 	gvk := promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.KubernetesResourceCommitStatus]().Name())
 	obj, err := resourcetemplate.BuildObject(resourcetemplate.BuildParams{
-		Template:  in.template,
-		SourceGVK: in.sourceGVK,
-		Name:      name,
-		Namespace: in.gate.Namespace,
-		Labels:    resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
+		Template:    in.template,
+		SourceGVK:   in.sourceGVK,
+		Name:        name,
+		Namespace:   in.gate.Namespace,
+		Labels:      resourcetemplate.ResourceLabels(in.gate, in.branch, in.sha),
+		Annotations: resourcetemplate.ResourceAnnotations(time.Now()),
 		Owner: metav1.OwnerReference{
 			APIVersion:         gvk.GroupVersion().String(),
 			Kind:               gvk.Kind,
@@ -550,7 +551,8 @@ func (r *KubernetesResourceCommitStatusReconciler) pruneResources(ctx context.Co
 	}
 
 	for env, items := range byEnv {
-		// Newest first; the current resource always sorts first so it is never pruned.
+		// Newest first; the current resource always sorts first so it is never pruned. The created-at
+		// annotation breaks ties that metadata.creationTimestamp (second granularity) cannot.
 		slices.SortStableFunc(items, func(a, b unstructured.Unstructured) int {
 			ca, cb := current[a.GetName()], current[b.GetName()]
 			switch {
@@ -559,7 +561,7 @@ func (r *KubernetesResourceCommitStatusReconciler) pruneResources(ctx context.Co
 			case cb && !ca:
 				return 1
 			default:
-				return b.GetCreationTimestamp().Compare(a.GetCreationTimestamp().Time)
+				return resourcetemplate.ResourceCreationTime(&b).Compare(resourcetemplate.ResourceCreationTime(&a))
 			}
 		})
 		for i := historyLimit; i < len(items); i++ {

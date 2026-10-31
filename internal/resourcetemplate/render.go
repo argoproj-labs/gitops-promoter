@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -81,6 +82,8 @@ type BuildParams struct {
 	Namespace string
 	// Labels are merged over the template's metadata.labels.
 	Labels map[string]string
+	// Annotations are merged over the template's metadata.annotations.
+	Annotations map[string]string
 	// Owner is set as the controlling owner reference.
 	Owner metav1.OwnerReference
 	// Data is the Go-template data for string values.
@@ -138,6 +141,7 @@ func BuildObject(p BuildParams) (*unstructured.Unstructured, error) {
 	}
 	maps.Copy(labels, p.Labels)
 	obj.SetLabels(labels)
+	maps.Copy(annotations, p.Annotations)
 	if len(annotations) > 0 {
 		obj.SetAnnotations(annotations)
 	}
@@ -211,4 +215,22 @@ func ResourceLabels(gate *promoterv1alpha1.KubernetesResourceCommitStatus, branc
 	labels := utils.CommitStatusStandardLabels(gate, branch, gate.Spec.Key)
 	labels[promoterv1alpha1.ShaLabel] = sha
 	return labels
+}
+
+// ResourceAnnotations returns the annotations stamped on every resource the gate creates.
+func ResourceAnnotations(createdAt time.Time) map[string]string {
+	return map[string]string{
+		promoterv1alpha1.ResourceCreatedAtAnnotation: createdAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+// ResourceCreationTime returns when the gate created obj: the created-at annotation when present and valid,
+// otherwise metadata.creationTimestamp.
+func ResourceCreationTime(obj *unstructured.Unstructured) time.Time {
+	if raw, ok := obj.GetAnnotations()[promoterv1alpha1.ResourceCreatedAtAnnotation]; ok {
+		if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+			return t
+		}
+	}
+	return obj.GetCreationTimestamp().Time
 }

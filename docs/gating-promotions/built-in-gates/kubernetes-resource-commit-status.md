@@ -318,6 +318,9 @@ Created resources carry these labels, which also drive pruning:
 | `promoter.argoproj.io/sha` | reported SHA |
 | `promoter.argoproj.io/instance-id` | the install's instance ID in [multi-install](../../multi-install.md) mode |
 
+They also carry the annotation `promoter.argoproj.io/created-at` (RFC 3339 with nanoseconds), which `historyLimit`
+pruning orders by because `metadata.creationTimestamp` only has second granularity.
+
 The gate is the controller owner of every resource it creates and of its CommitStatuses, so deleting the gate garbage
 collects them.
 

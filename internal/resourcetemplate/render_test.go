@@ -1,6 +1,8 @@
 package resourcetemplate
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,12 +47,13 @@ var _ = Describe("BuildObject", func() {
 
 	params := func(t *unstructured.Unstructured) BuildParams {
 		return BuildParams{
-			Template:  t,
-			SourceGVK: jobGVK,
-			Name:      "smoke-env-abc",
-			Namespace: "team-a",
-			Labels:    map[string]string{promoterv1alpha1.EnvironmentLabel: "environment-development", "team": "override"},
-			Owner:     metav1.OwnerReference{APIVersion: "promoter.argoproj.io/v1alpha1", Kind: "KubernetesResourceCommitStatus", Name: "smoke", UID: types.UID("uid")},
+			Template:    t,
+			SourceGVK:   jobGVK,
+			Name:        "smoke-env-abc",
+			Namespace:   "team-a",
+			Labels:      map[string]string{promoterv1alpha1.EnvironmentLabel: "environment-development", "team": "override"},
+			Annotations: map[string]string{promoterv1alpha1.ResourceCreatedAtAnnotation: "2026-10-31T01:02:03.000000004Z"},
+			Owner:       metav1.OwnerReference{APIVersion: "promoter.argoproj.io/v1alpha1", Kind: "KubernetesResourceCommitStatus", Name: "smoke", UID: types.UID("uid")},
 			Data: TemplateData{
 				Branch:   "environment/development",
 				Sha:      "0123456789abcdef0123456789abcdef01234567",
@@ -77,7 +80,11 @@ var _ = Describe("BuildObject", func() {
 			"sha-label":                       "0123456",
 			promoterv1alpha1.EnvironmentLabel: "environment-development",
 		}))
-		Expect(obj.GetAnnotations()).To(Equal(map[string]string{"note": "for environment/development"}))
+		Expect(obj.GetAnnotations()).To(Equal(map[string]string{
+			"note": "for environment/development",
+			promoterv1alpha1.ResourceCreatedAtAnnotation: "2026-10-31T01:02:03.000000004Z",
+		}))
+		Expect(ResourceCreationTime(obj)).To(BeTemporally("==", time.Date(2026, 10, 31, 1, 2, 3, 4, time.UTC)))
 		Expect(obj.GetOwnerReferences()).To(HaveLen(1))
 		Expect(obj.GetOwnerReferences()[0].Name).To(Equal("smoke"))
 
@@ -144,6 +151,20 @@ var _ = Describe("ResourceLabels", func() {
 		gate.Name = "smoke"
 		gate.Spec.Key = "smoke-test"
 		Expect(ResourceLabels(gate, "environment/development", "abc")).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, "wave-1"))
+	})
+})
+
+var _ = Describe("ResourceCreationTime", func() {
+	It("prefers the created-at annotation and falls back to creationTimestamp", func() {
+		now := time.Date(2026, 10, 31, 1, 2, 3, 500, time.UTC)
+		obj := &unstructured.Unstructured{Object: map[string]any{}}
+		obj.SetAnnotations(ResourceAnnotations(now))
+		Expect(ResourceCreationTime(obj)).To(BeTemporally("==", now))
+
+		fallback := &unstructured.Unstructured{Object: map[string]any{}}
+		fallback.SetCreationTimestamp(metav1.NewTime(now.Truncate(time.Second)))
+		fallback.SetAnnotations(map[string]string{promoterv1alpha1.ResourceCreatedAtAnnotation: "not-a-time"})
+		Expect(ResourceCreationTime(fallback)).To(BeTemporally("==", now.Truncate(time.Second)))
 	})
 })
 
