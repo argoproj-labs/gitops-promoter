@@ -4897,11 +4897,12 @@ var _ = Describe("webRequestCommitStatusPromotionStrategyPredicate", func() {
 	It("reacts to a change to proposed hydrated", func() {
 		Expect(pred.Update(update(mutations["proposed hydrated"]))).To(BeTrue())
 	})
-	It("drops a change to active dry", func() {
-		Expect(pred.Update(update(mutations["active dry"]))).To(BeFalse())
+	// Templates and trigger expressions see the whole strategy, so every environment field passes.
+	It("reacts to a change to active dry", func() {
+		Expect(pred.Update(update(mutations["active dry"]))).To(BeTrue())
 	})
-	It("drops a change to pull request", func() {
-		Expect(pred.Update(update(mutations["pull request"]))).To(BeFalse())
+	It("reacts to a change to pull request", func() {
+		Expect(pred.Update(update(mutations["pull request"]))).To(BeTrue())
 	})
 	It("drops a change to conditions", func() {
 		Expect(pred.Update(update(mutations["conditions"]))).To(BeFalse())

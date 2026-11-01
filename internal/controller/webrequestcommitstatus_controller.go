@@ -678,13 +678,13 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	return allowed, nil
 }
 
-// webRequestCommitStatusPromotionStrategyPredicate limits the PromotionStrategy watch to updates this gate can act on. The
-// reconciler reads the strategy's spec (covered by the generation) and status.environments[].active.hydrated and proposed.hydrated, the SHAs it reports on in PromotionStrategy context.
-// Everything else in the strategy's status, such as pull request state, health history and conditions,
-// changes far more often and is irrelevant here, and without this filter every such write reconciled every
-// WebRequestCommitStatus referencing the strategy. Creates, deletes and generic events pass unchanged.
-//
-//nolint:dupl // Each gate keeps its own copy so the fields it depends on are visible where it is wired (see #2013).
+// webRequestCommitStatusPromotionStrategyPredicate limits the PromotionStrategy watch to updates this gate can
+// act on. Unlike the other gates, WebRequestCommitStatus hands the whole PromotionStrategy to user templates
+// and trigger expressions (TemplateData.PromotionStrategy), so any field of status.environments may matter:
+// the documented examples read proposed.commitStatuses, and templates can read pull request state or health
+// history. The predicate therefore passes an update on a spec change or on any change to status.environments,
+// and drops only what no expression can see: conditions, observedGeneration and instanceID. Creates, deletes
+// and generic events pass unchanged.
 func webRequestCommitStatusPromotionStrategyPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -693,22 +693,7 @@ func webRequestCommitStatusPromotionStrategyPredicate() predicate.Funcs {
 			if !okOld || !okNew || oldPS.Generation != newPS.Generation {
 				return true
 			}
-			oldEnvs, newEnvs := oldPS.Status.Environments, newPS.Status.Environments
-			if len(oldEnvs) != len(newEnvs) {
-				return true
-			}
-			oldByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(oldEnvs))
-			for _, env := range oldEnvs {
-				oldByBranch[env.Branch] = env
-			}
-			for _, env := range newEnvs {
-				oldEnv, ok := oldByBranch[env.Branch]
-				if !ok || !equality.Semantic.DeepEqual(oldEnv.Active.Hydrated, env.Active.Hydrated) ||
-					!equality.Semantic.DeepEqual(oldEnv.Proposed.Hydrated, env.Proposed.Hydrated) {
-					return true
-				}
-			}
-			return false
+			return !equality.Semantic.DeepEqual(oldPS.Status.Environments, newPS.Status.Environments)
 		},
 	}
 }
