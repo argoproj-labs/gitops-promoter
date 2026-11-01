@@ -335,14 +335,16 @@ func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolic
 	return slice
 }
 
-// UpsertChangeTransferPolicy adds or updates a ChangeTransferPolicy in the slice.
+// UpsertChangeTransferPolicy adds or updates a ChangeTransferPolicy in the slice, keyed by namespace and name.
+// The callers merge cluster-wide lookups (a CommitStatus gates policies in any namespace), so two policies
+// that share a name across namespaces are distinct entries, not one.
 func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy, policy promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
 	if len(policies) == 0 {
 		policies = append(policies, policy)
 		return policies
 	}
 	for index, ele := range policies {
-		if ele.Name == policy.Name {
+		if ele.Namespace == policy.Namespace && ele.Name == policy.Name {
 			return slices.Replace(policies, index, index+1, policy)
 		}
 	}
