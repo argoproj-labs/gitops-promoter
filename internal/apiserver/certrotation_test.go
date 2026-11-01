@@ -22,6 +22,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -178,6 +179,15 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 			g.Expect(caBundle).NotTo(BeEmpty())
 		}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 
+		By("checking the generated fields are owned by the rotator's field manager")
+		Expect(cl.Get(ctx, client.ObjectKey{Namespace: ns, Name: defaultCertRotationSecretName}, secret)).To(Succeed())
+		Expect(managedFieldsOf(secret.GetManagedFields(), certRotationControllerName)).To(ContainSubstring(`"f:tls.crt"`))
+		gotAPIService := &unstructured.Unstructured{}
+		gotAPIService.SetAPIVersion("apiregistration.k8s.io/v1")
+		gotAPIService.SetKind("APIService")
+		Expect(cl.Get(ctx, client.ObjectKey{Name: defaultCertRotationAPIService}, gotAPIService)).To(Succeed())
+		Expect(managedFieldsOf(gotAPIService.GetManagedFields(), certRotationControllerName)).To(ContainSubstring(`"f:caBundle"`))
+
 		Consistently(ready, 500*time.Millisecond).ShouldNot(BeClosed(),
 			"rotator must not report ready before the Secret is mounted")
 
@@ -191,3 +201,14 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 		Eventually(errCh, 30*time.Second).Should(Receive(BeNil()))
 	})
 })
+
+// managedFieldsOf returns the concatenated FieldsV1 owned by manager.
+func managedFieldsOf(entries []metav1.ManagedFieldsEntry, manager string) string {
+	var out strings.Builder
+	for _, mf := range entries {
+		if mf.Manager == manager && mf.FieldsV1 != nil {
+			out.WriteString(mf.FieldsV1.GetRawString())
+		}
+	}
+	return out.String()
+}

@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -156,6 +157,10 @@ func startCertRotation(ctx context.Context, restConfig *clientrest.Config, opts 
 		Metrics:                metricsserver.Options{BindAddress: "0"},
 		HealthProbeBindAddress: "0",
 		LeaderElection:         false,
+		// Attribute every write (Secret data and APIService caBundle) to a stable field
+		// manager, so GitOps tools using server-side apply see these fields as owned by
+		// the rotator and leave them alone.
+		Client: client.Options{FieldOwner: certRotationControllerName},
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{opts.Namespace: {}},
 		},

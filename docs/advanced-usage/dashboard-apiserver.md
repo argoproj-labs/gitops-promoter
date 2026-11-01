@@ -105,9 +105,13 @@ The cert files are written to the directory of `--tls-cert-file`/`--tls-private-
 which must be where the Secret is mounted.
 
 > [!NOTE]
-> If you manage the install with a GitOps tool such as Argo CD, configure it to ignore
-> differences on the `promoter-apiserver-serving-cert` Secret's `.data` and the
-> `APIService`'s `.spec.caBundle`, since both are written at runtime.
+> GitOps tools such as Argo CD need no `ignoreDifferences` for this. The shipped manifests
+> never set the `promoter-apiserver-serving-cert` Secret's `.data` or the `APIService`'s
+> `.spec.caBundle`; the apiserver writes them at runtime under its own field manager,
+> `promoter-apiserver-cert-rotator`. Re-applying the manifests (client-side or server-side
+> apply) leaves them untouched. Avoid `Replace=true` syncs on these two objects, and don't add
+> those fields to your own copy of the manifests: either would overwrite the generated values
+> until the rotator writes them again.
 
 ### Path A - manual / scripted (no cert-manager)
 
