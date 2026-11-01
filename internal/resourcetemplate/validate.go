@@ -199,7 +199,7 @@ func literalValue(v any, tree *exprTree) (any, bool) {
 		out := make(map[string]any, len(t))
 		for k, child := range t {
 			var sub *exprTree
-			if containsExpr(child) {
+			if tree != nil && containsExpr(child) {
 				sub = tree.child(k)
 			}
 			lit, keep := literalValue(child, sub)
@@ -219,7 +219,7 @@ func literalValue(v any, tree *exprTree) (any, bool) {
 		out := make([]any, 0, len(t))
 		for _, child := range t {
 			var sub *exprTree
-			if containsExpr(child) {
+			if tree != nil && containsExpr(child) {
 				sub = tree.item()
 			}
 			lit, keep := literalValue(child, sub)

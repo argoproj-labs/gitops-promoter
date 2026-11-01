@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+// Package webhook serves the controller's admission webhooks with a certificate the controller manages itself.
+package webhook
 
 import (
 	"context"
@@ -29,66 +30,68 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	webhookv1alpha1 "github.com/argoproj-labs/gitops-promoter/internal/webhook/v1alpha1"
 )
 
-// admissionWebhookOptions configures the controller's validating admission webhook and the self-managed
+// Options configures the controller's validating admission webhook and the self-managed
 // certificate it is served with.
-type admissionWebhookOptions struct {
-	// certDir is where the webhook server reads its certificate: the Secret's mount point.
-	certDir string
-	// secretName holds the CA and serving certificate, in the controller namespace.
-	secretName string
-	// serviceName is the Service the API server reaches the webhook through; it names the certificate's DNS name.
-	serviceName string
-	// configurationName is the ValidatingWebhookConfiguration whose caBundle is kept in sync.
-	configurationName string
-	// enabled serves the webhook. Disable it only when the ValidatingWebhookConfiguration is not installed, such
+type Options struct {
+	// CertDir is where the webhook server reads its certificate: the Secret's mount point.
+	CertDir string
+	// SecretName holds the CA and serving certificate, in the controller namespace.
+	SecretName string
+	// ServiceName is the Service the API server reaches the webhook through; it names the certificate's DNS name.
+	ServiceName string
+	// ConfigurationName is the ValidatingWebhookConfiguration whose caBundle is kept in sync.
+	ConfigurationName string
+	// Enabled serves the webhook. Disable it only when the ValidatingWebhookConfiguration is not installed, such
 	// as when running the controller from a development machine.
-	enabled bool
+	Enabled bool
 }
 
-func (o *admissionWebhookOptions) addFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&o.enabled, "admission-webhook", true,
+// AddFlags registers the webhook flags on cmd.
+func (o *Options) AddFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&o.Enabled, "admission-webhook", true,
 		"Serve the validating admission webhook. The controller generates, rotates, and injects its certificate. "+
 			"Disable only when the ValidatingWebhookConfiguration is not installed, "+
 			"such as when running from a development machine.")
-	cmd.Flags().StringVar(&o.certDir, "webhook-cert-dir", filepath.Join("/tmp", "k8s-webhook-server", "serving-certs"),
+	cmd.Flags().StringVar(&o.CertDir, "webhook-cert-dir", filepath.Join("/tmp", "k8s-webhook-server", "serving-certs"),
 		"Directory the webhook server reads its certificate from; mount the --webhook-cert-secret Secret here.")
-	cmd.Flags().StringVar(&o.secretName, "webhook-cert-secret", "promoter-webhook-server-cert",
+	cmd.Flags().StringVar(&o.SecretName, "webhook-cert-secret", "promoter-webhook-server-cert",
 		"Secret in the controller namespace holding the webhook CA and serving certificate.")
-	cmd.Flags().StringVar(&o.serviceName, "webhook-service", "promoter-webhook-service",
+	cmd.Flags().StringVar(&o.ServiceName, "webhook-service", "promoter-webhook-service",
 		"Service in the controller namespace that fronts the webhook server.")
-	cmd.Flags().StringVar(&o.configurationName, "webhook-configuration", "promoter-validating-webhook-configuration",
+	cmd.Flags().StringVar(&o.ConfigurationName, "webhook-configuration", "promoter-validating-webhook-configuration",
 		"ValidatingWebhookConfiguration whose caBundle the controller keeps current.")
 }
 
-// setupAdmissionWebhook adds the certificate rotator to mgr and registers the webhooks once the certificate is on
+// Setup adds the certificate rotator to mgr and registers the webhooks once the certificate is on
 // disk: the webhook server reads its certificate when it starts, so it must not start before. Every replica
 // rotates and serves (the rotator does not need leader election). The returned readiness check fails until the
 // webhook server has started, so the Service routes only to replicas that can answer.
-func setupAdmissionWebhook(
+func Setup(
 	ctx context.Context,
 	mgr ctrl.Manager,
-	server webhook.Server,
-	opts admissionWebhookOptions,
+	server crwebhook.Server,
+	opts Options,
 	namespace string,
 	templates *resourcetemplate.Validator,
 	isConfiguredKind func(schema.GroupVersionKind) bool,
 ) (healthz.Checker, error) {
+	logger := ctrl.Log.WithName("webhook-setup")
 	certsReady := make(chan struct{})
 	if err := rotator.AddRotator(mgr, &rotator.CertRotator{
-		SecretKey:      types.NamespacedName{Namespace: namespace, Name: opts.secretName},
-		CertDir:        opts.certDir,
+		SecretKey:      types.NamespacedName{Namespace: namespace, Name: opts.SecretName},
+		CertDir:        opts.CertDir,
 		CAName:         "gitops-promoter-webhook-ca",
 		CAOrganization: "gitops-promoter",
-		DNSName:        fmt.Sprintf("%s.%s.svc", opts.serviceName, namespace),
-		ExtraDNSNames:  []string{fmt.Sprintf("%s.%s.svc.cluster.local", opts.serviceName, namespace)},
+		DNSName:        fmt.Sprintf("%s.%s.svc", opts.ServiceName, namespace),
+		ExtraDNSNames:  []string{fmt.Sprintf("%s.%s.svc.cluster.local", opts.ServiceName, namespace)},
 		IsReady:        certsReady,
-		Webhooks:       []rotator.WebhookInfo{{Name: opts.configurationName, Type: rotator.Validating}},
+		Webhooks:       []rotator.WebhookInfo{{Name: opts.ConfigurationName, Type: rotator.Validating}},
 		// Every replica serves the webhook, so every replica needs the certificate on disk.
 		RequireLeaderElection: false,
 		FieldOwner:            "gitops-promoter-cert-rotator",
@@ -103,13 +106,13 @@ func setupAdmissionWebhook(
 			return
 		case <-certsReady:
 		}
-		setupLog.Info("webhook certificate ready, registering admission webhooks")
+		logger.Info("webhook certificate ready, registering admission webhooks")
 		validator := &webhookv1alpha1.KubernetesResourceCommitStatusValidator{
 			Templates:        templates,
 			IsConfiguredKind: isConfiguredKind,
 		}
 		if err := validator.SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to register the KubernetesResourceCommitStatus webhook")
+			logger.Error(err, "unable to register the KubernetesResourceCommitStatus webhook")
 			return
 		}
 		close(registered)
