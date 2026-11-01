@@ -1,0 +1,27 @@
+# Serves the validating admission webhook on 9443. The controller generates and rotates the certificate into the
+# promoter-webhook-server-cert Secret and injects the CA into the ValidatingWebhookConfiguration; the Secret is
+# mounted where the webhook server reads it (--webhook-cert-dir). The webhook starts once the kubelet has synced
+# the generated certificate into the volume, which can take up to a minute on first install.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          ports:
+            - containerPort: 9443
+              name: webhook-server
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: webhook-certs
+              readOnly: true
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: webhook-server-cert
+            defaultMode: 420

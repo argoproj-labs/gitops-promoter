@@ -73,6 +73,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
+	// KubernetesResourceCommitStatus contains the configuration for the KubernetesResourceCommitStatus controller,
+	// including WorkQueue settings and the list of resource kinds the gate may instantiate.
+	KubernetesResourceCommitStatus *KubernetesResourceCommitStatusConfigurationApplyConfiguration `json:"kubernetesResourceCommitStatus,omitempty"`
 	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	RestoreActiveCommit *RestoreActiveCommitConfigurationApplyConfiguration `json:"restoreActiveCommit,omitempty"`
@@ -184,6 +187,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessful
 // If called multiple times, the ScheduledCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatus(value *ScheduledCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.ScheduledCommitStatus = value
+	return b
+}
+
+// WithKubernetesResourceCommitStatus sets the KubernetesResourceCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the KubernetesResourceCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithKubernetesResourceCommitStatus(value *KubernetesResourceCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.KubernetesResourceCommitStatus = value
 	return b
 }
 

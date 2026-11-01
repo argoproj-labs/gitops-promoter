@@ -210,5 +210,13 @@ k8s_resource(
         'promoter-timedcommitstatus-viewer-role:clusterrole',
         'promoter-proxy-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
+        # Validating admission webhook: the controller fills the Secret with its self-managed certificate and
+        # injects the CA into the webhook configuration. The namespaced objects need promoter-system to exist.
+        'promoter-webhook-server-cert:secret',
+        'promoter-webhook-cert-role:role',
+        'promoter-webhook-cert-rolebinding:rolebinding',
+        'promoter-webhook-configuration-role:clusterrole',
+        'promoter-webhook-configuration-rolebinding:clusterrolebinding',
+        'promoter-validating-webhook-configuration:validatingwebhookconfiguration',
     ],
 )

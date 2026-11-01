@@ -98,6 +98,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 
+	// KubernetesResourceCommitStatus contains the configuration for the KubernetesResourceCommitStatus controller,
+	// including WorkQueue settings and the list of resource kinds the gate may instantiate.
+	// +required
+	KubernetesResourceCommitStatus KubernetesResourceCommitStatusConfiguration `json:"kubernetesResourceCommitStatus"`
+
 	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -331,6 +336,53 @@ type ScheduledCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// KubernetesResourceCommitStatusConfiguration defines the configuration for the KubernetesResourceCommitStatus controller.
+//
+// Besides the WorkQueue, it lists the resource kinds (group/version/kind) that KubernetesResourceCommitStatus
+// gates may instantiate. The controller watches every listed kind and needs RBAC on it (get, list, watch,
+// create, patch, delete).
+type KubernetesResourceCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the KubernetesResourceCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+
+	// Resources lists the namespaced resource kinds that KubernetesResourceCommitStatus gates may create.
+	// Each entry produces one informer on the kind.
+	// Changing this list requires a controller restart; the ControllerConfiguration controller shuts the
+	// process down when it detects a change, like spec.instanceID.
+	// +optional
+	// +listType=map
+	// +listMapKey=group
+	// +listMapKey=version
+	// +listMapKey=kind
+	// +kubebuilder:validation:MaxItems=50
+	Resources []ResourceGroupVersionKind `json:"resources,omitempty"`
+}
+
+// ResourceGroupVersionKind identifies an API kind installed in the cluster.
+type ResourceGroupVersionKind struct {
+	// Group is the API group. Use the empty string for the core group (for example core/v1 ConfigMap).
+	// +required
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$`
+	Group string `json:"group"`
+
+	// Version is the API version, for example v1 or v1alpha1.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]+$`
+	Version string `json:"version"`
+
+	// Kind is the API kind, for example Job.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[A-Z][A-Za-z0-9]*$`
+	Kind string `json:"kind"`
 }
 
 // RestoreActiveCommitConfiguration defines the configuration for the RestoreActiveCommit controller.

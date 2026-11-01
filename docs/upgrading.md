@@ -2,6 +2,50 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.49 — Validating admission webhook
+
+The installation manifests add a validating admission webhook for KubernetesResourceCommitStatus. The controller
+serves it on port 9443 behind the `promoter-webhook-service` Service and manages its certificate itself, so no
+cert-manager is needed. The manifests add:
+
+- `promoter-validating-webhook-configuration` (ValidatingWebhookConfiguration, `failurePolicy: Fail`),
+- the `promoter-webhook-server-cert` Secret, mounted into the controller pod, which the controller fills and rotates,
+- a Role allowing the controller to update that Secret, and a ClusterRole allowing it to inject the CA into the
+  webhook configuration (also in the namespaced installation, because webhook configurations are cluster-scoped).
+
+KubernetesResourceCommitStatus creates and updates fail while no controller replica is ready, including for up to a
+minute after the first install while the kubelet syncs the generated certificate. If you deploy the controller with
+your own manifests, add the objects above and the Secret volume, or run it with `--admission-webhook=false`;
+templates are then validated at reconcile only. See
+[Template validation](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#template-validation).
+
+## 0.49 — KubernetesResourceCommitStatus configuration section
+
+`ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller
+section). The installation manifests include it with the standard work-queue defaults and an empty `resources` list.
+If you maintain your own ControllerConfiguration, add:
+
+```yaml
+spec:
+  kubernetesResourceCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    resources: []
+```
+
+RBAC for the kinds you list is not generated; see
+[Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#rbac).
+
 ## 0.49 — Rate limiters must name exactly one strategy
 
 Every `spec.<controller>.workQueue.rateLimiter` in the ControllerConfiguration must now set exactly one of
@@ -13,7 +57,6 @@ the mistake surfaces at `kubectl apply` instead of as a crash loop.
 The shipped ControllerConfiguration sets a strategy for every controller, so an install that uses it is unaffected. A
 custom configuration with an empty rate limiter was already failing to start and needs a strategy added; there is no
 in-code default, by design.
-
 
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 

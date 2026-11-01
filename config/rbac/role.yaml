@@ -43,6 +43,7 @@ rules:
   - argocdcommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
+  - kubernetesresourcecommitstatuses
   - promotionstrategies
   - scheduledcommitstatuses
   - timedcommitstatuses
@@ -61,6 +62,7 @@ rules:
   - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
+  - kubernetesresourcecommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - scheduledcommitstatuses/finalizers
@@ -80,6 +82,7 @@ rules:
   - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
+  - kubernetesresourcecommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
   - restoreactivecommits/status

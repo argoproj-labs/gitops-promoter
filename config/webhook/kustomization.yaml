@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Validating admission webhook for KubernetesResourceCommitStatus. The controller generates and rotates the serving
+# certificate itself (open-policy-agent/cert-controller): it fills the Secret below and injects the CA into the
+# ValidatingWebhookConfiguration's caBundle, so no cert-manager or manual certificate is needed.
+resources:
+  - manifests.yaml
+  - service.yaml
+  - cert_secret.yaml
