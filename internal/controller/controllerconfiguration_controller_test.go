@@ -51,6 +51,35 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		})
 	})
 
+	Context("When validating spec.<controller>.workQueue.rateLimiter", func() {
+		ctx := context.Background()
+
+		invalidConfiguration := func(name string, mutate func(rl *promoterv1alpha1.RateLimiter)) *promoterv1alpha1.ControllerConfiguration {
+			cc, err := loadShippedControllerConfigurationForTests(name)
+			Expect(err).NotTo(HaveOccurred())
+			mutate(&cc.Spec.CommitStatus.WorkQueue.RateLimiter)
+			return cc
+		}
+
+		It("rejects a rate limiter with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of the fields in [fastSlow exponentialFailure bucket maxOf] must be set"))
+		})
+
+		It("rejects a maxOf entry with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty-maxof", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{MaxOf: []promoterv1alpha1.RateLimiterTypes{{}}}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of fastSlow, exponentialFailure or bucket must be specified"))
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
