@@ -383,6 +383,25 @@ func RemoveReadyCondition(obj PromoterResource) *metav1.Condition {
 	return prev
 }
 
+// withPreservedTransitionTime returns current with previous's lastTransitionTime when the Ready status did
+// not change, so the timestamp records the last transition rather than the last reconcile. A nil or
+// zero-timed previous condition leaves current untouched.
+func withPreservedTransitionTime(current metav1.Condition, previous *metav1.Condition) *metav1.Condition {
+	if previous != nil && previous.Status == current.Status && !previous.LastTransitionTime.IsZero() {
+		current.LastTransitionTime = previous.LastTransitionTime
+	}
+	return &current
+}
+
+// setReadyCondition replaces the Ready condition with cond exactly as given. meta.SetStatusCondition keeps
+// an existing entry's lastTransitionTime when the status matches, which would discard the time chosen by
+// withPreservedTransitionTime whenever a caller such as InheritNotReadyConditionFromObjects already set a
+// Ready condition during this reconcile.
+func setReadyCondition(conditions *[]metav1.Condition, cond metav1.Condition) {
+	meta.RemoveStatusCondition(conditions, string(promoterConditions.Ready))
+	meta.SetStatusCondition(conditions, cond)
+}
+
 // readyConditionTransitioned reports whether the Ready condition changed status or reason compared
 // to the previous reconcile's condition. Message-only changes are not transitions: failure messages
 // often vary per attempt (timestamps, retry counts), and treating them as transitions would re-emit
@@ -481,7 +500,17 @@ func HandleReconciliationResult(
 			ObservedGeneration: obj.GetGeneration(),
 		}
 	}
-	meta.SetStatusCondition(conditions, *readyCondition)
+
+	var prevReadyCondition *metav1.Condition
+	if previousReady != nil {
+		prevReadyCondition = *previousReady
+	}
+	// RemoveReadyCondition cleared the previous condition at the top of the reconcile, so
+	// meta.SetStatusCondition cannot carry its lastTransitionTime forward on its own; left alone, every
+	// reconcile stamps the current time, and a status write that changes nothing else still bumps the
+	// resourceVersion and wakes every watcher of this object.
+	readyCondition = withPreservedTransitionTime(*readyCondition, prevReadyCondition)
+	setReadyCondition(conditions, *readyCondition)
 
 	// Ready-condition events are emitted only when the condition transitions relative to the
 	// previous reconcile's condition (captured by RemoveReadyCondition); emitting on every
@@ -497,10 +526,6 @@ func HandleReconciliationResult(
 	// computed in memory. persistedReady is set only on the paths where a status patch
 	// succeeded; when nothing was persisted (object deleted, both applies failed) no event is
 	// emitted and the next reconcile, still seeing the old persisted condition, retries.
-	var prevReadyCondition *metav1.Condition
-	if previousReady != nil {
-		prevReadyCondition = *previousReady
-	}
 	var persistedReady *metav1.Condition
 	defer func() {
 		if persistedReady == nil {
@@ -592,7 +617,8 @@ func HandleReconciliationResult(
 	} else {
 		fallbackCondition.Message = fmt.Sprintf("Reconciliation succeeded but failed to apply status: %s", patchErr)
 	}
-	meta.SetStatusCondition(conditions, fallbackCondition)
+	fallbackCondition = *withPreservedTransitionTime(fallbackCondition, prevReadyCondition)
+	setReadyCondition(conditions, fallbackCondition)
 
 	condCfg, buildErr := statusApplyConfig(obj, true)
 	if buildErr != nil {
