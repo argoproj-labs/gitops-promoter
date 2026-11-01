@@ -15,6 +15,8 @@ custom configuration with an empty rate limiter was already failing to start and
 in-code default, by design.
 
 
+## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
+
 > [!IMPORTANT]
 > Every WebRequestCommitStatus that uses `httpRequest.authentication.basic`, `.bearer`, `.oauth2`, or `.tls` stops
 > making requests after upgrading until the referenced Secret carries the label

@@ -2817,6 +2817,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -3031,6 +3032,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -3244,6 +3246,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -3472,6 +3475,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -3685,6 +3689,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -3898,6 +3903,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -4155,6 +4161,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -4387,6 +4394,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -4601,6 +4609,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -4814,6 +4823,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -5036,6 +5046,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
@@ -5259,6 +5270,7 @@ spec:
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:

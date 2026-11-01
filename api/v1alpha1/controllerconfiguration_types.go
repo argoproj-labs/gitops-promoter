@@ -413,6 +413,7 @@ type RateLimiter struct {
 	// limiters is used. This enables sophisticated rate limiting that respects multiple
 	// constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
 	// +optional
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:items:XValidation:rule="(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) == 1",message="exactly one of fastSlow, exponentialFailure or bucket must be specified"
 	MaxOf []RateLimiterTypes `json:"maxOf,omitempty"`
