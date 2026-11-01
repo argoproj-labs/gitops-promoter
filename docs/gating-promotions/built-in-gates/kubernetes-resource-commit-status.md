@@ -245,6 +245,37 @@ spec.template.spec.parallelism: Invalid value: "${ Sha }": expression "Sha" retu
 The webhook is included in the `install-with-dashboard-*` bundles. Without it, the same errors appear as
 `Ready=False` on the first reconcile.
 
+### Validation by dry-run
+
+A schema cannot express a kind's native validation (`Job.spec.backoffLimit` must be non-negative, `restartPolicy` is
+required), its defaulting, its CEL rules, or the cluster's admission policies, and a static check cannot know the
+value an expression produces. So in `PerSha` mode the controller also renders the template for **every** applicable
+environment, once per gate `metadata.generation`, and submits a **dry-run create** of the real kind with strict field
+validation. Each environment is validated separately because expressions can change the shape of the object per
+environment. The verdict is recorded in `status.environments[].templateValidation`:
+
+```yaml
+status:
+  environments:
+    - branch: environment/staging
+      phase: success
+      reportedSha: 0123456789abcdef0123456789abcdef01234567
+      templateValidation:
+        observedGeneration: 3
+        valid: false
+        message: 'Job.batch "smoke-environment-staging-0123456-dryrun" is invalid: spec.backoffLimit: Invalid value: -1: must be greater than or equal to 0'
+        lastValidationTime: "2026-10-31T01:00:00Z"
+```
+
+An environment whose rendering is rejected keeps its previous report and gets no new resource until the template is
+fixed; the gate reports `Ready=False` naming the environment, while the other environments keep reconciling. This is
+the only timely signal for a template edited after an environment's current SHA already has its resource or reached a
+terminal phase, since that SHA is never re-run. The dry-run uses the same `create` permission as the real resource.
+Admission webhooks on the kind must declare `sideEffects: None` or `NoneOnDryRun`; when one does not, the API server
+refuses the dry-run and the controller records the template as not validated (`valid: true` with a message) rather
+than blocking the gate. `InPlace` resources are re-applied on every reconcile, so their errors surface directly and
+they are not dry-run.
+
 Examples:
 
 ```yaml
@@ -351,6 +382,10 @@ status:
         kind: Job
         name: smoke-environment-development-01234567-9f3e2a1b
       lastEvaluationTime: "2026-10-31T01:00:00Z"
+      templateValidation:
+        observedGeneration: 2
+        valid: true
+        lastValidationTime: "2026-10-31T00:59:58Z"
 ```
 
 `Ready=False` reports configuration problems: a template without `apiVersion`/`kind`, a kind that is not listed in the
@@ -383,6 +418,7 @@ with one; no extra labeling is needed.
 | Event Type | Event Reason | Description |
 | --- | --- | --- |
 | Normal | KubernetesResourceCreated | The resource was created for an environment and SHA. |
+| Warning | KubernetesResourceTemplateInvalid | The template rendered for an environment was rejected by a server-side dry-run; the environment keeps its previous report. |
 | Normal | KubernetesResourcePruned | A created resource was deleted because it exceeded `historyLimit` or its environment is no longer gated. |
 | Normal/Warning | CommitStatusPhaseChanged | The phase for an environment changed. Warning when the new phase is `failure`. |
 | Warning | CommitStatusesNotReady | A managed CommitStatus is not Ready. |

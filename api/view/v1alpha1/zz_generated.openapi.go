@@ -131,6 +131,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.KubernetesResourceLifecycle{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceLifecycle(ref),
 		apiv1alpha1.KubernetesResourcePhaseSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourcePhaseSpec(ref),
 		apiv1alpha1.KubernetesResourceReference{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceReference(ref),
+		apiv1alpha1.KubernetesResourceTemplateValidation{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceTemplateValidation(ref),
 		apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsConfiguration(ref),
 		apiv1alpha1.MetricsLabelsConfiguration{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_MetricsLabelsConfiguration(ref),
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
@@ -4688,12 +4689,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceCommitS
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
 						},
 					},
+					"templateValidation": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TemplateValidation is the result of the last dry-run of the template rendered for this environment. When it reports an invalid template, the previous report is kept and no resource is created until the template is fixed.",
+							Ref:         ref(apiv1alpha1.KubernetesResourceTemplateValidation{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"branch"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.KubernetesResourceReference{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.KubernetesResourceReference{}.OpenAPIModelName(), apiv1alpha1.KubernetesResourceTemplateValidation{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -4991,6 +4998,51 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceReferen
 				Required: []string{"apiVersion", "kind", "name"},
 			},
 		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceTemplateValidation(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "KubernetesResourceTemplateValidation records the last server-side dry-run of the template rendered for an environment. The admission webhook and the controller check the template statically; the dry-run runs the kind's native validation, defaulting, CEL rules, and admission against the concrete rendering, which a schema cannot express. It runs once per gate generation and environment in PerSha mode.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the gate's metadata.generation whose template was validated.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"valid": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Valid is true when the dry-run create of the rendered template succeeded, or when the kind's admission webhooks do not support dry-run requests (Message then says the validation was skipped).",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is the API server's error when Valid is false, or why validation was skipped.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastValidationTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastValidationTime is when the dry-run was performed.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"observedGeneration", "valid"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
 	}
 }
 

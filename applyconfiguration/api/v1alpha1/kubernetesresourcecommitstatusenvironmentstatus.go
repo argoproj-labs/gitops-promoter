@@ -35,6 +35,10 @@ type KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration struct {
 	Resource *KubernetesResourceReferenceApplyConfiguration `json:"resource,omitempty"`
 	// LastEvaluationTime is when spec.phase.expression was last evaluated against the live resource.
 	LastEvaluationTime *v1.Time `json:"lastEvaluationTime,omitempty"`
+	// TemplateValidation is the result of the last dry-run of the template rendered for this environment.
+	// When it reports an invalid template, the previous report is kept and no resource is created until the
+	// template is fixed.
+	TemplateValidation *KubernetesResourceTemplateValidationApplyConfiguration `json:"templateValidation,omitempty"`
 }
 
 // KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the KubernetesResourceCommitStatusEnvironmentStatus type for use with
@@ -96,5 +100,13 @@ func (b *KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration) With
 // If called multiple times, the LastEvaluationTime field is set to the value of the last call.
 func (b *KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration) WithLastEvaluationTime(value v1.Time) *KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration {
 	b.LastEvaluationTime = &value
+	return b
+}
+
+// WithTemplateValidation sets the TemplateValidation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TemplateValidation field is set to the value of the last call.
+func (b *KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration) WithTemplateValidation(value *KubernetesResourceTemplateValidationApplyConfiguration) *KubernetesResourceCommitStatusEnvironmentStatusApplyConfiguration {
+	b.TemplateValidation = value
 	return b
 }

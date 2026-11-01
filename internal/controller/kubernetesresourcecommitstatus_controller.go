@@ -18,9 +18,11 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -66,6 +68,9 @@ type KubernetesResourceCommitStatusReconciler struct {
 	// read in SetupWithManager. Gates referencing a kind outside this set fail reconcile.
 	configured map[schema.GroupVersionKind]struct{}
 	compiler   *resourcetemplate.Compiler
+	// dryRunClient is an uncached client for template dry-runs: the manager client's read-your-writes
+	// consistency cannot handle dry-run responses, which carry no resourceVersion.
+	dryRunClient client.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=kubernetesresourcecommitstatuses,verbs=get;list;watch
@@ -129,7 +134,10 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 	}
 
 	commitStatuses, transitioned, requeueSoon, err := r.processEnvironments(ctx, &krcs, &ps, template, sourceGVK, namespaceMeta)
-	if err != nil {
+	// An invalid template for some environments is reported as Ready=False, but the other environments, pruning,
+	// and CommitStatus cleanup still run with what was reconciled.
+	var templateErr *templateInvalidError
+	if err != nil && !errors.As(err, &templateErr) {
 		return ctrl.Result{}, err
 	}
 
@@ -154,7 +162,92 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		// deferred status write has recorded that phase.
 		requeueDuration = min(requeueDuration, time.Second)
 	}
+	if templateErr != nil {
+		return ctrl.Result{}, templateErr
+	}
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// templateInvalidError reports environments whose rendering of the template the API server rejected in a dry-run.
+type templateInvalidError struct {
+	messages []string
+}
+
+func (e *templateInvalidError) Error() string {
+	return strings.Join(e.messages, "; ")
+}
+
+// templateValidationMessageMaxLength bounds the API server error stored in status.
+const templateValidationMessageMaxLength = 2048
+
+// validateTemplate dry-runs a create of the template rendered for the environment, once per gate generation, and
+// returns the verdict (the previous one when the generation was already validated). The dry-run exercises the
+// kind's native validation, defaulting, CEL rules, and admission, which neither the schema nor the static checks
+// can see, and it is the only timely signal for a template edited after the current SHA's resource exists or
+// reached a terminal phase. Transient failures (transport, RBAC) return an error and leave no verdict.
+func (r *KubernetesResourceCommitStatusReconciler) validateTemplate(ctx context.Context, in environmentInput, data resourcetemplate.TemplateData) (*promoterv1alpha1.KubernetesResourceTemplateValidation, error) {
+	if in.previous != nil && in.previous.TemplateValidation != nil && in.previous.TemplateValidation.ObservedGeneration == in.gate.Generation {
+		return in.previous.TemplateValidation, nil
+	}
+	logger := log.FromContext(ctx).WithValues("branch", in.branch)
+	now := metav1.Now()
+	verdict := func(valid bool, message string) *promoterv1alpha1.KubernetesResourceTemplateValidation {
+		return &promoterv1alpha1.KubernetesResourceTemplateValidation{
+			ObservedGeneration: in.gate.Generation,
+			Valid:              valid,
+			Message:            utils.TruncateString(message, templateValidationMessageMaxLength),
+			LastValidationTime: &now,
+		}
+	}
+	invalid := func(message string) *promoterv1alpha1.KubernetesResourceTemplateValidation {
+		r.Recorder.Eventf(in.gate, nil, "Warning", constants.KubernetesResourceTemplateInvalidReason, "ValidatingTemplate",
+			constants.KubernetesResourceTemplateInvalidMessage, in.sourceGVK.Kind, in.branch, message)
+		return verdict(false, message)
+	}
+
+	name := utils.KubeSafeUniqueNameWithMaxLength(in.resourceName()+"-dryrun", resourcetemplate.ResourceNameMaxLength)
+	rendered, err := r.buildObject(in, name, data, time.Now())
+	if err != nil {
+		return invalid(err.Error()), nil
+	}
+	err = r.dryRunClient.Create(ctx, rendered, client.DryRunAll, client.FieldValidation(metav1.FieldValidationStrict))
+	switch {
+	case err == nil, k8serrors.IsAlreadyExists(err):
+		logger.Info("template validated with a server-side dry-run", "kind", in.sourceGVK.Kind, "generation", in.gate.Generation)
+		return verdict(true, ""), nil
+	case strings.Contains(err.Error(), "does not support dry run"):
+		// An admission webhook on the kind refuses dry-run requests; validation is unavailable rather than failed.
+		logger.Info("template dry-run skipped: an admission webhook on the kind does not support dry run", "kind", in.sourceGVK.Kind, "error", err.Error())
+		return verdict(true, "validation skipped: "+err.Error()), nil
+	case k8serrors.IsInvalid(err), k8serrors.IsBadRequest(err), isAdmissionDenial(err):
+		return invalid(err.Error()), nil
+	default:
+		return nil, fmt.Errorf("failed to dry-run the template for %s %q: %w", in.sourceGVK.Kind, name, err)
+	}
+}
+
+// isAdmissionDenial reports whether err is a policy denial (admission webhook or ValidatingAdmissionPolicy),
+// which the API server returns as forbidden, as opposed to a missing RBAC permission.
+func isAdmissionDenial(err error) bool {
+	return k8serrors.IsForbidden(err) && strings.Contains(err.Error(), "denied the request")
+}
+
+// keepPreviousReport returns the environment's previous status entry (or an empty one) carrying an invalid
+// template verdict, and re-upserts the previous CommitStatus so it is not cleaned up as orphaned.
+func (r *KubernetesResourceCommitStatusReconciler) keepPreviousReport(ctx context.Context, in environmentInput, validation *promoterv1alpha1.KubernetesResourceTemplateValidation) (promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, *promoterv1alpha1.CommitStatus, bool, error) {
+	entry := promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{Branch: in.branch}
+	var cs *promoterv1alpha1.CommitStatus
+	if in.previous != nil {
+		entry = *in.previous.DeepCopy()
+		if in.previous.ReportedSha != "" {
+			var err error
+			if cs, err = r.upsertCommitStatus(ctx, in, in.previous.GateEnvironmentCommitStatus); err != nil {
+				return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+			}
+		}
+	}
+	entry.TemplateValidation = validation
+	return entry, cs, false, &templateInvalidError{messages: []string{fmt.Sprintf("environment %s: template renders to an invalid %s: %s", in.branch, in.sourceGVK.Kind, validation.Message)}}
 }
 
 // handleFinalizer keeps KubernetesResourceCommitStatusCleanupFinalizer on the gate while it exists, and on deletion
@@ -184,6 +277,25 @@ func (r *KubernetesResourceCommitStatusReconciler) handleFinalizer(ctx context.C
 		}
 	}
 	return true, nil
+}
+
+// settleResourceFinalizer decides what happens to the resource finalizer after this reconcile's evaluation. It is
+// released once the terminal phase is persisted in the gate's status (the previous report, written by the last
+// reconcile), or right away when the resource is being deleted before it finished: there is nothing to protect then,
+// and the gate recreates it. A phase that became terminal in this reconcile is persisted by the deferred status
+// write, so the release waits for the next pass and the bool asks for a prompt requeue.
+func (r *KubernetesResourceCommitStatusReconciler) settleResourceFinalizer(ctx context.Context, in environmentInput, live *unstructured.Unstructured, exists bool, phase promoterv1alpha1.CommitStatusPhase) (bool, error) {
+	if in.mode() != promoterv1alpha1.KubernetesResourceLifecyclePerSha || !exists || !controllerutil.ContainsFinalizer(live, promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer) {
+		return false, nil
+	}
+	switch {
+	case in.isTerminalForSha(), !live.GetDeletionTimestamp().IsZero() && !isTerminalPhase(phase):
+		return false, r.releaseResourceFinalizer(ctx, live)
+	case isTerminalPhase(phase):
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 // releaseResourceFinalizers releases the resource finalizer from every resource the gate controls, across all
@@ -286,6 +398,7 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 	applicable := utils.GetApplicableEnvironments(ps, krcs.Spec.Key, krcs.Spec.ReportOn)
 	newStatus := make([]promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, 0, len(applicable))
 	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicable))
+	var invalidMessages []string
 
 	for i, env := range applicable {
 		envStatus := statusByBranch[env.Branch]
@@ -311,6 +424,15 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 			branch: env.Branch, envStatus: envStatus, sha: sha, previous: prevPtr,
 		})
 		requeueSoon = requeueSoon || envRequeueSoon
+		var invalid *templateInvalidError
+		if errors.As(err, &invalid) {
+			newStatus = append(newStatus, entry)
+			if cs != nil {
+				commitStatuses = append(commitStatuses, cs)
+			}
+			invalidMessages = append(invalidMessages, invalid.messages...)
+			continue
+		}
 		if err != nil {
 			// Preserve the previous reports of the environments we did not reach.
 			for _, rest := range applicable[i:] {
@@ -330,6 +452,9 @@ func (r *KubernetesResourceCommitStatusReconciler) processEnvironments(
 		}
 	}
 	krcs.Status.Environments = newStatus
+	if len(invalidMessages) > 0 {
+		return commitStatuses, transitioned, requeueSoon, &templateInvalidError{messages: invalidMessages}
+	}
 	return commitStatuses, transitioned, requeueSoon, nil
 }
 
@@ -394,18 +519,6 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to get %s %q: %w", in.sourceGVK.Kind, name, err)
 	}
 
-	// Terminal-phase rule: once a SHA reached success or failure, a resource that disappeared afterwards
-	// (for example a Job removed by ttlSecondsAfterFinished) must not be recreated, or the gate would loop.
-	if !exists && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
-		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", in.previous.Phase)
-		entry := *in.previous.DeepCopy()
-		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
-		if err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
-		}
-		return entry, cs, false, nil
-	}
-
 	envObject, err := resourcetemplate.ToActivationObject(in.envStatus)
 	if err != nil {
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to convert environment status for expressions: %w", err)
@@ -419,6 +532,31 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		PromotionStrategy:              in.psObject,
 		KubernetesResourceCommitStatus: in.snapshot,
 		NamespaceMetadata:              in.namespaceMeta,
+	}
+
+	// PerSha resources are created once, so a template edited afterwards is only exercised by a dry-run.
+	var validation *promoterv1alpha1.KubernetesResourceTemplateValidation
+	if in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha {
+		validation, err = r.validateTemplate(ctx, in, templateData)
+		if err != nil {
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+		}
+		if validation != nil && !validation.Valid {
+			return r.keepPreviousReport(ctx, in, validation)
+		}
+	}
+
+	// Terminal-phase rule: once a SHA reached success or failure, a resource that disappeared afterwards
+	// (for example a Job removed by ttlSecondsAfterFinished) must not be recreated, or the gate would loop.
+	if !exists && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
+		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", in.previous.Phase)
+		entry := *in.previous.DeepCopy()
+		entry.TemplateValidation = validation
+		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
+		if err != nil {
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+		}
+		return entry, cs, false, nil
 	}
 
 	switch {
@@ -467,21 +605,9 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
 
-	requeueSoon := false
-	// Release the resource finalizer once the terminal phase is persisted in the gate's status (the previous
-	// report, written by the last reconcile), or right away when the resource is being deleted before it
-	// finished: there is nothing to protect then, and the gate recreates it. A phase that became terminal in
-	// this reconcile is persisted by the deferred status write, so the release waits for the next pass.
-	if in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && exists && controllerutil.ContainsFinalizer(live, promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer) {
-		switch {
-		case in.isTerminalForSha(), !live.GetDeletionTimestamp().IsZero() && !isTerminalPhase(result.Phase):
-			if err := r.releaseResourceFinalizer(ctx, live); err != nil {
-				return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
-			}
-		case isTerminalPhase(result.Phase):
-			requeueSoon = true
-		default:
-		}
+	requeueSoon, err := r.settleResourceFinalizer(ctx, in, live, exists, result.Phase)
+	if err != nil {
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
 
 	report, err := r.buildReport(in, name, live, result, templateData)
@@ -502,6 +628,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 			Name:       name,
 		},
 		LastEvaluationTime: &now,
+		TemplateValidation: validation,
 	}, cs, requeueSoon, nil
 }
 
@@ -740,6 +867,12 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 	r.compiler, err = resourcetemplate.NewCompiler(&resolver.ClientDiscoveryResolver{Discovery: discoveryClient}, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create expression compiler: %w", err)
+	}
+	if r.dryRunClient == nil {
+		r.dryRunClient, err = client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
+		if err != nil {
+			return fmt.Errorf("failed to create dry-run client: %w", err)
+		}
 	}
 
 	resources, err := r.SettingsMgr.GetKubernetesResourceCommitStatusResourcesDirect(ctx)

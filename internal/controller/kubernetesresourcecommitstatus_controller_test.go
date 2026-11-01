@@ -77,6 +77,18 @@ func jobTemplate() apiextensionsv1.JSON {
 	})
 }
 
+// jobTemplateWithBackoffLimit is jobTemplate with a different backoffLimit; -1 passes the schema (no minimum) and
+// fails Job validation, which only a server-side dry-run can see.
+func jobTemplateWithBackoffLimit(limit int) apiextensionsv1.JSON {
+	raw := jobTemplate()
+	var object map[string]any
+	Expect(json.Unmarshal(raw.Raw, &object)).To(Succeed())
+	spec, ok := object["spec"].(map[string]any)
+	Expect(ok).To(BeTrue())
+	spec["backoffLimit"] = limit
+	return templateJSON(object)
+}
+
 func configMapTemplate(extra string) apiextensionsv1.JSON {
 	return templateJSON(map[string]any{
 		"apiVersion": "v1",
@@ -208,6 +220,9 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				g.Expect(dev.Resource.Name).To(Equal(resourcetemplate.PerShaResourceName(gateName, testBranchDevelopment, dev.ReportedSha)))
 				g.Expect(dev.LastEvaluationTime).NotTo(BeNil())
 				g.Expect(dev.Description).To(Equal("Smoke test " + dev.Resource.Name + " is pending"))
+				g.Expect(dev.TemplateValidation).NotTo(BeNil(), "the template is dry-run once per generation")
+				g.Expect(dev.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(krcs.Generation))
 				firstJob, firstSha = dev.Resource.Name, dev.ReportedSha
 
 				var job batchv1.Job
@@ -300,6 +315,68 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &batchv1.Job{})
 				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "the Job must not be recreated after a terminal phase")
 			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("reports a template the API server rejects in a dry-run and keeps the previous report", func() {
+			By("Editing the template to a value the schema allows but Job validation rejects")
+			var generation int64
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = jobTemplateWithBackoffLimit(-1)
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+				generation = krcs.Generation
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("template renders to an invalid Job"))
+				g.Expect(ready.Message).To(ContainSubstring("spec.backoffLimit"))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.TemplateValidation).NotTo(BeNil())
+				g.Expect(dev.TemplateValidation.Valid).To(BeFalse())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(generation))
+				g.Expect(dev.TemplateValidation.Message).To(ContainSubstring("spec.backoffLimit"))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "the previous report is kept")
+				g.Expect(dev.ReportedSha).To(Equal(firstSha))
+
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment), Namespace: "default"}, &cs)).To(Succeed(), "the CommitStatus is not cleaned up as orphaned")
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, gateName, constants.KubernetesResourceTemplateInvalidReason, "spec.backoffLimit"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Checking no dry-run object was persisted and the real Job was not recreated")
+			var jobs batchv1.JobList
+			Expect(k8sClient.List(ctx, &jobs, ctrlclient.InNamespace("default"))).To(Succeed())
+			for _, job := range jobs.Items {
+				Expect(job.Name).NotTo(HaveSuffix("-dryrun"))
+				Expect(job.Name).NotTo(Equal(firstJob))
+			}
+
+			By("Fixing the template")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = jobTemplate()
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+				generation = krcs.Generation
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.TemplateValidation).NotTo(BeNil())
+				g.Expect(dev.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(generation))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("creates a new Job for a new SHA and prunes older Jobs beyond historyLimit", func() {

@@ -128,6 +128,11 @@ const (
 	// KubernetesResourcePrunedReason indicates that a KubernetesResourceCommitStatus deleted a resource it created
 	// because it exceeded spec.lifecycle.historyLimit or its environment is no longer gated.
 	KubernetesResourcePrunedReason = "KubernetesResourcePruned"
+	// KubernetesResourceTemplateInvalidReason indicates that the template rendered for an environment was rejected
+	// by a server-side dry-run.
+	KubernetesResourceTemplateInvalidReason = "KubernetesResourceTemplateInvalid"
+	// KubernetesResourceTemplateInvalidMessage is the message for a template the dry-run rejected.
+	KubernetesResourceTemplateInvalidMessage = "Template renders to an invalid %s for environment branch %s: %s"
 	// KubernetesResourcePrunedMessage is the message for a pruned resource.
 	// Args: kind, name, reason.
 	KubernetesResourcePrunedMessage = "Deleted %s %s: %s"

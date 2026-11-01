@@ -191,6 +191,30 @@ type KubernetesResourceReference struct {
 	Name string `json:"name"`
 }
 
+// KubernetesResourceTemplateValidation records the last server-side dry-run of the template rendered for an
+// environment. The admission webhook and the controller check the template statically; the dry-run runs the kind's
+// native validation, defaulting, CEL rules, and admission against the concrete rendering, which a schema cannot
+// express. It runs once per gate generation and environment in PerSha mode.
+type KubernetesResourceTemplateValidation struct {
+	// ObservedGeneration is the gate's metadata.generation whose template was validated.
+	// +required
+	ObservedGeneration int64 `json:"observedGeneration"`
+
+	// Valid is true when the dry-run create of the rendered template succeeded, or when the kind's admission
+	// webhooks do not support dry-run requests (Message then says the validation was skipped).
+	// +required
+	Valid bool `json:"valid"`
+
+	// Message is the API server's error when Valid is false, or why validation was skipped.
+	// +optional
+	// +kubebuilder:validation:MaxLength=2048
+	Message string `json:"message,omitempty"`
+
+	// LastValidationTime is when the dry-run was performed.
+	// +optional
+	LastValidationTime *metav1.Time `json:"lastValidationTime,omitempty"`
+}
+
 // KubernetesResourceCommitStatusEnvironmentStatus is the observed state for one environment branch.
 type KubernetesResourceCommitStatusEnvironmentStatus struct {
 	// Branch is the environment branch name.
@@ -208,6 +232,12 @@ type KubernetesResourceCommitStatusEnvironmentStatus struct {
 	// LastEvaluationTime is when spec.phase.expression was last evaluated against the live resource.
 	// +optional
 	LastEvaluationTime *metav1.Time `json:"lastEvaluationTime,omitempty"`
+
+	// TemplateValidation is the result of the last dry-run of the template rendered for this environment.
+	// When it reports an invalid template, the previous report is kept and no resource is created until the
+	// template is fixed.
+	// +optional
+	TemplateValidation *KubernetesResourceTemplateValidation `json:"templateValidation,omitempty"`
 }
 
 // KubernetesResourceCommitStatusStatus defines the observed state of KubernetesResourceCommitStatus.

@@ -1340,6 +1340,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: resource
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceReference
+    - name: templateValidation
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceTemplateValidation
     - name: url
       type:
         scalar: string
@@ -1445,6 +1448,21 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.KubernetesResourceTemplateValidation
+  map:
+    fields:
+    - name: lastValidationTime
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: message
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: valid
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricLabelMode
   scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.MetricsConfiguration
