@@ -1287,3 +1287,78 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 		})
 	})
 })
+
+var _ = Describe("Application watch handler", func() {
+	It("enqueues every ArgoCDCommitStatus that selects an Application", func() {
+		ctx := context.TODO()
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "two-gates", "default")
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{{Branch: testBranchStaging}}
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		workTreePath, err := os.MkdirTemp("", "*")
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = os.RemoveAll(workTreePath) }()
+		_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+		Expect(err).ToNot(HaveOccurred())
+		sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "origin/"+testBranchStaging)
+		Expect(err).ToNot(HaveOccurred())
+		sha = strings.TrimSpace(sha)
+
+		// Two gates select the same Application through different labels. Create them first so the
+		// Application's create event is what enqueues them.
+		gates := make([]*promoterv1alpha1.ArgoCDCommitStatus, 0, 2)
+		for _, g := range []struct{ suffix, key, label string }{
+			{"-by-app", "argocd-health-by-app", "app"},
+			{"-by-team", "argocd-health-by-team", "team"},
+		} {
+			gate := &promoterv1alpha1.ArgoCDCommitStatus{
+				Namespace: "default", Name: name + g.suffix,
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					ApplicationSelector:  &metav1.LabelSelector{MatchLabels: map[string]string{g.label: "two-gates"}},
+					Key:                  g.key,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			gates = append(gates, gate)
+		}
+
+		app := &argocd.Application{
+			Kind: "Application", APIVersion: "argoproj.io/v1alpha1",
+			Namespace: "default", Name: "test-app-two-gates",
+			Labels: map[string]string{"app": "two-gates", "team": "two-gates"},
+			Spec: argocd.ApplicationSpec{SourceHydrator: &argocd.SourceHydrator{
+				DrySource:  argocd.DrySource{RepoURL: testGitRepoCloneURL(gitRepo)},
+				SyncSource: argocd.SyncSource{TargetBranch: testBranchStaging},
+			}},
+			Status: argocd.ApplicationStatus{
+				Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+				Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+			},
+		}
+		Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+		for _, gate := range gates {
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(gate), updated)).To(Succeed())
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+				g.Expect(updated.Status.ApplicationsSelected[0].Name).To(Equal(app.Name))
+				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed(), "gate %s was not reconciled for the Application", gate.Name)
+		}
+
+		Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+		for _, gate := range gates {
+			Expect(k8sClient.Delete(ctx, gate)).To(Succeed())
+		}
+		Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+	})
+})
