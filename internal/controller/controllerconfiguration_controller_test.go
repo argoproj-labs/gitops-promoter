@@ -38,6 +38,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 //go:embed testdata/ControllerConfiguration.yaml
@@ -48,6 +49,48 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		It("should unmarshal the ControllerConfiguration resource", func() {
 			err := unmarshalYamlStrict(testControllerConfigurationYAML, &promoterv1alpha1.ControllerConfiguration{})
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When validating spec.<controller>.workQueue.rateLimiter", func() {
+		ctx := context.Background()
+
+		invalidConfiguration := func(name string, mutate func(rl *promoterv1alpha1.RateLimiter)) *promoterv1alpha1.ControllerConfiguration {
+			cc, err := loadShippedControllerConfigurationForTests(name)
+			Expect(err).NotTo(HaveOccurred())
+			mutate(&cc.Spec.CommitStatus.WorkQueue.RateLimiter)
+			return cc
+		}
+
+		It("rejects a rate limiter with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of the fields in [fastSlow exponentialFailure bucket maxOf] must be set"))
+		})
+
+		It("rejects an empty maxOf list", func() {
+			cc := invalidConfiguration("rate-limiter-empty-maxof-list", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{}
+			})
+			// omitempty drops an empty slice, so send the literal empty list the way a YAML author would.
+			u := &unstructured.Unstructured{}
+			Expect(scheme.Convert(cc, u, nil)).To(Succeed())
+			Expect(unstructured.SetNestedSlice(u.Object, []any{}, "spec", "commitStatus", "workQueue", "rateLimiter", "maxOf")).To(Succeed())
+			err := k8sClient.Create(ctx, u)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("should have at least 1 items"))
+		})
+
+		It("rejects a maxOf entry with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty-maxof", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{MaxOf: []promoterv1alpha1.RateLimiterTypes{{}}}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of fastSlow, exponentialFailure or bucket must be specified"))
 		})
 	})
 
