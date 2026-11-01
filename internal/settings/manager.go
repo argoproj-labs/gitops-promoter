@@ -114,7 +114,11 @@ type Manager struct {
 // Returns the ControllerConfiguration resource, or an error if it cannot be retrieved from the cluster.
 func (m *Manager) getControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
+	// The returned object is shared with the informer cache and must be treated as read-only. Every accessor
+	// on Manager copies out the scalar or struct it needs rather than handing the object to callers, so the
+	// deep copy would only cost: this is read two or three times per reconcile by every controller, and the
+	// object carries every controller's configuration plus the pull request template.
+	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration, client.UnsafeDisableDeepCopy); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
