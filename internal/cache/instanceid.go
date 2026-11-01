@@ -106,7 +106,10 @@ func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cac
 	byObject := make(map[client.Object]cache.ByObject, len(opts.ByObject))
 	maps.Copy(byObject, opts.ByObject)
 	opts.ByObject = byObject
-	opts.ByObject[unpartitionedApplicationObject] = cache.ByObject{Label: labels.Everything()}
+	opts.ByObject[unpartitionedApplicationObject] = cache.ByObject{
+		Label:     labels.Everything(),
+		Transform: cache.TransformStripManagedFields(),
+	}
 	return opts, nil
 }
 
@@ -123,6 +126,10 @@ func ProviderClusterCacheOptions() cache.Options {
 		ByObject: map[client.Object]cache.ByObject{
 			unpartitionedApplicationObject: {
 				UnsafeDisableDeepCopy: new(true),
+				// Argo CD Applications carry several kilobytes of managedFields from the application
+				// controller, the API server and users. The controller never reads them, and with tens of
+				// thousands of Applications they would otherwise be the largest thing the informer retains.
+				Transform: cache.TransformStripManagedFields(),
 			},
 		},
 	}
