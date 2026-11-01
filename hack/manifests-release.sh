@@ -39,11 +39,6 @@ build_bundle() {
     $KUSTOMIZE build "${SRCROOT}/${config_dir}" >> "$out_file"
 }
 
-# Controller-only bundle (no dashboard aggregation apiserver / UI). Named "without-ui" to make
-# the missing UI explicit; the preferred install is one of the install-with-dashboard-* bundles
-# below. See docs/getting-started.md and docs/dashboard-apiserver.md.
-build_bundle "config/release" "${OUT_DIR}/install-without-ui.yaml"
-
 # Combined bundles: the controller PLUS the dashboard aggregation apiserver in a single
 # file, so installing the dashboard is one `kubectl apply`. We ship three variants so users
 # can pick their serving-cert strategy:
@@ -62,7 +57,6 @@ build_bundle "config/apiserver/release-combined-byo-cert" "${OUT_DIR}/install-wi
 # Fully isolated variants: the controller watches only its install namespace, does not access
 # cluster-scoped resources, and uses a Role instead of a ClusterRole (config/namespaced).
 # In the combined bundles, the dashboard apiserver also reads only its install namespace.
-build_bundle "config/release-namespaced" "${OUT_DIR}/install-without-ui-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-cert-controller-namespaced" "${OUT_DIR}/install-with-dashboard-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-cert-manager-namespaced" "${OUT_DIR}/install-with-dashboard-cert-manager-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-byo-cert-namespaced" "${OUT_DIR}/install-with-dashboard-byo-cert-namespaced.yaml"

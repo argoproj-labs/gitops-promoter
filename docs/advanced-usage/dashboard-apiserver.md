@@ -58,9 +58,8 @@ file:
 | `install-with-dashboard-cert-manager.yaml` | cert-manager issues and rotates it | `config/apiserver/release-combined-cert-manager` |
 | `install-with-dashboard-byo-cert.yaml` | you supply the Secret + `caBundle` | `config/apiserver/release-combined-byo-cert` |
 
-Each has a `-namespaced` variant built from the matching `*-namespaced` overlay. These are the
-preferred install — apply one of them instead of the controller-only `install-without-ui.yaml`.
-See the [Getting Started](../getting-started.md#install-the-dashboard-api) guide. Each overlay
+Each has a `-namespaced` variant built from the matching `*-namespaced` overlay. Every
+published bundle includes the dashboard API; there is no controller-only bundle. See the [Getting Started](../getting-started.md#installation) guide. Each overlay
 unions `config/default` with a cert overlay (no extra namespace transformer, so the
 `kube-system` RoleBinding is preserved).
 

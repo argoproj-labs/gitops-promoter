@@ -35,11 +35,9 @@ secret.yaml
 # Release bundles written to the repo root by `make manifests-release` (uploaded as
 # GitHub release assets). Anchored to root so the committed copies under dist/ — produced
 # by `make build-installer` — stay tracked.
-/install-without-ui.yaml
 /install-with-dashboard.yaml
 /install-with-dashboard-cert-manager.yaml
 /install-with-dashboard-byo-cert.yaml
-/install-without-ui-namespaced.yaml
 /install-with-dashboard-namespaced.yaml
 /install-with-dashboard-cert-manager-namespaced.yaml
 /install-with-dashboard-byo-cert-namespaced.yaml

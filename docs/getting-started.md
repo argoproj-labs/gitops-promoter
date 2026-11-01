@@ -59,17 +59,6 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
-/// tab | Without the UI
-
-Installs only the controller, without the dashboard aggregation API. Choose this if you don't
-need the web UI:
-
-```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-without-ui.yaml
-```
-
-///
-
 ### Namespaced
 
 Reconciles resources only in the `promoter-system` namespace, using a `Role` instead of a `ClusterRole`.
@@ -107,17 +96,6 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 
 ```bash
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert-namespaced.yaml
-```
-
-///
-
-/// tab | Without the UI
-
-Installs only the controller, without the dashboard aggregation API. Choose this if you don't
-need the web UI:
-
-```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-without-ui-namespaced.yaml
 ```
 
 ///
@@ -800,55 +778,13 @@ spec:
 
 GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
 
-The UI is backed by the `PromotionStrategyDetails` resource. This resource is backed by a Kubernetes APIService and requires a certificate to be set up. This step is safe to skip if you are not going to use the dashboard.
+The UI is backed by the `PromotionStrategyDetails` resource, which is served by the dashboard
+aggregation API (a Kubernetes `APIService`). Every install bundle above includes it, so there is
+nothing extra to install.
 
-### Install the dashboard API
+### Verify the dashboard API
 
-If you installed one of the `install-with-dashboard-*` bundles above, the
-`PromotionStrategyDetails` APIService is already present — skip to [Launch the UI](#launch-the-ui).
-
-If you installed the `install-without-ui.yaml` bundle, the APIService is not included. Use one of
-the following bundles to set it up for your environment.
-
-/// tab | Built-in certs (recommended)
-
-The dashboard apiserver issues and rotates its own serving cert (and keeps the `caBundle`
-injected) with the built-in cert-controller — a single apply with nothing else to do and no
-cert-manager dependency:
-
-```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard.yaml
-```
-
-///
-
-/// tab | cert-manager
-
-If [cert-manager](https://cert-manager.io/) is installed in the cluster, this bundle lets it
-issue and rotate the serving cert (and keep the `caBundle` injected) automatically — a single
-apply with nothing else to do:
-
-```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager.yaml
-```
-
-///
-
-/// tab | Bring your own cert
-
-This bundle has no cert-manager dependency. Apply it, then supply the
-`promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
-
-```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert.yaml
-```
-
-See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
-scripted/manual cert steps and cert rotation.
-
-///
-
-Confirm the API registered and is healthy before launching the UI:
+Confirm the API is registered and healthy before launching the UI:
 
 ```bash
 kubectl get apiservice v1alpha1.view.promoter.argoproj.io   # AVAILABLE should be True
@@ -859,6 +795,10 @@ kubectl get promotionstrategydetails -A
 > If the `APIService` reports `Available=False` with an `x509`/TLS error, the `caBundle`
 > does not match the apiserver's serving cert. See the
 > [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#verifying-the-install) page.
+
+If you installed with the cert-manager or bring-your-own-cert bundle, see the
+[Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for how the
+serving cert is provided and rotated.
 
 ### Launch the UI
 
