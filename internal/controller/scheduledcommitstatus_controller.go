@@ -29,6 +29,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -139,7 +141,8 @@ func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScheduledCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.ScheduledCommitStatusList](r.Client)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.ScheduledCommitStatusList](r.Client),
+			builder.WithPredicates(scheduledCommitStatusPromotionStrategyPredicate())).
 		Named("scheduledcommitstatus").
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -517,4 +520,38 @@ func earliestTransition(candidates []transitionCandidate) *transitionCandidate {
 		}
 	}
 	return &earliest
+}
+
+// scheduledCommitStatusPromotionStrategyPredicate limits the PromotionStrategy watch to updates this gate can act on. The
+// reconciler reads the strategy's spec (covered by the generation) and status.environments[].proposed.hydrated, the commit it reports a window for.
+// Everything else in the strategy's status, such as pull request state, health history and conditions,
+// changes far more often and is irrelevant here, and without this filter every such write reconciled every
+// ScheduledCommitStatus referencing the strategy. Creates, deletes and generic events pass unchanged.
+//
+//nolint:dupl // Each gate keeps its own copy so the fields it depends on are visible where it is wired (see #2013).
+func scheduledCommitStatusPromotionStrategyPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew || oldPS.Generation != newPS.Generation {
+				return true
+			}
+			oldEnvs, newEnvs := oldPS.Status.Environments, newPS.Status.Environments
+			if len(oldEnvs) != len(newEnvs) {
+				return true
+			}
+			oldByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(oldEnvs))
+			for _, env := range oldEnvs {
+				oldByBranch[env.Branch] = env
+			}
+			for _, env := range newEnvs {
+				oldEnv, ok := oldByBranch[env.Branch]
+				if !ok || !equality.Semantic.DeepEqual(oldEnv.Proposed.Hydrated, env.Proposed.Hydrated) {
+					return true
+				}
+			}
+			return false
+		},
+	}
 }
