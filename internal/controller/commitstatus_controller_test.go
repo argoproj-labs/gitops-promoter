@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -508,5 +509,22 @@ var _ = Describe("commitStatusAlreadyPublished", func() {
 		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
 		cs.Status.Conditions = nil
 		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+	})
+})
+
+var _ = Describe("publishedByThisInstance", func() {
+	It("is true only when status.instanceID matches the running instance", func() {
+		restore := settings.SetControllerInstanceIDForTest(nil)
+		defer restore()
+		cs := &promoterv1alpha1.CommitStatus{}
+		Expect(publishedByThisInstance(cs)).To(BeTrue())
+		cs.Status.InstanceID = new("wave-0")
+		Expect(publishedByThisInstance(cs)).To(BeFalse(), "status stamped by another install")
+
+		restoreWave := settings.SetControllerInstanceIDForTest(new("wave-0"))
+		defer restoreWave()
+		Expect(publishedByThisInstance(cs)).To(BeTrue())
+		cs.Status.InstanceID = nil
+		Expect(publishedByThisInstance(cs)).To(BeFalse(), "status stamped by the default install")
 	})
 })

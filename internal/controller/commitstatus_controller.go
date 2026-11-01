@@ -45,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -137,9 +138,11 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if alreadyPublished {
+	if alreadyPublished && publishedByThisInstance(&cs) {
 		// Nothing changed, so there is no new phase for a ChangeTransferPolicy to read: waking the policies on
 		// this SHA would only re-run their git work. On a controller start that is every policy, twice.
+		// The exception is a CommitStatus that just moved into this install (its status.instanceID still names
+		// the previous one): the policies here have never read it, so wake them without re-publishing.
 		return ctrl.Result{}, nil
 	}
 
@@ -148,7 +151,9 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	if !alreadyPublished {
+		r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -309,4 +314,11 @@ func commitStatusAlreadyPublished(cs *promoterv1alpha1.CommitStatus) bool {
 	}
 	ready := meta.FindStatusCondition(cs.Status.Conditions, string(promoterConditions.Ready))
 	return ready != nil && ready.Status == metav1.ConditionTrue
+}
+
+// publishedByThisInstance reports whether the CommitStatus's last status write came from this controller
+// instance (status.instanceID is stamped on every reconcile). A false answer means the object was migrated
+// from another install, see docs/multi-install.md, and this install's policies have not read it yet.
+func publishedByThisInstance(cs *promoterv1alpha1.CommitStatus) bool {
+	return ptr.Equal(cs.Status.InstanceID, settings.ControllerInstanceID())
 }
