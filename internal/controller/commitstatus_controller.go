@@ -36,9 +36,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -98,6 +100,8 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	// Read before RemoveReadyCondition clears the Ready condition this check relies on.
+	alreadyPublished := commitStatusAlreadyPublished(&cs)
 	previousReady = utils.RemoveReadyCondition(&cs)
 
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
@@ -113,12 +117,15 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	if !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo) {
+	switch {
+	case alreadyPublished:
+		logger.V(4).Info("CommitStatus already published for this generation, not publishing again")
+	case !promoterv1alpha1.PublishesToSCM(cs.Spec.PublishTo):
 		// No scm destination: do not post to the SCM. Record the state in status only, and clear any SCM id from an earlier post.
 		cs.Status.Sha = cs.Spec.Sha
 		cs.Status.Phase = cs.Spec.Phase
 		cs.Status.Id = ""
-	} else {
+	default:
 		commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 		if err != nil || commitStatusProvider == nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
@@ -130,12 +137,16 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	// Still wake the policies on this SHA even when nothing was published: a ChangeTransferPolicy reconciling
+	// concurrently may not have read this phase yet, and the enqueue channel dedupes.
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	if !alreadyPublished {
+		r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -278,4 +289,20 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	}
 
 	return nil
+}
+
+// commitStatusAlreadyPublished reports whether the last successful reconcile already published exactly this
+// spec: the status was written from the current generation, it records the current SHA and phase, and the
+// reconcile ended Ready. Any spec edit bumps the generation, so description or URL changes are not missed.
+//
+// A CommitStatus is reconciled on create, on spec change, and on every controller start, because the
+// informer's initial list is a create event. Without this check a restart re-sent every CommitStatus to the
+// SCM, hundreds of write calls that changed nothing. Skipping also means a status deleted on the SCM side is
+// not restored by a restart; the controller never resynced it on a timer either.
+func commitStatusAlreadyPublished(cs *promoterv1alpha1.CommitStatus) bool {
+	if cs.Status.ObservedGeneration != cs.Generation || cs.Status.Sha != cs.Spec.Sha || cs.Status.Phase != cs.Spec.Phase {
+		return false
+	}
+	ready := meta.FindStatusCondition(cs.Status.Conditions, string(promoterConditions.Ready))
+	return ready != nil && ready.Status == metav1.ConditionTrue
 }

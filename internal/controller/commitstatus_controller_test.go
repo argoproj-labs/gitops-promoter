@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -465,3 +466,47 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 
 	return scmSecret, scmProvider, gitRepo, commitStatus
 }
+
+var _ = Describe("commitStatusAlreadyPublished", func() {
+	published := func() *promoterv1alpha1.CommitStatus {
+		cs := &promoterv1alpha1.CommitStatus{}
+		cs.Generation = 3
+		cs.Spec.Sha = "abc"
+		cs.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+		cs.Status.ObservedGeneration = 3
+		cs.Status.Sha = "abc"
+		cs.Status.Phase = promoterv1alpha1.CommitPhaseSuccess
+		cs.Status.Conditions = []metav1.Condition{{
+			Type: string(promoterConditions.Ready), Status: metav1.ConditionTrue,
+			Reason: string(promoterConditions.ReconciliationSuccess),
+		}}
+		return cs
+	}
+
+	It("is true when the current generation was published and ended Ready", func() {
+		Expect(commitStatusAlreadyPublished(published())).To(BeTrue())
+	})
+
+	It("is false after a spec edit, even one that leaves sha and phase alone", func() {
+		cs := published()
+		cs.Generation = 4 // e.g. description or url changed
+		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+	})
+
+	It("is false when the sha or phase moved", func() {
+		cs := published()
+		cs.Spec.Sha = "def"
+		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+		cs = published()
+		cs.Spec.Phase = promoterv1alpha1.CommitPhasePending
+		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+	})
+
+	It("is false when the last reconcile of this generation failed", func() {
+		cs := published()
+		cs.Status.Conditions[0].Status = metav1.ConditionFalse
+		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+		cs.Status.Conditions = nil
+		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
+	})
+})
