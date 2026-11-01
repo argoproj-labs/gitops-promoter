@@ -27,21 +27,23 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-var _ = Describe("KubernetesResourceCommitStatus webhook", func() {
-	gate := func(name, templateYAML string) *promoterv1alpha1.KubernetesResourceCommitStatus {
-		raw, err := yaml.YAMLToJSON([]byte(templateYAML))
-		Expect(err).NotTo(HaveOccurred())
-		return &promoterv1alpha1.KubernetesResourceCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-			Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
-				Key:                  "smoke",
-				Template:             apiextensionsv1.JSON{Raw: raw},
-				Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
-			},
-		}
+// gate returns a KubernetesResourceCommitStatus in the default namespace whose spec.template is templateYAML.
+func gate(name, templateYAML string) *promoterv1alpha1.KubernetesResourceCommitStatus {
+	GinkgoHelper()
+	raw, err := yaml.YAMLToJSON([]byte(templateYAML))
+	Expect(err).NotTo(HaveOccurred())
+	return &promoterv1alpha1.KubernetesResourceCommitStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
+			Key:                  "smoke",
+			Template:             apiextensionsv1.JSON{Raw: raw},
+			Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+		},
 	}
+}
 
+var _ = Describe("KubernetesResourceCommitStatus webhook", func() {
 	const validJob = `
 apiVersion: batch/v1
 kind: Job

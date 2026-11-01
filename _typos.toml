@@ -2,6 +2,9 @@
 extend-exclude = [
     "docs/assets/**",
     "config/crd/bases/**",
+    # Third-party CRDs vendored verbatim for tests (Argo Workflows, Tekton).
+    "test/external_crds/**",
+    "test/crd_variants/**",
     "dist/**",
     "**/go.mod",
     "**/go.sum",
