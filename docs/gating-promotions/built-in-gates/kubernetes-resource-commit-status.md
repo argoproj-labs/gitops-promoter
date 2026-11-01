@@ -222,6 +222,14 @@ expression is evaluated:
 Built-in kinds publish types and enums but implement most of their rules in Go (for example "must be positive"), so
 those are only enforced when the resource is created.
 
+How much is checked for a custom resource depends on its CRD's schema. Argo Workflows ships two `Workflow` CRDs: the
+**full** CRD declares every field, so a typo such as `entrypont` is rejected, while the default **minimal** CRD marks
+`spec` with `x-kubernetes-preserve-unknown-fields`, so almost nothing under `spec` is checked. Tekton's `PipelineRun`
+CRD declares most of `spec`, but leaves some objects (such as parameter values) open.
+
+Right after a CRD is installed, the API server takes a moment to publish its schema. Until then, gates for that
+kind are rejected with `the API server publishes no OpenAPI schema for ...`; apply them again a few seconds later.
+
 The checks run in two places with identical results:
 
 - **At admission.** The installation includes a validating webhook (`failurePolicy: Fail`) that rejects the gate on

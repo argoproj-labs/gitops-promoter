@@ -15,6 +15,8 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -38,6 +40,8 @@ const (
 	k8sResourceFailureGateKey   = "smoke-failure"
 	k8sResourcePruneGateKey     = "smoke-prune"
 	k8sResourceRetryGateKey     = "smoke-retry"
+	k8sResourceWorkflowGateKey  = "smoke-workflow"
+	k8sResourceTektonGateKey    = "smoke-tekton"
 )
 
 // jobPhaseExpression keys off status.succeeded / status.failed, which the JobManagedBy status validation
@@ -129,6 +133,8 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			{Key: k8sResourceFailureGateKey},
 			{Key: k8sResourcePruneGateKey},
 			{Key: k8sResourceRetryGateKey},
+			{Key: k8sResourceWorkflowGateKey},
+			{Key: k8sResourceTektonGateKey},
 		}
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
@@ -560,6 +566,141 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				_, dev := devJob(g, gate.Name)
 				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	// Third-party kinds run against their real CRDs from test/external_crds: Argo Workflows' full Workflow CRD and
+	// Tekton's PipelineRun CRD. No Argo or Tekton controller runs in envtest, so the specs write the status those
+	// controllers would.
+	Describe("Third-party kinds", func() {
+		// devResource waits for the development environment's created resource and returns it.
+		devResource := func(gateName string, gvk schema.GroupVersionKind) (*unstructured.Unstructured, string) {
+			GinkgoHelper()
+			var resourceName, sha string
+			Eventually(func(g Gomega) {
+				dev := devEnvironmentStatus(g, getK8sResourceGate(ctx, g, gateName))
+				g.Expect(dev.Resource).NotTo(BeNil())
+				g.Expect(dev.Resource.Kind).To(Equal(gvk.Kind))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				resourceName, sha = dev.Resource.Name, dev.ReportedSha
+			}, constants.EventuallyTimeout).Should(Succeed())
+			obj := &unstructured.Unstructured{}
+			obj.SetGroupVersionKind(gvk)
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, obj)).To(Succeed())
+			return obj, sha
+		}
+
+		expectDevPhase := func(gateName string, phase promoterv1alpha1.CommitStatusPhase, description string) {
+			GinkgoHelper()
+			Eventually(func(g Gomega) {
+				dev := devEnvironmentStatus(g, getK8sResourceGate(ctx, g, gateName))
+				g.Expect(dev.Phase).To(Equal(phase))
+				if description != "" {
+					g.Expect(dev.Description).To(Equal(description))
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+		}
+
+		It("creates an Argo Workflow and reports its phase", func() {
+			workflowGVK := schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"}
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-workflow", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceWorkflowGateKey,
+					Template: templateJSON(map[string]any{
+						"apiVersion": "argoproj.io/v1alpha1",
+						"kind":       "Workflow",
+						"spec": map[string]any{
+							"entrypoint":            "smoke",
+							"activeDeadlineSeconds": "${ Branch == 'environment/production' ? 1800 : 600 }",
+							"arguments": map[string]any{"parameters": []any{
+								map[string]any{"name": "sha", "value": "${ Sha }"},
+								map[string]any{"name": "branch", "value": "${ Branch }"},
+							}},
+							"templates": []any{map[string]any{
+								"name": "smoke",
+								"container": map[string]any{
+									"image": "ghcr.io/acme/smoke:latest",
+									"args":  []any{"--sha", "{{workflow.parameters.sha}}"},
+								},
+							}},
+						},
+					}),
+					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `Resource.status?.phase == 'Succeeded' ? true
+  : (Resource.status?.phase in ['Failed', 'Error'] ? {phase: 'failure', description: Resource.status?.message ?? 'Workflow failed'} : false)`},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			workflow, sha := devResource(krcs.Name, workflowGVK)
+			params, found, err := unstructured.NestedSlice(workflow.Object, "spec", "arguments", "parameters")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(params).To(ConsistOf(
+				map[string]any{"name": "sha", "value": sha},
+				map[string]any{"name": "branch", "value": testBranchDevelopment},
+			))
+			deadline, found, err := unstructured.NestedInt64(workflow.Object, "spec", "activeDeadlineSeconds")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(deadline).To(Equal(int64(600)), "a standalone expression keeps its integer type")
+
+			By("failing the Workflow, as the Argo Workflows controller would")
+			// The Workflow CRD has no status subresource, so status is written with the object.
+			Expect(unstructured.SetNestedMap(workflow.Object, map[string]any{"phase": "Failed", "message": "smoke test failed"}, "status")).To(Succeed())
+			Expect(k8sClient.Update(ctx, workflow)).To(Succeed())
+			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "smoke test failed")
+		})
+
+		It("creates a Tekton PipelineRun and reads its results", func() {
+			pipelineRunGVK := schema.GroupVersionKind{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"}
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-tekton", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceTektonGateKey,
+					Template: templateJSON(map[string]any{
+						"apiVersion": "tekton.dev/v1",
+						"kind":       "PipelineRun",
+						"spec": map[string]any{
+							"pipelineRef":     map[string]any{"name": "security-scan"},
+							"taskRunTemplate": map[string]any{"serviceAccountName": "tekton-runner"},
+							"params": []any{
+								map[string]any{"name": "gitUrl", "value": "https://github.com/myorg/myrepo/commit/${ Sha }"},
+								map[string]any{"name": "branch", "value": "${ Branch }"},
+								map[string]any{"name": "endpoints", "value": []any{"api/health", "api/users"}},
+							},
+						},
+					}),
+					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `let conditions = Resource.status?.conditions ?? [];
+let results = keyBy(Resource.status?.results ?? [], 'name', 'value');
+any(conditions, .type == 'Succeeded' && .status == 'False')
+  ? {phase: 'failure', description: find(conditions, .type == 'Succeeded').message}
+  : !any(conditions, .type == 'Succeeded' && .status == 'True') ? false
+  : !('vulnerabilities' in results) ? {phase: 'failure', description: 'Result vulnerabilities is missing'}
+  : results.vulnerabilities == '0' ? {phase: 'success'}
+  : {phase: 'failure', description: results.vulnerabilities + ' vulnerabilities found'}`},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			pipelineRun, sha := devResource(krcs.Name, pipelineRunGVK)
+			params, found, err := unstructured.NestedSlice(pipelineRun.Object, "spec", "params")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(params).To(ContainElement(map[string]any{"name": "gitUrl", "value": "https://github.com/myorg/myrepo/commit/" + sha}))
+			Expect(params).To(ContainElement(map[string]any{"name": "endpoints", "value": []any{"api/health", "api/users"}}))
+
+			By("finishing the PipelineRun with results, as the Tekton controller would")
+			Expect(unstructured.SetNestedField(pipelineRun.Object, map[string]any{
+				"conditions": []any{map[string]any{"type": "Succeeded", "status": "True", "reason": "Succeeded"}},
+				"results":    []any{map[string]any{"name": "vulnerabilities", "value": "3"}},
+			}, "status")).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, pipelineRun)).To(Succeed())
+			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "3 vulnerabilities found")
 		})
 	})
 
