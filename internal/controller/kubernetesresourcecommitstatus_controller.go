@@ -30,6 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -58,6 +60,9 @@ type KubernetesResourceCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
+	// TemplateValidator checks spec.template against the created kind's published schema before anything is
+	// rendered. The admission webhook shares it. When nil, SetupWithManager builds one from the manager's config.
+	TemplateValidator *resourcetemplate.Validator
 
 	// configured is the startup snapshot of ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources,
 	// read in SetupWithManager. Gates referencing a kind outside this set fail reconcile.
@@ -110,7 +115,7 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", krcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	template, sourceGVK, err := r.parseTemplate(&krcs)
+	template, sourceGVK, err := r.parseTemplate(ctx, &krcs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -139,16 +144,32 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
-// parseTemplate decodes spec.template and checks that its kind is one the controller was configured to create.
-func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (map[string]any, schema.GroupVersionKind, error) {
+// parseTemplate decodes spec.template, checks that its kind is one the controller was configured to create, and
+// validates it against the kind's schema (the same checks the admission webhook runs), so a template stored
+// before the webhook existed, or while it was bypassed, still fails with the same message.
+func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (map[string]any, schema.GroupVersionKind, error) {
 	template, sourceGVK, err := resourcetemplate.ParseTemplate(krcs.Spec.Template)
 	if err != nil {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.template: %w", err)
 	}
-	if _, ok := r.configured[sourceGVK]; !ok {
+	if !r.IsConfiguredKind(sourceGVK) {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("resource kind %s is not listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources", sourceGVK)
 	}
+	errs, err := r.TemplateValidator.Validate(ctx, template, sourceGVK)
+	if err != nil {
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("failed to validate spec.template: %w", err)
+	}
+	if len(errs) > 0 {
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.template: %w", errs.ToAggregate())
+	}
 	return template, sourceGVK, nil
+}
+
+// IsConfiguredKind reports whether gvk is listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources
+// (as of startup) and is a namespaced kind the API server serves. Valid after SetupWithManager.
+func (r *KubernetesResourceCommitStatusReconciler) IsConfiguredKind(gvk schema.GroupVersionKind) bool {
+	_, ok := r.configured[gvk]
+	return ok
 }
 
 // processEnvironments reconciles every applicable environment and rebuilds krcs.Status.Environments. When an
@@ -332,7 +353,9 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
 		}
-		if err := r.Create(ctx, desired); err != nil && !k8serrors.IsAlreadyExists(err) {
+		// Strict: the API server rejects fields the kind does not declare instead of silently dropping them,
+		// which catches unknown fields that an expression rendered. Server-Side Apply (InPlace) is always strict.
+		if err := r.Create(ctx, desired, client.FieldValidation(metav1.FieldValidationStrict)); err != nil && !k8serrors.IsAlreadyExists(err) {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, fmt.Errorf("failed to create %s %q: %w", in.sourceGVK.Kind, name, err)
 		}
 		logger.Info("created resource from template", "kind", in.sourceGVK.Kind, "resource", name)
@@ -583,12 +606,28 @@ func (r *KubernetesResourceCommitStatusReconciler) deleteResource(ctx context.Co
 	return nil
 }
 
+// NewTemplateValidator returns a spec.template validator reading schemas from the API server at cfg.
+func NewTemplateValidator(cfg *rest.Config) (*resourcetemplate.Validator, error) {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discovery client for template validation: %w", err)
+	}
+	return resourcetemplate.NewValidator(resourcetemplate.NewSchemaSource(dc.OpenAPIV3(), 0)), nil
+}
+
 // SetupWithManager registers the controller: it watches KubernetesResourceCommitStatus, PromotionStrategy, and
 // every configured kind (enqueuing the owning gate). Configured kinds that are not served by the API server
 // are skipped with an error log.
 func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	logger := log.FromContext(ctx).WithName("kubernetesresourcecommitstatus-setup")
 	r.exprCache = exprcache.New(exprcache.DefaultMaxEntries)
+	if r.TemplateValidator == nil {
+		validator, err := NewTemplateValidator(mgr.GetConfig())
+		if err != nil {
+			return err
+		}
+		r.TemplateValidator = validator
+	}
 
 	resources, err := r.SettingsMgr.GetKubernetesResourceCommitStatusResourcesDirect(ctx)
 	if err != nil {

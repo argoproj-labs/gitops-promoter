@@ -616,6 +616,73 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		It("reports Ready=False with every schema problem of the template and creates nothing", func() {
+			template := jobTemplate()
+			var object map[string]any
+			Expect(json.Unmarshal(template.Raw, &object)).To(Succeed())
+			spec, ok := object["spec"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			spec["backofLimit"] = 0
+			spec["completionMode"] = "Sometimes"
+			spec["suspend"] = "${ false }"
+			podSpec := spec["template"].(map[string]any)["spec"].(map[string]any) //nolint:forcetypeassert // built by jobTemplate
+			container := podSpec["containers"].([]any)[0].(map[string]any)        //nolint:forcetypeassert // built by jobTemplate
+			container["imag"] = "busybox"
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-schema", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             templateJSON(object),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("invalid spec.template"))
+				g.Expect(ready.Message).To(ContainSubstring(`spec.template.spec.backofLimit: Invalid value: unknown field: the schema does not declare it (did you mean "backoffLimit"?)`))
+				g.Expect(ready.Message).To(ContainSubstring(`spec.template.spec.template.spec.containers[0].imag: Invalid value: unknown field`))
+				g.Expect(ready.Message).To(ContainSubstring(`spec.template.spec.completionMode: Unsupported value: "Sometimes"`))
+				g.Expect(ready.Message).NotTo(ContainSubstring("suspend"))
+				g.Expect(fetched.Status.Environments).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("creates with strict field validation, so an unknown field an expression renders is rejected", func() {
+			template := jobTemplate()
+			var object map[string]any
+			Expect(json.Unmarshal(template.Raw, &object)).To(Succeed())
+			spec, ok := object["spec"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			spec["template"] = "${ {spec: {restartPolicy: 'Never', containers: [{name: 'test', image: 'busybox', imag: 'busybox'}]}} }"
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-strict", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             templateJSON(object),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("failed to create Job"))
+				g.Expect(ready.Message).To(ContainSubstring(`unknown field "spec.template.spec.containers[0].imag"`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		It("reports Ready=False when the kind is not configured", func() {
 			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
 				Name: name + "-unconfigured-kind", Namespace: "default",

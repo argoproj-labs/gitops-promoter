@@ -2,6 +2,23 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.49 — Validating admission webhook
+
+The installation manifests add a validating admission webhook for KubernetesResourceCommitStatus. The controller
+serves it on port 9443 behind the `promoter-webhook-service` Service and manages its certificate itself, so no
+cert-manager is needed. The manifests add:
+
+- `promoter-validating-webhook-configuration` (ValidatingWebhookConfiguration, `failurePolicy: Fail`),
+- the `promoter-webhook-server-cert` Secret, mounted into the controller pod, which the controller fills and rotates,
+- a Role allowing the controller to update that Secret, and a ClusterRole allowing it to inject the CA into the
+  webhook configuration (also in the namespaced installation, because webhook configurations are cluster-scoped).
+
+KubernetesResourceCommitStatus creates and updates fail while no controller replica is ready, including for up to a
+minute after the first install while the kubelet syncs the generated certificate. If you deploy the controller with
+your own manifests, add the objects above and the Secret volume, or run it with `--admission-webhook=false`;
+templates are then validated at reconcile only. See
+[Template validation](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#template-validation).
+
 ## 0.49 — KubernetesResourceCommitStatus configuration section
 
 `ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller

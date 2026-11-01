@@ -84,6 +84,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var webhookOpts admissionWebhookOptions
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -96,6 +97,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				webhookOpts,
 				clientConfig,
 			)
 		},
@@ -111,6 +113,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	webhookOpts.addFlags(cmd)
 
 	return cmd
 }
@@ -123,6 +126,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	webhookOpts admissionWebhookOptions,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -166,6 +170,7 @@ func runController(
 
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
+		CertDir: webhookOpts.certDir,
 	})
 
 	// Create the kubeconfig provider with options
@@ -437,14 +442,34 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
-	if err := (&controller.KubernetesResourceCommitStatusReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("KubernetesResourceCommitStatus"),
-		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(runCtx, localManager); err != nil {
+	templateValidator, err := controller.NewTemplateValidator(localManager.GetConfig())
+	if err != nil {
+		panic(err)
+	}
+	krcsReconciler := &controller.KubernetesResourceCommitStatusReconciler{
+		Client:            localManager.GetClient(),
+		Scheme:            localManager.GetScheme(),
+		Recorder:          localManager.GetEventRecorder("KubernetesResourceCommitStatus"),
+		SettingsMgr:       settingsMgr,
+		EnqueueCTP:        ctpReconciler.GetEnqueueFunc(),
+		TemplateValidator: templateValidator,
+	}
+	if err := krcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
+	}
+
+	if webhookOpts.enabled {
+		webhookReady, err := setupAdmissionWebhook(runCtx, localManager, webhookServer, webhookOpts, controllerNamespace,
+			templateValidator, krcsReconciler.IsConfiguredKind)
+		if err != nil {
+			panic(err)
+		}
+		if err := localManager.AddReadyzCheck("webhook", webhookReady); err != nil {
+			panic(fmt.Errorf("unable to set up webhook ready check: %w", err))
+		}
+	} else {
+		setupLog.Info("admission webhook disabled; " +
+			"invalid KubernetesResourceCommitStatus templates are reported at reconcile only")
 	}
 	//+kubebuilder:scaffold:builder
 

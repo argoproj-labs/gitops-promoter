@@ -62,7 +62,12 @@ type KubernetesResourceCommitStatusSpecApplyConfiguration struct {
 	// - "$${" produces a literal "${".
 	// Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the
 	// branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
-	// Everything else is copied verbatim. The rendered object is validated by the API server when it is created.
+	// Everything else is copied verbatim.
+	//
+	// The template is validated against the kind's published OpenAPI schema by the admission webhook and on every
+	// reconcile: field names everywhere, values without expressions (type, enum, format, bounds, patterns, and the
+	// CEL rules of custom resources), but not missing required fields. Expression results are validated by the API
+	// server when the resource is created, with strict field validation.
 	Template *v1.JSON `json:"template,omitempty"`
 	// Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment
 	// is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.

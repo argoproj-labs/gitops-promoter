@@ -1,0 +1,84 @@
+# Lets the controller rotate the webhook serving certificate it keeps in this one Secret. Listing and watching
+# Secrets is already granted by the manager role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webhook-cert-role
+  namespace: system
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - promoter-webhook-server-cert
+    verbs:
+      - get
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webhook-cert-rolebinding
+  namespace: system
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webhook-cert-role
+subjects:
+  - kind: ServiceAccount
+    name: controller-manager
+    namespace: system
+---
+# Lets the controller inject its CA into its own ValidatingWebhookConfiguration. Kept apart from the manager role,
+# which the namespaced install turns into a Role: webhook configurations are cluster-scoped.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook-configuration-role
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - validatingwebhookconfigurations
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - validatingwebhookconfigurations
+    resourceNames:
+      - promoter-validating-webhook-configuration
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webhook-configuration-rolebinding
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webhook-configuration-role
+subjects:
+  - kind: ServiceAccount
+    name: controller-manager
+    namespace: system

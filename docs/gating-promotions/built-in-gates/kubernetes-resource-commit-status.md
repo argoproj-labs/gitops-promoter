@@ -187,14 +187,46 @@ Any **string** value may contain [expr](https://expr-lang.org) expressions wrapp
 | `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
 
 Expressions are compiled against this variable set, so a misspelled variable, or a misspelled field of a typed
-variable such as `Environment.Propsed`, fails the reconcile with a compile error that names the expression and the
-path in the template. The rendered object is validated by the API server when it is created, so an expression that
-produces the wrong type for a field (for example a string for `parallelism`) surfaces as `Ready=False` with the API
-server's message.
+variable such as `Environment.Proposd`, fails the reconcile with a compile error that names the expression and the
+path in the template.
 
-> [!NOTE]
-> The gate holds the whole template, so the CRD schema cannot validate the template against the target kind at
-> admission time. Typos in field names are caught when the resource is created, one reconcile later.
+### Template validation
+
+The template is checked against the schema the API server publishes for its kind (`/openapi/v3`), before any
+expression is evaluated:
+
+- **Field names, everywhere.** A key the kind does not declare is rejected with its path and, when it looks like a
+  typo, the field it was probably meant to be:
+  `spec.template.spec.template.spec.containers[0].imag: unknown field (did you mean "image"?)`. The name of an
+  expression-valued field is checked too. Free-form maps (`labels`, `resources.limits`), `int-or-string` fields, and
+  `x-kubernetes-preserve-unknown-fields` subtrees accept any key.
+- **Values without expressions.** Literal values must match the schema's type, `enum`, `format`, bounds, lengths,
+  `pattern`, and item counts, for example `backoffLimit: abc` or `restartPolicy: Nevr`. A value containing `${ }` is
+  not checked, and neither is a list with an expression element (its length is unknown).
+- **CEL rules of custom resources.** `x-kubernetes-validations` rules of the target CRD are evaluated over the literal
+  values, with schema defaults applied. A rule is skipped when the node it is attached to holds an expression
+  anywhere below it, since it could read a value that is only known after rendering; rules on fully literal parts of
+  the template still run. Rules on the object's root are never evaluated, because they can read `metadata`, which
+  the controller sets.
+
+Missing required fields are not reported: an expression or the controller may supply them. Built-in kinds publish
+types and enums but implement most of their rules in Go (for example "must be positive"), so those are only enforced
+when the resource is created.
+
+The checks run in two places with identical results:
+
+- **At admission.** The installation includes a validating webhook (`failurePolicy: Fail`) that rejects the gate on
+  `kubectl apply`. The controller generates the webhook's certificate, rotates it, and injects the CA into the
+  `promoter-validating-webhook-configuration`; no cert-manager is needed. On first install the webhook is ready once
+  the kubelet has synced the generated certificate into the controller pod, which can take up to a minute; until then
+  gate creates and updates fail. The webhook also rejects kinds that are not listed in the ControllerConfiguration.
+- **On every reconcile.** A gate that was stored before the webhook existed reports the same errors as `Ready=False`
+  and creates nothing.
+
+Whatever an expression renders is validated by the API server when the resource is created. The controller creates
+with strict field validation, so an unknown field produced by an expression (for example a whole container computed
+by `${ }`) is rejected instead of silently dropped, and a value of the wrong type (a string for `parallelism`)
+surfaces as `Ready=False` with the API server's message.
 
 Examples:
 
@@ -352,7 +384,8 @@ status:
 ```
 
 `Ready=False` reports configuration problems: a template without `apiVersion`/`kind`, a kind that is not listed in the
-ControllerConfiguration, an expression that does not compile or produces a value the API server rejects, an invalid
+ControllerConfiguration, a template that does not match the kind's schema (see
+[Template validation](#template-validation)), an expression that does not compile or produces a value the API server rejects, an invalid
 phase expression result, or missing RBAC on the kind (the API server's `forbidden` error names the verb).
 
 Created resources carry these labels, which also drive pruning:
