@@ -1260,7 +1260,7 @@ export type components = {
              *       - "$${" produces a literal "${".
              *     Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile). Everything else is copied verbatim.
              *
-             *     The template is validated against the kind's published OpenAPI schema by the admission webhook and on every reconcile: field names everywhere, values without expressions (type, enum, format, bounds, patterns, and the CEL rules of custom resources), but not missing required fields. Expression results are validated by the API server when the resource is created, with strict field validation.
+             *     The template is validated against the kind's published OpenAPI schema by the admission webhook and on every reconcile: field names everywhere, values without expressions (type, enum, format, bounds, patterns, and the CEL rules of custom resources), and required fields missing from objects written out in the template (not those inside an expression's result or under metadata). Expression results are validated by the API server when the resource is created, with strict field validation.
              */
             template: components["schemas"]["JSON"];
             /** @description Url is the commit status target URL shown in the SCM provider. Same ${ } expressions and variables as Description. When empty, the url returned by spec.phase.expression (if any) is used. */

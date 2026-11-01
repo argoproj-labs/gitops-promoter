@@ -92,6 +92,34 @@ spec:
 		Expect(err.Error()).NotTo(ContainSubstring("suspend"))
 	})
 
+	It("rejects required fields missing from objects written out in the template", func() {
+		err := k8sClient.Create(ctx, gate("required", `
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - image: busybox
+`))
+		Expect(k8serrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
+		Expect(err.Error()).To(ContainSubstring(`spec.template.spec.template.spec.containers[0].name: Required value`))
+
+		// The same container computed by an expression is left to the API server.
+		krcs := gate("required-expr", `
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers: "${ [{name: 'test', image: 'busybox'}] }"
+`)
+		Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+	})
+
 	It("rejects an update that introduces an unknown field", func() {
 		krcs := gate("update", validJob)
 		Expect(k8sClient.Create(ctx, krcs)).To(Succeed())

@@ -209,9 +209,18 @@ expression is evaluated:
   the template still run. Rules on the object's root are never evaluated, because they can read `metadata`, which
   the controller sets.
 
-Missing required fields are not reported: an expression or the controller may supply them. Built-in kinds publish
-types and enums but implement most of their rules in Go (for example "must be positive"), so those are only enforced
-when the resource is created.
+- **Required fields of objects written out in the template.** A required field is reported when it is absent from an
+  object in the template, for example a container without `name` or a Job without `spec.template`. Nothing can add it
+  later: an expression replaces only its own field's value, so it cannot supply a missing sibling. A field is not
+  reported when:
+  - it lies inside an expression's result, such as `containers: ${ [...] }` or `template: ${ {...} }`;
+  - it is under `metadata`, which the controller completes;
+  - the target is a custom resource and the field has a schema default, which the API server applies first.
+    Built-in kinds publish placeholder defaults (for example `name: {default: ""}` on containers) on fields the API
+    server still requires, so their defaults do not count.
+
+Built-in kinds publish types and enums but implement most of their rules in Go (for example "must be positive"), so
+those are only enforced when the resource is created.
 
 The checks run in two places with identical results:
 

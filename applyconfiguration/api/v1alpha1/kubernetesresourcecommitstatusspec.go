@@ -66,8 +66,9 @@ type KubernetesResourceCommitStatusSpecApplyConfiguration struct {
 	//
 	// The template is validated against the kind's published OpenAPI schema by the admission webhook and on every
 	// reconcile: field names everywhere, values without expressions (type, enum, format, bounds, patterns, and the
-	// CEL rules of custom resources), but not missing required fields. Expression results are validated by the API
-	// server when the resource is created, with strict field validation.
+	// CEL rules of custom resources), and required fields missing from objects written out in the template (not
+	// those inside an expression's result or under metadata). Expression results are validated by the API server
+	// when the resource is created, with strict field validation.
 	Template *v1.JSON `json:"template,omitempty"`
 	// Lifecycle controls whether a new resource is created per SHA (default) or a single resource per environment
 	// is updated in place, and how many per-SHA resources are retained. See KubernetesResourceLifecycle.

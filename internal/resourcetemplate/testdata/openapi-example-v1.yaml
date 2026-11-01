@@ -23,7 +23,7 @@ components:
           allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}]
         spec:
           type: object
-          required: [target]
+          required: [target, mode]
           properties:
             target: {type: string, minLength: 1, pattern: "^[a-z]+$"}
             replicas:

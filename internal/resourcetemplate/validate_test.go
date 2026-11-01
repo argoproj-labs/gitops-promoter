@@ -202,7 +202,7 @@ spec:
 		))
 	})
 
-	It("does not check expression values, and does not report missing required fields", func() {
+	It("does not check expression values", func() {
 		Expect(validate(`
 apiVersion: batch/v1
 kind: Job
@@ -212,9 +212,76 @@ spec:
   template:
     spec:
       containers:
-        - image: x
+        - name: "${ 'test-' + ShortSha }"
+          image: x
           args: "${ ['--sha', Sha] }"
 `)).To(BeEmpty())
+	})
+
+	It("reports required fields missing from objects written out in the template", func() {
+		errs := validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  backoffLimit: 0
+`)
+		Expect(messages(errs)).To(ConsistOf(`spec.template.spec.template: Required value`))
+
+		errs = validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers:
+        - image: busybox
+          ports: [{protocol: TCP}]
+`)
+		Expect(messages(errs)).To(ConsistOf(
+			`spec.template.spec.template.spec.containers[0].name: Required value`,
+			`spec.template.spec.template.spec.containers[0].ports[0].containerPort: Required value`,
+		))
+	})
+
+	It("does not report required fields that an expression or the controller can supply", func() {
+		Expect(validate(`
+apiVersion: batch/v1
+kind: Job
+metadata: {labels: {team: a}}
+spec:
+  template: "${ {spec: {containers: [{name: 'x', image: 'y'}]}} }"
+`)).To(BeEmpty(), "an expression renders the whole pod template")
+
+		Expect(validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers: "${ [{name: 'x', image: 'y'}] }"
+`)).To(BeEmpty(), "an expression renders the required list")
+	})
+
+	It("counts schema defaults as present for CRD kinds only", func() {
+		// The Scaler CRD requires target and mode; mode has a default, which the API server applies first.
+		errs := validate(`
+apiVersion: example.io/v1
+kind: Scaler
+spec:
+  replicas: {min: 1, max: 2}
+`)
+		Expect(messages(errs)).To(ConsistOf(`spec.template.spec.target: Required value`))
+
+		// Built-in kinds publish name: {default: ""} on containers, yet the API server still requires name.
+		errs = validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers: [{image: busybox}]
+`)
+		Expect(messages(errs)).To(ConsistOf(`spec.template.spec.template.spec.containers[0].name: Required value`))
 	})
 
 	It("treats $${ as a literal value", func() {
@@ -223,6 +290,7 @@ apiVersion: batch/v1
 kind: Job
 spec:
   completionMode: "$${ not an expression }"
+  template: "${ {} }"
 `)
 		Expect(messages(errs)).To(ConsistOf(ContainSubstring(`Unsupported value: "${ not an expression }"`)))
 	})
