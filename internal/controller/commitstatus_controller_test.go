@@ -465,3 +465,15 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 
 	return scmSecret, scmProvider, gitRepo, commitStatus
 }
+
+var _ = DescribeTable("commitStatusShasToLookup",
+	func(oldSha, newSha string, expected []string) {
+		Expect(commitStatusShasToLookup(oldSha, newSha)).To(Equal(expected))
+	},
+	// A CommitStatus reconciled for the first time has no previous SHA. Looking up "" would match every
+	// ChangeTransferPolicy whose hydrated SHAs are not computed yet, which on a fresh install is all of them.
+	Entry("skips the empty previous sha of a first reconcile", "", "abc", []string{"abc"}),
+	Entry("looks up both shas when the sha moved", "abc", "def", []string{"abc", "def"}),
+	Entry("looks up an unchanged sha once", "abc", "abc", []string{"abc"}),
+	Entry("looks up nothing when both are empty", "", "", []string{}),
+)

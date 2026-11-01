@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -40,7 +41,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -220,56 +220,30 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	}
 }
 
+// triggerReconcileChangeTransferPolicy enqueues every ChangeTransferPolicy whose active or proposed hydrated
+// SHA is the CommitStatus's previous or current SHA, so the policy re-reads the gate's phase.
+//
+// An empty SHA is never looked up. The hydrated-SHA field indexes also contain policies whose status has not
+// been computed yet (their indexed value is ""), so before this guard a CommitStatus's first reconcile, when
+// status.sha is still empty, enqueued every such policy. On a fresh install, with hundreds of CommitStatuses
+// starting at once, that fanned out into thousands of needless ChangeTransferPolicy reconciles, each with git
+// network calls, and the resulting status writes re-triggered the PromotionStrategy and gate controllers.
 func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx context.Context, cs promoterv1alpha1.CommitStatus, oldSha, newSha string) error {
 	logger := log.FromContext(ctx)
-	// Get list of CTPs that have the oldSha
-	ctpListActiveOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err := r.List(ctx, ctpListActiveOldSha, &client.ListOptions{
-		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.active.hydrated.sha": oldSha,
-		}),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list ChangeTransferPolicy with old sha %q: %w", oldSha, err)
-	}
 
-	// Get list of CTPs that have the newSha
-	ctpListActiveNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.List(ctx, ctpListActiveNewSha, &client.ListOptions{
-		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.active.hydrated.sha": newSha,
-		}),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list ChangeTransferPolicy with new sha %q: %w", newSha, err)
+	var ctpList []promoterv1alpha1.ChangeTransferPolicy
+	for _, sha := range commitStatusShasToLookup(oldSha, newSha) {
+		for _, field := range []string{".status.active.hydrated.sha", ".status.proposed.hydrated.sha"} {
+			var matches promoterv1alpha1.ChangeTransferPolicyList
+			if err := r.List(ctx, &matches, client.MatchingFields{field: sha}); err != nil {
+				return fmt.Errorf("failed to list ChangeTransferPolicy with %s %q: %w", field, sha, err)
+			}
+			ctpList = utils.UpsertChangeTransferPolicyList(ctpList, matches.Items)
+		}
 	}
-
-	ctpListProposedOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.List(ctx, ctpListProposedOldSha, &client.ListOptions{
-		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": oldSha,
-		}),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list ChangeTransferPolicy with old sha %q: %w", oldSha, err)
-	}
-
-	// Get list of CTPs that have the newSha
-	ctpListProposedNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.List(ctx, ctpListProposedNewSha, &client.ListOptions{
-		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": newSha,
-		}),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list ChangeTransferPolicy with new sha %q: %w", newSha, err)
-	}
-
-	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items, ctpListProposedOldSha.Items, ctpListProposedNewSha.Items)
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
 	for _, ctp := range ctpList {
-		// Use the enqueue function to trigger reconciliation
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
@@ -278,4 +252,16 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	}
 
 	return nil
+}
+
+// commitStatusShasToLookup returns the distinct non-empty SHAs among a CommitStatus's previous and current SHA,
+// in that order. See triggerReconcileChangeTransferPolicy for why an empty SHA must not be looked up.
+func commitStatusShasToLookup(oldSha, newSha string) []string {
+	shas := make([]string, 0, 2)
+	for _, sha := range []string{oldSha, newSha} {
+		if sha != "" && !slices.Contains(shas, sha) {
+			shas = append(shas, sha)
+		}
+	}
+	return shas
 }
