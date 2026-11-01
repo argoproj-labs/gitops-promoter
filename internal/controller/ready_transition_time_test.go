@@ -24,6 +24,7 @@ import (
 var _ = Describe("HandleReconciliationResult against the API server", func() {
 	// A ControllerConfiguration outside the install namespace is ignored by its controller
 	// (controllerConfigurationInstallNamespacePredicate), so the only status writes are the ones made here.
+	// The namespace is created if missing and left in place; envtest has no namespace deletion.
 	const namespace = "ready-transition-time"
 	const fieldOwner = "ready-transition-time-test"
 
@@ -36,6 +37,9 @@ var _ = Describe("HandleReconciliationResult against the API server", func() {
 		Expect(err).NotTo(HaveOccurred())
 		cc.Namespace = namespace
 		Expect(k8sClient.Create(ctx, cc)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, cc))).To(Succeed())
+		})
 		key := client.ObjectKeyFromObject(cc)
 		recorder := events.NewFakeRecorder(20)
 
@@ -97,7 +101,5 @@ var _ = Describe("HandleReconciliationResult against the API server", func() {
 		fifth := reconcile(nil, errors.New("boom"))
 		Expect(fifth.ResourceVersion).To(Equal(fourth.ResourceVersion))
 		Expect(readyOf(fifth).LastTransitionTime).To(Equal(readyOf(fourth).LastTransitionTime))
-
-		Expect(k8sClient.Delete(ctx, cc)).To(Succeed())
 	})
 })
