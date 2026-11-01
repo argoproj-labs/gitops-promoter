@@ -220,8 +220,11 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	}
 }
 
-// triggerReconcileChangeTransferPolicy enqueues every ChangeTransferPolicy whose active or proposed hydrated
-// SHA is the CommitStatus's previous or current SHA, so the policy re-reads the gate's phase.
+// triggerReconcileChangeTransferPolicy enqueues every ChangeTransferPolicy in the CommitStatus's namespace
+// whose active or proposed hydrated SHA is the CommitStatus's previous or current SHA, so the policy re-reads
+// the gate's phase. Policies in other namespaces never read this CommitStatus (setCommitStatusState lists
+// only its own namespace), and the merge below dedupes by name, so a cluster-wide list would both wake
+// strangers and collapse same-named policies from different namespaces into one.
 //
 // An empty SHA is never looked up. The hydrated-SHA field indexes also contain policies whose status has not
 // been computed yet (their indexed value is ""), so before this guard a CommitStatus's first reconcile, when
@@ -235,7 +238,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	for _, sha := range commitStatusShasToLookup(oldSha, newSha) {
 		for _, field := range []string{".status.active.hydrated.sha", ".status.proposed.hydrated.sha"} {
 			var matches promoterv1alpha1.ChangeTransferPolicyList
-			if err := r.List(ctx, &matches, client.MatchingFields{field: sha}); err != nil {
+			if err := r.List(ctx, &matches, client.InNamespace(cs.Namespace), client.MatchingFields{field: sha}); err != nil {
 				return fmt.Errorf("failed to list ChangeTransferPolicy with %s %q: %w", field, sha, err)
 			}
 			ctpList = utils.UpsertChangeTransferPolicyList(ctpList, matches.Items)

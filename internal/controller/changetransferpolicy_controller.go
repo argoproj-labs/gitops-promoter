@@ -509,7 +509,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return err
 	}
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
+	err = r.setCommitStatusState(ctx, ctp.Namespace, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
 		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaActiveMessage)
@@ -517,7 +517,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
+	err = r.setCommitStatusState(ctx, ctp.Namespace, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
 	if err != nil {
 		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaProposedMessage)
@@ -714,7 +714,10 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
 // commit statuses.
-func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector) error {
+// setCommitStatusState copies the phase of each selected CommitStatus key onto the branch state. Only
+// CommitStatuses in the policy's own namespace are considered: a CommitStatus gates the strategies of its
+// namespace, and the same key and SHA can legitimately exist in another namespace that uses the same repository.
+func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, namespace string, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
@@ -723,6 +726,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		var csList promoterv1alpha1.CommitStatusList
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
 		err := r.List(ctx, &csList, &client.ListOptions{
+			Namespace: namespace,
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
 			}),
