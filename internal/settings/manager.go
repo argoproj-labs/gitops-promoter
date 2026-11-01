@@ -336,36 +336,40 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 	if err != nil {
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
-
 	var controllerConfig T
+	var src *promoterv1alpha1.WorkQueue
 	switch cfg := any(controllerConfig).(type) {
 	case promoterv1alpha1.PromotionStrategyConfiguration:
-		return *config.Spec.PromotionStrategy.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.PromotionStrategy.WorkQueue
 	case promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration:
-		return *config.Spec.ChangeTransferPolicyHistory.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.ChangeTransferPolicyHistory.WorkQueue
 	case promoterv1alpha1.ChangeTransferPolicyConfiguration:
-		return *config.Spec.ChangeTransferPolicy.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.ChangeTransferPolicy.WorkQueue
 	case promoterv1alpha1.PullRequestConfiguration:
-		return *config.Spec.PullRequest.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.PullRequest.WorkQueue
 	case promoterv1alpha1.CommitStatusConfiguration:
-		return *config.Spec.CommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.CommitStatus.WorkQueue
 	case promoterv1alpha1.ArgoCDCommitStatusConfiguration:
-		return *config.Spec.ArgoCDCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.ArgoCDCommitStatus.WorkQueue
 	case promoterv1alpha1.TimedCommitStatusConfiguration:
-		return *config.Spec.TimedCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.TimedCommitStatus.WorkQueue
 	case promoterv1alpha1.GitCommitStatusConfiguration:
-		return *config.Spec.GitCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.GitCommitStatus.WorkQueue
 	case promoterv1alpha1.WebRequestCommitStatusConfiguration:
-		return *config.Spec.WebRequestCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.WebRequestCommitStatus.WorkQueue
 	case promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration:
-		return *config.Spec.DependentsSuccessfulCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.DependentsSuccessfulCommitStatus.WorkQueue
 	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
-		return *config.Spec.ScheduledCommitStatus.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.ScheduledCommitStatus.WorkQueue
 	case promoterv1alpha1.RestoreActiveCommitConfiguration:
-		return *config.Spec.RestoreActiveCommit.WorkQueue.DeepCopy(), nil
+		src = &config.Spec.RestoreActiveCommit.WorkQueue
 	default:
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", cfg)
 	}
+	// Copy out so callers never hold the cache object's slices or pointers (see getControllerConfiguration).
+	var out promoterv1alpha1.WorkQueue
+	src.DeepCopyInto(&out)
+	return out, nil
 }
 
 // buildRateLimiter constructs a workqueue.TypedRateLimiter from the RateLimiter configuration.
