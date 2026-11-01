@@ -2,6 +2,19 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.49 — Rate limiters must name exactly one strategy
+
+Every `spec.<controller>.workQueue.rateLimiter` in the ControllerConfiguration must now set exactly one of
+`fastSlow`, `exponentialFailure`, `bucket` or `maxOf`, and every `maxOf` entry must set exactly one of the first three.
+The CRD previously allowed an empty `rateLimiter: {}` or an empty `maxOf` entry, which the controller then rejected at
+startup with `no valid rate limiter configuration found`. The API server now rejects such a configuration on write, so
+the mistake surfaces at `kubectl apply` instead of as a crash loop.
+
+The shipped ControllerConfiguration sets a strategy for every controller, so an install that uses it is unaffected. A
+custom configuration with an empty rate limiter was already failing to start and needs a strategy added; there is no
+in-code default, by design.
+
+
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 
 > [!IMPORTANT]
