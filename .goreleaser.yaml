@@ -78,9 +78,11 @@ docker_manifests:
 checksum:
   extra_files:
     - glob: ./install-without-ui.yaml
+    - glob: ./install-with-dashboard.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
     - glob: ./install-without-ui-namespaced.yaml
+    - glob: ./install-with-dashboard-namespaced.yaml
     - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
     - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
 
@@ -137,9 +139,11 @@ release:
   draft: true
   extra_files:
     - glob: ./install-without-ui.yaml
+    - glob: ./install-with-dashboard.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
     - glob: ./install-without-ui-namespaced.yaml
+    - glob: ./install-with-dashboard-namespaced.yaml
     - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
     - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
   header: |

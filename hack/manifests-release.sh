@@ -45,14 +45,17 @@ build_bundle() {
 build_bundle "config/release" "${OUT_DIR}/install-without-ui.yaml"
 
 # Combined bundles: the controller PLUS the dashboard aggregation apiserver in a single
-# file, so installing the dashboard is one `kubectl apply`. We ship two variants so users
+# file, so installing the dashboard is one `kubectl apply`. We ship three variants so users
 # can pick their serving-cert strategy:
+#   * (default):    the apiserver's built-in cert-controller issues, rotates and injects the
+#                   serving cert. No external dependency.
 #   * cert-manager: cert-manager issues and rotates the serving cert.
 #   * byo-cert:     no cert-manager; the operator provides the serving cert + caBundle.
 # The apiserver is unioned (not folded into config/default) so its base stays intact - in
 # particular the extension-apiserver-authentication-reader RoleBinding stays in kube-system,
 # which config/default's namespace transformer would otherwise relocate. See
 # docs/dashboard-apiserver.md.
+build_bundle "config/apiserver/release-combined-cert-controller" "${OUT_DIR}/install-with-dashboard.yaml"
 build_bundle "config/apiserver/release-combined-cert-manager" "${OUT_DIR}/install-with-dashboard-cert-manager.yaml"
 build_bundle "config/apiserver/release-combined-byo-cert" "${OUT_DIR}/install-with-dashboard-byo-cert.yaml"
 
@@ -60,5 +63,6 @@ build_bundle "config/apiserver/release-combined-byo-cert" "${OUT_DIR}/install-wi
 # cluster-scoped resources, and uses a Role instead of a ClusterRole (config/namespaced).
 # In the combined bundles, the dashboard apiserver also reads only its install namespace.
 build_bundle "config/release-namespaced" "${OUT_DIR}/install-without-ui-namespaced.yaml"
+build_bundle "config/apiserver/release-combined-cert-controller-namespaced" "${OUT_DIR}/install-with-dashboard-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-cert-manager-namespaced" "${OUT_DIR}/install-with-dashboard-cert-manager-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-byo-cert-namespaced" "${OUT_DIR}/install-with-dashboard-byo-cert-namespaced.yaml"

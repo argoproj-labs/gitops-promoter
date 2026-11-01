@@ -48,23 +48,67 @@ ConfigMap — only exists in `kube-system`.) The overlay's `namePrefix` is harml
 `APIService` name itself, since kustomize leaves `APIService`/`CRD` names alone. Install the
 controller first (`config/default`), then apply one of the cert overlays below.
 
-For installs without a checkout of this repo, each release also publishes two flattened,
+For installs without a checkout of this repo, each release also publishes flattened,
 image-pinned **combined** bundles that contain the controller *and* this apiserver in one
-file — `install-with-dashboard-cert-manager.yaml` (cert-manager issues and rotates the
-serving cert) and `install-with-dashboard-byo-cert.yaml` (no cert-manager; you supply the
-serving cert + `caBundle`). These are the preferred install — apply one of them instead of the
-controller-only `install-without-ui.yaml`. See the
-[Getting Started](../getting-started.md#install-the-dashboard-api) guide. They are
-built from the `config/apiserver/release-combined-cert-manager` and
-`config/apiserver/release-combined-byo-cert` overlays respectively, which union
-`config/default` with a cert overlay (no extra namespace transformer, so the `kube-system`
-RoleBinding is preserved).
+file:
+
+| Bundle | Serving cert | Built from |
+|---|---|---|
+| `install-with-dashboard.yaml` (default) | built-in cert-controller issues, rotates and injects it | `config/apiserver/release-combined-cert-controller` |
+| `install-with-dashboard-cert-manager.yaml` | cert-manager issues and rotates it | `config/apiserver/release-combined-cert-manager` |
+| `install-with-dashboard-byo-cert.yaml` | you supply the Secret + `caBundle` | `config/apiserver/release-combined-byo-cert` |
+
+Each has a `-namespaced` variant built from the matching `*-namespaced` overlay. These are the
+preferred install — apply one of them instead of the controller-only `install-without-ui.yaml`.
+See the [Getting Started](../getting-started.md#install-the-dashboard-api) guide. Each overlay
+unions `config/default` with a cert overlay (no extra namespace transformer, so the
+`kube-system` RoleBinding is preserved).
 
 ## Serving certs
 
 The apiserver needs a TLS serving cert, and the `APIService` needs the matching CA
 in its `caBundle` (or `insecureSkipTLSVerify`). Three interchangeable paths are
-supported; none is enabled by default.
+supported; the built-in cert-controller is the default used by `install-with-dashboard.yaml`.
+
+### Default - built-in cert-controller (no cert-manager)
+
+```bash
+kubectl apply -k config/apiserver/certs-cert-controller
+```
+
+The apiserver runs with `--cert-rotation`, which embeds
+[open-policy-agent/cert-controller](https://github.com/open-policy-agent/cert-controller).
+On startup it:
+
+1. generates a self-signed CA and a serving cert with SANs
+   `promoter-apiserver.promoter-system[.svc[.cluster.local]]` and writes them into the
+   `promoter-apiserver-serving-cert` Secret (shipped empty by the overlay);
+2. waits for kubelet to project the Secret into the pod at `/serving-certs`;
+3. injects the CA into `APIService.spec.caBundle`;
+4. only then starts serving, and keeps rotating the CA and serving cert before they expire
+   (the apiserver reloads the cert files from disk, so no restart is needed).
+
+The overlay adds RBAC for this: `get/list/watch` on Secrets in `promoter-system` plus `update`
+on the serving-cert Secret only, and `get/list/watch` on APIServices plus `update` on
+`v1alpha1.view.promoter.argoproj.io` only.
+
+Related flags (defaults match the shipped manifests):
+
+| Flag | Default |
+|---|---|
+| `--cert-rotation` | `false` (set to `true` by the overlay) |
+| `--cert-rotation-secret-name` | `promoter-apiserver-serving-cert` |
+| `--cert-rotation-namespace` | the apiserver's namespace |
+| `--cert-rotation-service-name` | `promoter-apiserver` |
+| `--cert-rotation-apiservice-name` | `v1alpha1.view.promoter.argoproj.io` |
+
+The cert files are written to the directory of `--tls-cert-file`/`--tls-private-key-file`,
+which must be where the Secret is mounted.
+
+> [!NOTE]
+> If you manage the install with a GitOps tool such as Argo CD, configure it to ignore
+> differences on the `promoter-apiserver-serving-cert` Secret's `.data` and the
+> `APIService`'s `.spec.caBundle`, since both are written at runtime.
 
 ### Path A - manual / scripted (no cert-manager)
 
@@ -118,6 +162,9 @@ This sets `insecureSkipTLSVerify: true` on the `APIService`. **Not production-sa
 
 ## Cert rotation
 
+- **Built-in cert-controller (default):** rotation is automatic; the apiserver regenerates the
+  serving cert (and the CA when needed) before expiry, updates the Secret, re-injects the
+  `caBundle`, and reloads the new cert without a restart.
 - **cert-manager (Path B):** rotation is automatic; ca-injector re-syncs the
   `caBundle` when the `Certificate` is renewed.
 - **Manual (Path A):** re-run `make apiserver-certs` and restart the apiserver

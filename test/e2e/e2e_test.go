@@ -187,8 +187,8 @@ var _ = Describe("controller", Ordered, func() {
 
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
-		// APIService) using the cert-manager overlay (cert-manager is installed in
-		// BeforeAll), then verifies the virtual PromotionStrategyDetails resource is
+		// APIService) using the default cert-controller overlay (the apiserver issues,
+		// rotates and injects its own serving cert), then verifies the virtual PromotionStrategyDetails resource is
 		// served and reacts to changes. It is opt-in via RUN_APISERVER_E2E because it
 		// requires the aggregation apiserver image and serving certs to be wired into
 		// the Kind cluster; enable it once that wiring is validated in CI.
@@ -200,8 +200,8 @@ var _ = Describe("controller", Ordered, func() {
 			imageTag := "0.0.0-test-e2e"
 			projectimage := "quay.io/argoprojlabs/gitops-promoter:" + imageTag
 
-			By("deploying the dashboard aggregation apiserver (cert-manager overlay)")
-			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-cert-manager")
+			By("deploying the dashboard aggregation apiserver (cert-controller overlay)")
+			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-cert-controller")
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 

@@ -12,15 +12,30 @@ GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucke
 ## Installation
 
 GitOps Promoter publishes several install bundles per release. The **preferred** method
-installs the controller together with the dashboard aggregation API and uses
-[cert-manager](https://cert-manager.io/) to issue and rotate the apiserver serving cert
-automatically — a single apply with nothing else to set up.
+installs the controller together with the dashboard aggregation API, which issues, rotates and
+injects its own serving cert using the built-in
+[cert-controller](https://github.com/open-policy-agent/cert-controller) — a single apply with no
+extra dependencies and nothing else to set up. If you already run
+[cert-manager](https://cert-manager.io/), or want to supply your own cert, bundles for those
+are published as well.
 
 ### Cluster-wide
 
 Reconciles resources in all namespaces. This is the default.
 
-/// tab | cert-manager (recommended)
+/// tab | Built-in certs (recommended)
+
+Installs the controller and the dashboard API in one apply. The dashboard apiserver generates a
+self-signed serving cert, keeps it rotated, and keeps the `APIService` `caBundle` injected
+automatically — no cert-manager required:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard.yaml
+```
+
+///
+
+/// tab | cert-manager
 
 Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
 the dashboard API in one apply; cert-manager issues and rotates the serving cert (and keeps the
@@ -60,7 +75,19 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 Reconciles resources only in the `promoter-system` namespace, using a `Role` instead of a `ClusterRole`.
 See [Install modes](advanced-usage/multi-tenancy.md#install-modes) for details and limitations.
 
-/// tab | cert-manager (recommended)
+/// tab | Built-in certs (recommended)
+
+Installs the controller and the dashboard API in one apply. The dashboard apiserver generates a
+self-signed serving cert, keeps it rotated, and keeps the `APIService` `caBundle` injected
+automatically — no cert-manager required:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-namespaced.yaml
+```
+
+///
+
+/// tab | cert-manager
 
 Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
 the dashboard API in one apply; cert-manager issues and rotates the serving cert (and keeps the
@@ -782,6 +809,18 @@ If you installed one of the `install-with-dashboard-*` bundles above, the
 
 If you installed the `install-without-ui.yaml` bundle, the APIService is not included. Use one of
 the following bundles to set it up for your environment.
+
+/// tab | Built-in certs (recommended)
+
+The dashboard apiserver issues and rotates its own serving cert (and keeps the `caBundle`
+injected) with the built-in cert-controller — a single apply with nothing else to do and no
+cert-manager dependency:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard.yaml
+```
+
+///
 
 /// tab | cert-manager
 

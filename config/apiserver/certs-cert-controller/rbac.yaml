@@ -1,0 +1,92 @@
+---
+# cert-controller reads and updates the serving-cert Secret. Its informer lists/watches
+# Secrets in the install namespace (list/watch cannot be narrowed by resourceNames), while
+# writes are restricted to the serving-cert Secret.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - promoter-apiserver-serving-cert
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-apiserver-cert-rotation
+subjects:
+  - kind: ServiceAccount
+    name: promoter-apiserver
+    namespace: promoter-system
+---
+# cert-controller injects the generated CA into the APIService .spec.caBundle.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promoter-apiserver-cert-rotation
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - apiregistration.k8s.io
+    resources:
+      - apiservices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiregistration.k8s.io
+    resources:
+      - apiservices
+    resourceNames:
+      - v1alpha1.view.promoter.argoproj.io
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-apiserver-cert-rotation
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver-cert-rotation
+subjects:
+  - kind: ServiceAccount
+    name: promoter-apiserver
+    namespace: promoter-system

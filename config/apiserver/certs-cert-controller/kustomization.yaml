@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Default: built-in serving certs via github.com/open-policy-agent/cert-controller
+# (no cert-manager dependency, nothing to run after applying).
+#
+#   kubectl apply -k config/apiserver/certs-cert-controller
+#
+# The apiserver runs with --cert-rotation: on startup it generates a self-signed CA and
+# serving cert, writes them into the (initially empty) promoter-apiserver-serving-cert
+# Secret, injects the CA into the APIService .spec.caBundle, and keeps both rotated.
+# The Secret is mounted at /serving-certs (see the base Deployment); the apiserver waits
+# for kubelet to project it before it starts serving.
+
+resources:
+  - ../base
+  - serving_cert_secret.yaml
+  - rbac.yaml
+
+patches:
+  - path: deployment_cert_rotation_patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: promoter-apiserver

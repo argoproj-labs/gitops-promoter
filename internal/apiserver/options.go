@@ -41,6 +41,8 @@ type Options struct {
 	Namespace string
 	// ClusterScmProviderMode controls whether ClusterScmProviders are read. Empty means enabled.
 	ClusterScmProviderMode promoterv1alpha1.FeatureMode
+	// CertRotation configures built-in serving-cert management (cert-controller).
+	CertRotation CertRotationOptions
 }
 
 // NewOptions returns Options with sane defaults for the dashboard apiserver.
@@ -50,6 +52,7 @@ func NewOptions() *Options {
 			"",
 			Codecs.LegacyCodec(viewv1alpha1.SchemeGroupVersion),
 		),
+		CertRotation: newCertRotationOptions(),
 	}
 	// Virtual resource: nothing is persisted, so there is no etcd backend.
 	o.RecommendedOptions.Etcd = nil
@@ -75,6 +78,7 @@ func NewOptions() *Options {
 // AddFlags registers the apiserver flags (secure serving, delegated auth, etc.).
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	o.RecommendedOptions.AddFlags(fs)
+	o.CertRotation.AddFlags(fs)
 }
 
 // Validate validates the options.
@@ -82,6 +86,10 @@ func (o *Options) Validate() error {
 	errs := o.RecommendedOptions.Validate()
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid apiserver options: %v", errs)
+	}
+	certKey := o.RecommendedOptions.SecureServing.ServerCert.CertKey
+	if err := o.CertRotation.Validate(certKey.CertFile, certKey.KeyFile); err != nil {
+		return fmt.Errorf("invalid apiserver options: %w", err)
 	}
 	return nil
 }

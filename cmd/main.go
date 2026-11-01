@@ -656,6 +656,9 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("read startup config: %w", err)
 			}
 			opts.ClusterScmProviderMode = clusterScmProviderMode
+			if opts.CertRotation.Namespace == "" {
+				opts.CertRotation.Namespace = namespace
+			}
 			if scope == promoterv1alpha1.ControllerScopeNamespace {
 				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
 				opts.Namespace = namespace
