@@ -492,26 +492,33 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			// TODO: is there some way to do this without a loop? Can we use a field indexer? The one issue with field indexers is that
 			// they can not be used with lists (aka label selectors) so how else can we lookup.
-			for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
+			// Every gate whose selector matches is enqueued: an Application can be selected by more than one
+			// ArgoCDCommitStatus (two strategies, or two keys over the same apps), and each must see the change.
+			requests := make([]mcreconcile.Request, 0, 1)
+			for i := range argoCDCommitStatusList.Items {
+				argoCDCommitStatus := &argoCDCommitStatusList.Items[i]
 				selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 				if err != nil {
 					logger.Error(err, "failed to parse label selector")
+					continue
 				}
-				if err == nil && selector.Matches(appLabels) {
-					logger.V(4).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
-						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
-						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
-
-					return []mcreconcile.Request{{
-						NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
-						ClusterName:    clusterName,
-					}}
+				if !selector.Matches(appLabels) {
+					continue
 				}
+				logger.V(4).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
+					"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+				requests = append(requests, mcreconcile.Request{
+					NamespacedName: client.ObjectKeyFromObject(argoCDCommitStatus),
+					ClusterName:    clusterName,
+				})
 			}
 
-			logger.V(6).Info("No ArgoCDCommitStatus found for ArgoCD application",
-				"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
-			return nil
+			if len(requests) == 0 {
+				logger.V(6).Info("No ArgoCDCommitStatus found for ArgoCD application",
+					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
+			}
+			return requests
 		})
 	}
 }
