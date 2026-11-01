@@ -49,6 +49,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	promoterwebhook "github.com/argoproj-labs/gitops-promoter/internal/webhook"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -84,7 +85,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
-	var webhookOpts admissionWebhookOptions
+	var webhookOpts promoterwebhook.Options
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -113,7 +114,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	webhookOpts.addFlags(cmd)
+	webhookOpts.AddFlags(cmd)
 
 	return cmd
 }
@@ -126,7 +127,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
-	webhookOpts admissionWebhookOptions,
+	webhookOpts promoterwebhook.Options,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -170,7 +171,7 @@ func runController(
 
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
-		CertDir: webhookOpts.certDir,
+		CertDir: webhookOpts.CertDir,
 	})
 
 	// Create the kubeconfig provider with options
@@ -458,8 +459,8 @@ func runController(
 		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
 	}
 
-	if webhookOpts.enabled {
-		webhookReady, err := setupAdmissionWebhook(runCtx, localManager, webhookServer, webhookOpts, controllerNamespace,
+	if webhookOpts.Enabled {
+		webhookReady, err := promoterwebhook.Setup(runCtx, localManager, webhookServer, webhookOpts, controllerNamespace,
 			templateValidator, krcsReconciler.IsConfiguredKind)
 		if err != nil {
 			panic(err)

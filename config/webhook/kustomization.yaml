@@ -7,4 +7,4 @@ kind: Kustomization
 resources:
   - manifests.yaml
   - service.yaml
-  - secret.yaml
+  - cert_secret.yaml
