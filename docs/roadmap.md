@@ -12,19 +12,17 @@
 - **[JobCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1597)** — Gate promotions on Kubernetes Job results via a new built-in commit status controller.
 - **[Commit signature verification via GitCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1801)** — Require that promoted commits are signed and verify against trusted keys.
 - **[Webhook-triggered reconciliation in WebRequestCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1704)** — Accept push notifications from external systems to trigger gate checks instead of polling only.
-- **[URL templates on WebRequestCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1857)** — Link commit status details to the source system, matching ArgoCDCommitStatus URL support.
 
 ### SCM providers and integrations
 
 - **Additional SCM providers** — Integrate providers beyond those supported today.
 - **[SSH protocol for git operations](https://github.com/argoproj-labs/gitops-promoter/issues/254)** — Clone and push via SSH for self-hosted GitLab and other SSH-only setups.
 - **[Sign commits during conflict resolution](https://github.com/argoproj-labs/gitops-promoter/issues/1800)** — GPG-sign commits created when Promoter resolves merge conflicts.
-- **[SCM webhooks for pull request changes](https://github.com/argoproj-labs/gitops-promoter/issues/360)** — Reconcile promotion state when the SCM signals PR updates; extend to multiple provider types ([#222](https://github.com/argoproj-labs/gitops-promoter/issues/222)).
+- **[SCM webhooks for pull request changes](https://github.com/argoproj-labs/gitops-promoter/issues/360)** — Reconcile promotion state when the SCM signals PR updates.
 - **[Verified GitHub webhook signatures](https://github.com/argoproj-labs/gitops-promoter/issues/1285)** — Validate `X-Hub-Signature-256` using constant-time comparison.
 
 ### Operations, scaling, and observability
 
-- **[Namespaced operation mode](https://github.com/argoproj-labs/gitops-promoter/issues/310)** — Restrict watches and permissions to configured namespaces.
 - **[DORA metrics](https://github.com/argoproj-labs/gitops-promoter/issues/574)** — Export deployment frequency, lead time, and related delivery metrics.
 - **[SLSA release provenance](https://github.com/argoproj-labs/gitops-promoter/issues/1445)** — Publish SLSA attestations for release binaries and images.
 
