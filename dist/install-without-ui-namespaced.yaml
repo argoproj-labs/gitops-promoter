@@ -6791,7 +6791,12 @@ spec:
                     - "$${" produces a literal "${".
                   Available variables: Branch, Sha, ShortSha, ReportOn, Environment (the PromotionStrategy status entry for the
                   branch), PromotionStrategy, and KubernetesResourceCommitStatus (this gate, as of the previous reconcile).
-                  Everything else is copied verbatim. The rendered object is validated by the API server when it is created.
+                  Everything else is copied verbatim.
+
+                  The template is validated against the kind's published OpenAPI schema by the admission webhook and on every
+                  reconcile: field names everywhere, values without expressions (type, enum, format, bounds, patterns, and the
+                  CEL rules of custom resources), but not missing required fields. Expression results are validated by the API
+                  server when the resource is created, with strict field validation.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               url:
@@ -10832,6 +10837,26 @@ rules:
   - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-cert-role
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - promoter-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
@@ -11941,6 +11966,32 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-configuration-role
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - promoter-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
@@ -12054,6 +12105,24 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-cert-rolebinding
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-webhook-cert-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
@@ -12072,6 +12141,34 @@ subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-configuration-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-webhook-configuration-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-server-cert
+  namespace: promoter-system
+type: Opaque
 ---
 apiVersion: v1
 kind: Service
@@ -12105,6 +12202,27 @@ spec:
   - port: 3333
     protocol: TCP
     targetPort: 3333
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: webhook-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: service
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-service
+  namespace: promoter-system
+spec:
+  ports:
+  - name: webhook
+    port: 443
+    protocol: TCP
+    targetPort: 9443
   selector:
     control-plane: controller-manager
 ---
@@ -12166,6 +12284,10 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
@@ -12184,6 +12306,10 @@ spec:
           capabilities:
             drop:
             - ALL
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-certs
+          readOnly: true
       - args:
         - --secure-listen-address=0.0.0.0:8443
         - --upstream=http://127.0.0.1:8080/
@@ -12213,6 +12339,11 @@ spec:
           type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
+      volumes:
+      - name: webhook-certs
+        secret:
+          defaultMode: 420
+          secretName: promoter-webhook-server-cert
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
@@ -12453,3 +12584,30 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: promoter-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: promoter-webhook-service
+      namespace: promoter-system
+      path: /validate-promoter-argoproj-io-v1alpha1-kubernetesresourcecommitstatus
+  failurePolicy: Fail
+  name: vkubernetesresourcecommitstatus.promoter.argoproj.io
+  rules:
+  - apiGroups:
+    - promoter.argoproj.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - kubernetesresourcecommitstatuses
+  sideEffects: None
+  timeoutSeconds: 10

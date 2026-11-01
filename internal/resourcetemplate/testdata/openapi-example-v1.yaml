@@ -1,0 +1,65 @@
+# The shape a Kubernetes API server publishes for a CustomResourceDefinition: the CRD's own schema (with its
+# x-kubernetes-validations) plus a $ref to ObjectMeta for metadata.
+openapi: 3.0.0
+info:
+  title: Kubernetes CRD Swagger
+  version: v0.1.0
+paths: {}
+components:
+  schemas:
+    io.example.v1.Scaler:
+      type: object
+      x-kubernetes-group-version-kind:
+        - group: example.io
+          version: v1
+          kind: Scaler
+      x-kubernetes-validations:
+        - rule: "self.metadata.name.startsWith('scaler-')"
+          message: root rules are never evaluated
+      properties:
+        apiVersion: {type: string}
+        kind: {type: string}
+        metadata:
+          allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}]
+        spec:
+          type: object
+          required: [target]
+          properties:
+            target: {type: string, minLength: 1, pattern: "^[a-z]+$"}
+            replicas:
+              type: object
+              x-kubernetes-validations:
+                - rule: "self.min <= self.max"
+                  message: min must not exceed max
+              properties:
+                min: {type: integer, minimum: 0}
+                max: {type: integer, maximum: 10}
+            window:
+              type: object
+              x-kubernetes-validations:
+                - rule: "self.seconds % 60 == 0"
+                  message: seconds must be whole minutes
+              properties:
+                seconds: {type: integer, default: 120}
+            mode:
+              type: string
+              default: Fast
+              enum: [Fast, Slow]
+            params:
+              type: array
+              maxItems: 2
+              items:
+                type: object
+                properties:
+                  name: {type: string}
+                  value: {type: string}
+            extra:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+    io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta:
+      type: object
+      properties:
+        name: {type: string}
+        labels:
+          type: object
+          additionalProperties: {type: string}
