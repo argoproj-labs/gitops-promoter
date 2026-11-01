@@ -1310,7 +1310,7 @@ var _ = Describe("Application watch handler", func() {
 
 		// Two gates select the same Application through different labels. Create them first so the
 		// Application's create event is what enqueues them.
-		gates := []*promoterv1alpha1.ArgoCDCommitStatus{}
+		gates := make([]*promoterv1alpha1.ArgoCDCommitStatus, 0, 2)
 		for _, g := range []struct{ suffix, key, label string }{
 			{"-by-app", "argocd-health-by-app", "app"},
 			{"-by-team", "argocd-health-by-team", "team"},
