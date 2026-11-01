@@ -306,9 +306,11 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 
 	// Terminal-phase rule: once a SHA reached success or failure, a resource that disappeared afterwards
 	// (for example a Job removed by ttlSecondsAfterFinished) must not be recreated, or the gate would loop.
-	if !exists && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
-		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", in.previous.Phase)
-		entry := *in.previous.DeepCopy()
+	// isTerminalForSha implies in.previous is set; the nil check on its copy is for nilaway.
+	if previous := in.previous.DeepCopy(); previous != nil && !exists &&
+		in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
+		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", previous.Phase)
+		entry := *previous
 		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
 		if err != nil {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, err
