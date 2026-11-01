@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -48,6 +49,10 @@ type ControllerConfigurationReconciler struct {
 	Shutdown            context.CancelFunc
 	StartupInstanceID   *string
 	ControllerNamespace string
+	// StartupKubernetesResourceCommitStatusResources is the resource list read at startup. The
+	// KubernetesResourceCommitStatus controller builds informers for these kinds when it starts, so a
+	// change triggers the same shutdown-for-restart as an instanceID change.
+	StartupKubernetesResourceCommitStatusResources []promoterv1alpha1.ResourceGroupVersionKind
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,resourceNames=promoter-controller-configuration,verbs=get;list;watch
@@ -86,15 +91,22 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 
 	metrics.SetGitRepositoryLabels(cc.Spec.Metrics.Labels.GitRepository)
 
-	if ptr.Equal(r.StartupInstanceID, cc.Spec.InstanceID) {
+	if !ptr.Equal(r.StartupInstanceID, cc.Spec.InstanceID) {
+		logger.Info("spec.instanceID changed since startup; shutting down controller to reload informer cache partition",
+			"startupInstanceID", r.StartupInstanceID,
+			"specInstanceID", cc.Spec.InstanceID,
+		)
+		shutdownForDrift = true
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("spec.instanceID changed since startup; shutting down controller to reload informer cache partition",
-		"startupInstanceID", r.StartupInstanceID,
-		"specInstanceID", cc.Spec.InstanceID,
-	)
-	shutdownForDrift = true
+	if !slices.Equal(r.StartupKubernetesResourceCommitStatusResources, cc.Spec.KubernetesResourceCommitStatus.Resources) {
+		logger.Info("spec.kubernetesResourceCommitStatus.resources changed since startup; shutting down controller to rebuild resource informers and template CRDs",
+			"startupResources", len(r.StartupKubernetesResourceCommitStatusResources),
+			"specResources", len(cc.Spec.KubernetesResourceCommitStatus.Resources),
+		)
+		shutdownForDrift = true
+	}
 
 	return ctrl.Result{}, nil
 }

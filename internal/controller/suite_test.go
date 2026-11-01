@@ -349,6 +349,15 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&KubernetesResourceCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("KubernetesResourceCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {
@@ -827,7 +836,19 @@ func controllerConfigurationForTests() *promoterv1alpha1.ControllerConfiguration
 	if faultsInjected {
 		cc = withSlowDelay(cc, "5s")
 	}
+	// The shipped configuration lists no resource kinds; the KubernetesResourceCommitStatus specs need
+	// batch/v1 Job (immutable, PerSha) and core/v1 ConfigMap (mutable, InPlace).
+	cc.Spec.KubernetesResourceCommitStatus.Resources = kubernetesResourceCommitStatusResourcesForTests()
 	return cc
+}
+
+// kubernetesResourceCommitStatusResourcesForTests is the resource kind list the test ControllerConfiguration
+// exposes to KubernetesResourceCommitStatus gates.
+func kubernetesResourceCommitStatusResourcesForTests() []promoterv1alpha1.ResourceGroupVersionKind {
+	return []promoterv1alpha1.ResourceGroupVersionKind{
+		{Group: "batch", Version: "v1", Kind: "Job"},
+		{Group: "", Version: "v1", Kind: "ConfigMap"},
+	}
 }
 
 // withSlowDelay returns cc with every fastSlow rate limiter's slowDelay set to delay.

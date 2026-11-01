@@ -83,6 +83,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return clusterScmProviderStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ScheduledCommitStatus:
 		return scheduledCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.KubernetesResourceCommitStatus:
+		return kubernetesResourceCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ControllerConfiguration:
 		return controllerConfigurationStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.RestoreActiveCommit:
@@ -130,6 +132,16 @@ func commitStatusStatusApply(o *promoterv1alpha1.CommitStatus, conditionsOnly bo
 		return nil, err
 	}
 	return acv1alpha1.CommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func kubernetesResourceCommitStatusStatusApply(o *promoterv1alpha1.KubernetesResourceCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.KubernetesResourceCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.KubernetesResourceCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func webRequestCommitStatusStatusApply(o *promoterv1alpha1.WebRequestCommitStatus, conditionsOnly bool) (any, error) {

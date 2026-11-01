@@ -1,0 +1,7 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: promoter-validating-webhook-configuration
+  annotations:
+    # cert-manager's ca-injector populates webhooks[].clientConfig.caBundle from the named Certificate.
+    cert-manager.io/inject-ca-from: promoter-system/promoter-webhook-serving-cert

@@ -49,6 +49,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	promoterwebhook "github.com/argoproj-labs/gitops-promoter/internal/webhook"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -84,6 +85,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var admissionWebhook admissionWebhookOptions
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -96,6 +98,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				admissionWebhook,
 				clientConfig,
 			)
 		},
@@ -111,8 +114,23 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().BoolVar(&admissionWebhook.enabled, "enable-admission-webhooks", false,
+		"Serve the validating admission webhook for KubernetesResourceCommitStatus. Requires the serving certificate "+
+			"in --admission-webhook-cert-dir and the ValidatingWebhookConfiguration from config/webhook.")
+	cmd.Flags().StringVar(&admissionWebhook.certDir, "admission-webhook-cert-dir", "",
+		"Directory containing tls.crt and tls.key for the admission webhook server. "+
+			"Defaults to <temp dir>/k8s-webhook-server/serving-certs.")
+	cmd.Flags().IntVar(&admissionWebhook.port, "admission-webhook-port", 9443,
+		"Port the admission webhook server listens on.")
 
 	return cmd
+}
+
+// admissionWebhookOptions configures the admission webhook server (see --enable-admission-webhooks).
+type admissionWebhookOptions struct {
+	certDir string
+	port    int
+	enabled bool
 }
 
 //nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
@@ -123,6 +141,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	admissionWebhook admissionWebhookOptions,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -164,7 +183,10 @@ func runController(
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	// The server only starts when a webhook is registered (see --enable-admission-webhooks).
 	webhookServer := webhook.NewServer(webhook.Options{
+		Port:    admissionWebhook.port,
+		CertDir: admissionWebhook.certDir,
 		TLSOpts: tlsOpts,
 	})
 
@@ -200,11 +222,12 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
-	scope, clusterScmProviderMode, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
+	startup, err := getStartupSettings(processSignalsCtx, restConfig, controllerNamespace)
 	if err != nil {
 		return fmt.Errorf("read startup config: %w", err)
 	}
-	clusterScmProviderEnabled := clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
+	scope := startup.scope
+	clusterScmProviderEnabled := startup.clusterScmProviderMode != promoterv1alpha1.FeatureModeDisabled
 	if !clusterScmProviderEnabled {
 		setupLog.Info("ClusterScmProvider support disabled")
 	}
@@ -374,7 +397,8 @@ func runController(
 		Recorder:            localManager.GetEventRecorder("ControllerConfiguration"),
 		ControllerNamespace: controllerNamespace,
 		StartupInstanceID:   instanceID,
-		Shutdown:            shutdown,
+		StartupKubernetesResourceCommitStatusResources: startup.kubernetesResources,
+		Shutdown: shutdown,
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
@@ -435,6 +459,25 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
+	krcsReconciler := &controller.KubernetesResourceCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("KubernetesResourceCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}
+	if err := krcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
+	}
+	if admissionWebhook.enabled {
+		// Shares the controller's compiler and kind list so admission and reconciliation agree.
+		if err := (&promoterwebhook.KubernetesResourceCommitStatusValidator{
+			Compiler:   krcsReconciler.Compiler(),
+			Configured: krcsReconciler.ConfiguredKinds(),
+		}).SetupWithManager(localManager); err != nil {
+			panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus admission webhook: %w", err))
+		}
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -494,16 +537,24 @@ func runController(
 	return nil
 }
 
-// getStartupSettings reads spec.scope and spec.clusterScmProvider.mode directly from the API server,
-// before the manager cache starts.
+// startupSettings holds the ControllerConfiguration fields that are read once before the manager starts and
+// require a controller restart to change.
+type startupSettings struct {
+	scope                  promoterv1alpha1.ControllerScope
+	clusterScmProviderMode promoterv1alpha1.FeatureMode
+	kubernetesResources    []promoterv1alpha1.ResourceGroupVersionKind
+}
+
+// getStartupSettings reads spec.scope, spec.clusterScmProvider.mode, and the KubernetesResourceCommitStatus
+// resource list directly from the API server, before the manager cache starts.
 func getStartupSettings(
 	ctx context.Context,
 	restCfg *rest.Config,
 	controllerNamespace string,
-) (promoterv1alpha1.ControllerScope, promoterv1alpha1.FeatureMode, error) {
+) (startupSettings, error) {
 	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
 	if err != nil {
-		return "", "", fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+		return startupSettings{}, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
 	}
 	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
@@ -511,15 +562,18 @@ func getStartupSettings(
 
 	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	scope, err := bootstrapSettings.GetScopeDirect(readCtx)
-	if err != nil {
-		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	var out startupSettings
+	if out.scope, err = bootstrapSettings.GetScopeDirect(readCtx); err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	clusterScmProviderMode, err := bootstrapSettings.GetClusterScmProviderModeDirect(readCtx)
-	if err != nil {
-		return "", "", fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	if out.clusterScmProviderMode, err = bootstrapSettings.GetClusterScmProviderModeDirect(readCtx); err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
 	}
-	return scope, clusterScmProviderMode, nil
+	out.kubernetesResources, err = bootstrapSettings.GetKubernetesResourceCommitStatusResourcesDirect(readCtx)
+	if err != nil {
+		return startupSettings{}, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return out, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -651,12 +705,12 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get namespace: %w", err)
 			}
-			scope, clusterScmProviderMode, err := getStartupSettings(ctx, restConfig, namespace)
+			startup, err := getStartupSettings(ctx, restConfig, namespace)
 			if err != nil {
 				return fmt.Errorf("read startup config: %w", err)
 			}
-			opts.ClusterScmProviderMode = clusterScmProviderMode
-			if scope == promoterv1alpha1.ControllerScopeNamespace {
+			opts.ClusterScmProviderMode = startup.clusterScmProviderMode
+			if startup.scope == promoterv1alpha1.ControllerScopeNamespace {
 				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
 				opts.Namespace = namespace
 			}

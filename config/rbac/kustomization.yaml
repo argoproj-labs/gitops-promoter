@@ -69,3 +69,6 @@ resources:
 - changetransferpolicyhistory_admin_role.yaml
 - changetransferpolicyhistory_editor_role.yaml
 - changetransferpolicyhistory_viewer_role.yaml
+- kubernetesresourcecommitstatus_admin_role.yaml
+- kubernetesresourcecommitstatus_editor_role.yaml
+- kubernetesresourcecommitstatus_viewer_role.yaml

@@ -277,6 +277,14 @@ func EnqueueChangeTransferPolicies(
 // which would violate DNS1123 (names must start and end with an alphanumeric character). The same fallback
 // applies if the stem would end up empty after TruncateString + TrimRight.
 func KubeSafeUniqueName(name string) string {
+	return KubeSafeUniqueNameWithMaxLength(name, validation.DNS1123SubdomainMaxLength)
+}
+
+// KubeSafeUniqueNameWithMaxLength is KubeSafeUniqueName with a caller-supplied length limit instead of the
+// DNS-1123 subdomain maximum. Use validation.DNS1123LabelMaxLength (63) for kinds whose name is copied into
+// a label value, for example batch/v1 Job (batch.kubernetes.io/job-name). The hash still covers the full
+// sanitized input, so names that differ only in truncated characters stay distinct.
+func KubeSafeUniqueNameWithMaxLength(name string, limit int) string {
 	s := strings.ToLower(m1.ReplaceAllString(name, "-"))
 	h := fnv.New32a()
 	if _, err := h.Write([]byte(s)); err != nil {
@@ -284,7 +292,6 @@ func KubeSafeUniqueName(name string) string {
 		panic(fmt.Sprintf("KubeSafeUniqueName: unexpected error writing to FNV hash: %v", err))
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
-	limit := validation.DNS1123SubdomainMaxLength
 	if len(hash)+1 > limit {
 		return TruncateString(hash, limit)
 	}

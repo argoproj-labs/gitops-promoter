@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: promoter-webhook-serving-cert
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/part-of: promoter
+spec:
+  secretName: promoter-webhook-server-cert
+  dnsNames:
+    - promoter-webhook-service.promoter-system.svc
+    - promoter-webhook-service.promoter-system.svc.cluster.local
+  issuerRef:
+    name: promoter-webhook-selfsigned
+    kind: Issuer
+    group: cert-manager.io

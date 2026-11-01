@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Validating admission webhook for KubernetesResourceCommitStatus, served by the controller
+# (--enable-admission-webhooks). It type-checks a gate's template and expressions against the
+# created kind's schema at admission time instead of in the gate's status.
+#
+# Like config/apiserver/base, this is self-contained (own namespace and name prefix) so the
+# release bundles can union it with config/default. Pick a cert overlay instead of applying this
+# base directly, and add the manager-patch component to mount the serving cert:
+#   config/webhook/certs-cert-manager  cert-manager issues the cert and injects the caBundle
+#   config/webhook/certs-manual        you supply the Secret and caBundle (make webhook-certs)
+# See docs/advanced-usage/admission-webhook.md.
+
+namespace: promoter-system
+
+namePrefix: promoter-
+
+resources:
+  - manifests.yaml
+  - service.yaml
+
+configurations:
+  - kustomizeconfig.yaml

@@ -1,0 +1,794 @@
+package controller
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"os"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+)
+
+//go:embed testdata/KubernetesResourceCommitStatus.yaml
+var kubernetesResourceCommitStatusTestdataYAML string
+
+// Each gate uses its own commit-status key: two CommitStatuses with the same key on one SHA make the
+// ChangeTransferPolicy controller fail with "too many matching SHAs", and envtest has no garbage collector
+// to remove the CommitStatuses of deleted gates.
+const (
+	k8sResourceGateKey          = "smoke-test"
+	k8sResourceHistoryGateKey   = "smoke-history"
+	k8sResourceConfigMapGateKey = "smoke-config"
+	k8sResourceFailureGateKey   = "smoke-failure"
+	k8sResourceFinalizerGateKey = "smoke-finalizer"
+)
+
+// jobPhaseExpression keys off status.succeeded / status.failed, which the JobManagedBy status validation
+// (enforced by the envtest API server) lets tests set without a fully consistent condition set.
+const jobPhaseExpression = `Resource.?status.?succeeded.orValue(0) > 0
+	? {'phase': 'success'}
+	: (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure', 'description': 'Smoke test is failing'} : {'phase': 'pending'})`
+
+// templateJSON encodes an inline spec.template.
+func templateJSON(object map[string]any) apiextensionsv1.JSON {
+	GinkgoHelper()
+	raw, err := json.Marshal(object)
+	Expect(err).NotTo(HaveOccurred())
+	return apiextensionsv1.JSON{Raw: raw}
+}
+
+// jobTemplate is a batch/v1 Job template exercising embedded expressions (args) and a standalone typed
+// expression (parallelism is an integer in the Job schema, so a string would be rejected by the API server).
+func jobTemplate() apiextensionsv1.JSON {
+	return templateJSON(map[string]any{
+		"apiVersion": "batch/v1",
+		"kind":       "Job",
+		"metadata":   map[string]any{"labels": map[string]any{"short-sha": "${ ShortSha }"}},
+		"spec": map[string]any{
+			"backoffLimit": 0,
+			"parallelism":  "${ 1 + 1 }",
+			"template": map[string]any{
+				"spec": map[string]any{
+					"restartPolicy": "Never",
+					"containers": []any{map[string]any{
+						"name":  "test",
+						"image": "busybox",
+						"args":  []any{"--sha", "${ Sha }", "--env", "${ Branch }", "--short", "${ ShortSha }"},
+					}},
+				},
+			},
+		},
+	})
+}
+
+// jobTemplateWithBackoffLimit is jobTemplate with a different backoffLimit; -1 passes the schema (no minimum) and
+// fails Job validation, which only a server-side dry-run can see.
+func jobTemplateWithBackoffLimit(limit int) apiextensionsv1.JSON {
+	raw := jobTemplate()
+	var object map[string]any
+	Expect(json.Unmarshal(raw.Raw, &object)).To(Succeed())
+	spec, ok := object["spec"].(map[string]any)
+	Expect(ok).To(BeTrue())
+	spec["backoffLimit"] = limit
+	return templateJSON(object)
+}
+
+func configMapTemplate(extra string) apiextensionsv1.JSON {
+	return templateJSON(map[string]any{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"data": map[string]any{
+			"sha":    "${ Sha }",
+			"branch": "${ Branch }",
+			"extra":  extra,
+		},
+	})
+}
+
+func getK8sResourceGate(ctx context.Context, g Gomega, name string) *promoterv1alpha1.KubernetesResourceCommitStatus {
+	var krcs promoterv1alpha1.KubernetesResourceCommitStatus
+	g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &krcs)).To(Succeed())
+	return &krcs
+}
+
+// devEnvironmentStatus returns the status entry for the development branch, failing the assertion when absent.
+func devEnvironmentStatus(g Gomega, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus {
+	for _, e := range krcs.Status.Environments {
+		if e.Branch == testBranchDevelopment {
+			return e
+		}
+	}
+	g.Expect(krcs.Status.Environments).To(ContainElement(HaveField("Branch", testBranchDevelopment)), "expected a status entry for %s", testBranchDevelopment)
+	return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}
+}
+
+var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *corev1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		By("Setting up test git repository and resources")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "k8s-resource-commit-status-test", "default")
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: k8sResourceGateKey},
+			{Key: k8sResourceHistoryGateKey},
+			{Key: k8sResourceConfigMapGateKey},
+			{Key: k8sResourceFailureGateKey},
+			{Key: k8sResourceFinalizerGateKey},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
+	})
+
+	AfterAll(func() {
+		By("Cleaning up test resources")
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+		_ = k8sClient.Delete(ctx, gitRepo)
+		_ = k8sClient.Delete(ctx, scmProvider)
+		_ = k8sClient.Delete(ctx, scmSecret)
+	})
+
+	It("strictly unmarshals the testdata example", func() {
+		var krcs promoterv1alpha1.KubernetesResourceCommitStatus
+		Expect(unmarshalYamlStrict(kubernetesResourceCommitStatusTestdataYAML, &krcs)).To(Succeed())
+		_, gvk, err := resourcetemplate.ParseTemplate(krcs.Spec.Template)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gvk.Kind).To(Equal("Job"))
+	})
+
+	Describe("PerSha Job gate", Ordered, func() {
+		var (
+			gateName    string
+			gate        *promoterv1alpha1.KubernetesResourceCommitStatus
+			firstJob    string
+			firstSha    string
+			gitPath     string
+			historyGate string
+		)
+
+		BeforeAll(func() {
+			gateName = name + "-job"
+			gate = &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: gateName, Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceGateKey,
+					ReportOn:             constants.CommitRefProposed,
+					Template:             jobTemplate(),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: jobPhaseExpression},
+					Description:          "Smoke test ${ ResourceName } is ${ Phase }",
+				},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			var err error
+			gitPath, err = os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, gate)
+			if historyGate != "" {
+				hg := &promoterv1alpha1.KubernetesResourceCommitStatus{}
+				hg.Name, hg.Namespace = historyGate, "default"
+				_ = k8sClient.Delete(ctx, hg)
+			}
+			_ = os.RemoveAll(gitPath)
+		})
+
+		It("creates a Job per environment from the rendered template and reports pending", func() {
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Status.Environments).To(HaveLen(3))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(dev.ReportedSha).NotTo(BeEmpty())
+				g.Expect(dev.Resource).NotTo(BeNil())
+				g.Expect(dev.Resource.APIVersion).To(Equal("batch/v1"))
+				g.Expect(dev.Resource.Kind).To(Equal("Job"))
+				g.Expect(dev.Resource.Name).To(Equal(resourcetemplate.PerShaResourceName(gateName, testBranchDevelopment, dev.ReportedSha)))
+				g.Expect(dev.LastEvaluationTime).NotTo(BeNil())
+				g.Expect(dev.Description).To(Equal("Smoke test " + dev.Resource.Name + " is pending"))
+				g.Expect(dev.TemplateValidation).NotTo(BeNil(), "the template is dry-run once per generation")
+				g.Expect(dev.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(krcs.Generation))
+				firstJob, firstSha = dev.Resource.Name, dev.ReportedSha
+
+				var job batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &job)).To(Succeed())
+				g.Expect(job.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"--sha", firstSha, "--env", testBranchDevelopment, "--short", resourcetemplate.ShortSha(firstSha)}))
+				g.Expect(job.Spec.Parallelism).To(HaveValue(Equal(int32(2))), "a standalone expression keeps its integer type")
+				g.Expect(job.Labels).To(HaveKeyWithValue("short-sha", resourcetemplate.ShortSha(firstSha)))
+				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.ShaLabel, firstSha))
+				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.EnvironmentLabel, utils.KubeSafeLabel(testBranchDevelopment)))
+				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.CommitStatusLabel, k8sResourceGateKey))
+				g.Expect(job.Labels).To(HaveKeyWithValue("promoter.argoproj.io/kubernetes-resource-commit-status", utils.KubeSafeLabel(gateName)))
+				g.Expect(metav1.IsControlledBy(&job, krcs)).To(BeTrue())
+				g.Expect(job.Finalizers).To(ConsistOf(promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer))
+
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment), Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(cs.Spec.Sha).To(Equal(firstSha))
+				g.Expect(cs.Spec.Name).To(Equal(k8sResourceGateKey + "/" + testBranchDevelopment))
+				g.Expect(cs.Spec.Description).To(Equal("Smoke test " + firstJob + " is pending"))
+
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a KubernetesResourceCreated event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, gateName, constants.KubernetesResourceCreatedReason, firstJob))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("reports success once the Job succeeds", func() {
+			var job batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &job)).To(Succeed())
+			job.Status.Succeeded = 1
+			Expect(k8sClient.Status().Update(ctx, &job)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(dev.Description).To(Equal("Smoke test " + firstJob + " is success"))
+
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment), Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, gateName, constants.CommitStatusPhaseChangedReason, "to success"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Releasing the resource finalizer once the terminal phase is recorded")
+			Eventually(func(g Gomega) {
+				var job batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &job)).To(Succeed())
+				g.Expect(job.Finalizers).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("keeps the terminal phase and does not recreate a Job that was deleted", func() {
+			var job batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &job)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &job, ctrlclient.PropagationPolicy(metav1.DeletePropagationBackground))).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &batchv1.Job{})
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Force a reconcile by touching the gate spec, then make sure the Job stays gone and the phase sticks.
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				if krcs.Annotations == nil {
+					krcs.Annotations = map[string]string{}
+				}
+				krcs.Spec.Url = "https://example.com/${ Branch }"
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Consistently(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(dev.ReportedSha).To(Equal(firstSha))
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: firstJob, Namespace: "default"}, &batchv1.Job{})
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "the Job must not be recreated after a terminal phase")
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("reports a template the API server rejects in a dry-run and keeps the previous report", func() {
+			By("Editing the template to a value the schema allows but Job validation rejects")
+			var generation int64
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = jobTemplateWithBackoffLimit(-1)
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+				generation = krcs.Generation
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("template renders to an invalid Job"))
+				g.Expect(ready.Message).To(ContainSubstring("spec.backoffLimit"))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.TemplateValidation).NotTo(BeNil())
+				g.Expect(dev.TemplateValidation.Valid).To(BeFalse())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(generation))
+				g.Expect(dev.TemplateValidation.Message).To(ContainSubstring("spec.backoffLimit"))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "the previous report is kept")
+				g.Expect(dev.ReportedSha).To(Equal(firstSha))
+
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment), Namespace: "default"}, &cs)).To(Succeed(), "the CommitStatus is not cleaned up as orphaned")
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, gateName, constants.KubernetesResourceTemplateInvalidReason, "spec.backoffLimit"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Checking no dry-run object was persisted and the real Job was not recreated")
+			var jobs batchv1.JobList
+			Expect(k8sClient.List(ctx, &jobs, ctrlclient.InNamespace("default"))).To(Succeed())
+			for _, job := range jobs.Items {
+				Expect(job.Name).NotTo(HaveSuffix("-dryrun"))
+				Expect(job.Name).NotTo(Equal(firstJob))
+			}
+
+			By("Fixing the template")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = jobTemplate()
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+				generation = krcs.Generation
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.TemplateValidation).NotTo(BeNil())
+				g.Expect(dev.TemplateValidation.Valid).To(BeTrue())
+				g.Expect(dev.TemplateValidation.ObservedGeneration).To(Equal(generation))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("creates a new Job for a new SHA and prunes older Jobs beyond historyLimit", func() {
+			By("Creating a second gate with historyLimit 2 and the same template")
+			historyGate = gateName + "-history"
+			hg := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: historyGate, Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceHistoryGateKey,
+					Template:             jobTemplate(),
+					Lifecycle:            promoterv1alpha1.KubernetesResourceLifecycle{Mode: promoterv1alpha1.KubernetesResourceLifecyclePerSha, HistoryLimit: new(int32(2))},
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: jobPhaseExpression},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hg)).To(Succeed())
+			var historyFirstJob string
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, historyGate)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Resource).NotTo(BeNil())
+				g.Expect(dev.ReportedSha).To(Equal(firstSha))
+				historyFirstJob = dev.Resource.Name
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing a new hydrated commit")
+			newDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second commit for kubernetes resource gate", "")
+			Expect(newDrySha).NotTo(BeEmpty())
+
+			var secondJob, secondSha string
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.ReportedSha).NotTo(Equal(firstSha))
+				g.Expect(dev.Resource).NotTo(BeNil())
+				g.Expect(dev.Resource.Name).NotTo(Equal(firstJob))
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "a new SHA starts over")
+				secondJob, secondSha = dev.Resource.Name, dev.ReportedSha
+				var job batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secondJob, Namespace: "default"}, &job)).To(Succeed())
+				g.Expect(job.Labels).To(HaveKeyWithValue(promoterv1alpha1.ShaLabel, secondSha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the historyLimit 2 gate keeps both Jobs while the default gate would keep one")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, historyGate)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.ReportedSha).To(Equal(secondSha))
+				g.Expect(dev.Resource.Name).NotTo(Equal(historyFirstJob))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: historyFirstJob, Namespace: "default"}, &batchv1.Job{})).To(Succeed(), "historyLimit 2 retains the previous Job")
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Pushing a third commit so the oldest Job of the historyLimit 2 gate is pruned")
+			thirdDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "third commit for kubernetes resource gate", "")
+			Expect(thirdDrySha).NotTo(Equal(newDrySha))
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: historyFirstJob, Namespace: "default"}, &batchv1.Job{})
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "oldest Job is pruned once a third SHA arrives")
+				var jobs batchv1.JobList
+				g.Expect(k8sClient.List(ctx, &jobs, ctrlclient.InNamespace("default"), ctrlclient.MatchingLabels{
+					"promoter.argoproj.io/kubernetes-resource-commit-status": utils.KubeSafeLabel(historyGate),
+					promoterv1alpha1.EnvironmentLabel:                        utils.KubeSafeLabel(testBranchDevelopment),
+				})).To(Succeed())
+				g.Expect(jobs.Items).To(HaveLen(2))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a KubernetesResourcePruned event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, historyGate, constants.KubernetesResourcePrunedReason, historyFirstJob))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("InPlace ConfigMap gate", Ordered, func() {
+		var (
+			gateName string
+			gate     *promoterv1alpha1.KubernetesResourceCommitStatus
+		)
+
+		BeforeAll(func() {
+			gateName = name + "-cm"
+			gate = &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: gateName, Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceConfigMapGateKey,
+					Template:             configMapTemplate("v1"),
+					Lifecycle:            promoterv1alpha1.KubernetesResourceLifecycle{Mode: promoterv1alpha1.KubernetesResourceLifecycleInPlace},
+					// "external" is never set by the template, so another field manager can set it without
+					// the controller's Server-Side Apply overwriting it.
+					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `Resource.?data.?external.orValue('') == 'ok' ? {'phase': 'success', 'url': 'https://example.com/' + Branch} : {'phase': 'pending'}`},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, gate)
+		})
+
+		It("maintains one ConfigMap per environment and re-evaluates when it changes", func() {
+			cmName := resourcetemplate.InPlaceResourceName(gateName, testBranchDevelopment)
+			var reportedSha string
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(dev.Resource).NotTo(BeNil())
+				g.Expect(dev.Resource.Name).To(Equal(cmName))
+				reportedSha = dev.ReportedSha
+
+				var cm corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: "default"}, &cm)).To(Succeed())
+				g.Expect(cm.Data).To(HaveKeyWithValue("sha", reportedSha))
+				g.Expect(cm.Data).To(HaveKeyWithValue("branch", testBranchDevelopment))
+				g.Expect(cm.Data).To(HaveKeyWithValue("extra", "v1"))
+				g.Expect(metav1.IsControlledBy(&cm, krcs)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting a field the template does not own")
+			Eventually(func(g Gomega) {
+				var cm corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: "default"}, &cm)).To(Succeed())
+				cm.Data["external"] = "ok"
+				g.Expect(k8sClient.Update(ctx, &cm)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(dev.Url).To(Equal("https://example.com/" + testBranchDevelopment))
+				g.Expect(dev.Description).To(Equal("ConfigMap " + cmName + " reports success"))
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment), Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(cs.Spec.Url).To(Equal("https://example.com/" + testBranchDevelopment))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Propagating a template change to the in-place resource")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = configMapTemplate("v2")
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			var createdAt string
+			Eventually(func(g Gomega) {
+				var cm corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: "default"}, &cm)).To(Succeed())
+				g.Expect(cm.Data).To(HaveKeyWithValue("extra", "v2"))
+				g.Expect(cm.Data).To(HaveKeyWithValue("external", "ok"), "fields owned by other managers survive the re-apply")
+				createdAt = cm.Annotations[promoterv1alpha1.ResourceCreatedAtAnnotation]
+				g.Expect(createdAt).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Keeping the created-at annotation stable across re-applies")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				krcs.Spec.Template = configMapTemplate("v3")
+				g.Expect(k8sClient.Update(ctx, krcs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				var cm corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: "default"}, &cm)).To(Succeed())
+				g.Expect(cm.Data).To(HaveKeyWithValue("extra", "v3"))
+				g.Expect(cm.Annotations).To(HaveKeyWithValue(promoterv1alpha1.ResourceCreatedAtAnnotation, createdAt))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Finalizers and namespace metadata", Ordered, func() {
+		var (
+			gateName string
+			gate     *promoterv1alpha1.KubernetesResourceCommitStatus
+			jobName  string
+			firstUID types.UID
+		)
+
+		BeforeAll(func() {
+			By("Labeling the namespace so NamespaceMetadata has something to read")
+			Eventually(func(g Gomega) {
+				var ns corev1.Namespace
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "default"}, &ns)).To(Succeed())
+				if ns.Labels == nil {
+					ns.Labels = map[string]string{}
+				}
+				ns.Labels["team"] = "platform"
+				g.Expect(k8sClient.Update(ctx, &ns)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			gateName = name + "-finalizer"
+			template := templateJSON(map[string]any{
+				"apiVersion": "batch/v1",
+				"kind":       "Job",
+				"metadata": map[string]any{"annotations": map[string]any{
+					"team":    "${ NamespaceMetadata.labels['team'] }",
+					"missing": "${ NamespaceMetadata.?labels[?'nope'].orValue('none') }",
+				}},
+				"spec": map[string]any{
+					"backoffLimit": 0,
+					"template": map[string]any{"spec": map[string]any{
+						"restartPolicy": "Never",
+						"containers":    []any{map[string]any{"name": "test", "image": "busybox"}},
+					}},
+				},
+			})
+			gate = &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: gateName, Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFinalizerGateKey,
+					Template:             template,
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: jobPhaseExpression},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, gate)
+			if jobName != "" {
+				job := &batchv1.Job{}
+				job.Name, job.Namespace = jobName, "default"
+				_ = k8sClient.Delete(ctx, job, ctrlclient.PropagationPolicy(metav1.DeletePropagationBackground))
+			}
+			Eventually(func(g Gomega) {
+				var ns corev1.Namespace
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "default"}, &ns)).To(Succeed())
+				delete(ns.Labels, "team")
+				g.Expect(k8sClient.Update(ctx, &ns)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("renders namespace labels, adds the gate's cleanup finalizer, and the resource finalizer", func() {
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				g.Expect(krcs.Finalizers).To(ContainElement(promoterv1alpha1.KubernetesResourceCommitStatusCleanupFinalizer))
+				dev := devEnvironmentStatus(g, krcs)
+				g.Expect(dev.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(dev.Resource).NotTo(BeNil())
+				jobName = dev.Resource.Name
+
+				var job batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: jobName, Namespace: "default"}, &job)).To(Succeed())
+				g.Expect(job.Annotations).To(HaveKeyWithValue("team", "platform"))
+				g.Expect(job.Annotations).To(HaveKeyWithValue("missing", "none"))
+				g.Expect(job.Finalizers).To(ConsistOf(promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer))
+				firstUID = job.UID
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("releases the finalizer of a Job deleted before it finished and recreates the Job", func() {
+			job := &batchv1.Job{}
+			job.Name, job.Namespace = jobName, "default"
+			Expect(k8sClient.Delete(ctx, job, ctrlclient.PropagationPolicy(metav1.DeletePropagationBackground))).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var recreated batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: jobName, Namespace: "default"}, &recreated)).To(Succeed())
+				g.Expect(recreated.UID).NotTo(Equal(firstUID), "the deleted Job must be released and a new one created")
+				g.Expect(recreated.DeletionTimestamp.IsZero()).To(BeTrue())
+				g.Expect(recreated.Finalizers).To(ConsistOf(promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("releases resource finalizers when the gate is deleted", func() {
+			Expect(k8sClient.Delete(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: gateName, Namespace: "default"}, &promoterv1alpha1.KubernetesResourceCommitStatus{})
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "the gate's cleanup finalizer must be removed")
+				// envtest runs no garbage collector, so the Job stays; without the finalizer it is collectable.
+				var job batchv1.Job
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: jobName, Namespace: "default"}, &job)).To(Succeed())
+				g.Expect(job.Finalizers).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Failure modes and validation", func() {
+		It("reports Ready=False when the template has no kind", func() {
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-no-kind", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             templateJSON(map[string]any{"apiVersion": "batch/v1", "spec": map[string]any{}}),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("invalid spec.template: template is missing kind"))
+				g.Expect(fetched.Status.Environments).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("reports Ready=False with a compile error when an expression produces the wrong type for a typed kind", func() {
+			template := jobTemplate()
+			var object map[string]any
+			Expect(json.Unmarshal(template.Raw, &object)).To(Succeed())
+			spec, ok := object["spec"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			spec["parallelism"] = "${ 'two' }"
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-wrong-type", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             templateJSON(object),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("spec.parallelism"))
+				g.Expect(ready.Message).To(ContainSubstring("returns string but the field expects int"), "the Job schema was resolved through discovery, so the mismatch is caught before anything is created")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("reports Ready=False when the kind is not configured", func() {
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-unconfigured-kind", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             templateJSON(map[string]any{"apiVersion": "apps/v1", "kind": "Deployment"}),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("not listed in ControllerConfiguration"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("reports Ready=False with the expression error when the expression is invalid", func() {
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-bad-expr", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template:             jobTemplate(),
+					Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: `{'phase': 'done'}`},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring("invalid phase"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("rejects invalid specs through CRD validation", func() {
+			base := func(suffix string) *promoterv1alpha1.KubernetesResourceCommitStatus {
+				return &promoterv1alpha1.KubernetesResourceCommitStatus{
+					Name: name + "-invalid-" + suffix, Namespace: "default",
+					Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+						Key:                  k8sResourceFailureGateKey,
+						Template:             jobTemplate(),
+						Phase:                promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+					},
+				}
+			}
+
+			By("rejecting historyLimit with InPlace mode")
+			inPlace := base("inplace")
+			inPlace.Spec.Lifecycle = promoterv1alpha1.KubernetesResourceLifecycle{Mode: promoterv1alpha1.KubernetesResourceLifecycleInPlace, HistoryLimit: new(int32(2))}
+			err := k8sClient.Create(ctx, inPlace)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("historyLimit is only valid with mode PerSha"))
+
+			By("rejecting a template that is not an object")
+			notObject := base("not-object")
+			notObject.Spec.Template = apiextensionsv1.JSON{Raw: []byte(`"a string"`)}
+			err = k8sClient.Create(ctx, notObject)
+			Expect(err).To(HaveOccurred())
+			Expect(k8serrors.IsInvalid(err)).To(BeTrue())
+
+			By("rejecting historyLimit 0")
+			zero := base("zero")
+			zero.Spec.Lifecycle = promoterv1alpha1.KubernetesResourceLifecycle{HistoryLimit: new(int32(0))}
+			err = k8sClient.Create(ctx, zero)
+			Expect(err).To(HaveOccurred())
+			Expect(k8serrors.IsInvalid(err)).To(BeTrue())
+		})
+	})
+})

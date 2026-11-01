@@ -14,10 +14,11 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
 | ClusterScmProvider | v1alpha1 | 5,829 | 0.01% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
-| ControllerConfiguration | v1alpha1 | 384 | 0.00% |
+| ControllerConfiguration | v1alpha1 | 416 | 0.00% |
 | DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 16 | 0.00% |
+| KubernetesResourceCommitStatus | v1alpha1 | 1,507 | 0.00% |
 | PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RestoreActiveCommit | v1alpha1 | 165 | 0.00% |
@@ -146,6 +147,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.kubernetesResourceCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.restoreActiveCommit.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
@@ -158,6 +160,7 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.kubernetesResourceCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.restoreActiveCommit.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
@@ -170,13 +173,14 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dependentsSuccessfulCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.kubernetesResourceCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.restoreActiveCommit.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| **Total** | **384** | **0.00%** | |
+| **Total** | **416** | **0.00%** | |
 
 #### DependentsSuccessfulCommitStatus
 
@@ -208,6 +212,18 @@ Source: `promoter.argoproj.io_gitrepositories.yaml`
 |---|---:|---:|---|
 | `.spec` | 16 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
 | **Total** | **16** | **0.00%** | |
+
+#### KubernetesResourceCommitStatus
+
+Source: `promoter.argoproj.io_kubernetesresourcecommitstatuses.yaml`
+
+##### Version `v1alpha1`
+
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.spec.lifecycle` | 7 | 0.00% | `!has(self.historyLimit) \|\| !has(self.mode) \|\| self.mode == 'PerSha'` |
+| **Total** | **1,507** | **0.00%** | |
 
 #### PromotionStrategy
 

@@ -12,10 +12,18 @@ kind: Kustomization
 # extension-apiserver-authentication-reader RoleBinding remains in kube-system. The single
 # images: entry pins both the controller and the apiserver Deployments (same image) to the
 # release tag via hack/manifests-release.sh.
+#
+# The KubernetesResourceCommitStatus admission webhook is included with the same cert strategy:
+# the operator supplies the promoter-webhook-server-cert Secret and the ValidatingWebhookConfiguration
+# caBundle (make webhook-certs, see docs/advanced-usage/admission-webhook.md).
 
 resources:
   - ../../default
   - ../certs-manual
+  - ../../webhook/certs-manual
+
+components:
+  - ../../webhook/manager-patch
 
 images:
   - name: quay.io/argoprojlabs/gitops-promoter

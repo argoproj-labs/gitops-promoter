@@ -69,6 +69,10 @@ const (
 	// performed by the ScheduledCommitStatus controller.
 	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
 
+	// KubernetesResourceCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the KubernetesResourceCommitStatus controller.
+	KubernetesResourceCommitStatusControllerFieldOwner = "promoter.argoproj.io/kubernetesresourcecommitstatus-controller"
+
 	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the CommitStatus controller.
 	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
