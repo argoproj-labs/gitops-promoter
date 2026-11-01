@@ -137,16 +137,18 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	// Still wake the policies on this SHA even when nothing was published: a ChangeTransferPolicy reconciling
-	// concurrently may not have read this phase yet, and the enqueue channel dedupes.
+	if alreadyPublished {
+		// Nothing changed, so there is no new phase for a ChangeTransferPolicy to read: waking the policies on
+		// this SHA would only re-run their git work. On a controller start that is every policy, twice.
+		return ctrl.Result{}, nil
+	}
+
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 	}
 
-	if !alreadyPublished {
-		r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
-	}
+	r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
 	return ctrl.Result{}, nil
 }
@@ -297,8 +299,10 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 //
 // A CommitStatus is reconciled on create, on spec change, and on every controller start, because the
 // informer's initial list is a create event. Without this check a restart re-sent every CommitStatus to the
-// SCM, hundreds of write calls that changed nothing. Skipping also means a status deleted on the SCM side is
-// not restored by a restart; the controller never resynced it on a timer either.
+// SCM, hundreds of write calls that changed nothing, and woke every ChangeTransferPolicy on its SHA into a
+// second round of git work. Skipping also means a status the SCM no longer has, because it was deleted there
+// or because the GitRepository was repointed at another repository, is not restored by a restart: the
+// controller never resynced on a timer either, and a spec edit republishes.
 func commitStatusAlreadyPublished(cs *promoterv1alpha1.CommitStatus) bool {
 	if cs.Status.ObservedGeneration != cs.Generation || cs.Status.Sha != cs.Spec.Sha || cs.Status.Phase != cs.Spec.Phase {
 		return false
