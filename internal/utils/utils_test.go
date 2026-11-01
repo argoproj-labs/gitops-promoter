@@ -449,6 +449,75 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 			Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationSuccess)))
 		})
 
+		It("keeps lastTransitionTime when the Ready status did not change", func() {
+			var err error
+			earlier := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+			previousReady := &metav1.Condition{
+				Type:               string(conditions.Ready),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(conditions.ReconciliationSuccess),
+				Message:            "Reconciliation successful",
+				LastTransitionTime: earlier,
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			}()
+
+			persisted := &promoterv1alpha1.PromotionStrategy{}
+			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), persisted)).To(Succeed())
+			ready := meta.FindStatusCondition(persisted.Status.Conditions, string(conditions.Ready))
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.LastTransitionTime.Time).To(BeTemporally("==", earlier.Time))
+		})
+
+		It("keeps lastTransitionTime when a child-inherited not-Ready status repeats", func() {
+			var err error
+			earlier := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+			previousReady := &metav1.Condition{
+				Type:               string(conditions.Ready),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(conditions.ChangeTransferPolicyNotReady),
+				LastTransitionTime: earlier,
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				// Mimic InheritNotReadyConditionFromObjects, which stamps the current time on the condition it sets.
+				meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+					Type: string(conditions.Ready), Status: metav1.ConditionFalse,
+					Reason: string(conditions.ChangeTransferPolicyNotReady), Message: "child not ready",
+					LastTransitionTime: metav1.Now(),
+				})
+			}()
+
+			persisted := &promoterv1alpha1.PromotionStrategy{}
+			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), persisted)).To(Succeed())
+			ready := meta.FindStatusCondition(persisted.Status.Conditions, string(conditions.Ready))
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.LastTransitionTime.Time).To(BeTemporally("==", earlier.Time))
+		})
+
+		It("moves lastTransitionTime when the Ready status changes", func() {
+			var err error
+			earlier := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+			previousReady := &metav1.Condition{
+				Type:               string(conditions.Ready),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(conditions.ReconciliationError),
+				LastTransitionTime: earlier,
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			}()
+
+			persisted := &promoterv1alpha1.PromotionStrategy{}
+			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), persisted)).To(Succeed())
+			ready := meta.FindStatusCondition(persisted.Status.Conditions, string(conditions.Ready))
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			Expect(ready.LastTransitionTime.Time).To(BeTemporally(">", earlier.Time))
+		})
+
 		It("does not emit an event when the Ready condition did not transition", func() {
 			var err error
 			previousReady := &metav1.Condition{
