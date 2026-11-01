@@ -41,6 +41,9 @@ const (
 	extEmbeddedResource      = "x-kubernetes-embedded-resource"
 	// maxSchemaDepth bounds $ref resolution and schema expansion, guarding against recursive schemas.
 	maxSchemaDepth = 64
+	// fieldMetadata and fieldStatus are the resource fields the controller sets and the renderer drops.
+	fieldMetadata = "metadata"
+	fieldStatus   = "status"
 	// refreshMinAge is how old a cached schema must be before unknown fields trigger a re-fetch.
 	refreshMinAge = 10 * time.Second
 )
@@ -58,8 +61,12 @@ var TemplatePath = field.NewPath("spec", "template")
 //     expression somewhere below it, since the rule could read a value that is unknown until rendering, and rules
 //     on the root, which can read metadata the controller sets.
 //
-// Missing required fields are never reported: an expression or the controller may supply them. metadata is
-// checked for field names only, and status is ignored, as the renderer drops it.
+// A required field is reported only when nothing can supply it later: it is absent from an object written out in
+// the template (an expression replaces only its own field, so it cannot add a sibling), it is not under metadata
+// (the controller sets name and namespace), and, for CustomResourceDefinition kinds, it has no schema default (the
+// API server applies those first). Built-in kinds publish placeholder defaults such as name: {default: ""} on
+// fields the API server still requires, so their defaults do not count. Fields inside an expression's result are
+// never checked. metadata is checked for field names only, and status is ignored, as the renderer drops it.
 type Validator struct {
 	schemas *SchemaSource
 }
@@ -90,9 +97,9 @@ func (v *Validator) Validate(ctx context.Context, template map[string]any, gvk s
 
 // ValidateAgainst checks template against ks. See Validator.
 func ValidateAgainst(ctx context.Context, template map[string]any, ks *KindSchema) field.ErrorList {
-	c := &schemaWalker{components: ks.Components}
+	c := &schemaWalker{components: ks.Components, crd: ks.CRD}
 	var errs field.ErrorList
-	c.checkFields(ks.Root, template, TemplatePath, true, 0, &errs)
+	c.checkFields(ks.Root, template, TemplatePath, walkState{root: true, required: true}, 0, &errs)
 
 	literal, exprs := literalTemplate(template)
 	expanded := c.expand(ks.Root, []any{literal}, 0)
@@ -175,7 +182,7 @@ func literalTemplate(template map[string]any) (map[string]any, *exprTree) {
 	tree := &exprTree{}
 	body := make(map[string]any, len(template))
 	for k, v := range template {
-		if k == "metadata" || k == "status" {
+		if k == fieldMetadata || k == fieldStatus {
 			continue
 		}
 		body[k] = v
@@ -280,6 +287,17 @@ func containsExpr(v any) bool {
 // schemaWalker walks a template alongside an OpenAPI v3 schema, resolving $refs into components.
 type schemaWalker struct {
 	components map[string]*spec.Schema
+	// crd is true for CustomResourceDefinition kinds, whose schema defaults the API server applies before it
+	// checks required fields.
+	crd bool
+}
+
+// walkState is what checkFields carries down the template.
+type walkState struct {
+	// root is true for the template's top-level object.
+	root bool
+	// required reports missing required fields; it is off under metadata, which the controller completes.
+	required bool
 }
 
 // resolve follows $ref and the single-$ref allOf wrapper the API server publishes for nested structs.
@@ -336,62 +354,121 @@ func (w *schemaWalker) properties(s *spec.Schema, depth int) map[string]*spec.Sc
 
 // checkFields reports every map key in v that s does not declare. It does not look inside expression strings,
 // free-form maps, preserve-unknown-fields or int-or-string nodes.
-func (w *schemaWalker) checkFields(s *spec.Schema, v any, path *field.Path, isRoot bool, depth int, errs *field.ErrorList) {
+func (w *schemaWalker) checkFields(s *spec.Schema, v any, path *field.Path, state walkState, depth int, errs *field.ErrorList) {
 	s = w.resolve(s)
 	if s == nil || depth > maxSchemaDepth {
 		return
 	}
 	switch t := v.(type) {
 	case map[string]any:
-		if boolExtension(s, extPreserveUnknownFields) || boolExtension(s, extIntOrString) || s.Format == "int-or-string" {
-			return
-		}
-		props := w.properties(s, 0)
-		var additional *spec.Schema
-		if s.AdditionalProperties != nil {
-			if s.AdditionalProperties.Schema == nil {
-				if s.AdditionalProperties.Allows {
-					return
-				}
-			} else {
-				additional = s.AdditionalProperties.Schema
-			}
-		}
-		if len(props) == 0 && additional == nil {
-			return
-		}
-		embedded := boolExtension(s, extEmbeddedResource)
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		for _, k := range keys {
-			if isRoot && k == "status" {
-				continue
-			}
-			if prop, ok := props[k]; ok {
-				w.checkFields(prop, t[k], path.Child(k), false, depth+1, errs)
-				continue
-			}
-			if additional != nil {
-				w.checkFields(additional, t[k], path.Child(k), false, depth+1, errs)
-				continue
-			}
-			if (isRoot || embedded) && (k == "apiVersion" || k == "kind" || k == "metadata") {
-				continue
-			}
-			*errs = append(*errs, unknownField(path.Child(k), k, props))
-		}
+		w.checkObject(s, t, path, state, depth, errs)
 	case []any:
 		if s.Items == nil || s.Items.Schema == nil {
 			return
 		}
 		for i, item := range t {
-			w.checkFields(s.Items.Schema, item, path.Index(i), false, depth+1, errs)
+			w.checkFields(s.Items.Schema, item, path.Index(i), walkState{required: state.required}, depth+1, errs)
 		}
 	default:
 	}
+}
+
+// checkObject checks the keys of one object of the template against s (see checkFields).
+func (w *schemaWalker) checkObject(s *spec.Schema, object map[string]any, path *field.Path, state walkState, depth int, errs *field.ErrorList) {
+	if boolExtension(s, extPreserveUnknownFields) || boolExtension(s, extIntOrString) || s.Format == "int-or-string" {
+		return
+	}
+	props := w.properties(s, 0)
+	var additional *spec.Schema
+	if s.AdditionalProperties != nil {
+		if s.AdditionalProperties.Schema == nil {
+			if s.AdditionalProperties.Allows {
+				return
+			}
+		} else {
+			additional = s.AdditionalProperties.Schema
+		}
+	}
+	if len(props) == 0 && additional == nil {
+		return
+	}
+	resourceRoot := state.root || boolExtension(s, extEmbeddedResource)
+	if state.required {
+		w.checkRequired(s, object, props, path, resourceRoot, errs)
+	}
+	keys := make([]string, 0, len(object))
+	for k := range object {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if state.root && k == fieldStatus {
+			continue
+		}
+		child := walkState{required: state.required && (!resourceRoot || k != fieldMetadata)}
+		if prop, ok := props[k]; ok {
+			w.checkFields(prop, object[k], path.Child(k), child, depth+1, errs)
+			continue
+		}
+		if additional != nil {
+			w.checkFields(additional, object[k], path.Child(k), child, depth+1, errs)
+			continue
+		}
+		if resourceRoot && isTypeOrObjectMeta(k) {
+			continue
+		}
+		*errs = append(*errs, unknownField(path.Child(k), k, props))
+	}
+}
+
+// isTypeOrObjectMeta reports whether key is apiVersion, kind, or metadata, which every resource root accepts.
+func isTypeOrObjectMeta(key string) bool {
+	return key == "apiVersion" || key == "kind" || key == fieldMetadata
+}
+
+// checkRequired reports the required properties of s that object lacks. object is written out in the template, so
+// nothing can add a missing key later: an expression only replaces its own field's value. On a resource root the
+// controller sets metadata and the renderer drops status, so those are skipped there.
+func (w *schemaWalker) checkRequired(s *spec.Schema, object map[string]any, props map[string]*spec.Schema, path *field.Path, resourceRoot bool, errs *field.ErrorList) {
+	for _, name := range w.required(s, 0) {
+		if _, ok := object[name]; ok {
+			continue
+		}
+		if resourceRoot && (isTypeOrObjectMeta(name) || name == fieldStatus) {
+			continue
+		}
+		if w.crd && hasDefault(props[name], w) {
+			continue
+		}
+		*errs = append(*errs, field.Required(path.Child(name), ""))
+	}
+}
+
+// required returns the required property names of s, including those of its allOf branches, sorted.
+func (w *schemaWalker) required(s *spec.Schema, depth int) []string {
+	if depth > maxSchemaDepth {
+		return nil
+	}
+	names := slices.Clone(s.Required)
+	for i := range s.AllOf {
+		if b := w.resolve(&s.AllOf[i]); b != nil {
+			names = append(names, w.required(b, depth+1)...)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}
+
+// hasDefault reports whether the property schema, or the schema it references, declares a default.
+func hasDefault(prop *spec.Schema, w *schemaWalker) bool {
+	if prop == nil {
+		return false
+	}
+	if prop.Default != nil {
+		return true
+	}
+	resolved := w.resolve(prop)
+	return resolved != nil && resolved.Default != nil
 }
 
 func unknownField(path *field.Path, key string, props map[string]*spec.Schema) *field.Error {

@@ -36,6 +36,8 @@ import (
 const (
 	componentsRefPrefix = "#/components/schemas/"
 	gvkExtension        = "x-kubernetes-group-version-kind"
+	// crdDocumentTitle is the info.title the API server gives the OpenAPI document of CustomResourceDefinition groups.
+	crdDocumentTitle = "Kubernetes CRD Swagger"
 	// DefaultSchemaTTL is how long a GroupVersion's published OpenAPI document is reused before it is fetched again.
 	DefaultSchemaTTL = 5 * time.Minute
 )
@@ -54,6 +56,9 @@ type KindSchema struct {
 	fetched time.Time
 	// GVK is the kind the schema describes.
 	GVK schema.GroupVersionKind
+	// CRD is true when the kind is served from a CustomResourceDefinition, whose schema defaults the API server
+	// applies before validation. The API server titles CRD documents "Kubernetes CRD Swagger".
+	CRD bool
 }
 
 // SchemaSource reads kind schemas from the API server's /openapi/v3 endpoint and caches each GroupVersion
@@ -111,7 +116,13 @@ func (s *SchemaSource) fetch(gvk schema.GroupVersionKind) (*KindSchema, error) {
 	var found *KindSchema
 	for _, root := range doc.Components.Schemas {
 		if slices.Contains(schemaGVKs(root), gvk) {
-			found = &KindSchema{GVK: gvk, Root: root, Components: doc.Components.Schemas, fetched: s.now()}
+			found = &KindSchema{
+				GVK:        gvk,
+				Root:       root,
+				Components: doc.Components.Schemas,
+				fetched:    s.now(),
+				CRD:        doc.Info != nil && doc.Info.Title == crdDocumentTitle,
+			}
 			break
 		}
 	}
