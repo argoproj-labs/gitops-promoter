@@ -318,7 +318,11 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 // of all matching apps.
 func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*argocd.Application, error) {
 	aggregates := map[string][]*argocd.Application{}
-	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
+	appCount := 0
+	for _, clusterApps := range apps {
+		appCount += len(clusterApps.Items)
+	}
+	argoCDCommitStatus.Status.ApplicationsSelected = make([]promoterv1alpha1.ApplicationsSelected, 0, appCount)
 	repo := ""
 
 	for _, clusterApps := range apps {
@@ -374,8 +378,8 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 func sortApplicationsSelected(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus) {
 	slices.SortFunc(argoCDCommitStatus.Status.ApplicationsSelected, func(a promoterv1alpha1.ApplicationsSelected, b promoterv1alpha1.ApplicationsSelected) int {
 		if a.Environment != b.Environment {
-			aIdx, _ := utils.GetEnvironmentByBranch(*promotionStrategy, a.Environment)
-			bIdx, _ := utils.GetEnvironmentByBranch(*promotionStrategy, b.Environment)
+			aIdx, _ := utils.GetEnvironmentByBranch(promotionStrategy, a.Environment)
+			bIdx, _ := utils.GetEnvironmentByBranch(promotionStrategy, b.Environment)
 
 			// These shouldn't be equal, but it's technically possible, for example if the environment isn't found in
 			// the promotion strategy.
@@ -472,9 +476,16 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 			// Use labels from the watch event object so Application deletions still enqueue reconciliation.
 			appLabels := labels.Set(argoCDApplication.GetLabels())
 
-			// lookup the ArgoCDCommitStatus objects in the local cluster
+			// Look up the ArgoCDCommitStatus objects in the local cluster. This runs once per Application event on
+			// the informer's single delivery goroutine, so a cluster with tens of thousands of Applications calls
+			// it tens of thousands of times at startup. The items are only read, so skip the deep copy (every
+			// ArgoCDCommitStatus carries a status entry per selected Application) and skip the read-your-writes
+			// barrier: the reconcilers write ArgoCDCommitStatus status continuously, and waiting for each write
+			// to round-trip through the informer serialized event delivery behind those writes. A gate created
+			// moments ago that the cache has not seen yet is reconciled by its own create event.
 			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
-			if err := mgr.GetLocalManager().GetClient().List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
+			if err := mgr.GetLocalManager().GetClient().List(ctx, &argoCDCommitStatusList,
+				client.UnsafeDisableDeepCopy, client.DisableReadYourWritesConsistency); err != nil {
 				logger.Error(err, "failed to list ArgoCDCommitStatus objects")
 				return nil
 			}
@@ -487,7 +498,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 					logger.Error(err, "failed to parse label selector")
 				}
 				if err == nil && selector.Matches(appLabels) {
-					logger.Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					logger.V(4).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
