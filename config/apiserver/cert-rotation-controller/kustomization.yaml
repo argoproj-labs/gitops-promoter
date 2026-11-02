@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Controller side of the built-in dashboard serving certs (see ../certs-cert-controller):
+# runs the controller-manager with --apiserver-cert-rotation and grants it the extra
+# permissions cert-controller needs. Include it in an overlay that contains the controller
+# (config/default or config/namespaced) together with ../certs-cert-controller.
+
+resources:
+  - rbac.yaml
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: promoter-controller-manager
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --apiserver-cert-rotation

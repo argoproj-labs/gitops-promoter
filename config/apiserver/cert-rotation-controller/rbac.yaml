@@ -1,7 +1,7 @@
 ---
-# cert-controller reads and updates the serving-cert Secret. Its informer lists/watches
-# Secrets in the install namespace (list/watch cannot be narrowed by resourceNames), while
-# writes are restricted to the serving-cert Secret.
+# cert-controller (running in the controller-manager) updates the dashboard apiserver's
+# serving-cert Secret. The controller already reads Secrets in its namespace, so only
+# update on this one Secret is added.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -12,14 +12,6 @@ metadata:
     app.kubernetes.io/part-of: promoter
     app.kubernetes.io/managed-by: kustomize
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
   - apiGroups:
       - ""
     resources:
@@ -44,10 +36,10 @@ roleRef:
   name: promoter-apiserver-cert-rotation
 subjects:
   - kind: ServiceAccount
-    name: promoter-apiserver
+    name: promoter-controller-manager
     namespace: promoter-system
 ---
-# cert-controller injects the generated CA into the APIService .spec.caBundle.
+# cert-controller injects the generated CA into the dashboard APIService .spec.caBundle.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -88,5 +80,5 @@ roleRef:
   name: promoter-apiserver-cert-rotation
 subjects:
   - kind: ServiceAccount
-    name: promoter-apiserver
+    name: promoter-controller-manager
     namespace: promoter-system

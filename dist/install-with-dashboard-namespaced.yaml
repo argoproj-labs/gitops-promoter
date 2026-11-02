@@ -10077,14 +10077,6 @@ metadata:
 rules:
 - apiGroups:
   - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
   resourceNames:
   - promoter-apiserver-serving-cert
   resources:
@@ -11537,7 +11529,7 @@ roleRef:
   name: promoter-apiserver-cert-rotation
 subjects:
 - kind: ServiceAccount
-  name: promoter-apiserver
+  name: promoter-controller-manager
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -11631,7 +11623,7 @@ roleRef:
   name: promoter-apiserver-cert-rotation
 subjects:
 - kind: ServiceAccount
-  name: promoter-apiserver
+  name: promoter-controller-manager
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -11744,7 +11736,7 @@ spec:
         - --secure-port=6443
         - --tls-cert-file=/serving-certs/tls.crt
         - --tls-private-key-file=/serving-certs/tls.key
-        - --cert-rotation
+        - --wait-for-serving-cert
         command:
         - /usr/bin/tini
         - --
@@ -11854,6 +11846,7 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+        - --apiserver-cert-rotation
         command:
         - /usr/bin/tini
         - --

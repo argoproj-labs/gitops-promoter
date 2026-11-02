@@ -12,8 +12,8 @@ GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucke
 ## Installation
 
 GitOps Promoter publishes several install bundles per release. The **preferred** method
-installs the controller together with the dashboard aggregation API, which issues, rotates and
-injects its own serving cert using the built-in
+installs the controller together with the dashboard aggregation API. The controller issues,
+rotates and injects the dashboard API's serving cert using the built-in
 [cert-controller](https://github.com/open-policy-agent/cert-controller) — a single apply with no
 extra dependencies and nothing else to set up. If you already run
 [cert-manager](https://cert-manager.io/), or want to supply your own cert, bundles for those
@@ -25,9 +25,9 @@ Reconciles resources in all namespaces. This is the default.
 
 /// tab | Built-in certs (recommended)
 
-Installs the controller and the dashboard API in one apply. The dashboard apiserver generates a
-self-signed serving cert, keeps it rotated, and keeps the `APIService` `caBundle` injected
-automatically — no cert-manager required:
+Installs the controller and the dashboard API in one apply. The controller generates a
+self-signed serving cert for the dashboard API, keeps it rotated, and keeps the `APIService`
+`caBundle` injected automatically — no cert-manager required:
 
 ```bash
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard.yaml
@@ -66,9 +66,9 @@ See [Install modes](advanced-usage/multi-tenancy.md#install-modes) for details a
 
 /// tab | Built-in certs (recommended)
 
-Installs the controller and the dashboard API in one apply. The dashboard apiserver generates a
-self-signed serving cert, keeps it rotated, and keeps the `APIService` `caBundle` injected
-automatically — no cert-manager required:
+Installs the controller and the dashboard API in one apply. The controller generates a
+self-signed serving cert for the dashboard API, keeps it rotated, and keeps the `APIService`
+`caBundle` injected automatically — no cert-manager required:
 
 ```bash
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-namespaced.yaml

@@ -187,8 +187,8 @@ var _ = Describe("controller", Ordered, func() {
 
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
-		// APIService) using the default cert-controller overlay (the apiserver issues,
-		// rotates and injects its own serving cert), then verifies the virtual PromotionStrategyDetails resource is
+		// APIService) using the default cert-controller overlay (the controller-manager
+		// issues, rotates and injects the serving cert), then verifies the virtual PromotionStrategyDetails resource is
 		// served and reacts to changes. It is opt-in via RUN_APISERVER_E2E because it
 		// requires the aggregation apiserver image and serving certs to be wired into
 		// the Kind cluster; enable it once that wiring is validated in CI.
@@ -203,6 +203,17 @@ var _ = Describe("controller", Ordered, func() {
 			By("deploying the dashboard aggregation apiserver (cert-controller overlay)")
 			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-cert-controller")
 			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("enabling serving-cert rotation in the controller-manager")
+			cmd = exec.Command("kubectl", "apply", "-f", "config/apiserver/cert-rotation-controller/rbac.yaml")
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			enableRotation := `[{"op":"add","path":"/spec/template/spec/containers/0/args/-",` +
+				`"value":"--apiserver-cert-rotation"}]`
+			cmd = exec.Command("kubectl", "patch", "deployment", "promoter-controller-manager", "-n", namespace,
+				"--type=json", "-p", enableRotation)
+			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("pointing the apiserver deployment at the e2e image")

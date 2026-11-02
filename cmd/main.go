@@ -34,6 +34,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/certrotation"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -84,6 +85,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	apiserverCertRotation := certrotation.NewOptions()
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -96,6 +98,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				&apiserverCertRotation,
 				clientConfig,
 			)
 		},
@@ -111,6 +114,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	apiserverCertRotation.AddFlags(cmd.Flags())
 
 	return cmd
 }
@@ -123,6 +127,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	apiserverCertRotation *certrotation.Options,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -132,6 +137,11 @@ func runController(
 	}
 	if controllerNamespace == "" {
 		return errors.New("kubeconfig must set a default (install) namespace")
+	}
+	// The dashboard apiserver is installed alongside the controller, in the same namespace.
+	apiserverCertRotation.Namespace = controllerNamespace
+	if err := apiserverCertRotation.Validate(); err != nil {
+		return fmt.Errorf("invalid apiserver cert rotation options: %w", err)
 	}
 
 	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
@@ -268,6 +278,17 @@ func runController(
 	}
 
 	localManager := mcMgr.GetLocalManager()
+
+	if apiserverCertRotation.Enabled {
+		// Issue, rotate and inject the dashboard apiserver's serving cert. Runs only on the
+		// elected leader; an error stops the controller so the pod restarts.
+		setupLog.Info("enabling dashboard apiserver serving-cert rotation",
+			"secret", apiserverCertRotation.Namespace+"/"+apiserverCertRotation.SecretName,
+			"apiService", apiserverCertRotation.APIServiceName)
+		if err := localManager.Add(certrotation.Runnable(restConfig, apiserverCertRotation)); err != nil {
+			panic(fmt.Errorf("unable to add apiserver cert rotation: %w", err))
+		}
+	}
 
 	if err := localManager.Add(
 		metrics.NewResourceCountRunnable(localManager.GetCache(), clusterScmProviderEnabled),
@@ -656,9 +677,6 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("read startup config: %w", err)
 			}
 			opts.ClusterScmProviderMode = clusterScmProviderMode
-			if opts.CertRotation.Namespace == "" {
-				opts.CertRotation.Namespace = namespace
-			}
 			if scope == promoterv1alpha1.ControllerScopeNamespace {
 				setupLog.Info("restricting read cache to install namespace", "namespace", namespace)
 				opts.Namespace = namespace

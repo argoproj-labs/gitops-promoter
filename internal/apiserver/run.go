@@ -20,8 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -124,32 +127,16 @@ func Run(ctx context.Context, restConfig *clientrest.Config, opts *Options) erro
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var certRotationErr <-chan error
-	if opts.CertRotation.Enabled {
+	if opts.WaitForServingCert {
 		certKey := opts.RecommendedOptions.SecureServing.ServerCert.CertKey
-		ready, errCh, err := startCertRotation(ctx, restConfig, &opts.CertRotation, certKey.CertFile, certKey.KeyFile)
-		if err != nil {
-			return err
-		}
-		certRotationErr = errCh
 		// The serving cert files must exist before the apiserver config is built (they are
-		// loaded eagerly and then reloaded on change), so wait for the rotator to write the
-		// Secret, for kubelet to project it into the pod, and for the CA to be injected.
-		log.Info("waiting for cert-controller to provision the serving certificate",
-			"secret", opts.CertRotation.Namespace+"/"+opts.CertRotation.SecretName)
-		select {
-		case <-ready:
-			log.Info("serving certificate is ready")
-		case err := <-errCh:
-			if err == nil {
-				err = errors.New("cert rotation stopped before the serving certificate was ready")
+		// loaded eagerly and then reloaded on change). With the built-in cert rotation the
+		// controller-manager populates the mounted Secret after this pod starts.
+		if err := waitForServingCert(ctx, certKey.CertFile, certKey.KeyFile, servingCertPollInterval); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
 			}
 			return err
-		case <-ctx.Done():
-			return nil
 		}
 	}
 
@@ -157,23 +144,32 @@ func Run(ctx context.Context, restConfig *clientrest.Config, opts *Options) erro
 	if err != nil {
 		return err
 	}
+	return runtime.run(ctx)
+}
 
-	runErr := make(chan error, 1)
-	go func() { runErr <- runtime.run(ctx) }()
+const servingCertPollInterval = 2 * time.Second
 
-	select {
-	case err := <-runErr:
-		cancel()
-		if certRotationErr != nil {
-			if rotErr := <-certRotationErr; rotErr != nil {
-				log.Error(rotErr, "cert rotation stopped with error during shutdown")
+// waitForServingCert blocks until certFile and keyFile both exist and are non-empty, or ctx
+// is done.
+func waitForServingCert(ctx context.Context, certFile, keyFile string, interval time.Duration) error {
+	present := func() bool {
+		for _, f := range []string{certFile, keyFile} {
+			if st, err := os.Stat(f); err != nil || st.Size() == 0 {
+				return false
 			}
 		}
-		return err
-	case rotErr := <-certRotationErr:
-		// The rotator stopped (e.g. it could not mount or inject certs); stop serving so the
-		// pod restarts rather than silently running with certs that will no longer rotate.
-		cancel()
-		return errors.Join(rotErr, <-runErr)
+		return true
 	}
+	if present() {
+		return nil
+	}
+	log.Info("waiting for the serving certificate to be mounted", "certFile", certFile, "keyFile", keyFile)
+	err := wait.PollUntilContextCancel(ctx, interval, false, func(context.Context) (bool, error) {
+		return present(), nil
+	})
+	if err != nil {
+		return fmt.Errorf("waiting for serving certificate: %w", err)
+	}
+	log.Info("serving certificate is mounted")
+	return nil
 }

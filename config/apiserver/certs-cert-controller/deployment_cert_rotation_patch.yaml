@@ -1,12 +1,13 @@
-# Enable the built-in cert-controller. It writes tls.crt/tls.key into the
-# promoter-apiserver-serving-cert Secret, which the base Deployment mounts at
-# /serving-certs (the directory of --tls-cert-file/--tls-private-key-file).
+# The promoter-apiserver-serving-cert Secret starts empty and is populated by the
+# controller-manager (--apiserver-cert-rotation). The base Deployment mounts it at
+# /serving-certs (the directory of --tls-cert-file/--tls-private-key-file); wait for the
+# files to appear instead of failing at startup.
 - op: add
   path: /spec/template/spec/containers/0/args/-
-  value: --cert-rotation
-# On first install the apiserver only starts serving once kubelet has projected the
-# freshly-populated Secret into the pod, which can take a minute or more. Give it up to
-# 5 minutes before the liveness probe takes over.
+  value: --wait-for-serving-cert
+# On first install the apiserver only starts serving once the controller-manager has issued
+# the cert and kubelet has projected the Secret into the pod, which can take a minute or
+# more. Give it up to 5 minutes before the liveness probe takes over.
 - op: add
   path: /spec/template/spec/containers/0/startupProbe
   value:

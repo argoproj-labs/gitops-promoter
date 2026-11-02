@@ -17,6 +17,7 @@ limitations under the License.
 package apiserver
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -41,8 +42,11 @@ type Options struct {
 	Namespace string
 	// ClusterScmProviderMode controls whether ClusterScmProviders are read. Empty means enabled.
 	ClusterScmProviderMode promoterv1alpha1.FeatureMode
-	// CertRotation configures built-in serving-cert management (cert-controller).
-	CertRotation CertRotationOptions
+	// WaitForServingCert makes the server wait for --tls-cert-file and
+	// --tls-private-key-file to exist before it starts. Used when the serving cert is
+	// issued at runtime (by the controller-manager's built-in cert rotation) into a
+	// Secret that is mounted into the pod.
+	WaitForServingCert bool
 }
 
 // NewOptions returns Options with sane defaults for the dashboard apiserver.
@@ -52,7 +56,6 @@ func NewOptions() *Options {
 			"",
 			Codecs.LegacyCodec(viewv1alpha1.SchemeGroupVersion),
 		),
-		CertRotation: newCertRotationOptions(),
 	}
 	// Virtual resource: nothing is persisted, so there is no etcd backend.
 	o.RecommendedOptions.Etcd = nil
@@ -78,7 +81,10 @@ func NewOptions() *Options {
 // AddFlags registers the apiserver flags (secure serving, delegated auth, etc.).
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	o.RecommendedOptions.AddFlags(fs)
-	o.CertRotation.AddFlags(fs)
+	fs.BoolVar(&o.WaitForServingCert, "wait-for-serving-cert", o.WaitForServingCert,
+		"Wait for --tls-cert-file and --tls-private-key-file to exist before starting, instead of failing. "+
+			"Use when the serving cert Secret is populated after the pod starts, e.g. by the controller-manager's "+
+			"--apiserver-cert-rotation.")
 }
 
 // Validate validates the options.
@@ -88,8 +94,8 @@ func (o *Options) Validate() error {
 		return fmt.Errorf("invalid apiserver options: %v", errs)
 	}
 	certKey := o.RecommendedOptions.SecureServing.ServerCert.CertKey
-	if err := o.CertRotation.Validate(certKey.CertFile, certKey.KeyFile); err != nil {
-		return fmt.Errorf("invalid apiserver options: %w", err)
+	if o.WaitForServingCert && (certKey.CertFile == "" || certKey.KeyFile == "") {
+		return errors.New("invalid apiserver options: --wait-for-serving-cert requires --tls-cert-file and --tls-private-key-file")
 	}
 	return nil
 }

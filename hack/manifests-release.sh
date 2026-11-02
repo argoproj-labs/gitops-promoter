@@ -42,7 +42,7 @@ build_bundle() {
 # Combined bundles: the controller PLUS the dashboard aggregation apiserver in a single
 # file, so installing the dashboard is one `kubectl apply`. We ship three variants so users
 # can pick their serving-cert strategy:
-#   * (default):    the apiserver's built-in cert-controller issues, rotates and injects the
+#   * (default):    the controller-manager's built-in cert-controller issues, rotates and injects the
 #                   serving cert. No external dependency.
 #   * cert-manager: cert-manager issues and rotates the serving cert.
 #   * byo-cert:     no cert-manager; the operator provides the serving cert + caBundle.

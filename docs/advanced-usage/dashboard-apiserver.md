@@ -54,7 +54,7 @@ file:
 
 | Bundle | Serving cert | Built from |
 |---|---|---|
-| `install-with-dashboard.yaml` (default) | built-in cert-controller issues, rotates and injects it | `config/apiserver/release-combined-cert-controller` |
+| `install-with-dashboard.yaml` (default) | the controller-manager's built-in cert-controller issues, rotates and injects it | `config/apiserver/release-combined-cert-controller` |
 | `install-with-dashboard-cert-manager.yaml` | cert-manager issues and rotates it | `config/apiserver/release-combined-cert-manager` |
 | `install-with-dashboard-byo-cert.yaml` | you supply the Secret + `caBundle` | `config/apiserver/release-combined-byo-cert` |
 
@@ -71,44 +71,54 @@ supported; the built-in cert-controller is the default used by `install-with-das
 
 ### Default - built-in cert-controller (no cert-manager)
 
-```bash
-kubectl apply -k config/apiserver/certs-cert-controller
-```
+This is what `install-with-dashboard.yaml` uses. It has two halves:
 
-The apiserver runs with `--cert-rotation`, which embeds
-[open-policy-agent/cert-controller](https://github.com/open-policy-agent/cert-controller).
-On startup it:
+- `config/apiserver/certs-cert-controller` ships the (empty) `promoter-apiserver-serving-cert`
+  Secret and runs the apiserver with `--wait-for-serving-cert`.
+- The `config/apiserver/cert-rotation-controller` component runs the **controller-manager** with
+  `--apiserver-cert-rotation` and grants it the extra RBAC. The `release-combined-cert-controller`
+  overlays include both.
+
+With `--apiserver-cert-rotation`, the controller-manager runs
+[open-policy-agent/cert-controller](https://github.com/open-policy-agent/cert-controller) on its
+elected leader. It:
 
 1. generates a self-signed CA and a serving cert with SANs
    `promoter-apiserver.promoter-system[.svc[.cluster.local]]` and writes them into the
-   `promoter-apiserver-serving-cert` Secret (shipped empty by the overlay);
-2. waits for kubelet to project the Secret into the pod at `/serving-certs`;
-3. injects the CA into `APIService.spec.caBundle`;
-4. only then starts serving, and keeps rotating the CA and serving cert before they expire
-   (the apiserver reloads the cert files from disk, so no restart is needed).
+   `promoter-apiserver-serving-cert` Secret;
+2. injects the CA into `APIService.spec.caBundle`;
+3. keeps rotating the CA and serving cert before they expire.
 
-The overlay adds RBAC for this: `get/list/watch` on Secrets in `promoter-system` plus `update`
-on the serving-cert Secret only, and `get/list/watch` on APIServices plus `update` on
-`v1alpha1.view.promoter.argoproj.io` only.
+The apiserver mounts the Secret at `/serving-certs` and, with `--wait-for-serving-cert`, waits
+for kubelet to project the files before it starts serving. It reloads the cert files when
+they change, so rotation needs no restart.
 
-Related flags (defaults match the shipped manifests):
+RBAC:
+
+- **Apiserver:** no Secret access at all; it only mounts the Secret.
+- **Controller-manager:** it already reads Secrets in its namespace. The component adds only
+  `update` on the `promoter-apiserver-serving-cert` Secret, plus `get/list/watch` on APIServices
+  and `update` on `v1alpha1.view.promoter.argoproj.io`.
+
+Related controller-manager flags (defaults match the shipped manifests):
 
 | Flag | Default |
 |---|---|
-| `--cert-rotation` | `false` (set to `true` by the overlay) |
-| `--cert-rotation-secret-name` | `promoter-apiserver-serving-cert` |
-| `--cert-rotation-service-name` | `promoter-apiserver` |
-| `--cert-rotation-apiservice-name` | `v1alpha1.view.promoter.argoproj.io` |
+| `--apiserver-cert-rotation` | `false` (set to `true` by the component) |
+| `--apiserver-cert-rotation-secret-name` | `promoter-apiserver-serving-cert` |
+| `--apiserver-cert-rotation-service-name` | `promoter-apiserver` |
+| `--apiserver-cert-rotation-apiservice-name` | `v1alpha1.view.promoter.argoproj.io` |
 
-The serving-cert Secret and the Service DNS name use the apiserver's own namespace.
+The Secret and the Service are assumed to be in the controller-manager's namespace.
 
-The cert files are written to the directory of `--tls-cert-file`/`--tls-private-key-file`,
-which must be where the Secret is mounted.
+If you apply `config/apiserver/certs-cert-controller` on its own, also run the
+controller-manager with `--apiserver-cert-rotation` and apply
+`config/apiserver/cert-rotation-controller/rbac.yaml`.
 
 > [!NOTE]
 > GitOps tools such as Argo CD need no `ignoreDifferences` for this. The shipped manifests
 > never set the `promoter-apiserver-serving-cert` Secret's `.data` or the `APIService`'s
-> `.spec.caBundle`; the apiserver writes them at runtime under its own field manager,
+> `.spec.caBundle`; the controller-manager writes them at runtime under its own field manager,
 > `promoter-apiserver-cert-rotator`. Re-applying the manifests (client-side or server-side
 > apply) leaves them untouched. Avoid `Replace=true` syncs on these two objects, and don't add
 > those fields to your own copy of the manifests: either would overwrite the generated values
@@ -166,9 +176,9 @@ This sets `insecureSkipTLSVerify: true` on the `APIService`. **Not production-sa
 
 ## Cert rotation
 
-- **Built-in cert-controller (default):** rotation is automatic; the apiserver regenerates the
-  serving cert (and the CA when needed) before expiry, updates the Secret, re-injects the
-  `caBundle`, and reloads the new cert without a restart.
+- **Built-in cert-controller (default):** rotation is automatic; the controller-manager
+  regenerates the serving cert (and the CA when needed) before expiry, updates the Secret and
+  re-injects the `caBundle`, and the apiserver reloads the new cert without a restart.
 - **cert-manager (Path B):** rotation is automatic; ca-injector re-syncs the
   `caBundle` when the `Certificate` is renewed.
 - **Manual (Path A):** re-run `make apiserver-certs` and restart the apiserver
