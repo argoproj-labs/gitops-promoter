@@ -50,6 +50,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
+	"k8s.io/apimachinery/pkg/api/equality"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 // WebRequestCommitStatusReconciler reconciles WebRequestCommitStatus resources by running HTTP requests
@@ -188,7 +190,8 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client),
+			builder.WithPredicates(webRequestCommitStatusPromotionStrategyPredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)
@@ -673,4 +676,24 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 		return "", err
 	}
 	return allowed, nil
+}
+
+// webRequestCommitStatusPromotionStrategyPredicate limits the PromotionStrategy watch to updates this gate can
+// act on. Unlike the other gates, WebRequestCommitStatus hands the whole PromotionStrategy to user templates
+// and trigger expressions (TemplateData.PromotionStrategy), so any field of status.environments may matter:
+// the documented examples read proposed.commitStatuses, and templates can read pull request state or health
+// history. The predicate therefore passes an update on a spec change or on any change to status.environments,
+// and drops only what no expression can see: conditions, observedGeneration and instanceID. Creates, deletes
+// and generic events pass unchanged.
+func webRequestCommitStatusPromotionStrategyPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew || oldPS.Generation != newPS.Generation {
+				return true
+			}
+			return !equality.Semantic.DeepEqual(oldPS.Status.Environments, newPS.Status.Environments)
+		},
+	}
 }
