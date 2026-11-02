@@ -187,7 +187,7 @@ var _ = Describe("controller", Ordered, func() {
 
 	Context("Dashboard Aggregation API", func() {
 		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
-		// APIService) using the default cert-controller overlay (the controller-manager
+		// APIService) using the certs-builtin overlay (the controller-manager
 		// issues, rotates and injects the serving cert), then verifies the virtual PromotionStrategyDetails resource is
 		// served and reacts to changes. It is opt-in via RUN_APISERVER_E2E because it
 		// requires the aggregation apiserver image and serving certs to be wired into
@@ -200,13 +200,13 @@ var _ = Describe("controller", Ordered, func() {
 			imageTag := "0.0.0-test-e2e"
 			projectimage := "quay.io/argoprojlabs/gitops-promoter:" + imageTag
 
-			By("deploying the dashboard aggregation apiserver (cert-controller overlay)")
-			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-cert-controller")
+			By("deploying the dashboard aggregation apiserver (certs-builtin overlay)")
+			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-builtin")
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("enabling serving-cert rotation in the controller-manager")
-			cmd = exec.Command("kubectl", "apply", "-f", "config/apiserver/cert-rotation-controller/rbac.yaml")
+			cmd = exec.Command("kubectl", "apply", "-f", "config/apiserver/certs-builtin-controller/rbac.yaml")
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			enableRotation := `[{"op":"add","path":"/spec/template/spec/containers/0/args/-",` +

@@ -156,7 +156,7 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 			RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "manager-role"},
 			Subjects:   []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: controllerSA, Namespace: ns}},
 		})).To(Succeed())
-		for _, obj := range loadManifests(filepath.Join("..", "..", "config", "apiserver", "cert-rotation-controller", "rbac.yaml")) {
+		for _, obj := range loadManifests(filepath.Join("..", "..", "config", "apiserver", "certs-builtin-controller", "rbac.yaml")) {
 			Expect(cl.Create(ctx, obj)).To(Succeed(), "creating %s %s", obj.GetKind(), obj.GetName())
 		}
 		saCfg := clientrest.CopyConfig(cfg)

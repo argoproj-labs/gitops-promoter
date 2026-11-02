@@ -1,10 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
-# Controller side of the built-in dashboard serving certs (see ../certs-cert-controller):
+# Controller-manager side of the built-in dashboard serving certs (see ../certs-builtin):
 # runs the controller-manager with --apiserver-cert-rotation and grants it the extra
 # permissions cert-controller needs. Include it in an overlay that contains the controller
-# (config/default or config/namespaced) together with ../certs-cert-controller.
+# (config/default or config/namespaced) together with ../certs-builtin.
 
 resources:
   - rbac.yaml

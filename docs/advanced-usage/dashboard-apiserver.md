@@ -54,7 +54,7 @@ file:
 
 | Bundle | Serving cert | Built from |
 |---|---|---|
-| `install-with-dashboard.yaml` (default) | the controller-manager's built-in cert-controller issues, rotates and injects it | `config/apiserver/release-combined-cert-controller` |
+| `install-with-dashboard.yaml` (default) | the controller-manager's built-in cert-controller issues, rotates and injects it | `config/apiserver/release-combined-builtin` |
 | `install-with-dashboard-cert-manager.yaml` | cert-manager issues and rotates it | `config/apiserver/release-combined-cert-manager` |
 | `install-with-dashboard-byo-cert.yaml` | you supply the Secret + `caBundle` | `config/apiserver/release-combined-byo-cert` |
 
@@ -73,10 +73,10 @@ supported; the built-in cert-controller is the default used by `install-with-das
 
 This is what `install-with-dashboard.yaml` uses. It has two halves:
 
-- `config/apiserver/certs-cert-controller` ships the (empty) `promoter-apiserver-serving-cert`
+- `config/apiserver/certs-builtin` ships the (empty) `promoter-apiserver-serving-cert`
   Secret and runs the apiserver with `--wait-for-serving-cert`.
-- The `config/apiserver/cert-rotation-controller` component runs the **controller-manager** with
-  `--apiserver-cert-rotation` and grants it the extra RBAC. The `release-combined-cert-controller`
+- The `config/apiserver/certs-builtin-controller` component runs the **controller-manager** with
+  `--apiserver-cert-rotation` and grants it the extra RBAC. The `release-combined-builtin`
   overlays include both.
 
 With `--apiserver-cert-rotation`, the controller-manager runs
@@ -111,9 +111,9 @@ Related controller-manager flags (defaults match the shipped manifests):
 
 The Secret and the Service are assumed to be in the controller-manager's namespace.
 
-If you apply `config/apiserver/certs-cert-controller` on its own, also run the
+If you apply `config/apiserver/certs-builtin` on its own, also run the
 controller-manager with `--apiserver-cert-rotation` and apply
-`config/apiserver/cert-rotation-controller/rbac.yaml`.
+`config/apiserver/certs-builtin-controller/rbac.yaml`.
 
 > [!NOTE]
 > GitOps tools such as Argo CD need no `ignoreDifferences` for this. The shipped manifests

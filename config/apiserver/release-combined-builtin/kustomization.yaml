@@ -13,10 +13,10 @@ kind: Kustomization
 
 resources:
   - ../../default
-  - ../certs-cert-controller
+  - ../certs-builtin
 
 components:
-  - ../cert-rotation-controller
+  - ../certs-builtin-controller
 
 images:
   - name: quay.io/argoprojlabs/gitops-promoter

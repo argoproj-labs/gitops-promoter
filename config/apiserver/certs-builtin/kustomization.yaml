@@ -11,10 +11,10 @@ kind: Kustomization
 # makes the apiserver wait for it to be mounted at /serving-certs before it starts serving.
 # The apiserver needs no Secret permissions.
 #
-# The controller side is the ../cert-rotation-controller component, which the
-# release-combined-cert-controller overlays include. If you apply this overlay on its
-# own, also run the controller with --apiserver-cert-rotation and the RBAC in
-# ../cert-rotation-controller/rbac.yaml.
+# The controller-manager side is the ../certs-builtin-controller component, which the
+# release-combined-builtin overlays include. If you apply this overlay on its own, also
+# run the controller with --apiserver-cert-rotation and the RBAC in
+# ../certs-builtin-controller/rbac.yaml.
 
 resources:
   - ../base
