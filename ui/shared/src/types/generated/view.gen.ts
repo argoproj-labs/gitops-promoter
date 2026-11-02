@@ -2135,7 +2135,7 @@ export type components = {
             responseStatusCode?: number;
             /** @description Time is when the last HTTP request was made. */
             time?: components["schemas"]["Time"];
-            /** @description URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt for this environment (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            /** @description URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
             url?: string;
         };
         /** @description WebRequestCommitStatusLastSuccessfulShaItem records the last successful SHA for one branch in promotionstrategy context status. */
