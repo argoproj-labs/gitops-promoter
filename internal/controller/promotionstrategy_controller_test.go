@@ -1981,6 +1981,107 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					"app-one should re-read the shared active branch when the merge webhook arrives")
 			}, 30*time.Second).Should(Succeed())
 		})
+
+		// A squash-merging SCM (GitLab "squash commits" projects, Bitbucket and Azure DevOps squash
+		// strategies) lands a promotion as a single-parent commit, so the proposed branch tip never
+		// becomes part of the active branch's history. Once another app's promotion rewrites the
+		// shared root hydrator.metadata, a three-way merge of that idle proposed branch conflicts on
+		// the root file even though the app has nothing to promote. The fake SCM merges --no-ff, so
+		// this spec squashes app-two's promotion by hand.
+		It("should not rewrite an idle app's proposed branch when a sibling's promotion moves the shared active branch", func() {
+			activeRef := "origin/" + testBranchDevelopment
+			proposedTwo := path.Join(testBranchDevelopmentNext, activePathTwo)
+			ctpTwoName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyTwo.Name, testBranchDevelopment))
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			By("Turning off AutoMerge for app-two so the fake SCM does not merge --no-ff on its behalf")
+			Eventually(func(g Gomega) {
+				var latest promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategyTwo.Name, Namespace: promotionStrategyTwo.Namespace}, &latest)).To(Succeed())
+				latest.Spec.Environments[0].AutoMerge = new(false)
+				g.Expect(k8sClient.Update(ctx, &latest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Hydrating app-two; the promoter opens its pull request")
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry app-two")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: proposedTwo, ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwo},
+			}, "hydrate app-two", 0)).To(Succeed())
+			appTwoPR := types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, proposedTwo, testBranchDevelopment)),
+				Namespace: promotionStrategyTwo.Namespace,
+			}
+			Eventually(func(g Gomega) {
+				enqueueCTP(promotionStrategyTwo.Namespace, ctpTwoName)
+				g.Expect(k8sClient.Get(ctx, appTwoPR, &promoterv1alpha1.PullRequest{})).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Squash-merging app-two's pull request the way a squash-only SCM would")
+			_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+			Expect(err).NotTo(HaveOccurred())
+			proposedTwoTip, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+proposedTwo)
+			Expect(err).NotTo(HaveOccurred())
+			proposedTwoTip = strings.TrimSpace(proposedTwoTip)
+			activeBefore, err := runGitCmd(ctx, gitPath, "rev-parse", activeRef)
+			Expect(err).NotTo(HaveOccurred())
+			activeBefore = strings.TrimSpace(activeBefore)
+			squash, err := runGitCmd(ctx, gitPath, "commit-tree", proposedTwoTip+"^{tree}", "-p", activeBefore, "-m", "Squash-merge app-two promotion")
+			Expect(err).NotTo(HaveOccurred())
+			squash = strings.TrimSpace(squash)
+			_, err = runGitCmd(ctx, gitPath, "push", "origin", squash+":refs/heads/"+testBranchDevelopment)
+			Expect(err).NotTo(HaveOccurred())
+			sendWebhookForPush(ctx, activeBefore, testBranchDevelopment)
+			// The SCM would mark the pull request merged; the promoter then drops the PullRequest resource.
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Name: appTwoPR.Name, Namespace: appTwoPR.Namespace}}))).To(Succeed())
+			Eventually(func(g Gomega) {
+				enqueueCTP(promotionStrategyTwo.Namespace, ctpTwoName)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo), "the squash landed app-two's change on the shared active branch")
+				g.Expect(ctpTwo.Status.Proposed.Dry.Sha).To(Equal(dryShaTwo), "app-two has nothing left to promote")
+				g.Expect(ctpTwo.Status.Proposed.Hydrated.Sha).To(Equal(proposedTwoTip))
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, appTwoPR, &promoterv1alpha1.PullRequest{}))).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Promoting app-one normally; its merge rewrites the shared root hydrator.metadata")
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry app-one")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathOne), ActivePath: activePathOne, BootstrapBranch: testBranchDevelopment, DrySha: dryShaOne},
+			}, "hydrate app-one", 0)).To(Succeed())
+			Eventually(func(g Gomega) {
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				enqueueCTP(ctpOne.Namespace, ctpOne.Name)
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne), "app-one should promote onto the shared active branch")
+
+				_, fetchErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(fetchErr).NotTo(HaveOccurred())
+				rootMetadata, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, "hydrator.metadata")
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(rootMetadata).To(ContainSubstring(dryShaOne), "root hydrator.metadata now belongs to app-one")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-two, which has nothing to promote, keeps its proposed branch untouched")
+			Consistently(func(g Gomega) {
+				enqueueCTP(promotionStrategyTwo.Namespace, ctpTwoName)
+
+				_, fetchErr := runGitCmd(ctx, gitPath, "fetch", "origin", proposedTwo)
+				g.Expect(fetchErr).NotTo(HaveOccurred())
+				tip, revErr := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+proposedTwo)
+				g.Expect(revErr).NotTo(HaveOccurred())
+				g.Expect(strings.TrimSpace(tip)).To(Equal(proposedTwoTip), "an idle app's proposed branch must not gain promoter commits")
+
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				g.Expect(ctpTwo.Status.Proposed.Hydrated.Sha).To(Equal(proposedTwoTip), "app-two's proposed hydrated sha must not move")
+
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace(promotionStrategyTwo.Namespace))).To(Succeed())
+				g.Expect(hasEventWithReason(eventList, ctpTwoName, constants.ResolvedConflictReason)).To(BeFalse(), "no conflict resolution should run for an app with nothing to promote")
+			}, 8*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
