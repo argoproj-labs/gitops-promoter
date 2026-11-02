@@ -1028,30 +1028,51 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, revis
 	return strings.Split(strings.TrimSpace(stdout), "\n"), nil
 }
 
-// PathTip returns the newest first-parent commit reachable from revision whose tree at activePath differs
-// from its first parent's, or "" when no commit on that line touched the path. With --first-parent, git
-// compares each commit only to its first parent, so on a shared active branch a sibling environment's merge
-// (which touches only the sibling's path and the root hydrator.metadata) is skipped, and on a proposed
-// branch the promoter's path-scoped conflict-resolution merges (which keep the proposed path content) are
-// skipped. The result is the commit that last changed this environment.
+// GetRevListFirstParentForPath is GetRevListFirstParent restricted, when activePath is set, to the
+// first-parent commits whose tree at activePath differs from their first parent's. With --first-parent,
+// git compares each commit only to its first parent, so on a shared active branch a sibling environment's
+// merge (which touches only the sibling's path and the root hydrator.metadata) is skipped, and on a
+// proposed branch the promoter's path-scoped conflict-resolution merges (which keep the proposed path
+// content) are skipped. What remains are the commits that changed this environment. An empty activePath
+// applies no filter.
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the revision's commits to have been
 // fetched; the walk needs trees but no blobs, so it works on blob-less clones.
-func (g *EnvironmentOperations) PathTip(ctx context.Context, revision, activePath string) (string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParentForPath(ctx context.Context, revision string, maxCount int, activePath string) ([]string, error) {
+	if activePath == "" {
+		return g.GetRevListFirstParent(ctx, revision, maxCount)
+	}
 	logger := log.FromContext(ctx)
 
 	gitPath := g.ClonePath()
 	if gitPath == "" {
-		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "--first-parent", "--max-count=1", revision, "--", ":(literal)"+activePath)
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "--first-parent", "--max-count="+strconv.Itoa(maxCount), revision, "--", ":(literal)"+activePath)
 	if err != nil {
-		logger.Error(err, "could not get path tip", "gitError", stderr, "revision", revision, "activePath", activePath)
-		return "", fmt.Errorf("failed to get path tip for %q at %q: %w", revision, activePath, err)
+		logger.Error(err, "could not get rev-list first parent for path", "gitError", stderr, "revision", revision, "activePath", activePath)
+		return nil, fmt.Errorf("failed to get rev-list first parent for %q at %q: %w", revision, activePath, err)
 	}
 
-	return strings.TrimSpace(stdout), nil
+	if strings.TrimSpace(stdout) == "" {
+		return nil, nil
+	}
+	return strings.Split(strings.TrimSpace(stdout), "\n"), nil
+}
+
+// PathTip returns the newest first-parent commit reachable from revision whose tree at activePath differs
+// from its first parent's, or "" when no commit on that line touched the path. It is the single-result form
+// of GetRevListFirstParentForPath: the commit that last changed this environment.
+func (g *EnvironmentOperations) PathTip(ctx context.Context, revision, activePath string) (string, error) {
+	shas, err := g.GetRevListFirstParentForPath(ctx, revision, 1, activePath)
+	if err != nil {
+		return "", err
+	}
+	if len(shas) == 0 {
+		return "", nil
+	}
+	return shas[0], nil
 }
 
 // AddTrailerToCommitMessage adds a trailer to a commit message using git interpret-trailers.

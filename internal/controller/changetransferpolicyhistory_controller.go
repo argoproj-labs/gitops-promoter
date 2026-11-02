@@ -158,11 +158,22 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, fmt.Errorf("failed to get SHA for active branch %q: %w", ctph.Spec.ActiveBranch, err)
 	}
 
-	// Skip the rebuild when the newest history entry already describes this tip and this clone's
+	// History is this environment's: with spec.activePath, the newest entry is the last commit that
+	// changed that path, not the shared branch tip, so compare against that commit. A sibling
+	// environment's merge moves the tip without changing this history.
+	anchorSha := activeSha
+	if ctph.Spec.ActivePath != "" {
+		anchorSha, err = gitOperations.PathTip(ctx, "origin/"+ctph.Spec.ActiveBranch, ctph.Spec.ActivePath)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to find the last commit that changed %q on active branch %q: %w", ctph.Spec.ActivePath, ctph.Spec.ActiveBranch, err)
+		}
+	}
+
+	// Skip the rebuild when the newest history entry already describes this commit and this clone's
 	// promotion-history notes ref matches the snapshot. A note can correct trailer-derived fields
 	// without moving the active tip; skipping on the entry alone would pin that uncorrected history.
 	// No snapshot (the probe failed) does not match, so the rebuild probes the notes ref itself.
-	if shouldSkipHistoryRecalculation(ctph.Status.History, activeSha) {
+	if shouldSkipHistoryRecalculation(ctph.Status.History, anchorSha) {
 		notesMatch, err := gitOperations.PromotionHistoryNotesMatchSnapshot(ctx)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to compare promotion-history notes ref: %w", err)
@@ -305,8 +316,9 @@ func restoreActiveCommitEnqueuesChangeTransferPolicyHistoryPredicate() predicate
 }
 
 // ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate returns a predicate that only lets a
-// ChangeTransferPolicy update through when something history-relevant changed: the active hydrated
-// tip moved, or the observed pull request (ID, state, or merged target SHA) changed. Everything else
+// ChangeTransferPolicy update through when something history-relevant changed: the environment's active
+// commit moved (the active tip, or with activePath the last commit that changed the path), or the
+// observed pull request (ID, state, or merged target SHA) changed. Everything else
 // (periodic status re-applies, proposed-side changes, commit status churn) is filtered out.
 func ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
 	return predicate.Funcs{
@@ -323,7 +335,9 @@ func ctpUpdateEnqueuesChangeTransferPolicyHistoryPredicate() predicate.Funcs {
 				return false
 			}
 
-			if oldCTP.Status.Active.Hydrated.Sha != newCTP.Status.Active.Hydrated.Sha {
+			// For an activePath policy this is the last commit that changed the path, so a sibling policy's
+			// merge onto a shared active branch does not wake this history.
+			if oldCTP.Status.Active.EffectiveHydrated().Sha != newCTP.Status.Active.EffectiveHydrated().Sha {
 				return true
 			}
 			return !pullRequestCommonStatusesEqual(oldCTP.Status.PullRequest, newCTP.Status.PullRequest)
@@ -384,7 +398,9 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 		return nil, fmt.Errorf("failed to fetch git notes: %w", err)
 	}
 
-	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, promoterv1alpha1.MaxPromotionHistory)
+	// With activePath, only the first-parent commits that changed that path: this environment's own merges
+	// and restores. Sibling environments' merges onto a shared active branch are not part of its history.
+	shaListActive, err := gitOperations.GetRevListFirstParentForPath(ctx, "origin/"+activeBranch, promoterv1alpha1.MaxPromotionHistory, activePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rev-list commit history for active branch %q: %w", activeBranch, err)
 	}

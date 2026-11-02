@@ -1143,6 +1143,17 @@ var _ = Describe("ActivePath support", func() {
 		Expect(g.PathTip(ctx, "origin/active", "apps/app-two")).To(Equal(mergeTwo))
 		Expect(g.PathTip(ctx, "origin/active", "apps/none")).To(BeEmpty(), "a path no commit touched has no path tip")
 
+		appOneHistory, err := g.GetRevListFirstParentForPath(ctx, "origin/active", 10, "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(appOneHistory).To(HaveLen(2), "app-one's merge and the base commit that created the path")
+		Expect(appOneHistory[0]).To(Equal(mergeOne))
+		Expect(appOneHistory).NotTo(ContainElement(mergeTwo), "the sibling's merge is not part of app-one's history")
+		unfiltered, err := g.GetRevListFirstParentForPath(ctx, "origin/active", 10, "")
+		Expect(err).NotTo(HaveOccurred())
+		all, err := g.GetRevListFirstParent(ctx, "origin/active", 10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unfiltered).To(Equal(all), "an empty activePath applies no filter")
+
 		By("stacking promoter overlay merges on app-one's proposed branch past the hydrator note walk limit")
 		// Each root hydrator.metadata change on active conflicts with the proposed branch, and the promoter
 		// resolves it with a path-scoped ours merge that keeps app-one's content. Those merges are treesame to
