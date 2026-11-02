@@ -69,12 +69,13 @@ const lastTransitionTimeThreshold = 5 * time.Second
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager                mcmanager.Manager
-	Recorder               events.EventRecorder
-	SettingsMgr            *settings.Manager
-	KubeConfigProvider     *kubeconfig.Provider
-	localClient            client.Client
-	watchLocalApplications bool
+	Manager            mcmanager.Manager
+	Recorder           events.EventRecorder
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
+	// LocalApplications provides the local cluster's Applications while watchLocalApplications is true.
+	LocalApplications *LocalApplicationsProvider
+	localClient       client.Client
 }
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
@@ -144,17 +145,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	apps := []ApplicationsInEnvironment{}
 
-	// list clusters so we can query argocd applications from all clusters
-	clusters := r.KubeConfigProvider.ListClusters()
-	if r.watchLocalApplications {
-		// The provider doesn't know about the local cluster, so we need to add it ourselves.
-		clusters = append(clusters, mcmanager.LocalCluster)
-	}
-	for _, clusterName := range clusters {
-		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
-		cluster, err := r.Manager.GetCluster(ctx, clusterName)
+	for _, source := range r.applicationSources() {
+		logger.Info("Fetching Argo CD applications from cluster", "cluster", source.clusterName)
+		cluster, err := r.Manager.GetCluster(ctx, source.clusterName)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to get cluster %q: %w", source.clusterName, err)
 		}
 		clusterClient := cluster.GetClient()
 
@@ -164,15 +159,15 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		})
 		if err != nil {
 			clusterNameMsg := "on the local cluster"
-			if clusterName != "" {
-				clusterNameMsg = "on cluster " + clusterName.String()
+			if source.statusName != "" {
+				clusterNameMsg = "on cluster " + source.statusName
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications %s: %w", clusterNameMsg, err)
 		}
 
 		apps = append(apps, ApplicationsInEnvironment{
 			ApplicationList: clusterArgoCDApps,
-			ClusterName:     clusterName.String(),
+			ClusterName:     source.statusName,
 		})
 	}
 
@@ -505,6 +500,35 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 	}
 }
 
+// applicationSource is a cluster to list Argo CD Applications from.
+type applicationSource struct {
+	// clusterName is the multicluster name, prefixed with its multi provider name.
+	clusterName multicluster.ClusterName
+	// statusName is the name reported in status.applicationsSelected[].clusterName: the kubeconfig Secret's
+	// cluster name for remote clusters, and "" for the local cluster.
+	statusName string
+}
+
+// applicationSources returns every cluster to list Argo CD Applications from: each remote kubeconfig cluster, plus
+// the local cluster while it is engaged.
+func (r *ArgoCDCommitStatusReconciler) applicationSources() []applicationSource {
+	remote := r.KubeConfigProvider.ListClusters()
+	sources := make([]applicationSource, 0, len(remote)+1)
+	for _, name := range remote {
+		sources = append(sources, applicationSource{
+			clusterName: multicluster.ClusterName(KubeConfigProviderName + ClusterNameSeparator + name.String()),
+			statusName:  name.String(),
+		})
+	}
+	if r.LocalApplications.Engaged() {
+		sources = append(sources, applicationSource{
+			clusterName: LocalApplicationsClusterName,
+			statusName:  mcmanager.LocalCluster.String(),
+		})
+	}
+	return sources
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcMgr mcmanager.Manager) error {
 	// Set the local client for interacting with manager cluster
@@ -522,14 +546,6 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Get the controller configuration to check if local Applications should be watched
-	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-
-	r.watchLocalApplications = watchLocalApplications
-
 	controllerOpts := controller.Options{
 		MaxConcurrentReconciles: maxConcurrentReconciles,
 		RateLimiter:             rateLimiter,
@@ -546,8 +562,11 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		WithOptions(controllerOpts).
+		// Applications are watched only on provider clusters: remote clusters from the kubeconfig provider, and the
+		// local cluster through LocalApplicationsProvider while watchLocalApplications is true. The host manager
+		// never watches Applications, so it starts without the Application CRD.
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
+			mcbuilder.WithEngageWithLocalCluster(false),
 			mcbuilder.WithEngageWithProviderClusters(true),
 			mcbuilder.WithPredicates(applicationPredicate)).
 		Watches(&promoterv1alpha1.PromotionStrategy{}, enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr),

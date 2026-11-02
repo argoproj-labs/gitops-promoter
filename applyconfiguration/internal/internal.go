@@ -90,6 +90,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ArgoCDCommitStatusControllerStatus
+  map:
+    fields:
+    - name: localClusterEngaged
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ArgoCDCommitStatusSpec
   map:
     fields:
@@ -698,6 +704,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerConfigurationStatus
   map:
     fields:
+    - name: argocdCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ArgoCDCommitStatusControllerStatus
     - name: conditions
       type:
         list:

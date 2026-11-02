@@ -178,6 +178,28 @@ spec:
 
 GitOps promoter can monitor Argo CD Applications across multiple Kubernetes clusters. This is particularly useful when managing promotions across environments that use different Argo CD instances.
 
+### Local Cluster Applications
+
+By default, the controller also watches Argo CD Applications on the cluster it runs in. If Argo CD isn't installed
+there (all of your Applications live on remote clusters), set `watchLocalApplications` to `false` in the
+`ControllerConfiguration`:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+spec:
+  argocdCommitStatus:
+    watchLocalApplications: false
+```
+
+The change takes effect without restarting the controller. `status.argocdCommitStatus.localClusterEngaged` on the
+`ControllerConfiguration` shows whether local Applications are being watched. If `watchLocalApplications` is `true`
+but the Argo CD Application CRD isn't installed on the local cluster, the controller still starts: the
+`ControllerConfiguration` reports `Ready=False` with reason `ArgoCDApplicationCRDNotInstalled`, and the controller
+starts watching local Applications once the CRD is installed.
+
 ### Multi-Cluster Prerequisites
 
 To enable multi-cluster support, you need to configure two components:

@@ -2633,6 +2633,9 @@ spec:
                       in the local cluster. When false, the controller will only watch Applications in remote clusters
                       configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
                       in the local cluster or when all Applications are deployed to remote clusters.
+                      Changes take effect without restarting the controller. If this is true but the Application CRD is
+                      not installed on the local cluster, the ControllerConfiguration reports Ready=False and the
+                      controller starts watching once the CRD is installed.
                     type: boolean
                   workQueue:
                     description: |-
@@ -5314,6 +5317,19 @@ spec:
             description: ControllerConfigurationStatus defines the observed state
               of ControllerConfiguration.
             properties:
+              argocdCommitStatus:
+                description: ArgoCDCommitStatus reports the runtime state of the ArgoCDCommitStatus
+                  controller.
+                properties:
+                  localClusterEngaged:
+                    description: |-
+                      LocalClusterEngaged is true while the controller is watching Argo CD Applications on the local cluster. It
+                      follows spec.argocdCommitStatus.watchLocalApplications without a restart, and stays false while that setting
+                      is true but the Argo CD Application CRD is not installed on the local cluster.
+                    type: boolean
+                required:
+                - localClusterEngaged
+                type: object
               conditions:
                 description: Conditions Represents the observations of the current
                   state.

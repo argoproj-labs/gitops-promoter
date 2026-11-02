@@ -147,26 +147,6 @@ func (m *Manager) GetControllerNamespace() string {
 	return m.config.ControllerNamespace
 }
 
-// GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect retrieves the WatchLocalApplications setting from the ArgoCDCommitStatus configuration
-// using a non-cached read.
-//
-// This function bypasses the cache and reads directly from the API server, making it safe to call
-// during SetupWithManager before the cache has started. Use this to configure controller options
-// at build time based on the ControllerConfiguration resource.
-//
-// Parameters:
-//   - ctx: Context for the request, used for cancellation and deadlines
-//   - m: Manager instance with access to the cluster client
-//
-// Returns the configured WatchLocalApplications value, or an error if the configuration cannot be retrieved.
-func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx context.Context) (bool, error) {
-	config, err := m.getControllerConfigurationDirect(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
-}
-
 // GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
 //
 // This function fetches the ControllerConfiguration resource from the cluster and extracts

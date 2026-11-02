@@ -1938,14 +1938,18 @@ func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
 	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
 	original := cc.Spec.PullRequest.WorkQueue.RequeueDuration
+	// Patch rather than Update: the ControllerConfiguration controller writes status concurrently, so an Update
+	// with the resourceVersion from the Get above can conflict.
+	base := cc.DeepCopy()
 	cc.Spec.PullRequest.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
-	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	Expect(k8sClient.Patch(ctx, &cc, client.MergeFrom(base))).To(Succeed())
 
-	DeferCleanup(func() {
+	DeferCleanup(func(cleanupCtx SpecContext) { //nolint:contextcheck // DeferCleanup supplies its own SpecContext for teardown.
 		var cc promoterv1alpha1.ControllerConfiguration
-		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		Expect(k8sClient.Get(cleanupCtx, key, &cc)).To(Succeed())
+		base := cc.DeepCopy()
 		cc.Spec.PullRequest.WorkQueue.RequeueDuration = original
-		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+		Expect(k8sClient.Patch(cleanupCtx, &cc, client.MergeFrom(base))).To(Succeed())
 	})
 }
 

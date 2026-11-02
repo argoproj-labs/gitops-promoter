@@ -37,6 +37,8 @@ type ControllerConfigurationStatusApplyConfiguration struct {
 	// reconcile attempt by this install's controller, including when Ready=False; omitted
 	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
+	// ArgoCDCommitStatus reports the runtime state of the ArgoCDCommitStatus controller.
+	ArgoCDCommitStatus *ArgoCDCommitStatusControllerStatusApplyConfiguration `json:"argocdCommitStatus,omitempty"`
 }
 
 // ControllerConfigurationStatusApplyConfiguration constructs a declarative configuration of the ControllerConfigurationStatus type for use with
@@ -71,5 +73,13 @@ func (b *ControllerConfigurationStatusApplyConfiguration) WithConditions(values 
 // If called multiple times, the InstanceID field is set to the value of the last call.
 func (b *ControllerConfigurationStatusApplyConfiguration) WithInstanceID(value string) *ControllerConfigurationStatusApplyConfiguration {
 	b.InstanceID = &value
+	return b
+}
+
+// WithArgoCDCommitStatus sets the ArgoCDCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ArgoCDCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationStatusApplyConfiguration) WithArgoCDCommitStatus(value *ArgoCDCommitStatusControllerStatusApplyConfiguration) *ControllerConfigurationStatusApplyConfiguration {
+	b.ArgoCDCommitStatus = value
 	return b
 }

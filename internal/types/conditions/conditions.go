@@ -46,3 +46,10 @@ const (
 	// DependentsSuccessfulCommitStatusNotReady is the reason when owned CommitStatuses are not Ready.
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
+
+// Reasons that apply to ControllerConfiguration.
+const (
+	// ArgoCDApplicationCRDNotInstalled is the reason when watchLocalApplications is true but the local cluster has no
+	// Argo CD Application CRD.
+	ArgoCDApplicationCRDNotInstalled CommonReason = "ArgoCDApplicationCRDNotInstalled"
+)
