@@ -17,7 +17,6 @@ limitations under the License.
 package apiserver
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -42,11 +41,6 @@ type Options struct {
 	Namespace string
 	// ClusterScmProviderMode controls whether ClusterScmProviders are read. Empty means enabled.
 	ClusterScmProviderMode promoterv1alpha1.FeatureMode
-	// WaitForServingCert makes the server wait for --tls-cert-file and
-	// --tls-private-key-file to exist before it starts. Used when the serving cert is
-	// issued at runtime (by the controller-manager's built-in cert rotation) into a
-	// Secret that is mounted into the pod.
-	WaitForServingCert bool
 }
 
 // NewOptions returns Options with sane defaults for the dashboard apiserver.
@@ -81,10 +75,6 @@ func NewOptions() *Options {
 // AddFlags registers the apiserver flags (secure serving, delegated auth, etc.).
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	o.RecommendedOptions.AddFlags(fs)
-	fs.BoolVar(&o.WaitForServingCert, "wait-for-serving-cert", o.WaitForServingCert,
-		"Wait for --tls-cert-file and --tls-private-key-file to exist before starting, instead of failing. "+
-			"Use when the serving cert Secret is populated after the pod starts, e.g. by the controller-manager's "+
-			"--apiserver-cert-rotation.")
 }
 
 // Validate validates the options.
@@ -92,10 +82,6 @@ func (o *Options) Validate() error {
 	errs := o.RecommendedOptions.Validate()
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid apiserver options: %v", errs)
-	}
-	certKey := o.RecommendedOptions.SecureServing.ServerCert.CertKey
-	if o.WaitForServingCert && (certKey.CertFile == "" || certKey.KeyFile == "") {
-		return errors.New("invalid apiserver options: --wait-for-serving-cert requires --tls-cert-file and --tls-private-key-file")
 	}
 	return nil
 }

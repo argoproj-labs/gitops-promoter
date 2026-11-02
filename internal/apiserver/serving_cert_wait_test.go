@@ -60,18 +60,12 @@ var _ = Describe("waitForServingCert", func() {
 	})
 })
 
-var _ = Describe("Options --wait-for-serving-cert", func() {
-	It("is off by default and requires the TLS file flags", func() {
+var _ = Describe("Options serving cert", func() {
+	It("waits for the TLS files without a separate flag", func() {
 		opts := NewOptions()
 		fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 		opts.AddFlags(fs)
-		Expect(opts.WaitForServingCert).To(BeFalse())
+		Expect(fs.Lookup("wait-for-serving-cert")).To(BeNil())
 		Expect(fs.Lookup("cert-rotation")).To(BeNil(), "the apiserver no longer rotates its own cert")
-
-		Expect(fs.Parse([]string{"--wait-for-serving-cert"})).To(Succeed())
-		Expect(opts.Validate()).To(MatchError(ContainSubstring("requires --tls-cert-file and --tls-private-key-file")))
-
-		Expect(fs.Parse([]string{"--tls-cert-file=/serving-certs/tls.crt", "--tls-private-key-file=/serving-certs/tls.key"})).To(Succeed())
-		Expect(opts.Validate()).To(Succeed())
 	})
 })

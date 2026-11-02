@@ -11732,7 +11732,6 @@ spec:
         - --secure-port=6443
         - --tls-cert-file=/serving-certs/tls.crt
         - --tls-private-key-file=/serving-certs/tls.key
-        - --wait-for-serving-cert
         command:
         - /usr/bin/tini
         - --

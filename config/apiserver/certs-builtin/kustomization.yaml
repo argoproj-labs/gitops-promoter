@@ -7,8 +7,8 @@ kind: Kustomization
 # The certs are issued and rotated by the controller-manager, not by the apiserver: with
 # --apiserver-cert-rotation it generates a self-signed CA and serving cert, writes them into
 # the (initially empty) promoter-apiserver-serving-cert Secret, injects the CA into the
-# APIService .spec.caBundle, and keeps both rotated. This overlay ships that Secret and
-# makes the apiserver wait for it to be mounted at /serving-certs before it starts serving.
+# APIService .spec.caBundle, and keeps both rotated. This overlay ships that Secret.
+# The apiserver waits for the mounted files at /serving-certs before it starts serving.
 # The apiserver needs no Secret permissions.
 #
 # The controller-manager side is the ../certs-builtin-controller component, which the

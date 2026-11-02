@@ -1,10 +1,7 @@
 # The promoter-apiserver-serving-cert Secret starts empty and is populated by the
 # controller-manager (--apiserver-cert-rotation). The base Deployment mounts it at
-# /serving-certs (the directory of --tls-cert-file/--tls-private-key-file); wait for the
-# files to appear instead of failing at startup.
-- op: add
-  path: /spec/template/spec/containers/0/args/-
-  value: --wait-for-serving-cert
+# /serving-certs (the directory of --tls-cert-file/--tls-private-key-file). The apiserver
+# waits for those files before it starts.
 # On first install the apiserver only starts serving once the controller-manager has issued
 # the cert and kubelet has projected the Secret into the pod, which can take a minute or
 # more. Give it up to 5 minutes before the liveness probe takes over.
@@ -20,7 +17,7 @@
 # The Secret also holds the CA's private key (ca.key) that cert-controller signs with. Project
 # only the serving key pair into the apiserver so the CA key never reaches its filesystem.
 # optional: the Secret starts empty, so the keys don't exist until the controller-manager
-# issues the cert; kubelet adds the files once they do (see --wait-for-serving-cert above).
+# issues the cert; kubelet adds the files once they do.
 - op: test
   path: /spec/template/spec/volumes/0/name
   value: serving-cert

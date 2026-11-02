@@ -20,7 +20,7 @@ limitations under the License.
 // It runs in the controller-manager, not in the apiserver: the controller-manager already
 // reads Secrets, so watching the serving-cert Secret gives it no new read access, and the
 // apiserver itself needs no Secret permissions at all. The apiserver only mounts the
-// Secret and serves the files (see the apiserver's --wait-for-serving-cert flag).
+// Secret and serves the files. The apiserver waits for those files before it starts.
 package certrotation
 
 import (

@@ -74,7 +74,7 @@ supported; the built-in cert-controller is the default used by `install-with-das
 This is what `install-with-dashboard.yaml` uses. It has two halves:
 
 - `config/apiserver/certs-builtin` ships the (empty) `promoter-apiserver-serving-cert`
-  Secret and runs the apiserver with `--wait-for-serving-cert`.
+  Secret. The apiserver waits for the mounted cert files before it starts.
 - The `config/apiserver/certs-builtin-controller` component runs the **controller-manager** with
   `--apiserver-cert-rotation` and grants it the extra RBAC. The `release-combined-builtin`
   overlays include both.
@@ -89,9 +89,10 @@ elected leader. It:
 2. injects the CA into `APIService.spec.caBundle`;
 3. keeps rotating the CA and serving cert before they expire.
 
-The apiserver mounts the Secret at `/serving-certs` and, with `--wait-for-serving-cert`, waits
-for kubelet to project the files before it starts serving. It reloads the cert files when
-they change, so rotation needs no restart.
+The apiserver mounts the Secret at `/serving-certs`. Whenever `--tls-cert-file` and
+`--tls-private-key-file` are set, it waits for kubelet to project those files before it
+starts serving, and returns immediately when they are already there. It reloads the cert
+files when they change, so rotation needs no restart.
 
 RBAC:
 

@@ -127,11 +127,13 @@ func Run(ctx context.Context, restConfig *clientrest.Config, opts *Options) erro
 		return err
 	}
 
-	if opts.WaitForServingCert {
-		certKey := opts.RecommendedOptions.SecureServing.ServerCert.CertKey
-		// The serving cert files must exist before the apiserver config is built (they are
-		// loaded eagerly and then reloaded on change). With the built-in cert rotation the
-		// controller-manager populates the mounted Secret after this pod starts.
+	// The serving cert files must exist before the apiserver config is built (they are
+	// loaded eagerly and then reloaded on change). When the paths are set, wait for them:
+	// the built-in rotator fills the mounted Secret after this pod starts, and a cert that
+	// is already mounted returns immediately. With no paths, serving falls back to a
+	// generated self-signed cert.
+	certKey := opts.RecommendedOptions.SecureServing.ServerCert.CertKey
+	if certKey.CertFile != "" && certKey.KeyFile != "" {
 		if err := waitForServingCert(ctx, certKey.CertFile, certKey.KeyFile, servingCertPollInterval); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil
