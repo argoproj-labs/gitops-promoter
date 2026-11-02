@@ -285,7 +285,7 @@ func runController(
 		setupLog.Info("enabling dashboard apiserver serving-cert rotation",
 			"secret", apiserverCertRotation.Namespace+"/"+apiserverCertRotation.SecretName,
 			"apiService", apiserverCertRotation.APIServiceName)
-		if err := localManager.Add(certrotation.Runnable(restConfig, apiserverCertRotation)); err != nil {
+		if err := certrotation.AddToManager(localManager, apiserverCertRotation); err != nil {
 			panic(fmt.Errorf("unable to add apiserver cert rotation: %w", err))
 		}
 	}

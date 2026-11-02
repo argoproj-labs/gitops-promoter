@@ -41,6 +41,8 @@ import (
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -99,6 +101,8 @@ var _ = Describe("Options", func() {
 			Type: rotator.APIService,
 		}))
 		Expect(cr.IsReady).NotTo(BeNil())
+		Expect(cr.RequireLeaderElection).To(BeTrue())
+		Expect(cr.FieldOwner).To(Equal(FieldManager))
 	})
 
 	It("creates a marker cert dir that satisfies cert-controller's mount check", func() {
@@ -162,8 +166,20 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 		opts.Enabled = true
 		opts.Namespace = ns
 		Expect(opts.Validate()).To(Succeed())
-		errCh, err := Start(ctx, saCfg, &opts)
+		// The test manager stands in for the controller-manager. Metrics and health stay
+		// off so the spec does not bind ports; production passes the controller's manager.
+		mgr, err := manager.New(saCfg, manager.Options{
+			Scheme:                 utils.GetScheme(),
+			Metrics:                metricsserver.Options{BindAddress: "0"},
+			HealthProbeBindAddress: "0",
+		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(AddToManager(mgr, &opts)).To(Succeed())
+		errCh := make(chan error, 1)
+		go func() {
+			defer GinkgoRecover()
+			errCh <- mgr.Start(ctx)
+		}()
 
 		By("waiting for the rotator to populate the Secret")
 		secret := &corev1.Secret{}

@@ -33,13 +33,8 @@ import (
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/types"
-	clientrest "k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 const (
@@ -149,9 +144,9 @@ func (o *Options) newCertRotator(certDir string) *rotator.CertRotator {
 		// The apiserver reloads its cert files from the mounted Secret when they change, so
 		// nothing needs to restart on rotation.
 		RestartOnSecretRefresh: false,
-		// Run only inside the elected controller-manager (see Runnable); this manager has
-		// no leader election of its own.
-		RequireLeaderElection: false,
+		// Only the elected controller-manager replica rotates. When leader election is
+		// disabled, the manager runs every runnable, including this one.
+		RequireLeaderElection: true,
 	}
 }
 
@@ -175,59 +170,62 @@ func markerCertDir() (string, error) {
 	return dir, nil
 }
 
-// Start runs a minimal controller-runtime manager with the cert-controller rotator until
-// ctx is cancelled. It returns a channel that receives the manager's exit error (nil on a
-// clean shutdown).
-func Start(ctx context.Context, restConfig *clientrest.Config, opts *Options) (<-chan error, error) {
-	mgr, err := manager.New(restConfig, manager.Options{
-		Scheme: utils.GetScheme(),
-		// The rotator only needs a client and its own namespaced cache; disable the
-		// manager's metrics and health endpoints so they don't collide with the controller's.
-		Metrics:                metricsserver.Options{BindAddress: "0"},
-		HealthProbeBindAddress: "0",
-		LeaderElection:         false,
-		// Attribute every write (Secret data and APIService caBundle) to a stable field
-		// manager, so GitOps tools using server-side apply see these fields as owned by
-		// the rotator and leave them alone.
-		Client: client.Options{FieldOwner: FieldManager},
-		Cache: cache.Options{
-			DefaultNamespaces: map[string]cache.Config{opts.Namespace: {}},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cert rotation manager: %w", err)
-	}
-
+// AddToManager registers serving-cert rotation on mgr. The rotator shares that manager,
+// so its controller-runtime metrics are served on the controller's metrics endpoint and
+// it follows the controller's leader election and shutdown. An error from the rotator
+// stops the manager.
+func AddToManager(mgr manager.Manager, opts *Options) error {
 	certDir, err := markerCertDir()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := rotator.AddRotator(mgr, opts.newCertRotator(certDir)); err != nil {
-		return nil, fmt.Errorf("failed to add cert rotator: %w", err)
+	if err := mgr.Add(markerDirCleanup{dir: certDir}); err != nil {
+		_ = os.RemoveAll(certDir)
+		return fmt.Errorf("failed to register cert rotation cleanup: %w", err)
 	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		defer func() { _ = os.RemoveAll(certDir) }()
-		if err := mgr.Start(ctx); err != nil {
-			errCh <- fmt.Errorf("cert rotation manager stopped: %w", err)
-			return
-		}
-		errCh <- nil
-	}()
-	return errCh, nil
-}
-
-// Runnable returns a controller-runtime Runnable that runs cert rotation for as long as
-// the manager it is added to runs. It needs leader election, so with --leader-elect only the
-// elected controller-manager replica rotates. If cert rotation stops with an error, the
-// runnable returns it, which stops the controller-manager.
-func Runnable(restConfig *clientrest.Config, opts *Options) manager.Runnable {
-	return manager.RunnableFunc(func(ctx context.Context) error {
-		errCh, err := Start(ctx, restConfig, opts)
-		if err != nil {
-			return err
-		}
-		return <-errCh
+	// Direct client, not mgr.GetClient(). The controller cache partitions Secrets by
+	// instance-id, strips their data, and makes writes wait on that cache.
+	// cert-controller reads through its own cache and only needs a writer here.
+	// FieldOwner attributes Secret data to FieldManager; the APIService caBundle
+	// update passes the same owner explicitly.
+	writer, err := client.New(mgr.GetConfig(), client.Options{
+		Scheme:     mgr.GetScheme(),
+		Mapper:     mgr.GetRESTMapper(),
+		FieldOwner: FieldManager,
 	})
+	if err != nil {
+		_ = os.RemoveAll(certDir)
+		return fmt.Errorf("failed to create cert rotation client: %w", err)
+	}
+	if err := rotator.AddRotator(fieldOwnerManager{
+		Manager: mgr,
+		client:  writer,
+	}, opts.newCertRotator(certDir)); err != nil {
+		_ = os.RemoveAll(certDir)
+		return fmt.Errorf("failed to add cert rotator: %w", err)
+	}
+	return nil
 }
+
+// fieldOwnerManager is mgr with GetClient replaced by the cert-rotation writer.
+// cert-controller takes its writer from Manager.GetClient.
+type fieldOwnerManager struct {
+	manager.Manager
+	client client.Client
+}
+
+func (m fieldOwnerManager) GetClient() client.Client { return m.client }
+
+// markerDirCleanup removes the marker cert directory when the manager stops.
+// It does not need leader election: every replica creates the directory at startup.
+type markerDirCleanup struct {
+	dir string
+}
+
+func (m markerDirCleanup) Start(ctx context.Context) error {
+	<-ctx.Done()
+	_ = os.RemoveAll(m.dir)
+	return nil
+}
+
+func (m markerDirCleanup) NeedLeaderElection() bool { return false }
