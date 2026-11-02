@@ -10,16 +10,20 @@ updates:
   # also Renovate-owned for import rewrites on major bumps.
   # See renovate.json5 for configuration.
   - package-ecosystem: "gomod"
-    directory: "/"
+    # hack/celcost is a separate module (kept out of the root build); it needs its
+    # own entry or its indirect deps go stale and show up in the Scorecard
+    # Vulnerabilities check.
+    directories:
+      - "/"
+      - "/hack/celcost"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
-    # By default Dependabot only bumps direct requires. Indirect modules listed in
-    # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
+    # By default Dependabot only bumps direct requires. Allow both so indirect
+    # modules listed in go.mod (e.g. golang.org/x/crypto) also get update PRs.
     allow:
+      - dependency-type: "direct"
       - dependency-type: "indirect"
-      # oauth2, sync, and time are direct requires; include them in golang-org-x.
-      - dependency-name: "golang.org/x/*"
     ignore:
       - dependency-name: "k8s.io/*"
       - dependency-name: "sigs.k8s.io/controller-runtime"
@@ -55,6 +59,47 @@ updates:
       prometheus:
         patterns:
           - "github.com/prometheus/**"
+      # Catch-all for indirect modules. Groups cannot select by dependency type,
+      # so direct requires are excluded by name and get individual PRs instead.
+      # Dependabot puts a module in the first group it matches, so the coupled
+      # groups above take precedence over this one. Keep this group last, and add
+      # new direct requires (from either go.mod) to exclude-patterns.
+      go-indirect:
+        patterns:
+          - "**"
+        exclude-patterns:
+          - "code.gitea.io/sdk/gitea"
+          - "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
+          - "github.com/AlecAivazis/survey/v2"
+          - "github.com/Azure/azure-sdk-for-go/sdk/azcore"
+          - "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+          - "github.com/expr-lang/expr"
+          - "github.com/fatih/color"
+          - "github.com/gin-contrib/gzip"
+          - "github.com/gin-gonic/gin"
+          - "github.com/go-logr/logr"
+          - "github.com/go-task/slim-sprig/v3"
+          - "github.com/golang/groupcache"
+          - "github.com/google/uuid"
+          - "github.com/ktrysmt/go-bitbucket"
+          - "github.com/microsoft/azure-devops-go-api/azuredevops/v7"
+          - "github.com/onsi/ginkgo/v2"
+          - "github.com/onsi/gomega"
+          - "github.com/prometheus/client_golang"
+          - "github.com/prometheus/client_model"
+          - "github.com/robfig/cron/v3"
+          - "github.com/sosedoff/gitkit"
+          - "github.com/spf13/cobra"
+          - "github.com/spf13/pflag"
+          - "github.com/stretchr/testify"
+          - "github.com/tidwall/gjson"
+          - "gitlab.com/gitlab-org/api/client-go"
+          - "go.uber.org/zap"
+          - "golang.org/x/oauth2"
+          - "golang.org/x/sync"
+          - "golang.org/x/time"
+          - "gopkg.in/yaml.v3"
+          - "sigs.k8s.io/yaml"
 
   - package-ecosystem: "github-actions"
     directory: "/"
