@@ -66,6 +66,8 @@ Deploying the API Server depends on what you are looking for. You can either dep
 #### Insecure
 
 ```bash
+kubectl create namespace promoter-system
+make apiserver-certs
 kubectl apply -k config/apiserver/dev-insecure
 kubectl -n promoter-system set image deploy/promoter-apiserver apiserver=someregistry.io/some-usr/gitops-promoter:latest
 ```
@@ -73,6 +75,7 @@ kubectl -n promoter-system set image deploy/promoter-apiserver apiserver=somereg
 #### With Generated Certs
 
 ```bash
+kubectl create namespace promoter-system
 kubectl apply -k config/apiserver/certs-manual
 make apiserver-certs
 kubectl -n promoter-system set image deploy/promoter-apiserver apiserver=someregistry.io/some-usr/gitops-promoter:latest
@@ -82,10 +85,11 @@ kubectl -n promoter-system set image deploy/promoter-apiserver apiserver=somereg
 
 This section will cover running the components locally on your system against a cluster. To run anything for
 the project you will need to have the CRDs installed in the cluster. This can be done with the following make
-target.
+target. Components will also need the `promoter-system` namespace to exist.
 
 ```bash
 make install
+kubectl create namespace promoter-system
 ```
 
 ### Controller
@@ -93,14 +97,21 @@ make install
 The below make target will build and run the controller. When you make a change you will need to restart the
 process.
 
+The controller also needs the default ControllerConfiguration CR to exist. The controller needs the default
+ControllerConfiguration to exist. Below shows how to create it with the `yq` tool.
+
 ```bash
+ yq '.metadata.name = "promoter-controller-configuration"' config/config/controllerconfiguration.yaml | kubectl apply -f -
 make run
 ```
 
 ### API Server
 
 To run the API Server locally you first must register it with the following make target. The port can be set with the
-`PORT` environment variable. This routes the in-cluster APIService to your locally running instance of the api server.
+`APISERVER_SECURE_PORT` environment variable. This routes the in-cluster APIService to your locally running instance of
+the api server. The environment variable `KIND_NODE` sets the docker container of the cluster node used to resolve the host IP. 
+There is also the `HOST_IP` variable which defaults to auto-detecting from host. docker.internal inside the node set with
+`KIND_NODE`.
 
 ```bash
 make apiserver-register-local
@@ -111,7 +122,7 @@ Once registered you can run the api server with the following command.
 make run-apiserver
 ```
 
-When finished you can unregister with the local APIService registration by running the below make target.
+When finished you can unregister with the local APIService registration by running the below make target. This will delete the APIService.
 
 ```bash
 make apiserver-unregister-local
