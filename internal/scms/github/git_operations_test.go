@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -34,82 +33,57 @@ func testGitHubAppPrivateKey() []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
+// testGitHubServer serves the per-account installation endpoints. GitHub logins are case-insensitive, so orgs and
+// users are keyed by lowercase login.
 type testGitHubServer struct {
 	srv             *httptest.Server
+	release         <-chan struct{}
+	orgs            map[string]int64
+	users           map[string]int64
+	orgCalls        map[string]int
+	userCalls       map[string]int
 	domain          string
-	pages           [][]string
 	tokenInstallIDs []int64
-	idBase          int64
 	mu              sync.Mutex
 	listCalls       atomic.Int32
-	failPage        atomic.Int32
+	fail            atomic.Bool
 }
 
 type testGitHubServerOpts struct {
-	releasePage map[int]<-chan struct{}
-	pages       [][]string
-	pageDelay   time.Duration
-	failPage    int
+	// release, when set, blocks every installation lookup until it is closed.
+	release <-chan struct{}
+	orgs    map[string]int64
+	users   map[string]int64
 }
 
 func newTestGitHubServer(opts testGitHubServerOpts) *testGitHubServer {
 	GinkgoHelper()
-	ts := &testGitHubServer{pages: opts.pages, idBase: 1000}
-	ts.failPage.Store(int32(opts.failPage))
+	ts := &testGitHubServer{
+		release:   opts.release,
+		orgs:      map[string]int64{},
+		users:     map[string]int64{},
+		orgCalls:  map[string]int{},
+		userCalls: map[string]int{},
+	}
+	ts.setInstallations(opts.orgs, opts.users)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v3/app/installations", func(w http.ResponseWriter, r *http.Request) {
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page == 0 {
-			page = 1
-		}
-		if page == 1 {
-			ts.listCalls.Add(1)
-		}
-		if int(ts.failPage.Load()) == page {
-			http.Error(w, "list failed", http.StatusInternalServerError)
-			return
-		}
-		if opts.pageDelay > 0 {
-			time.Sleep(opts.pageDelay)
-		}
-		if release, ok := opts.releasePage[page]; ok && release != nil {
-			<-release
-		}
-		orgs, idBase, nPages := ts.pageOrgs(page)
-		if page > nPages {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("[]"))
-			return
-		}
-		installations := make([]map[string]any, 0, len(orgs))
-		for i, org := range orgs {
-			installations = append(installations, map[string]any{
-				"id": idBase + int64(page*100+i),
-				"account": map[string]any{
-					"login": org,
-					"type":  "Organization",
-				},
-			})
-		}
-		body, err := json.Marshal(installations)
-		Expect(err).NotTo(HaveOccurred())
-		w.Header().Set("Content-Type", "application/json")
-		if page < nPages {
-			next := page + 1
-			w.Header().Set("Link", fmt.Sprintf(`<https://example.com/api/v3/app/installations?page=%d>; rel="next"`, next))
-		}
-		_, _ = w.Write(body)
+	mux.HandleFunc("GET /api/v3/orgs/{org}/installation", func(w http.ResponseWriter, r *http.Request) {
+		ts.serveInstallation(w, r.PathValue("org"), "Organization")
 	})
-	mux.HandleFunc("/api/v3/app/installations/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/access_tokens") && r.Method == http.MethodPost {
-			if id, err := installationIDFromTokenPath(r.URL.Path); err == nil {
-				ts.recordTokenInstallID(id)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"token":"test-token","expires_at":"2099-01-01T00:00:00Z"}`))
-			return
+	mux.HandleFunc("GET /api/v3/users/{user}/installation", func(w http.ResponseWriter, r *http.Request) {
+		ts.serveInstallation(w, r.PathValue("user"), "User")
+	})
+	mux.HandleFunc("GET /api/v3/app/installations", func(w http.ResponseWriter, r *http.Request) {
+		ts.listCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	})
+	mux.HandleFunc("POST /api/v3/app/installations/{id}/access_tokens", func(w http.ResponseWriter, r *http.Request) {
+		if id, err := strconv.ParseInt(r.PathValue("id"), 10, 64); err == nil {
+			ts.recordTokenInstallID(id)
 		}
-		http.NotFound(w, r)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"test-token","expires_at":"2099-01-01T00:00:00Z"}`))
 	})
 	ts.srv = httptest.NewTLSServer(mux)
 	DeferCleanup(ts.srv.Close)
@@ -117,28 +91,61 @@ func newTestGitHubServer(opts testGitHubServerOpts) *testGitHubServer {
 	return ts
 }
 
-func (ts *testGitHubServer) setFailPage(page int) {
-	ts.failPage.Store(int32(page))
+func (ts *testGitHubServer) serveInstallation(w http.ResponseWriter, login, accountType string) {
+	login = strings.ToLower(login)
+	ts.mu.Lock()
+	installations, calls := ts.orgs, ts.orgCalls
+	if accountType == "User" {
+		installations, calls = ts.users, ts.userCalls
+	}
+	calls[login]++
+	id, ok := installations[login]
+	ts.mu.Unlock()
+
+	if ts.release != nil {
+		<-ts.release
+	}
+	if ts.fail.Load() {
+		http.Error(w, "lookup failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		return
+	}
+	body, err := json.Marshal(map[string]any{
+		"id":      id,
+		"account": map[string]any{"login": login, "type": accountType},
+	})
+	Expect(err).NotTo(HaveOccurred())
+	_, _ = w.Write(body)
 }
 
-func (ts *testGitHubServer) setPages(pages [][]string, idBase int64) {
+func (ts *testGitHubServer) setInstallations(orgs, users map[string]int64) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.pages = pages
-	if idBase != 0 {
-		ts.idBase = idBase
+	clear(ts.orgs)
+	clear(ts.users)
+	for login, id := range orgs {
+		ts.orgs[strings.ToLower(login)] = id
+	}
+	for login, id := range users {
+		ts.users[strings.ToLower(login)] = id
 	}
 }
 
-func (ts *testGitHubServer) pageOrgs(page int) (orgs []string, idBase int64, nPages int) {
+func (ts *testGitHubServer) orgLookups(login string) int {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	idBase = ts.idBase
-	nPages = len(ts.pages)
-	if page >= 1 && page <= nPages {
-		orgs = ts.pages[page-1]
-	}
-	return orgs, idBase, nPages
+	return ts.orgCalls[strings.ToLower(login)]
+}
+
+func (ts *testGitHubServer) userLookups(login string) int {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.userCalls[strings.ToLower(login)]
 }
 
 func (ts *testGitHubServer) recordTokenInstallID(id int64) {
@@ -155,9 +162,9 @@ func (ts *testGitHubServer) tokenInstallIDsSnapshot() []int64 {
 	return out
 }
 
-// releasePageFunc closes ch once. Tests that block a handler on ch call it when the test is done,
+// releaseFunc closes ch once. Tests that block a handler on ch call it when the test is done,
 // and register it with DeferCleanup so a failed assertion cannot leave the handler blocked.
-func releasePageFunc(ch chan struct{}) func() {
+func releaseFunc(ch chan struct{}) func() {
 	return func() {
 		select {
 		case <-ch:
@@ -165,16 +172,6 @@ func releasePageFunc(ch chan struct{}) func() {
 			close(ch)
 		}
 	}
-}
-
-func installationIDFromTokenPath(path string) (int64, error) {
-	rest := strings.TrimPrefix(path, "/api/v3/app/installations/")
-	idStr := strings.TrimSuffix(rest, "/access_tokens")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse installation id from %q: %w", path, err)
-	}
-	return id, nil
 }
 
 func testClusterScmProvider(domain string) *v1alpha1.ClusterScmProvider {
@@ -193,363 +190,280 @@ func testSecret(privateKey []byte) v1.Secret {
 	return v1.Secret{Data: map[string][]byte{githubAppPrivateKeySecretKey: privateKey}}
 }
 
+// installationIDFor returns the installation ID the client returned by GetClient authenticates as.
+func installationIDFor(ctx context.Context, server *testGitHubServer, provider *v1alpha1.ClusterScmProvider, secret v1.Secret, org string) int64 {
+	GinkgoHelper()
+	_, itr, err := GetClient(ctx, provider, secret, org)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = itr.Token(ctx)
+	Expect(err).NotTo(HaveOccurred())
+	ids := server.tokenInstallIDsSnapshot()
+	Expect(ids).NotTo(BeEmpty())
+	return ids[len(ids)-1]
+}
+
 var _ = Describe("GetClient", func() {
+	var (
+		ctx    context.Context
+		secret v1.Secret
+	)
+
 	BeforeEach(func() {
 		resetInstallationCachesForTest()
+		ctx = context.Background()
+		secret = testSecret(testGitHubAppPrivateKey())
 	})
 
-	It("lists installations once for repeated unknown-org misses within the negative-cache TTL", func() {
-		privKey := testGitHubAppPrivateKey()
+	It("looks up only the requested org's installation", func() {
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs: map[string]int64{"known-org": 1100, "other-org": 2200},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
-		before := server.listCalls.Load()
-		for range 3 {
-			_, _, err := GetClient(ctx, provider, secret, "productlab")
-			Expect(err).To(HaveOccurred())
-		}
-		Expect(server.listCalls.Load() - before).To(Equal(int32(1)))
-
-		beforeHit := server.listCalls.Load()
-		_, _, err := GetClient(ctx, provider, secret, "productlab")
-		Expect(err).To(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(beforeHit))
+		Expect(installationIDFor(ctx, server, provider, secret, "known-org")).To(Equal(int64(1100)))
+		Expect(server.orgLookups("known-org")).To(Equal(1))
+		Expect(server.orgLookups("other-org")).To(Equal(0))
+		Expect(server.userLookups("known-org")).To(Equal(0))
+		Expect(server.listCalls.Load()).To(Equal(int32(0)))
 	})
 
-	It("re-lists installations after the negative-cache TTL expires", func() {
+	It("falls back to the user installation when the owner is not an org", func() {
+		server := newTestGitHubServer(testGitHubServerOpts{
+			users: map[string]int64{"some-user": 3300},
+		})
+		provider := testClusterScmProvider(server.domain)
+
+		Expect(installationIDFor(ctx, server, provider, secret, "some-user")).To(Equal(int64(3300)))
+		Expect(server.orgLookups("some-user")).To(Equal(1))
+		Expect(server.userLookups("some-user")).To(Equal(1))
+
+		_, _, err := GetClient(ctx, provider, secret, "some-user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server.orgLookups("some-user")).To(Equal(1))
+		Expect(server.userLookups("some-user")).To(Equal(1))
+	})
+
+	It("treats owner logins case-insensitively", func() {
+		server := newTestGitHubServer(testGitHubServerOpts{
+			orgs: map[string]int64{"known-org": 1100},
+		})
+		provider := testClusterScmProvider(server.domain)
+
+		Expect(installationIDFor(ctx, server, provider, secret, "Known-Org")).To(Equal(int64(1100)))
+		Expect(installationIDFor(ctx, server, provider, secret, "known-org")).To(Equal(int64(1100)))
+		Expect(server.orgLookups("known-org")).To(Equal(1))
+	})
+
+	It("looks up an uninstalled owner once within the negative-cache TTL", func() {
+		server := newTestGitHubServer(testGitHubServerOpts{
+			orgs: map[string]int64{"known-org": 1100},
+		})
+		provider := testClusterScmProvider(server.domain)
+
+		for range 3 {
+			_, _, err := GetClient(ctx, provider, secret, "productlab")
+			Expect(err).To(MatchError(ContainSubstring("not found for org: productlab")))
+		}
+		Expect(server.orgLookups("productlab")).To(Equal(1))
+		Expect(server.userLookups("productlab")).To(Equal(1))
+	})
+
+	It("looks up an uninstalled owner again after the negative-cache TTL expires", func() {
 		installationMissCacheTTL = 20 * time.Millisecond
 		DeferCleanup(func() { installationMissCacheTTL = defaultInstallationMissCacheTTL })
 
-		privKey := testGitHubAppPrivateKey()
-		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
-		})
+		server := newTestGitHubServer(testGitHubServerOpts{})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
-		_, _, _ = GetClient(ctx, provider, secret, "productlab")
+		_, _, err := GetClient(ctx, provider, secret, "productlab")
+		Expect(err).To(HaveOccurred())
+
+		server.setInstallations(map[string]int64{"productlab": 4400}, nil)
 		time.Sleep(30 * time.Millisecond)
-		_, _, _ = GetClient(ctx, provider, secret, "productlab")
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+
+		Expect(installationIDFor(ctx, server, provider, secret, "productlab")).To(Equal(int64(4400)))
+		Expect(server.orgLookups("productlab")).To(Equal(2))
 	})
 
-	It("waits for every installation page before caching an org", func() {
-		privKey := testGitHubAppPrivateKey()
-		releasePage2 := make(chan struct{})
+	It("caches each owner separately", func() {
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages:       [][]string{{"known-org"}, {"page2-org"}},
-			releasePage: map[int]<-chan struct{}{2: releasePage2},
-		})
-		release := releasePageFunc(releasePage2)
-		DeferCleanup(release)
-		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
-
-		done := make(chan error, 1)
-		go func() {
-			_, _, err := GetClient(ctx, provider, secret, "known-org")
-			done <- err
-		}()
-
-		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
-		Consistently(done).WithTimeout(50 * time.Millisecond).ShouldNot(Receive())
-
-		release()
-		Expect(<-done).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
-	})
-
-	It("reflects list pagination duration on cache miss", func() {
-		privKey := testGitHubAppPrivateKey()
-		const (
-			pageCount = 3
-			pageDelay = 50 * time.Millisecond
-		)
-		pages := make([][]string, pageCount)
-		for i := range pages {
-			pages[i] = []string{fmt.Sprintf("org-%d", i)}
-		}
-		server := newTestGitHubServer(testGitHubServerOpts{pages: pages, pageDelay: pageDelay})
-		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
-
-		start := time.Now()
-		_, _, err := GetClient(ctx, provider, secret, "productlab")
-		elapsed := time.Since(start)
-		Expect(err).To(HaveOccurred())
-		Expect(elapsed).To(BeNumerically(">=", time.Duration(pageCount)*pageDelay))
-	})
-
-	It("resolves each caller org after a shared installation list", func() {
-		privKey := testGitHubAppPrivateKey()
-		releasePage1 := make(chan struct{})
-		server := newTestGitHubServer(testGitHubServerOpts{
-			pages:       [][]string{{"known-org"}},
-			releasePage: map[int]<-chan struct{}{1: releasePage1},
-		})
-		release := releasePageFunc(releasePage1)
-		DeferCleanup(release)
-		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
-
-		g1Done := make(chan error, 1)
-		g2Done := make(chan error, 1)
-		go func() {
-			_, _, err := GetClient(ctx, provider, secret, "productlab")
-			g1Done <- err
-		}()
-		go func() {
-			_, _, err := GetClient(ctx, provider, secret, "known-org")
-			g2Done <- err
-		}()
-
-		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
-		release()
-
-		Expect(<-g1Done).To(HaveOccurred())
-		Expect(<-g2Done).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
-	})
-
-	It("singleflights concurrent misses for the same app", func() {
-		privKey := testGitHubAppPrivateKey()
-		releasePage2 := make(chan struct{})
-		server := newTestGitHubServer(testGitHubServerOpts{
-			pages:       [][]string{{"known-org"}, {"page2-org"}},
-			releasePage: map[int]<-chan struct{}{2: releasePage2},
-		})
-		release := releasePageFunc(releasePage2)
-		DeferCleanup(release)
-		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
-
-		done := make(chan struct{}, 3)
-		for _, org := range []string{"productlab", "missing-a", "missing-b"} {
-			go func(org string) {
-				_, _, _ = GetClient(ctx, provider, secret, org)
-				done <- struct{}{}
-			}(org)
-		}
-
-		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(BeNumerically(">=", 1))
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
-
-		release()
-		for range 3 {
-			<-done
-		}
-	})
-
-	It("uses warm installation cache for known orgs without extra list calls or metrics", func() {
-		privKey := testGitHubAppPrivateKey()
-		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, provider, secret, "productlab")
 		Expect(err).To(HaveOccurred())
-		before := server.listCalls.Load()
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(before))
+		_, _, err = GetClient(ctx, provider, secret, "known-org")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(server.orgLookups("productlab")).To(Equal(1))
+		Expect(server.orgLookups("known-org")).To(Equal(1))
 	})
 
-	It("skips installation listing when installationID is configured", func() {
-		privKey := testGitHubAppPrivateKey()
+	It("singleflights concurrent lookups for the same owner", func() {
+		release := make(chan struct{})
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs:    map[string]int64{"known-org": 1100},
+			release: release,
+		})
+		// Registered after the server so it runs before srv.Close, which waits for blocked handlers.
+		DeferCleanup(releaseFunc(release))
+		provider := testClusterScmProvider(server.domain)
+
+		done := make(chan error, 3)
+		for range 3 {
+			go func() {
+				_, _, err := GetClient(ctx, provider, secret, "known-org")
+				done <- err
+			}()
+		}
+
+		Eventually(func() int { return server.orgLookups("known-org") }).WithTimeout(2 * time.Second).Should(Equal(1))
+		Consistently(func() int { return server.orgLookups("known-org") }).WithTimeout(50 * time.Millisecond).Should(Equal(1))
+
+		releaseFunc(release)()
+		for range 3 {
+			Expect(<-done).NotTo(HaveOccurred())
+		}
+		Expect(server.orgLookups("known-org")).To(Equal(1))
+	})
+
+	It("skips the installation lookup when installationID is configured", func() {
+		server := newTestGitHubServer(testGitHubServerOpts{
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
 		provider.Spec.GitHub.InstallationID = 42
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, provider, secret, "any-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(0)))
+		Expect(server.orgLookups("any-org")).To(Equal(0))
+		Expect(server.userLookups("any-org")).To(Equal(0))
 	})
 
 	It("replaces a stale installation ID after the positive-cache TTL", func() {
 		installationHitCacheTTL = 20 * time.Millisecond
 		DeferCleanup(func() { installationHitCacheTTL = defaultInstallationHitCacheTTL })
 
-		privKey := testGitHubAppPrivateKey()
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
-		_, itr, err := GetClient(ctx, provider, secret, "known-org")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = itr.Token(ctx)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(server.tokenInstallIDsSnapshot()).To(Equal([]int64{1100}))
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+		Expect(installationIDFor(ctx, server, provider, secret, "known-org")).To(Equal(int64(1100)))
 
-		server.setPages([][]string{{"known-org"}}, 5000)
-
-		_, _, err = GetClient(ctx, provider, secret, "known-org")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+		server.setInstallations(map[string]int64{"known-org": 5100}, nil)
+		Expect(installationIDFor(ctx, server, provider, secret, "known-org")).To(Equal(int64(1100)))
+		Expect(server.orgLookups("known-org")).To(Equal(1))
 
 		time.Sleep(30 * time.Millisecond)
 
-		_, itr, err = GetClient(ctx, provider, secret, "known-org")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = itr.Token(ctx)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
-		Expect(server.tokenInstallIDsSnapshot()).To(Equal([]int64{1100, 5100}))
+		Expect(installationIDFor(ctx, server, provider, secret, "known-org")).To(Equal(int64(5100)))
+		Expect(server.orgLookups("known-org")).To(Equal(2))
 	})
 
-	It("forgets an uninstalled org when the positive-cache TTL expires", func() {
+	It("forgets an uninstalled owner when the positive-cache TTL expires", func() {
 		installationHitCacheTTL = 20 * time.Millisecond
 		DeferCleanup(func() { installationHitCacheTTL = defaultInstallationHitCacheTTL })
 
-		privKey := testGitHubAppPrivateKey()
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 
-		server.setPages([][]string{{"other-org"}}, 0)
-
+		server.setInstallations(nil, nil)
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 
 		time.Sleep(30 * time.Millisecond)
 
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).To(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
-
-		_, _, err = GetClient(ctx, provider, secret, "other-org")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+		Expect(server.orgLookups("known-org")).To(Equal(2))
 	})
 
-	It("does not cache installations when a later page fails", func() {
-		privKey := testGitHubAppPrivateKey()
+	It("does not cache a failed lookup", func() {
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages:    [][]string{{"known-org"}, {"page2-org"}},
-			failPage: 2,
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
+		server.fail.Store(true)
 		_, _, err := GetClient(ctx, provider, secret, "known-org")
-		Expect(err).To(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+		Expect(err).To(MatchError(ContainSubstring("failed to get installation")))
+		Expect(server.userLookups("known-org")).To(Equal(0))
 
-		server.setFailPage(0)
+		server.fail.Store(false)
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+		Expect(server.orgLookups("known-org")).To(Equal(2))
 	})
 
-	It("keeps a finished installation snapshot when a refresh list fails", func() {
+	It("keeps a found installation ID when a refresh lookup fails", func() {
 		installationHitCacheTTL = 20 * time.Millisecond
 		DeferCleanup(func() { installationHitCacheTTL = defaultInstallationHitCacheTTL })
 
-		privKey := testGitHubAppPrivateKey()
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}, {"page2-org"}},
+			orgs: map[string]int64{"known-org": 1100},
 		})
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
 
 		time.Sleep(30 * time.Millisecond)
-		server.setFailPage(2)
+		server.fail.Store(true)
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).To(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+		Expect(server.orgLookups("known-org")).To(Equal(2))
 
 		installationHitCacheTTL = defaultInstallationHitCacheTTL
-		server.setFailPage(0)
+		server.fail.Store(false)
 		_, _, err = GetClient(ctx, provider, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(2)))
+		Expect(server.orgLookups("known-org")).To(Equal(2))
 	})
 
-	It("fails callers when the installation list times out", func() {
-		listInstallationsTimeout = 30 * time.Millisecond
-		DeferCleanup(func() { listInstallationsTimeout = defaultListInstallationsTimeout })
+	It("fails callers when the installation lookup times out", func() {
+		findInstallationTimeout = 30 * time.Millisecond
+		DeferCleanup(func() { findInstallationTimeout = defaultFindInstallationTimeout })
 
-		privKey := testGitHubAppPrivateKey()
-		releasePage1 := make(chan struct{})
+		release := make(chan struct{})
 		server := newTestGitHubServer(testGitHubServerOpts{
-			pages:       [][]string{{"known-org"}},
-			releasePage: map[int]<-chan struct{}{1: releasePage1},
+			orgs:    map[string]int64{"known-org": 1100},
+			release: release,
 		})
-		DeferCleanup(releasePageFunc(releasePage1))
+		// Registered after the server so it runs before srv.Close, which waits for blocked handlers.
+		DeferCleanup(releaseFunc(release))
 		provider := testClusterScmProvider(server.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, provider, secret, "known-org")
 		Expect(err).To(HaveOccurred())
-		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+		Expect(server.orgLookups("known-org")).To(Equal(1))
 	})
 
 	It("does not share installation cache entries across GitHub domains", func() {
-		privKey := testGitHubAppPrivateKey()
 		serverA := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"known-org"}},
+			orgs: map[string]int64{"known-org": 1100},
 		})
-		serverB := newTestGitHubServer(testGitHubServerOpts{
-			pages: [][]string{{"other-org"}},
-		})
+		serverB := newTestGitHubServer(testGitHubServerOpts{})
 		providerA := testClusterScmProvider(serverA.domain)
 		providerB := testClusterScmProvider(serverB.domain)
-		secret := testSecret(privKey)
-		ctx := context.Background()
 
 		_, _, err := GetClient(ctx, providerA, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
 
 		_, _, err = GetClient(ctx, providerB, secret, "known-org")
 		Expect(err).To(HaveOccurred())
-		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
-		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
-
-		_, _, err = GetClient(ctx, providerB, secret, "known-org")
-		Expect(err).To(HaveOccurred())
-		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
+		Expect(serverB.orgLookups("known-org")).To(Equal(1))
 
 		_, _, err = GetClient(ctx, providerA, secret, "known-org")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(serverA.listCalls.Load()).To(Equal(int32(1)))
-
-		_, _, err = GetClient(ctx, providerB, secret, "other-org")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(serverB.listCalls.Load()).To(Equal(int32(1)))
+		Expect(serverA.orgLookups("known-org")).To(Equal(1))
 	})
 })

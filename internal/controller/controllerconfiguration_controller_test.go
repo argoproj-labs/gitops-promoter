@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,10 +32,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 //go:embed testdata/ControllerConfiguration.yaml
@@ -45,6 +49,48 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		It("should unmarshal the ControllerConfiguration resource", func() {
 			err := unmarshalYamlStrict(testControllerConfigurationYAML, &promoterv1alpha1.ControllerConfiguration{})
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When validating spec.<controller>.workQueue.rateLimiter", func() {
+		ctx := context.Background()
+
+		invalidConfiguration := func(name string, mutate func(rl *promoterv1alpha1.RateLimiter)) *promoterv1alpha1.ControllerConfiguration {
+			cc, err := loadShippedControllerConfigurationForTests(name)
+			Expect(err).NotTo(HaveOccurred())
+			mutate(&cc.Spec.CommitStatus.WorkQueue.RateLimiter)
+			return cc
+		}
+
+		It("rejects a rate limiter with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of the fields in [fastSlow exponentialFailure bucket maxOf] must be set"))
+		})
+
+		It("rejects an empty maxOf list", func() {
+			cc := invalidConfiguration("rate-limiter-empty-maxof-list", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{}
+			})
+			// omitempty drops an empty slice, so send the literal empty list the way a YAML author would.
+			u := &unstructured.Unstructured{}
+			Expect(scheme.Convert(cc, u, nil)).To(Succeed())
+			Expect(unstructured.SetNestedSlice(u.Object, []any{}, "spec", "commitStatus", "workQueue", "rateLimiter", "maxOf")).To(Succeed())
+			err := k8sClient.Create(ctx, u)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("should have at least 1 items"))
+		})
+
+		It("rejects a maxOf entry with no strategy", func() {
+			cc := invalidConfiguration("rate-limiter-empty-maxof", func(rl *promoterv1alpha1.RateLimiter) {
+				*rl = promoterv1alpha1.RateLimiter{MaxOf: []promoterv1alpha1.RateLimiterTypes{{}}}
+			})
+			err := k8sClient.Create(ctx, cc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of fastSlow, exponentialFailure or bucket must be specified"))
 		})
 	})
 
@@ -271,6 +317,78 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
+		})
+	})
+
+	Context("When spec.metrics.labels.gitRepository is set", func() {
+		const resourceName = settings.ControllerConfigurationName
+
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+		reconciler := func() *ControllerConfigurationReconciler {
+			return &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+			}
+		}
+		setGitRepositoryLabels := func(mode promoterv1alpha1.MetricLabelMode) {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.Metrics.Labels.GitRepository = mode
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+			_, err := reconciler().Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		// histogramRepositories returns the git_repository values on git_operations_duration_seconds series.
+		histogramRepositories := func() []string {
+			families, err := ctrlmetrics.Registry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+			var repositories []string
+			for _, family := range families {
+				if family.GetName() != "git_operations_duration_seconds" {
+					continue
+				}
+				for _, m := range family.GetMetric() {
+					for _, label := range m.GetLabel() {
+						if label.GetName() == "git_repository" {
+							repositories = append(repositories, label.GetValue())
+						}
+					}
+				}
+			}
+			return repositories
+		}
+
+		BeforeEach(func() {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, typeNamespacedName, cc)
+			if err != nil && errors.IsNotFound(err) {
+				resource, loadErr := loadShippedControllerConfigurationForTests(resourceName)
+				Expect(loadErr).NotTo(HaveOccurred())
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+			DeferCleanup(setGitRepositoryLabels, promoterv1alpha1.MetricLabelModeAll)
+		})
+
+		It("applies the setting to recorded metrics", func() {
+			setGitRepositoryLabels(promoterv1alpha1.MetricLabelModeCounters)
+
+			repo := &promoterv1alpha1.GitRepository{
+				Name: "repository-labels-test", Namespace: "default",
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Name: "repository-labels-test"},
+				},
+			}
+			metrics.RecordGitOperation(repo, metrics.GitOperationFetch, metrics.GitOperationResultSuccess, time.Millisecond)
+
+			Expect(histogramRepositories()).To(HaveEach(BeEmpty()))
+			Expect(histogramRepositories()).NotTo(BeEmpty())
 		})
 	})
 })

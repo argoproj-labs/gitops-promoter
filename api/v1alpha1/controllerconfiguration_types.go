@@ -113,7 +113,53 @@ type ControllerConfigurationSpec struct {
 	// +optional
 	// +kubebuilder:default=Cluster
 	Scope ControllerScope `json:"scope,omitempty"`
+
+	// Metrics contains the configuration for the controller's Prometheus metrics.
+	// +optional
+	// +kubebuilder:default={}
+	Metrics MetricsConfiguration `json:"metrics,omitzero"`
 }
+
+// MetricsConfiguration defines the configuration for the controller's Prometheus metrics.
+type MetricsConfiguration struct {
+	// Labels controls which metrics carry selected Prometheus labels (not Kubernetes labels).
+	// +optional
+	// +kubebuilder:default={}
+	Labels MetricsLabelsConfiguration `json:"labels,omitzero"`
+}
+
+// MetricsLabelsConfiguration selects which metrics carry each configurable Prometheus label.
+type MetricsLabelsConfiguration struct {
+	// GitRepository controls which of git_operations_total, git_operations_duration_seconds,
+	// scm_calls_total, and scm_calls_duration_seconds set the git_repository and
+	// git_repository_namespace labels. These labels multiply series by the number of GitRepositories,
+	// and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges
+	// never carry these labels.
+	// Where a metric doesn't set the labels, the label names remain with empty values, aggregating
+	// series across repositories.
+	// All: all four metrics set the labels.
+	// Counters: only the two _total counters set them, so percentiles from the _duration_seconds
+	// histograms stay available at much lower cardinality.
+	// None: none of the four metrics set them.
+	// Changing this value resets the affected metrics.
+	// +optional
+	// +kubebuilder:default=All
+	GitRepository MetricLabelMode `json:"gitRepository,omitempty"`
+}
+
+// MetricLabelMode selects which of the affected metrics set a Prometheus label's value. Metrics that
+// don't set it keep the label name with an empty value.
+// +kubebuilder:validation:Enum=All;Counters;None
+type MetricLabelMode string
+
+const (
+	// MetricLabelModeAll sets the label's value on every affected metric.
+	MetricLabelModeAll MetricLabelMode = "All"
+	// MetricLabelModeCounters sets the label's value only on the affected counters and leaves it empty on the others.
+	MetricLabelModeCounters MetricLabelMode = "Counters"
+	// MetricLabelModeNone leaves the label's value empty on every affected metric.
+	MetricLabelModeNone MetricLabelMode = "None"
+)
 
 // ControllerScope is the scope of namespaced resources the controller watches.
 // +kubebuilder:validation:Enum=Cluster;Namespace
@@ -357,7 +403,7 @@ type ExponentialFailure struct {
 // Exactly one of the rate limiter types or MaxOf must be specified.
 //
 // See https://pkg.go.dev/k8s.io/client-go/util/workqueue for rate limiter implementation details.
-// +kubebuilder:validation:AtMostOneOf=fastSlow;exponentialFailure;bucket;maxOf
+// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket;maxOf
 type RateLimiter struct {
 	// RateLimiterTypes can be one of: FastSlow, ExponentialFailure, or Bucket.
 	// +optional
@@ -367,7 +413,9 @@ type RateLimiter struct {
 	// limiters is used. This enables sophisticated rate limiting that respects multiple
 	// constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
 	// +optional
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=3
+	// +kubebuilder:validation:items:XValidation:rule="(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) == 1",message="exactly one of fastSlow, exponentialFailure or bucket must be specified"
 	MaxOf []RateLimiterTypes `json:"maxOf,omitempty"`
 }
 

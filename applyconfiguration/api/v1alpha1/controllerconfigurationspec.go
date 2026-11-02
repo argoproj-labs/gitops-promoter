@@ -81,6 +81,8 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// Scope limits watches of namespaced resources: Cluster (all namespaces) or Namespace (controller namespace only).
 	// Requires a controller restart.
 	Scope *apiv1alpha1.ControllerScope `json:"scope,omitempty"`
+	// Metrics contains the configuration for the controller's Prometheus metrics.
+	Metrics *MetricsConfigurationApplyConfiguration `json:"metrics,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -206,5 +208,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithClusterScmProvider(v
 // If called multiple times, the Scope field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithScope(value apiv1alpha1.ControllerScope) *ControllerConfigurationSpecApplyConfiguration {
 	b.Scope = &value
+	return b
+}
+
+// WithMetrics sets the Metrics field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Metrics field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithMetrics(value *MetricsConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.Metrics = value
 	return b
 }

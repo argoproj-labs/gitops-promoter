@@ -2808,18 +2808,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3018,18 +3023,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3227,18 +3237,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3451,18 +3466,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3660,18 +3680,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3869,18 +3894,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3911,6 +3941,38 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
+              metrics:
+                default: {}
+                description: Metrics contains the configuration for the controller's
+                  Prometheus metrics.
+                properties:
+                  labels:
+                    default: {}
+                    description: Labels controls which metrics carry selected Prometheus
+                      labels (not Kubernetes labels).
+                    properties:
+                      gitRepository:
+                        default: All
+                        description: |-
+                          GitRepository controls which of git_operations_total, git_operations_duration_seconds,
+                          scm_calls_total, and scm_calls_duration_seconds set the git_repository and
+                          git_repository_namespace labels. These labels multiply series by the number of GitRepositories,
+                          and histograms multiply them again by their bucket count. The scm_calls_rate_limit_* gauges
+                          never carry these labels.
+                          Where a metric doesn't set the labels, the label names remain with empty values, aggregating
+                          series across repositories.
+                          All: all four metrics set the labels.
+                          Counters: only the two _total counters set them, so percentiles from the _duration_seconds
+                          histograms stay available at much lower cardinality.
+                          None: none of the four metrics set them.
+                          Changing this value resets the affected metrics.
+                        enum:
+                        - All
+                        - Counters
+                        - None
+                        type: string
+                    type: object
+                type: object
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -4090,18 +4152,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4318,18 +4385,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4528,18 +4600,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4737,18 +4814,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4955,18 +5037,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -5174,18 +5261,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -7834,8 +7926,9 @@ spec:
                   branch's history (the tip or one of its ancestors); any other commit is refused. A commit that
                   carries Promoter-restored-from is itself a restore and is refused. Once the active tip already
                   restores this sha and its note carries Promoter-restore-unblocked-at, another RestoreActiveCommit
-                  for the same sha is refused until the active branch moves, and that note is left unchanged. The
-                  controller writes a new commit (the commit's tree, or only activePath when the policy sets
+                  for the same sha deletes itself without writing a commit or changing that note, so it does not
+                  stay and block promotion. Otherwise the controller writes a new commit (the commit's tree, or only
+                  activePath when the policy sets
                   one) parented on the current active tip and records a promotion-history note with
                   Promoter-restored-from. When the active branch already has that content, nothing is written.
                   The proposed branch is left as the hydrator wrote it. The ChangeTransferPolicy does not open
@@ -11857,6 +11950,9 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  metrics:
+    labels:
+      gitRepository: All
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10

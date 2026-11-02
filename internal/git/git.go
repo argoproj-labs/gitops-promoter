@@ -1595,8 +1595,10 @@ type RestoreResult struct {
 // A repeat call is a no-op when the active tip already has the restore marker for targetSha and
 // the matching tree and its note does not carry Promoter-restore-unblocked-at. That is the same
 // restore retrying after the commit was already pushed. When that note does carry the trailer, a
-// previous RestoreActiveCommit set spec.blockEnvironment to false: the call is refused and the note is left as it is, so
-// the unblock stays in history. The branch has not moved, so there is no new commit to gate on.
+// previous RestoreActiveCommit set spec.blockEnvironment to false: the call returns
+// RestoreAlreadyReleasedError and the note is left as it is, so the unblock stays in history. The
+// branch has not moved, so there is no new commit to gate on. The RestoreActiveCommit controller
+// deletes the object on that error.
 // When the active tip already has the matching tree without the restore marker, the branch is
 // running that version already: nothing is written, nothing moved off the branch, and the result
 // is Unchanged with an empty BlockedDrySha. Blocking the live dry SHA there would hold back the
@@ -1959,7 +1961,21 @@ func (g *EnvironmentOperations) refuseReleasedRestore(ctx context.Context, activ
 	if len(note[constants.TrailerRestoreUnblockedAt]) == 0 {
 		return nil
 	}
-	return fmt.Errorf("active tip %q already restores %q and carries %s; it cannot be restored again until the active branch moves", activeTip, targetSha, constants.TrailerRestoreUnblockedAt)
+	return &RestoreAlreadyReleasedError{ActiveTip: activeTip, TargetSha: targetSha}
+}
+
+// RestoreAlreadyReleasedError reports that the active tip already restores TargetSha and its
+// promotion-history note already carries Promoter-restore-unblocked-at. The note is left unchanged
+// and nothing is written. The RestoreActiveCommit controller deletes the object on this error:
+// retrying cannot restore, and a pending object blocks promotion.
+type RestoreAlreadyReleasedError struct {
+	ActiveTip string
+	TargetSha string
+}
+
+// Error implements the error interface for RestoreAlreadyReleasedError.
+func (e *RestoreAlreadyReleasedError) Error() string {
+	return fmt.Sprintf("active tip %q already restores %q and carries %s; it cannot be restored again until the active branch moves", e.ActiveTip, e.TargetSha, constants.TrailerRestoreUnblockedAt)
 }
 
 // hasRestoreMarker reports whether sha carries Promoter-restored-from: targetSha, read from its
