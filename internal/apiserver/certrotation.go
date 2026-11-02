@@ -20,12 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"path/filepath"
 
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -150,7 +148,7 @@ func (o *CertRotationOptions) newCertRotator(certFile, keyFile string) *rotator.
 // and the CA has been injected into the APIService, and a channel that receives the manager's
 // exit error (nil on clean shutdown when ctx is cancelled).
 func startCertRotation(ctx context.Context, restConfig *clientrest.Config, opts *CertRotationOptions, certFile, keyFile string) (<-chan struct{}, <-chan error, error) {
-	mgr, err := manager.New(secretScopedConfig(restConfig, opts.Namespace, opts.SecretName), manager.Options{
+	mgr, err := manager.New(restConfig, manager.Options{
 		Scheme: utils.GetScheme(),
 		// The rotator only needs a client and its own namespaced cache; disable the
 		// manager's metrics and health endpoints so they don't collide with the apiserver.
@@ -184,42 +182,3 @@ func startCertRotation(ctx context.Context, restConfig *clientrest.Config, opts 
 	}()
 	return cr.IsReady, errCh, nil
 }
-
-// secretScopedConfig returns a copy of restConfig whose Secret list and watch requests in
-// namespace are narrowed to the single Secret secretName, using a metadata.name field
-// selector.
-//
-// cert-controller builds its own namespace-wide informer for Secrets and offers no way to
-// filter it. Without this, its list/watch would return every Secret in the install
-// namespace (including SCM credentials), and the apiserver's Role would have to allow
-// that. With the field selector, the Role can grant get/list/watch on the serving-cert
-// Secret by resourceNames only: the Kubernetes authorizer treats a list/watch with a
-// metadata.name field selector as a request for that named object.
-func secretScopedConfig(restConfig *clientrest.Config, namespace, secretName string) *clientrest.Config {
-	cfg := clientrest.CopyConfig(restConfig)
-	collectionPath := "/api/v1/namespaces/" + namespace + "/secrets"
-	selector := fields.OneTermEqualSelector("metadata.name", secretName).String()
-	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-		return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			if req.Method != http.MethodGet || req.URL.Path != collectionPath {
-				return rt.RoundTrip(req)
-			}
-			q := req.URL.Query()
-			if existing := q.Get("fieldSelector"); existing != "" && existing != selector {
-				q.Set("fieldSelector", existing+","+selector)
-			} else {
-				q.Set("fieldSelector", selector)
-			}
-			r := req.Clone(req.Context())
-			u := *req.URL
-			u.RawQuery = q.Encode()
-			r.URL = &u
-			return rt.RoundTrip(r)
-		})
-	})
-	return cfg
-}
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

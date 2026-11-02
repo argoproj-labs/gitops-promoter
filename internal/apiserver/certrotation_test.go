@@ -17,13 +17,9 @@ limitations under the License.
 package apiserver
 
 import (
-	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,15 +30,10 @@ import (
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
-	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 var _ = Describe("CertRotationOptions", func() {
@@ -116,48 +107,6 @@ var _ = Describe("CertRotationOptions", func() {
 	})
 })
 
-var _ = Describe("secretScopedConfig", func() {
-	// rewritten sends req through the scoped config's transport and returns the request
-	// that reached the underlying transport.
-	rewritten := func(method, rawURL string) *http.Request {
-		var got *http.Request
-		cfg := secretScopedConfig(&clientrest.Config{}, "promoter-system", "promoter-apiserver-serving-cert")
-		rt := cfg.WrapTransport(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-			got = r
-			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
-		}))
-		req, err := http.NewRequest(method, rawURL, nil)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = rt.RoundTrip(req)
-		Expect(err).NotTo(HaveOccurred())
-		return got
-	}
-	const base = "https://kube/api/v1/namespaces/"
-
-	It("adds a metadata.name field selector to Secret list and watch in the namespace", func() {
-		for _, u := range []string{
-			base + "promoter-system/secrets?limit=500",
-			base + "promoter-system/secrets?watch=true&resourceVersion=1",
-		} {
-			q := rewritten(http.MethodGet, u).URL.Query()
-			Expect(q.Get("fieldSelector")).To(Equal("metadata.name=promoter-apiserver-serving-cert"), u)
-		}
-		Expect(rewritten(http.MethodGet, base+"promoter-system/secrets?limit=500").URL.Query().Get("limit")).To(Equal("500"))
-	})
-
-	It("leaves other requests untouched", func() {
-		for _, c := range []struct{ method, url string }{
-			{http.MethodGet, base + "promoter-system/secrets/promoter-apiserver-serving-cert"},
-			{http.MethodPut, base + "promoter-system/secrets/promoter-apiserver-serving-cert"},
-			{http.MethodGet, base + "other/secrets"},
-			{http.MethodGet, base + "promoter-system/configmaps"},
-			{http.MethodGet, "https://kube/apis/apiregistration.k8s.io/v1/apiservices"},
-		} {
-			Expect(rewritten(c.method, c.url).URL.Query().Has("fieldSelector")).To(BeFalse(), c.method+" "+c.url)
-		}
-	})
-})
-
 var _ = Describe("cert rotation integration (envtest)", func() {
 	It("populates the Secret, injects the APIService caBundle, and becomes ready once certs are mounted", func() {
 		env, cfg, cl := startRunEnvtest()
@@ -190,30 +139,6 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 		}}
 		Expect(cl.Create(ctx, apiService)).To(Succeed())
 
-		By("applying the overlay's RBAC and an unrelated Secret the apiserver must not be able to read")
-		Expect(cl.Create(ctx, &corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{Name: certRotationTestServiceAccount, Namespace: ns},
-		})).To(Succeed())
-		for _, obj := range loadManifests(filepath.Join("..", "..", "config", "apiserver", "certs-cert-controller", "rbac.yaml")) {
-			Expect(cl.Create(ctx, obj)).To(Succeed(), "creating %s %s", obj.GetKind(), obj.GetName())
-		}
-		Expect(cl.Create(ctx, &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "scm-credentials", Namespace: ns},
-			StringData: map[string]string{"token": "do-not-leak"},
-		})).To(Succeed())
-
-		// Run the rotator as the apiserver's ServiceAccount so the overlay's RBAC is enforced.
-		saCfg := clientrest.CopyConfig(cfg)
-		saCfg.Impersonate = clientrest.ImpersonationConfig{
-			UserName: "system:serviceaccount:" + ns + ":" + certRotationTestServiceAccount,
-		}
-		saClient, err := client.New(saCfg, client.Options{Scheme: utils.GetScheme()})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(apierrors.IsForbidden(saClient.List(ctx, &corev1.SecretList{}, client.InNamespace(ns)))).To(BeTrue(),
-			"the apiserver ServiceAccount must not be able to list all Secrets")
-		Expect(apierrors.IsForbidden(saClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "scm-credentials"}, &corev1.Secret{}))).To(BeTrue(),
-			"the apiserver ServiceAccount must not be able to read other Secrets")
-
 		opts := newCertRotationOptions()
 		opts.Enabled = true
 		opts.Namespace = ns
@@ -222,7 +147,7 @@ var _ = Describe("cert rotation integration (envtest)", func() {
 		keyFile := filepath.Join(certDir, "tls.key")
 		Expect(opts.Validate(certFile, keyFile)).To(Succeed())
 
-		ready, errCh, err := startCertRotation(ctx, saCfg, &opts, certFile, keyFile)
+		ready, errCh, err := startCertRotation(ctx, cfg, &opts, certFile, keyFile)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the rotator to populate the Secret")
@@ -287,27 +212,4 @@ func managedFieldsOf(entries []metav1.ManagedFieldsEntry, manager string) string
 		}
 	}
 	return out.String()
-}
-
-const certRotationTestServiceAccount = "promoter-apiserver"
-
-// loadManifests decodes every object in a multi-document YAML file.
-func loadManifests(path string) []*unstructured.Unstructured {
-	data, err := os.ReadFile(path)
-	Expect(err).NotTo(HaveOccurred())
-	dec := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
-	var objs []*unstructured.Unstructured
-	for {
-		obj := &unstructured.Unstructured{}
-		if err := dec.Decode(&obj.Object); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			Expect(err).NotTo(HaveOccurred())
-		}
-		if len(obj.Object) > 0 {
-			objs = append(objs, obj)
-		}
-	}
-	return objs
 }

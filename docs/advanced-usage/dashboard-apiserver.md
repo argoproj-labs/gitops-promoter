@@ -87,12 +87,9 @@ On startup it:
 4. only then starts serving, and keeps rotating the CA and serving cert before they expire
    (the apiserver reloads the cert files from disk, so no restart is needed).
 
-The overlay adds RBAC for this:
-
-- `get/list/watch/update` on the `promoter-apiserver-serving-cert` Secret only. The apiserver
-  limits cert-controller's Secret list/watch to that name with a `metadata.name` field selector,
-  so it cannot read any other Secret in `promoter-system`, such as SCM credentials.
-- `get/list/watch` on APIServices, plus `update` on `v1alpha1.view.promoter.argoproj.io` only.
+The overlay adds RBAC for this: `get/list/watch` on Secrets in `promoter-system` plus `update`
+on the serving-cert Secret only, and `get/list/watch` on APIServices plus `update` on
+`v1alpha1.view.promoter.argoproj.io` only.
 
 Related flags (defaults match the shipped manifests):
 
