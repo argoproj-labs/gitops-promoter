@@ -67,6 +67,7 @@ Deploying the API Server depends on what you are looking for. You can either dep
 
 ```bash
 kubectl create namespace promoter-system
+# Generating the certs will succeed but patching the APIService will be attempting and will fail as it has not been created yet.
 make apiserver-certs
 kubectl apply -k config/apiserver/dev-insecure
 kubectl -n promoter-system set image deploy/promoter-apiserver apiserver=someregistry.io/some-usr/gitops-promoter:latest
