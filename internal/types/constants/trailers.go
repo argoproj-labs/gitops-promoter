@@ -27,6 +27,11 @@ const (
 	// pull request. Its value is the hydrated SHA the active branch was restored to. The restore copies the
 	// note from that SHA, so without this marker the entry is indistinguishable from the original promotion.
 	TrailerRestoredFrom = "Promoter-restored-from"
+	// TrailerRestoredPath records the activePath a restore was scoped to. Written to the restore commit's
+	// message and its promotion-history note only when the ChangeTransferPolicy has spec.activePath. On an
+	// active branch shared by several policies, a restore whose path differs from a policy's own is not
+	// that policy's restore and does not block it.
+	TrailerRestoredPath = "Promoter-restored-path"
 	// TrailerRestoreUnblockedAt marks a restore commit whose RestoreActiveCommit has spec.blockEnvironment
 	// set to false, so promotion may resume. Its value is an RFC 3339 timestamp. Written only to the
 	// promotion-history note (commit messages are immutable). Absence while Promoter-restored-from is

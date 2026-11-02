@@ -313,6 +313,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaDryProposed,
 		constants.TrailerMergeCommitSnapshotMismatch,
 		constants.TrailerRestoredFrom,
+		constants.TrailerRestoredPath,
 		constants.TrailerRestoreUnblockedAt,
 	}
 
@@ -1809,8 +1810,10 @@ func commitNotInClone(err error) bool {
 }
 
 // deleteSupersededRestoreActiveCommits deletes RestoreActiveCommits for this policy whose recorded
-// restore commit is an ancestor of the active tip. The tip is the one calculateStatus just wrote.
-// Deletion does not stamp Promoter-restore-unblocked-at. The new tip's note blocks promotion until
+// restore commit is a strict ancestor of this environment's active commit: the active tip, or with
+// spec.activePath the commit that last changed that path, so a sibling policy's merge onto a shared
+// active branch does not count as moving past the restore. The value is the one calculateStatus just
+// wrote. Deletion does not stamp Promoter-restore-unblocked-at. The new tip's note blocks promotion until
 // its RestoreActiveCommit has spec.blockEnvironment set to false. A pending object (no activeSha), one whose restore is still the tip, and one
 // whose restore commit is not in the clone are left alone. A missing commit is not behind the tip;
 // failing the reconcile on it would stop promotion until the object was deleted by hand. Other
@@ -1818,7 +1821,7 @@ func commitNotInClone(err error) bool {
 // harmless here: its restore is already recorded, so evaluateRevertGate reads the new tip rather
 // than treating it as pending.
 func (r *ChangeTransferPolicyReconciler) deleteSupersededRestoreActiveCommits(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
-	tip := ctp.Status.Active.Hydrated.Sha
+	tip := ctp.Status.Active.EffectiveHydrated().Sha
 	if tip == "" {
 		return nil
 	}
@@ -1839,12 +1842,12 @@ func (r *ChangeTransferPolicyReconciler) deleteSupersededRestoreActiveCommits(ct
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("failed to check whether RestoreActiveCommit %q restore %q is behind active tip %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
+			return fmt.Errorf("failed to check whether RestoreActiveCommit %q restore %q is behind active commit %q: %w", rc.Name, rc.Status.ActiveSha, tip, err)
 		}
 		if !restoreActiveCommitSuperseded(rc.Status.ActiveSha, tip, isAncestor) {
 			continue
 		}
-		logger.Info("Deleting RestoreActiveCommit whose restore is behind the active tip",
+		logger.Info("Deleting RestoreActiveCommit whose restore is behind the environment's active commit",
 			"restoreActiveCommit", rc.Name, "activeSha", rc.Status.ActiveSha, "tip", tip)
 		r.Recorder.Eventf(ctp, nil, "Normal", constants.RestoreSupersededReason, "Deleting", constants.RestoreSupersededMessage, rc.Name, rc.Status.ActiveSha, tip)
 		if err := r.Delete(ctx, rc); err != nil {
@@ -1866,7 +1869,9 @@ func (r *ChangeTransferPolicyReconciler) deleteSupersededRestoreActiveCommits(ct
 // no-op. The ChangeTransferPolicy must still be owned by a PromotionStrategy so
 // spec.promotionStrategyRef can be set; without that owner the create is skipped.
 func (r *ChangeTransferPolicyReconciler) ensureRestoreActiveCommitForRestoreTip(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
-	tip := ctp.Status.Active.Hydrated.Sha
+	// With spec.activePath this is the commit that last changed the path, so a sibling policy's restore at
+	// the shared branch tip is never adopted as this policy's.
+	tip := ctp.Status.Active.EffectiveHydrated().Sha
 	if tip == "" {
 		return nil
 	}
@@ -1944,14 +1949,19 @@ func (r *ChangeTransferPolicyReconciler) evaluateRevertGate(ctx context.Context,
 		}
 	}
 
-	// One git log for the active tip's promotion-history note. RestoreBlockState reads that note
-	// twice when the tip is a restore, and GetHistoryNote does not fill the cache on a miss.
-	if err := gitOperations.LoadHistoryNotes(ctx, ctp.Status.Active.Hydrated.Sha); err != nil {
-		return revertGate{}, fmt.Errorf("failed to prefetch history note for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
+	// The gate is this environment's active commit: the tip, or with spec.activePath the commit that
+	// last changed the path, so a sibling policy's restore at the shared tip does not hold this policy
+	// and a sibling's merge does not clear this policy's own restore.
+	//
+	// One git log for that commit's promotion-history note. RestoreBlockState reads that note
+	// twice when the commit is a restore, and GetHistoryNote does not fill the cache on a miss.
+	anchor := ctp.Status.Active.EffectiveHydrated().Sha
+	if err := gitOperations.LoadHistoryNotes(ctx, anchor); err != nil {
+		return revertGate{}, fmt.Errorf("failed to prefetch history note for active commit %q: %w", anchor, err)
 	}
-	state, err := gitOperations.RestoreBlockState(ctx, ctp.Status.Active.Hydrated.Sha, ctp.Spec.ActivePath)
+	state, err := gitOperations.RestoreBlockState(ctx, anchor, ctp.Spec.ActivePath)
 	if err != nil {
-		return revertGate{}, fmt.Errorf("failed to read restore gate for active tip %q: %w", ctp.Status.Active.Hydrated.Sha, err)
+		return revertGate{}, fmt.Errorf("failed to read restore gate for active commit %q: %w", anchor, err)
 	}
 	return revertGate{
 		isRestoreTip:  state.IsRestore,

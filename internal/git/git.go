@@ -1721,6 +1721,17 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 	if err := g.ensureInHistory(ctx, targetSha, activeBranch, activeTip); err != nil {
 		return RestoreResult{}, err
 	}
+	if activePath != "" {
+		// On an active branch shared by several environments, most commits in the history belong to
+		// other environments. Only a commit that changed this path is a version of this environment.
+		pathTip, err := g.PathTip(ctx, targetSha, activePath)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		if pathTip != targetSha {
+			return RestoreResult{}, fmt.Errorf("commit %q did not change activePath %q; restore to a commit from this environment's history", targetSha, activePath)
+		}
+	}
 	if err := g.FetchNotes(ctx); err != nil {
 		return RestoreResult{}, fmt.Errorf("failed to fetch git notes: %w", err)
 	}
@@ -1755,7 +1766,7 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 
 	restoreSha := activeTip
 	if !already {
-		restoreSha, err = g.createRestoreCommit(ctx, activeBranch, activeTip, targetSha, wantTree)
+		restoreSha, err = g.createRestoreCommit(ctx, activeBranch, activePath, activeTip, targetSha, wantTree)
 		if err != nil {
 			return RestoreResult{}, err
 		}
@@ -1786,11 +1797,11 @@ func (g *EnvironmentOperations) RestoreActiveBranch(ctx context.Context, activeB
 
 // createRestoreCommit commits the restore tree, writes its history note, and pushes it onto
 // activeBranch, leased against activeTip.
-func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeBranch, activeTip, targetSha, wantTree string) (string, error) {
+func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeBranch, activePath, activeTip, targetSha, wantTree string) (string, error) {
 	if err := g.refuseRestoreTarget(ctx, targetSha); err != nil {
 		return "", err
 	}
-	message, err := g.restoreCommitMessage(ctx, activeBranch, targetSha)
+	message, err := g.restoreCommitMessage(ctx, activeBranch, activePath, targetSha)
 	if err != nil {
 		return "", err
 	}
@@ -1802,7 +1813,7 @@ func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeB
 	// is left on a commit that never lands, which nothing reads; the retry writes a new
 	// restore commit and note. The other order could leave a restore on the active branch
 	// with no note, and history would lose the pull request and checks copied from targetSha.
-	if err := g.writeRestoreNote(ctx, restoreSha, targetSha); err != nil {
+	if err := g.writeRestoreNote(ctx, restoreSha, activePath, targetSha); err != nil {
 		return "", err
 	}
 	if err := g.pushCommitWithLease(ctx, restoreSha, activeBranch, activeTip); err != nil {
@@ -1816,9 +1827,10 @@ func (g *EnvironmentOperations) createRestoreCommit(ctx context.Context, activeB
 // writeRestoreNote copies targetSha's note, so the restore keeps the promotion bookkeeping of the version
 // it puts back (pull request, SHAs, commit statuses) and history rebuilt from the message alone still
 // describes that promotion. Copied keys are written in sorted order, each value on its own line, and
-// Promoter-restored-from is appended last. Any Promoter-restored-from already on targetSha is dropped so
-// the restore carries exactly one, pointing at targetSha.
-func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, activeBranch, targetSha string) (string, error) {
+// Promoter-restored-from is appended last, followed by Promoter-restored-path when the restore is scoped
+// to an activePath. Any of those already on targetSha are dropped so the restore carries exactly one of
+// each, describing this restore.
+func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, activeBranch, activePath, targetSha string) (string, error) {
 	copied, err := g.GetTrailers(ctx, targetSha)
 	if err != nil {
 		return "", fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
@@ -1829,7 +1841,7 @@ func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, active
 	}
 	keys := make([]string, 0, len(copied))
 	for key := range copied {
-		if key == constants.TrailerRestoredFrom {
+		if key == constants.TrailerRestoredFrom || key == constants.TrailerRestoredPath {
 			continue
 		}
 		keys = append(keys, key)
@@ -1844,6 +1856,9 @@ func (g *EnvironmentOperations) restoreCommitMessage(ctx context.Context, active
 		}
 	}
 	fmt.Fprintf(&message, "%s: %s\n", constants.TrailerRestoredFrom, targetSha)
+	if activePath != "" {
+		fmt.Fprintf(&message, "%s: %s\n", constants.TrailerRestoredPath, activePath)
+	}
 	return message.String(), nil
 }
 
@@ -1906,6 +1921,11 @@ func (g *EnvironmentOperations) RestoreBlockState(ctx context.Context, sha, acti
 		return RestoreBlock{}, err
 	}
 	if len(trailers[constants.TrailerRestoredFrom]) == 0 {
+		return RestoreBlock{}, nil
+	}
+	// On an active branch shared by several environments, a restore written for another activePath is
+	// not this environment's. Restores written before the path was recorded carry no value and are trusted.
+	if restoredPath := trailers[constants.TrailerRestoredPath]; len(restoredPath) > 0 && restoredPath[0] != activePath {
 		return RestoreBlock{}, nil
 	}
 	gate := RestoreBlock{IsRestore: true, RestoredFrom: trailers[constants.TrailerRestoredFrom][0]}
@@ -2022,7 +2042,7 @@ func (g *EnvironmentOperations) hasRestoreMarker(ctx context.Context, sha, targe
 // promotionTrailers uses, so history rebuilt from the note still describes the original promotion.
 // The map is copied before the marker is added: GetTrailers returns the cached map, and mutating it
 // would change what later reads of targetSha's trailers return.
-func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha, targetSha string) error {
+func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha, activePath, targetSha string) error {
 	trailers, err := g.GetHistoryNote(ctx, targetSha)
 	if err != nil {
 		return fmt.Errorf("read promotion-history note for %q: %w", targetSha, err)
@@ -2033,9 +2053,13 @@ func (g *EnvironmentOperations) writeRestoreNote(ctx context.Context, restoreSha
 			return fmt.Errorf("read commit trailers for %q: %w", targetSha, err)
 		}
 	}
-	copied := make(map[string][]string, len(trailers)+1)
+	copied := make(map[string][]string, len(trailers)+2)
 	maps.Copy(copied, trailers)
 	copied[constants.TrailerRestoredFrom] = []string{targetSha}
+	delete(copied, constants.TrailerRestoredPath)
+	if activePath != "" {
+		copied[constants.TrailerRestoredPath] = []string{activePath}
+	}
 	if err := g.SetHistoryNote(ctx, restoreSha, copied); err != nil {
 		return fmt.Errorf("write restore note for %q: %w", restoreSha, err)
 	}
