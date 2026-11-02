@@ -50,8 +50,8 @@ type CertRotationOptions struct {
 	// already exist (an empty Secret is shipped in the install manifests) and must be
 	// mounted into the pod at the directory of --tls-cert-file.
 	SecretName string
-	// Namespace is the namespace of the Secret and the apiserver Service. Defaults to the
-	// namespace the apiserver runs in.
+	// Namespace is the namespace of the Secret and the apiserver Service. The apiserver
+	// command sets this from the process namespace.
 	Namespace string
 	// ServiceName is the apiserver Service name, used to build the certificate DNS names.
 	ServiceName string
@@ -77,8 +77,6 @@ func (o *CertRotationOptions) AddFlags(fs *pflag.FlagSet) {
 			"at the directory of --tls-cert-file. Disable when providing certs yourself or via cert-manager.")
 	fs.StringVar(&o.SecretName, "cert-rotation-secret-name", o.SecretName,
 		"Name of the Secret the built-in cert-controller stores the CA and serving certificate in.")
-	fs.StringVar(&o.Namespace, "cert-rotation-namespace", o.Namespace,
-		"Namespace of the serving-cert Secret and apiserver Service. Defaults to the apiserver's namespace.")
 	fs.StringVar(&o.ServiceName, "cert-rotation-service-name", o.ServiceName,
 		"Name of the apiserver Service; used to build the serving certificate DNS names.")
 	fs.StringVar(&o.APIServiceName, "cert-rotation-apiservice-name", o.APIServiceName,
@@ -95,7 +93,7 @@ func (o *CertRotationOptions) Validate(certFile, keyFile string) error {
 		errs = append(errs, errors.New("--cert-rotation-secret-name must be set when --cert-rotation is enabled"))
 	}
 	if o.Namespace == "" {
-		errs = append(errs, errors.New("--cert-rotation-namespace must be set when --cert-rotation is enabled"))
+		errs = append(errs, errors.New("cert rotation namespace must be set when --cert-rotation is enabled"))
 	}
 	if o.ServiceName == "" {
 		errs = append(errs, errors.New("--cert-rotation-service-name must be set when --cert-rotation is enabled"))

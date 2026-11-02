@@ -55,6 +55,7 @@ var _ = Describe("CertRotationOptions", func() {
 		Expect(opts.CertRotation.ServiceName).To(Equal("promoter-apiserver"))
 		Expect(opts.CertRotation.APIServiceName).To(Equal("v1alpha1.view.promoter.argoproj.io"))
 		Expect(opts.CertRotation.Namespace).To(BeEmpty())
+		Expect(fs.Lookup("cert-rotation-namespace")).To(BeNil())
 
 		Expect(NewOptions().CertRotation.Enabled).To(BeFalse())
 	})
@@ -82,7 +83,7 @@ var _ = Describe("CertRotationOptions", func() {
 	It("requires a namespace", func() {
 		o := enabledOpts()
 		o.Namespace = ""
-		Expect(o.Validate("/serving-certs/tls.crt", "/serving-certs/tls.key")).To(MatchError(ContainSubstring("--cert-rotation-namespace")))
+		Expect(o.Validate("/serving-certs/tls.crt", "/serving-certs/tls.key")).To(MatchError(ContainSubstring("cert rotation namespace must be set")))
 	})
 
 	It("builds a rotator for the service DNS names and APIService", func() {

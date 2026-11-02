@@ -97,9 +97,10 @@ Related flags (defaults match the shipped manifests):
 |---|---|
 | `--cert-rotation` | `false` (set to `true` by the overlay) |
 | `--cert-rotation-secret-name` | `promoter-apiserver-serving-cert` |
-| `--cert-rotation-namespace` | the apiserver's namespace |
 | `--cert-rotation-service-name` | `promoter-apiserver` |
 | `--cert-rotation-apiservice-name` | `v1alpha1.view.promoter.argoproj.io` |
+
+The serving-cert Secret and the Service DNS name use the apiserver's own namespace.
 
 The cert files are written to the directory of `--tls-cert-file`/`--tls-private-key-file`,
 which must be where the Secret is mounted.
