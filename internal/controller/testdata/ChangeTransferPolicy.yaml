@@ -41,6 +41,10 @@ status:
       subject: "chore: Example commit subject line"
     hydrated:
     # The hydrated field contains the same fields as proposed.dry.
+    pathHydrated:
+    # Only set when spec.activePath is set: the last commit on the branch that changed that path, with the same
+    # fields as proposed.dry. On the proposed branch this is the hydrator's commit beneath any promoter
+    # conflict-resolution merges.
     note:
       # Only drySha is populated from the hydrator git note
       drySha: "abcdef1234567890abcdef1234567890abcdef12"
@@ -57,6 +61,10 @@ status:
       subject: "chore: Currently deployed commit"
     hydrated:
     # same structure as proposed.dry
+    pathHydrated:
+    # Only set when spec.activePath is set: the last commit on the active branch that changed that path. On an
+    # active branch shared by several policies this stays put while sibling policies merge, whereas hydrated is
+    # the branch tip.
     commitStatuses:
       - key: argocd-app-health
         phase: success

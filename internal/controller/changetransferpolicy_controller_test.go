@@ -820,6 +820,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					sha = strings.TrimSpace(sha)
 
 					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(sha))
+					g.Expect(changeTransferPolicy.Status.Active.PathHydrated).To(BeNil(), "pathHydrated is only set with activePath")
+					g.Expect(changeTransferPolicy.Status.Proposed.PathHydrated).To(BeNil(), "pathHydrated is only set with activePath")
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -3089,6 +3091,8 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(drySha))
 					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).To(Equal(hydratedSha))
 					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+					g.Expect(changeTransferPolicy.Status.Proposed.PathHydrated).NotTo(BeNil())
+					g.Expect(changeTransferPolicy.Status.Proposed.PathHydrated.Sha).To(Equal(hydratedSha), "the hydrator's commit is the proposed path hydrated commit")
 
 					err := k8sClient.Get(ctx, types.NamespacedName{Name: prName, Namespace: testNamespace}, &promoterv1alpha1.PullRequest{})
 					g.Expect(err).NotTo(HaveOccurred())

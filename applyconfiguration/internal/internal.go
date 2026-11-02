@@ -464,6 +464,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: note
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.HydratorMetadata
+    - name: pathHydrated
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitShaState
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitBranchStateHistoryProposed
   map:
     fields:

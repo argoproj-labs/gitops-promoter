@@ -19,7 +19,7 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 | `Sha-dry-proposed` | Dry (pre-hydration) SHA of the proposed change. | Used to detect a [snapshot mismatch](finalizers.md#external-merge-scm-ui-tide-or-another-bot); no dedicated history field. |
 | `Sha-hydrated-proposed` | Hydrated SHA of the proposed change. | `status.history[].proposed.hydrated` (the entry is loaded from Git at that SHA). |
 | `Sha-dry-active` | Dry SHA of the active branch at snapshot time. | Not read back — the active side of a history entry is reconstructed from the merge commit itself. |
-| `Sha-hydrated-active` | Hydrated SHA of the active branch at snapshot time. | Not read back, same reason. |
+| `Sha-hydrated-active` | Hydrated SHA of the active branch at snapshot time. With `activePath`, the last commit that changed that path (`status.active.pathHydrated`) rather than the shared branch tip. | Not read back, same reason. |
 | `Commit-status-active-<key>-phase` | Phase of gate `<key>` on the active branch, e.g. `success`. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-active-<key>-url` | Gate detail link. Ignored unless `http://` or `https://`. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-active-<key>-description` | Gate description, **JSON-encoded** so it survives multi-line and quoted text. | `status.history[].active.commitStatuses[]` |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1065,6 +1066,108 @@ var _ = Describe("ActivePath support", func() {
 		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed-app-one-next", "active")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(hasConflict).To(BeFalse(), "resolved proposed branch should merge cleanly into active for SCM")
+	})
+
+	It("PathTip returns the commit that last changed activePath, skipping sibling merges and promoter overlay merges", func() {
+		ctx := GinkgoT().Context()
+		const dryOne = "0c9ff02a8f23a7bb85e92e0ab395af91c530f18c"
+
+		commit := func(msg string, files map[string]string) string {
+			for filePath, content := range files {
+				Expect(os.MkdirAll(filepath.Dir(filepath.Join(workDir, filePath)), 0o755)).To(Succeed())
+				Expect(os.WriteFile(filepath.Join(workDir, filePath), []byte(content), 0o644)).To(Succeed())
+			}
+			_, err := runGitCmd(workDir, "add", "-A")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "commit", "-q", "-m", msg)
+			Expect(err).NotTo(HaveOccurred())
+			return strings.TrimSpace(mustGit(workDir, "rev-parse", "HEAD"))
+		}
+
+		By("bootstrapping a shared active branch with two app paths")
+		commit("base", map[string]string{
+			"hydrator.metadata":              `{"drySha":"base"}`,
+			"apps/app-one/config.yaml":       "version: base\n",
+			"apps/app-two/config.yaml":       "version: base\n",
+			"apps/app-one/hydrator.metadata": `{"drySha":"base"}`,
+		})
+		_, err := runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-q", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("hydrating app-one onto its proposed branch (with a hydrator note) and merging it into active")
+		_, err = runGitCmd(workDir, "checkout", "-q", "-b", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+		hydratedOne := commit("hydrate app-one", map[string]string{
+			"hydrator.metadata":              `{"drySha":"` + dryOne + `"}`,
+			"apps/app-one/config.yaml":       "version: one\n",
+			"apps/app-one/hydrator.metadata": `{"drySha":"` + dryOne + `"}`,
+		})
+		_, err = runGitCmd(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", `{"drySha":"`+dryOne+`"}`, hydratedOne)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-q", "-u", "origin", "proposed-app-one-next", git.HydratorNotesRef+":"+git.HydratorNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", "-q", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "merge", "-q", "--no-ff", "-m", "merge app-one", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+		mergeOne := strings.TrimSpace(mustGit(workDir, "rev-parse", "HEAD"))
+
+		By("merging a sibling app-two promotion into active afterwards")
+		_, err = runGitCmd(workDir, "checkout", "-q", "-b", "proposed-app-two-next")
+		Expect(err).NotTo(HaveOccurred())
+		commit("hydrate app-two", map[string]string{
+			"hydrator.metadata":        `{"drySha":"two"}`,
+			"apps/app-two/config.yaml": "version: two\n",
+		})
+		_, err = runGitCmd(workDir, "checkout", "-q", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "merge", "-q", "--no-ff", "-m", "merge app-two", "proposed-app-two-next")
+		Expect(err).NotTo(HaveOccurred())
+		mergeTwo := strings.TrimSpace(mustGit(workDir, "rev-parse", "HEAD"))
+		_, err = runGitCmd(workDir, "push", "-q", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(ctx)).To(Succeed())
+		_, err = g.GetBranchSha(ctx, "active", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchSha(ctx, "proposed-app-one-next", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchNotes(ctx)).To(Succeed())
+
+		By("resolving the path tip on the shared active branch per app")
+		Expect(g.PathTip(ctx, "origin/active", "apps/app-one")).To(Equal(mergeOne), "app-one's path tip must be its own merge, not the later sibling merge at the branch tip")
+		Expect(g.PathTip(ctx, "origin/active", "apps/app-two")).To(Equal(mergeTwo))
+		Expect(g.PathTip(ctx, "origin/active", "apps/none")).To(BeEmpty(), "a path no commit touched has no path tip")
+
+		By("stacking promoter overlay merges on app-one's proposed branch past the hydrator note walk limit")
+		// Each root hydrator.metadata change on active conflicts with the proposed branch, and the promoter
+		// resolves it with a path-scoped ours merge that keeps app-one's content. Those merges are treesame to
+		// their first parent at the path, so the path tip stays on the hydrator's commit.
+		for i := range git.MaxHydratorNoteFirstParentWalk + 1 {
+			commit("root metadata change", map[string]string{"hydrator.metadata": fmt.Sprintf(`{"drySha":"active-%d"}`, i)})
+			_, err = runGitCmd(workDir, "push", "-q", "origin", "active")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.FetchBranch(ctx, "active")).To(Succeed())
+			Expect(g.FetchBranch(ctx, "proposed-app-one-next")).To(Succeed())
+			Expect(g.MergeWithOursStrategyForPath(ctx, "proposed-app-one-next", "active", "apps/app-one")).To(Succeed())
+		}
+		Expect(g.FetchBranch(ctx, "proposed-app-one-next")).To(Succeed())
+		proposedTip := strings.TrimSpace(mustGit(g.ClonePath(), "rev-parse", "origin/proposed-app-one-next"))
+		Expect(proposedTip).NotTo(Equal(hydratedOne))
+
+		Expect(g.PathTip(ctx, proposedTip, "apps/app-one")).To(Equal(hydratedOne), "overlay merges must not move the proposed path tip")
+
+		walked, err := g.FindMatchingHydratorNote(ctx, proposedTip, dryOne, git.MaxHydratorNoteFirstParentWalk)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(walked).To(BeNil(), "the bounded first-parent walk cannot reach the hydrator commit beneath the overlay merges")
+		pathNote, err := g.GetHydratorNote(ctx, hydratedOne)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pathNote).NotTo(BeNil())
+		Expect(pathNote.DrySha).To(Equal(dryOne), "the note is reachable directly through the path tip")
 	})
 
 	It("removes files deleted in the proposed branch from activePath during conflict resolution", func() {

@@ -26,6 +26,12 @@ type CommitBranchStateApplyConfiguration struct {
 	Dry *CommitShaStateApplyConfiguration `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated *CommitShaStateApplyConfiguration `json:"hydrated,omitempty"`
+	// PathHydrated is the most recent first-parent commit on the branch that changed spec.activePath. It is
+	// only set when spec.activePath is set, and is nil when no commit on the branch has touched that path.
+	// On an active branch shared by several policies it stays put while sibling policies merge, whereas
+	// Hydrated is the branch tip. On the proposed branch it is the hydrator's commit beneath any
+	// promoter conflict-resolution merges.
+	PathHydrated *CommitShaStateApplyConfiguration `json:"pathHydrated,omitempty"`
 	// Note is the hydrator metadata from the git note attached to the hydrated commit.
 	Note *HydratorMetadataApplyConfiguration `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
@@ -51,6 +57,14 @@ func (b *CommitBranchStateApplyConfiguration) WithDry(value *CommitShaStateApply
 // If called multiple times, the Hydrated field is set to the value of the last call.
 func (b *CommitBranchStateApplyConfiguration) WithHydrated(value *CommitShaStateApplyConfiguration) *CommitBranchStateApplyConfiguration {
 	b.Hydrated = value
+	return b
+}
+
+// WithPathHydrated sets the PathHydrated field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PathHydrated field is set to the value of the last call.
+func (b *CommitBranchStateApplyConfiguration) WithPathHydrated(value *CommitShaStateApplyConfiguration) *CommitBranchStateApplyConfiguration {
+	b.PathHydrated = value
 	return b
 }
 
