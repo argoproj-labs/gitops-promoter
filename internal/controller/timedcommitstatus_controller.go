@@ -199,7 +199,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// The CommitStatus is reported on the active branch tip, but the soak is measured from the commit that
 		// last changed this environment. For an activePath environment on a shared active branch those differ:
 		// sibling environments' merges move the tip without changing this environment's content.
-		currentActiveSha := currentEnvStatus.Active.Hydrated.Sha
+		currentActiveSha := currentEnvStatus.Active.Hydrated.Sha //nolint:forbidigo // the CommitStatus is reported on the branch tip; the soak is measured from EffectiveHydrated below
 		currentActiveCommitTime := currentEnvStatus.Active.EffectiveHydrated().CommitTime.Time
 
 		if currentActiveSha == "" {
