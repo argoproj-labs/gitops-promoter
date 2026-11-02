@@ -11793,6 +11793,12 @@ spec:
       volumes:
       - name: serving-cert
         secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          optional: true
           secretName: promoter-apiserver-serving-cert
       - emptyDir: {}
         name: tmp
