@@ -10077,19 +10077,14 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  resourceNames:
+  - promoter-apiserver-serving-cert
   resources:
   - secrets
   verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - ""
-  resourceNames:
-  - promoter-apiserver-serving-cert
-  resources:
-  - secrets
-  verbs:
   - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1

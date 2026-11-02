@@ -1,7 +1,8 @@
 ---
-# cert-controller reads and updates the serving-cert Secret. Its informer lists/watches
-# Secrets in the install namespace (list/watch cannot be narrowed by resourceNames), while
-# writes are restricted to the serving-cert Secret.
+# cert-controller reads, watches and updates only the serving-cert Secret. The apiserver
+# narrows cert-controller's Secret list/watch to this one name with a metadata.name field
+# selector, so every verb can be limited by resourceNames and the apiserver cannot read
+# any other Secret in the install namespace (such as SCM credentials).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -16,17 +17,12 @@ rules:
       - ""
     resources:
       - secrets
+    resourceNames:
+      - promoter-apiserver-serving-cert
     verbs:
       - get
       - list
       - watch
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    resourceNames:
-      - promoter-apiserver-serving-cert
-    verbs:
       - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
