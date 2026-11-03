@@ -417,16 +417,15 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 	}
 
 	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
+	var replacerTrailers map[string][]string
 	for _, sha := range shaListActive {
-		historyEntry, shouldInclude, err := buildHistoryEntry(ctx, sha, activePath, gitOperations)
+		historyEntry, activeTrailers, err := buildHistoryEntry(ctx, sha, activePath, replacerTrailers, gitOperations)
+		replacerTrailers = activeTrailers
 		if err != nil {
 			logger.V(4).Info("failed to build history entry", "sha", sha, "err", err)
 			continue
 		}
-
-		if shouldInclude {
-			history = append(history, historyEntry)
-		}
+		history = append(history, historyEntry)
 	}
 
 	return history, nil
@@ -437,7 +436,12 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 // rewrites). When no note is readable — commits predating the notes, or a note that was never written
 // because finalization failed — it falls back to the commit message trailers, which the promoter still
 // writes on every managed pull request and which survive any merge style that preserves the message.
-func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
+//
+// A commit's trailers snapshot the active branch as it was just before that commit merged, so the active
+// commit statuses describing sha live on the commit that replaced it. replacerTrailers are that commit's
+// trailers (nil for the active tip) and are returned alongside the entry as this sha's own trailers, so
+// the caller can pass them on to the next older sha.
+func buildHistoryEntry(ctx context.Context, sha, activePath string, replacerTrailers map[string][]string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, map[string][]string, error) {
 	logger := log.FromContext(ctx)
 
 	activeTrailers, err := gitOperations.GetHistoryNote(ctx, sha)
@@ -447,7 +451,7 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	if len(activeTrailers) == 0 {
 		activeTrailers, err = gitOperations.GetTrailers(ctx, sha)
 		if err != nil {
-			return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+			return promoterv1alpha1.History{}, nil, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
 		}
 	}
 
@@ -460,7 +464,8 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	populateActiveMetadata(ctx, &historyEntry, sha, activePath, gitOperations)
 	populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
 	populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
-	populateCommitStatuses(ctx, &historyEntry, activeTrailers)
+	populateProposedCommitStatuses(ctx, &historyEntry, activeTrailers)
+	populateActiveCommitStatuses(ctx, &historyEntry, sha, replacerTrailers)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
 	historyEntry.RestoredFrom = getFirstTrailerValue(activeTrailers, constants.TrailerRestoredFrom)
 	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerRestoreUnblockedAt); timeStr != "" {
@@ -475,7 +480,7 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperation
 	// branch, so the entry's own sha is that commit; no trailer records it.
 	historyEntry.PullRequest.MergedTargetSha = sha
 
-	return historyEntry, true, nil
+	return historyEntry, activeTrailers, nil
 }
 
 func decodeTrailerDescription(ctx context.Context, encoded string) string {
@@ -565,24 +570,34 @@ func populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.Histor
 	}
 }
 
-// populateCommitStatuses populates the commit statuses for a history entry
-func populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
-	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
+// populateActiveCommitStatuses populates the active commit statuses for the history entry of sha from the
+// trailers of the commit that replaced it. They are only used when that snapshot was taken against sha, which
+// excludes a restore commit, whose trailers are copied from the restored version.
+func populateActiveCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, sha string, replacerTrailers map[string][]string) {
+	h.Active.CommitStatuses = []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
+	if getFirstTrailerValue(replacerTrailers, constants.TrailerShaHydratedActive) != sha {
+		return
+	}
 
-	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
+	activeKeys, _ := getCommitStatusKeysFromTrailers(ctx, replacerTrailers)
 	for _, key := range activeKeys {
-		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
+		url := getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:         key,
-			Phase:       getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
+			Phase:       getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
 			Url:         url,
-			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-description")),
+			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-description")),
 		})
 	}
+}
+
+// populateProposedCommitStatuses populates the proposed commit statuses for a history entry
+func populateProposedCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
+	_, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
 
 	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
 	for _, key := range proposedKeys {
