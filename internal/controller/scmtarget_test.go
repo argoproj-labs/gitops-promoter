@@ -200,6 +200,37 @@ func (t *scmTestTarget) newRepo(ctx context.Context, stem string) testRepo {
 	return repo
 }
 
+// newFork forks parent on the GitHub scmserver into a new repository with the same owner, as in issue #2371. The
+// fork starts with a copy of parent's branches and shares parent's GitHub App installation. It is deleted via
+// DeferCleanup when the current Ginkgo node finishes.
+func (t *scmTestTarget) newFork(ctx context.Context, parent testRepo) testRepo {
+	GinkgoHelper()
+	Expect(t.provider).To(Equal(scmserver.GitHub), "only the GitHub scmserver models forks")
+	info, err := t.admin.CreateRepo(ctx, scmserver.CreateRepoRequest{
+		Provider: t.provider,
+		Owner:    parent.Owner,
+		Name:     parent.Name + "-fork",
+		ForkOf:   parent.ID,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func(cleanupCtx SpecContext) { //nolint:contextcheck // DeferCleanup supplies its own SpecContext for teardown.
+		_ = t.admin.DeleteRepo(cleanupCtx, info.ID)
+	})
+	_, err = t.admin.AddWebhook(ctx, scmserver.WebhookSubscription{
+		Provider: t.provider,
+		Repo:     info.FullName,
+		URL:      fmt.Sprintf("http://127.0.0.1:%d/", webhookReceiverPort),
+	})
+	Expect(err).NotTo(HaveOccurred())
+	return testRepo{
+		Owner:       info.Owner,
+		Name:        info.Name,
+		ID:          info.ID,
+		GitHubAppID: parent.GitHubAppID,
+		CloneURL:    info.CloneURL,
+	}
+}
+
 // scmProviderSpec builds an ScmProviderSpec for the configured target, including SecretRef.
 func (t *scmTestTarget) scmProviderSpec(repo testRepo, secretName string) promoterv1alpha1.ScmProviderSpec {
 	GinkgoHelper()
