@@ -23,8 +23,10 @@ var errNotFound = errors.New("not found")
 
 // repo is a repository hosted by the server. Fields other than gitMu are guarded by store.mu.
 type repo struct {
-	createdAt     time.Time
-	protection    map[string][]string
+	createdAt  time.Time
+	protection map[string][]string
+	// parent is the repository this one was forked from, or nil. Only GitHub repositories are forked.
+	parent        *repo
 	provider      Provider
 	owner         string
 	project       string
@@ -46,6 +48,42 @@ func (r *repo) fullName() string {
 		return r.owner + "/" + r.project + "/" + r.name
 	}
 	return r.owner + "/" + r.name
+}
+
+// networkRoot returns the root of the repository's fork network: the repository that is not itself a fork.
+func (r *repo) networkRoot() *repo {
+	for r.parent != nil {
+		r = r.parent
+	}
+	return r
+}
+
+// githubHeadRepoLocked resolves the owner of a GitHub "owner:branch" head filter, sent to base's pulls endpoint, to
+// a repository in base's fork network. GitHub names the head by owner, not by repository, so when the owner has
+// several repositories in the network the filter is ambiguous. GitHub then resolves it to the owner's repository
+// closest to the network root, even when base itself is one of the owner's repositories: a list on a fork owned by
+// the owner of its parent matches the parent's branches, never the fork's (issue #2371). The rule is inferred from
+// that one observation; repositories at the same depth are taken oldest first. It returns nil when the owner has no
+// repository in the network.
+func (s *store) githubHeadRepoLocked(base *repo, owner string) *repo {
+	root := base.networkRoot()
+	var (
+		best      *repo
+		bestDepth int
+	)
+	for _, r := range s.sortedReposLocked() {
+		if r.provider != GitHub || r.networkRoot() != root || !strings.EqualFold(r.owner, owner) {
+			continue
+		}
+		depth := 0
+		for p := r.parent; p != nil; p = p.parent {
+			depth++
+		}
+		if best == nil || depth < bestDepth {
+			best, bestDepth = r, depth
+		}
+	}
+	return best
 }
 
 type label struct {
