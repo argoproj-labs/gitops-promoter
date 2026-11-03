@@ -43,3 +43,38 @@ export function parseEnvSelection(value: string | null | undefined): string[] {
 export function formatEnvSelection(branches: readonly string[]): string | null {
   return branches.length > 0 ? branches.join(',') : null;
 }
+
+export interface DayGroup<T> {
+  key: string;
+  at: number;
+  rows: T[];
+}
+
+function localDayKey(at: number): string {
+  if (at <= 0) return 'unknown';
+  const d = new Date(at);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+export function groupRowsByDay<T extends { freshestAt: number }>(
+  rows: readonly T[],
+): DayGroup<T>[] {
+  const groups: DayGroup<T>[] = [];
+  for (const row of rows) {
+    const key = localDayKey(row.freshestAt);
+    const last = groups.at(-1);
+    if (last?.key === key) last.rows.push(row);
+    else groups.push({ key, at: row.freshestAt, rows: [row] });
+  }
+  return groups;
+}
+
+export function formatDayHeading(at: number): string {
+  return at > 0
+    ? new Date(at).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'an unknown date';
+}
