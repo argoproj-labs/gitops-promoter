@@ -59,12 +59,16 @@ func (r *repo) networkRoot() *repo {
 }
 
 // githubHeadRepoLocked resolves the owner of a GitHub "owner:branch" head filter, sent to base's pulls endpoint, to
-// a repository in base's fork network. GitHub names the head by owner, not by repository, so when the owner has
-// several repositories in the network the filter is ambiguous. GitHub then resolves it to the owner's repository
-// closest to the network root, even when base itself is one of the owner's repositories: a list on a fork owned by
-// the owner of its parent matches the parent's branches, never the fork's (issue #2371). The rule is inferred from
-// that one observation; repositories at the same depth are taken oldest first. It returns nil when the owner has no
-// repository in the network.
+// a repository in base's fork network, or returns nil when the owner has no repository in the network.
+//
+// GitHub names the head by owner, not by repository, so when the owner has several repositories in the network the
+// filter is ambiguous. GitHub then resolves it to the owner's repository closest to the network root, even when base
+// itself is one of the owner's repositories: a list on a fork owned by the owner of its parent matches the parent's
+// branches, never the fork's (issue #2371). GitHub does not document this, and the rule is inferred from that one
+// observation; repositories at the same depth are taken oldest first. The closest public account is
+// https://github.com/cli/cli/issues/6462: the filter returns nothing for same-organization forks, a GitHub CLI
+// maintainer calls it a known API problem "tracked internally", and GitHub's fix (head_repo) exists only for creating
+// pull requests, not for listing them.
 func (s *store) githubHeadRepoLocked(base *repo, owner string) *repo {
 	root := base.networkRoot()
 	var (

@@ -200,10 +200,16 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 // FindOpen checks if a pull request is open and returns its status.
 //
 // It lists the open pull requests on the target branch and matches the head itself, by repository and branch, instead
-// of using the API's head filter. The filter names the head by owner ("owner:branch"), and when the owner has more than
-// one repository in a fork network GitHub resolves it to the owner's repository nearest the network root, so on a fork
-// owned by its parent's owner it matches the parent's branch and never this repository's pull request (issue #2371).
-// The repository check also keeps a same-named branch on someone else's fork from matching.
+// of using the API's head filter. Neither form of that filter can be trusted:
+//   - "owner:branch" names the head by owner, not repository. When the owner has more than one repository in a fork
+//     network, GitHub picks one of them: on a fork owned by its parent's owner it matched the parent's branch and never
+//     the fork's own pull request (issue #2371). GitHub does not document this; the closest public account is
+//     https://github.com/cli/cli/issues/6462, where the filter returns nothing for same-organization forks, a GitHub CLI
+//     maintainer calls it a known API problem "tracked internally", and GitHub's fix (head_repo) exists only for
+//     creating pull requests, not for listing them.
+//   - A head without an owner is silently ignored, and every pull request on the base branch is returned (#1417).
+//
+// Checking the head repository also keeps a same-named branch on someone else's fork from matching.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
