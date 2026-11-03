@@ -80,7 +80,6 @@ checksum:
     - glob: ./install-with-dashboard.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
-    - glob: ./install-with-dashboard-namespaced.yaml
     - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
     - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
 
@@ -139,7 +138,6 @@ release:
     - glob: ./install-with-dashboard.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
-    - glob: ./install-with-dashboard-namespaced.yaml
     - glob: ./install-with-dashboard-cert-manager-namespaced.yaml
     - glob: ./install-with-dashboard-byo-cert-namespaced.yaml
   header: |

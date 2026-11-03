@@ -58,9 +58,11 @@ file:
 | `install-with-dashboard-cert-manager.yaml` | cert-manager issues and rotates it | `config/apiserver/release-combined-cert-manager` |
 | `install-with-dashboard-byo-cert.yaml` | you supply the Secret + `caBundle` | `config/apiserver/release-combined-byo-cert` |
 
-Each has a `-namespaced` variant built from the matching `*-namespaced` overlay. Every
-published bundle includes the dashboard API; there is no controller-only bundle. See the [Getting Started](../getting-started.md#installation) guide. Each overlay
-unions `config/default` with a cert overlay (no extra namespace transformer, so the
+The cert-manager and bring-your-own bundles each have a `-namespaced` variant. There is no
+namespaced built-in cert bundle: injecting `caBundle` requires the `promoter-apiserver-cert-rotation`
+`ClusterRole` on the controller, and the namespaced install does not grant it. Every published
+bundle includes the dashboard API; there is no controller-only bundle. See the [Getting Started](../getting-started.md#installation) guide. Each overlay
+unions `config/default` (or `config/namespaced`) with a cert overlay (no extra namespace transformer, so the
 `kube-system` RoleBinding is preserved).
 
 ## Serving certs
@@ -76,8 +78,8 @@ This is what `install-with-dashboard.yaml` uses. It has two halves:
 - `config/apiserver/certs-builtin` ships the (empty) `promoter-apiserver-serving-cert`
   Secret. The apiserver waits for the mounted cert files before it starts.
 - The `config/apiserver/certs-builtin-controller` component runs the **controller-manager** with
-  `--apiserver-cert-rotation` and grants it the extra RBAC. The `release-combined-builtin`
-  overlays include both.
+  `--apiserver-cert-rotation` and grants it the extra RBAC. `release-combined-builtin` includes
+  both. The namespaced install does not.
 
 With `--apiserver-cert-rotation`, the controller-manager runs
 [open-policy-agent/cert-controller](https://github.com/open-policy-agent/cert-controller) on its
@@ -97,9 +99,13 @@ files when they change, so rotation needs no restart.
 RBAC:
 
 - **Apiserver:** no Secret access at all; it only mounts the Secret.
-- **Controller-manager:** it already reads Secrets in its namespace. The component adds only
-  `update` on the `promoter-apiserver-serving-cert` Secret, plus `get/list/watch` on APIServices
-  and `update` on `v1alpha1.view.promoter.argoproj.io`.
+- **Controller-manager:** it already reads Secrets in its namespace. The component adds
+  `update` on the `promoter-apiserver-serving-cert` Secret as a `Role` in the install namespace,
+  plus the `promoter-apiserver-cert-rotation` `ClusterRole`: `get`, `list`, and `watch` on
+  APIServices and `update` on `v1alpha1.view.promoter.argoproj.io`. `APIService` is cluster-scoped,
+  so that update cannot be granted with a namespace `Role`. This `ClusterRole` ships only in the
+  cluster-wide `install-with-dashboard.yaml` bundle. Namespaced installs use cert-manager or a
+  cert you supply, and do not include it.
 
 Related controller-manager flags (defaults match the shipped manifests):
 
@@ -177,9 +183,10 @@ This sets `insecureSkipTLSVerify: true` on the `APIService`. **Not production-sa
 
 ## Cert rotation
 
-- **Built-in cert-controller (default):** rotation is automatic; the controller-manager
+- **Built-in cert-controller (cluster-wide default):** rotation is automatic; the controller-manager
   regenerates the serving cert (and the CA when needed) before expiry, updates the Secret and
-  re-injects the `caBundle`, and the apiserver reloads the new cert without a restart.
+  re-injects the `caBundle`, and the apiserver reloads the new cert without a restart. Namespaced
+  installs do not use this path.
 - **cert-manager (Path B):** rotation is automatic; ca-injector re-syncs the
   `caBundle` when the `Certificate` is renewed.
 - **Manual (Path A):** re-run `make apiserver-certs` and restart the apiserver

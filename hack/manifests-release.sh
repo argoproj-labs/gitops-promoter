@@ -54,9 +54,8 @@ build_bundle "config/apiserver/release-combined-builtin" "${OUT_DIR}/install-wit
 build_bundle "config/apiserver/release-combined-cert-manager" "${OUT_DIR}/install-with-dashboard-cert-manager.yaml"
 build_bundle "config/apiserver/release-combined-byo-cert" "${OUT_DIR}/install-with-dashboard-byo-cert.yaml"
 
-# Fully isolated variants: the controller watches only its install namespace, does not access
-# cluster-scoped resources, and uses a Role instead of a ClusterRole (config/namespaced).
-# In the combined bundles, the dashboard apiserver also reads only its install namespace.
-build_bundle "config/apiserver/release-combined-builtin-namespaced" "${OUT_DIR}/install-with-dashboard-namespaced.yaml"
+# Fully isolated variants: the controller watches only its install namespace and its reconcile
+# permissions are a Role (config/namespaced). Built-in serving certs are omitted: injecting the
+# APIService caBundle requires a ClusterRole on the controller. Use cert-manager or supply the cert.
 build_bundle "config/apiserver/release-combined-cert-manager-namespaced" "${OUT_DIR}/install-with-dashboard-cert-manager-namespaced.yaml"
 build_bundle "config/apiserver/release-combined-byo-cert-namespaced" "${OUT_DIR}/install-with-dashboard-byo-cert-namespaced.yaml"

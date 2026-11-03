@@ -11,8 +11,9 @@ kind: Kustomization
 # The apiserver waits for the mounted files at /serving-certs before it starts serving.
 # The apiserver needs no Secret permissions.
 #
-# The controller-manager side is the ../certs-builtin-controller component, which the
-# release-combined-builtin overlays include. If you apply this overlay on its own, also
+# The controller-manager side is the ../certs-builtin-controller component, which
+# release-combined-builtin includes. The namespaced install does not: that component's
+# APIService ClusterRole is cluster-scoped. If you apply this overlay on its own, also
 # run the controller with --apiserver-cert-rotation and the RBAC in
 # ../certs-builtin-controller/rbac.yaml.
 
