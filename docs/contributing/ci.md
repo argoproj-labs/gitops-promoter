@@ -15,6 +15,7 @@ Every pull request runs the [`test` workflow](https://github.com/argoproj-labs/g
 - **Nilaway static analysis** — nil-safety analysis on non-test Go code
 - **Spell checking**
 - **GitHub Actions security analysis** — [zizmor](https://github.com/zizmorcore/zizmor) checks all workflow files for security issues
+- **Integrations** — `make lint-integrations` (shellcheck) and `make test-integrations` for the community hydrators and appliers under `integrations/`, run only when that directory changes, once with Terraform and once with OpenTofu
 
 ## Resolving security check failures
 
