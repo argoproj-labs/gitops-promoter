@@ -341,11 +341,12 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				defer func() { _ = os.RemoveAll(gitPath) }()
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs basic test", "")
 
-				By("Set conditions for TaskRuns created for all environments")
-				setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
-
 				By("Waiting for TektonCommitStatus to process all environments")
 				Eventually(func(g Gomega) {
+					// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+					By("Set conditions for runs created for all environments")
+					setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
+
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      tcs.Name,
@@ -699,7 +700,7 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				defer func() { _ = os.RemoveAll(gitPath) }()
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs should prune test", "")
 
-				By("Make sure Tekton was created")
+				By("Make sure TektonRun was created")
 				Eventually(func(g Gomega) {
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
@@ -885,6 +886,10 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
 
 				Eventually(func(g Gomega) {
+					// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+					By("Put results on all of the runs for each environment and progress them to completed")
+					setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
+
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      tcs.Name,
@@ -948,11 +953,12 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				defer func() { _ = os.RemoveAll(gitPath) }()
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs parameter test", "")
 
-				By("Put results on all of the runs for each environment and progress them to completed")
-				setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
-
 				By("Waiting for controller to process the completed runs")
 				Eventually(func(g Gomega) {
+					// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+					By("Put results on all of the runs for each environment and progress them to completed")
+					setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
+
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      tcs.Name,
@@ -1046,10 +1052,10 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				defer func() { _ = os.RemoveAll(gitPath) }()
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs parameter test", "")
 
-				By("Put results on all of the runs for each environment and progress them to completed")
-				setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
-
 				Eventually(func(g Gomega) {
+					// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+					By("Put results on all of the runs for each environment and progress them to completed")
+					setAllEnvironmentsTektonRunResults(ctx, tcs.Name, kind, results, resultTypes)
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      tcs.Name,
@@ -1171,9 +1177,11 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 			defer func() { _ = os.RemoveAll(gitPath) }()
 			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "commit for tcs basic test", "")
 
-			By("Put results on all of the runs for each environment and progress them to completed")
-			setAllEnvironmentsTektonRunResults(ctx, taskTCS.Name, tekton.TektonKindTask, map[string]any{"str": "fail"}, map[string]string{"str": "string"})
 			Eventually(func(g Gomega) {
+				// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+				By("Put results on all of the runs for each environment and progress them to completed")
+				setAllEnvironmentsTektonRunResults(ctx, taskTCS.Name, tekton.TektonKindTask, map[string]any{"str": "fail"}, map[string]string{"str": "string"})
+
 				var updated promoterv1alpha1.TektonCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      taskTCS.Name,
