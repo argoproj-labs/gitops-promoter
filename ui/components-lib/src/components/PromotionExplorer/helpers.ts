@@ -60,11 +60,15 @@ export function groupRowsByDay<T extends { freshestAt: number }>(
   rows: readonly T[],
 ): DayGroup<T>[] {
   const groups: DayGroup<T>[] = [];
+  let last: DayGroup<T> | undefined;
   for (const row of rows) {
     const key = localDayKey(row.freshestAt);
-    const last = groups.at(-1);
-    if (last?.key === key) last.rows.push(row);
-    else groups.push({ key, at: row.freshestAt, rows: [row] });
+    if (last?.key === key) {
+      last.rows.push(row);
+    } else {
+      last = { key, at: row.freshestAt, rows: [row] };
+      groups.push(last);
+    }
   }
   return groups;
 }
