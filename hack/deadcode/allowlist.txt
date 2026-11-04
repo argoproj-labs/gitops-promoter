@@ -1,0 +1,34 @@
+# Qualified names production code does not call, on purpose.
+# A name ending in ForTest or ForTests is ignored without an entry.
+# An entry that production code reaches, or that no longer exists, fails the check.
+
+# Cache type keys. The external cache test package calls these; production uses the unexported objects.
+github.com/argoproj-labs/gitops-promoter/internal/cache.PartitionedSecretObject
+github.com/argoproj-labs/gitops-promoter/internal/cache.UnpartitionedObjects
+github.com/argoproj-labs/gitops-promoter/internal/cache.UnpartitionedApplicationObject
+
+# Fake provider controls the controller tests drive directly.
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.readPullRequestCallCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.ResetPullRequestCallCounts
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.FindOpenCallCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.UpdateCallCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequestSCMCallCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.LabelCallCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.MergeShaMismatchCount
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequest.GetRecordedState
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequest.SetHideFromFindOpen
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequest.MarkMergedExternally
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequest.DeletePullRequest
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.SetScmLabels
+github.com/argoproj-labs/gitops-promoter/internal/scms/fake.PullRequest.GetAppliedLabels
+
+# Write-fault injection. The controller test suite wraps the envtest config with MaybeWrap.
+github.com/argoproj-labs/gitops-promoter/internal/k8sfault.MaybeWrap
+github.com/argoproj-labs/gitops-promoter/internal/k8sfault.faultyTransport.RoundTrip
+github.com/argoproj-labs/gitops-promoter/internal/k8sfault.faultyTransport.shouldFault
+
+# Smaller compile cache for evaluator tests.
+github.com/argoproj-labs/gitops-promoter/internal/webrequest.newExpressionEvaluatorWithCompileCacheMax
+
+# Kubebuilder GroupKind helper. Resource() is what this module calls.
+github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1.Kind
