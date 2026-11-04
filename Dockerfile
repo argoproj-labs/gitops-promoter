@@ -62,14 +62,14 @@ RUN set -eu; \
     fi; \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a $extra -o gitops-promoter $target
 
-# Use distroless as minimal base image to package the gitops-promoter binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-#FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
-FROM golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8
+# Runtime image. Keep in sync with release.Dockerfile, which is what releases ship.
+FROM debian:13.7-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
 WORKDIR /
 
-# Install tini to handle process management and prevent process leaks
-RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/lib/apt/lists/*
+# git is the only program the controller runs. tini reaps the git processes it leaves behind.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git tini \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
