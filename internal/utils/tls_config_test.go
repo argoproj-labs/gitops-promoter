@@ -97,6 +97,7 @@ func TestParseTLSCurvePreferences(t *testing.T) {
 	}{
 		{name: "empty", input: "", want: nil},
 		{name: "X25519", input: "X25519", want: []tls.CurveID{tls.X25519}},
+		{name: "X25519MLKEM768 with classical fallback", input: "X25519MLKEM768:X25519", want: []tls.CurveID{tls.X25519MLKEM768, tls.X25519}},
 		{name: "aliases", input: "P-256:CurveP384:x25519", want: []tls.CurveID{tls.CurveP256, tls.CurveP384, tls.X25519}},
 		{name: "unsupported", input: "secp256k1", wantErr: true},
 	}

@@ -127,7 +127,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			"(e.g. TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256). Has no effect when --tls-min-version is 1.3 or higher.")
 	cmd.Flags().StringVar(&tlsCurvePreferences, "tls-curve-preferences", "",
 		"Process-wide colon-separated TLS elliptic curves for metrics/webhook servers and outbound HTTPS/mTLS "+
-			"(e.g. X25519:P-256:P-384). Empty uses Go defaults.")
+			"(e.g. X25519MLKEM768:X25519:P-256). Empty uses Go defaults. Go chooses from the list using its own preference order.")
 
 	return cmd
 }

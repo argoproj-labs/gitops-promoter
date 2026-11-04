@@ -29,8 +29,9 @@ var tlsCurveMap = map[string]tls.CurveID{
 	"p-384":     tls.CurveP384,
 	"curvep521": tls.CurveP521,
 	"p521":      tls.CurveP521,
-	"p-521":     tls.CurveP521,
-	"x25519":    tls.X25519,
+	"p-521":          tls.CurveP521,
+	"x25519":         tls.X25519,
+	"x25519mlkem768": tls.X25519MLKEM768,
 }
 
 // TLSSettings holds string-form TLS policy knobs (typically from CLI flags).
@@ -190,7 +191,7 @@ func ParseTLSCurvePreferences(curves string) ([]tls.CurveID, error) {
 		}
 		id, ok := tlsCurveMap[strings.ToLower(name)]
 		if !ok {
-			return nil, fmt.Errorf("unsupported TLS curve preference: %q (supported: CurveP256, CurveP384, CurveP521, X25519)", name)
+			return nil, fmt.Errorf("unsupported TLS curve preference: %q (supported: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768)", name)
 		}
 		result = append(result, id)
 	}
