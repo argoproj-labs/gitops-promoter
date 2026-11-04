@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -45,6 +46,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -85,8 +87,8 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var enableHTTP2 bool
 	var pprofAddr string
 	var tlsMinVersion string
-	var tlsCiphers string
-	var tlsCurvePreferences string
+	var tlsCipherSuites []string
+	var tlsCurvePreferences []int32
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -101,7 +103,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableHTTP2,
 				utils.TLSSettings{
 					MinVersion:       tlsMinVersion,
-					Ciphers:          tlsCiphers,
+					CipherSuites:     tlsCipherSuites,
 					CurvePreferences: tlsCurvePreferences,
 				},
 				clientConfig,
@@ -119,15 +121,23 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+
+	// Flag names/values match RecommendedOptions.SecureServing / component-base/cli/flag
+	// so controller and apiserver accept the same TLS knob syntax.
+	coverageNote := "Applies to the controller's metrics/webhook servers, Go HTTP clients built from " +
+		"http.DefaultTransport, and mTLS clients. Does not apply to git subprocesses or the Kubernetes API client."
 	cmd.Flags().StringVar(&tlsMinVersion, "tls-min-version", "",
-		"Process-wide minimum TLS version for metrics/webhook servers and outbound HTTPS/mTLS "+
-			"(e.g. 1.2, 1.3). Empty uses Go defaults.")
-	cmd.Flags().StringVar(&tlsCiphers, "tls-ciphers", "",
-		"Process-wide colon-separated TLS 1.2 cipher suite names for metrics/webhook servers and outbound HTTPS/mTLS "+
-			"(e.g. TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256). Has no effect when --tls-min-version is 1.3 or higher.")
-	cmd.Flags().StringVar(&tlsCurvePreferences, "tls-curve-preferences", "",
-		"Process-wide colon-separated TLS elliptic curves for metrics/webhook servers and outbound HTTPS/mTLS "+
-			"(e.g. X25519MLKEM768:X25519:P-256). Empty uses Go defaults. Go chooses from the list using its own preference order.")
+		"Minimum TLS version. Possible values: "+strings.Join(cliflag.TLSPossibleVersions(), ", ")+". "+
+			coverageNote+" Empty uses Go defaults.")
+	cmd.Flags().StringSliceVar(&tlsCipherSuites, "tls-cipher-suites", nil,
+		"Comma-separated list of cipher suites. "+
+			"Preferred values: "+strings.Join(cliflag.PreferredTLSCipherNames(), ", ")+". "+
+			"Insecure values: "+strings.Join(cliflag.InsecureTLSCipherNames(), ", ")+". "+
+			coverageNote+" Has no effect when --tls-min-version is VersionTLS13 or higher.")
+	cmd.Flags().Int32SliceVar(&tlsCurvePreferences, "tls-curve-preferences", nil,
+		"Comma-separated list of numeric Go crypto/tls CurveID values for allowed key exchange mechanisms. "+
+			"See https://pkg.go.dev/crypto/tls#CurveID. The list order is ignored; Go chooses using its own "+
+			"preference order. "+coverageNote+" Empty uses Go defaults.")
 
 	return cmd
 }
@@ -187,12 +197,9 @@ func runController(
 		c.NextProtos = []string{"http/1.1"}
 	}
 
-	tlsOpts := []func(*tls.Config){}
+	tlsOpts := []func(*tls.Config){utils.ApplyProcessTLSConfig}
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
-	}
-	if tlsOpt := utils.ProcessTLSOpt(); tlsOpt != nil {
-		tlsOpts = append(tlsOpts, tlsOpt)
 	}
 
 	webhookServer := webhook.NewServer(webhook.Options{

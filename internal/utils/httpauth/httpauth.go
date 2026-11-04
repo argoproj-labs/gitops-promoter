@@ -272,7 +272,7 @@ func BuildTLSClient(ctx context.Context, secret *corev1.Secret, timeout time.Dur
 	// process-wide policy (CLI flags); empty policy leaves Go defaults.
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-	} //nolint:gosec // MinVersion is applied from process TLS policy when configured
+	}
 	utils.ApplyProcessTLSConfig(tlsConfig)
 
 	// Optionally load CA certificate

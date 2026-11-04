@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/tls"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -16,10 +17,11 @@ func TestParseTLSVersion(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "empty means default", input: "", want: 0},
-		{name: "1.2", input: "1.2", want: tls.VersionTLS12},
-		{name: "TLS1.3 case insensitive", input: "TLS1.3", want: tls.VersionTLS13},
-		{name: "tls1.1 with spaces", input: "  tls1.1  ", want: tls.VersionTLS11},
-		{name: "unsupported", input: "1.0", wantErr: true},
+		{name: "VersionTLS12", input: "VersionTLS12", want: tls.VersionTLS12},
+		{name: "VersionTLS13", input: "VersionTLS13", want: tls.VersionTLS13},
+		{name: "VersionTLS11 allowed for k8s parity", input: "VersionTLS11", want: tls.VersionTLS11},
+		{name: "short form rejected", input: "1.2", wantErr: true},
+		{name: "unsupported", input: "VersionTLS99", wantErr: true},
 		{name: "garbage", input: "ssl3", wantErr: true},
 	}
 
@@ -46,24 +48,50 @@ func TestParseTLSVersion(t *testing.T) {
 func TestParseTLSCiphers(t *testing.T) {
 	t.Parallel()
 
-	secure := tls.CipherSuites()
-	if len(secure) < 2 {
-		t.Fatal("expected at least two secure cipher suites from crypto/tls")
+	var tls12Suites []*tls.CipherSuite
+	var tls13OnlyName string
+	for _, cs := range tls.CipherSuites() {
+		supports12 := false
+		for _, v := range cs.SupportedVersions {
+			if v <= tls.VersionTLS12 {
+				supports12 = true
+				break
+			}
+		}
+		if supports12 {
+			tls12Suites = append(tls12Suites, cs)
+			continue
+		}
+		if tls13OnlyName == "" {
+			tls13OnlyName = cs.Name
+		}
 	}
-	name1 := secure[0].Name
-	name2 := secure[1].Name
+	if len(tls12Suites) < 2 {
+		t.Fatal("expected at least two TLS 1.2 cipher suites from crypto/tls")
+	}
+	if tls13OnlyName == "" {
+		t.Fatal("expected at least one TLS 1.3-only cipher suite from crypto/tls")
+	}
+	name1 := tls12Suites[0].Name
+	name2 := tls12Suites[1].Name
 
 	tests := []struct {
-		name    string
-		input   string
-		want    []uint16
-		wantErr bool
+		name       string
+		input      []string
+		want       []uint16
+		wantErr    bool
+		errContain string
 	}{
-		{name: "empty", input: "", want: nil},
-		{name: "single", input: name1, want: []uint16{secure[0].ID}},
-		{name: "colon separated", input: name1 + ":" + name2, want: []uint16{secure[0].ID, secure[1].ID}},
-		{name: "with spaces", input: " " + name1 + " : " + name2 + " ", want: []uint16{secure[0].ID, secure[1].ID}},
-		{name: "unsupported", input: "TLS_NOT_A_REAL_CIPHER", wantErr: true},
+		{name: "empty", input: nil, want: nil},
+		{name: "single", input: []string{name1}, want: []uint16{tls12Suites[0].ID}},
+		{name: "multiple", input: []string{name1, name2}, want: []uint16{tls12Suites[0].ID, tls12Suites[1].ID}},
+		{name: "unsupported", input: []string{"TLS_NOT_A_REAL_CIPHER"}, wantErr: true},
+		{
+			name:       "TLS 1.3 suite rejected",
+			input:      []string{tls13OnlyName},
+			wantErr:    true,
+			errContain: "TLS 1.3 cipher suites are not configurable in Go",
+		},
 	}
 
 	for _, tc := range tests {
@@ -73,6 +101,9 @@ func TestParseTLSCiphers(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got %v", got)
+				}
+				if tc.errContain != "" && !strings.Contains(err.Error(), tc.errContain) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tc.errContain)
 				}
 				return
 			}
@@ -91,15 +122,20 @@ func TestParseTLSCurvePreferences(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		input   string
+		input   []int32
 		want    []tls.CurveID
 		wantErr bool
 	}{
-		{name: "empty", input: "", want: nil},
-		{name: "X25519", input: "X25519", want: []tls.CurveID{tls.X25519}},
-		{name: "X25519MLKEM768 with classical fallback", input: "X25519MLKEM768:X25519", want: []tls.CurveID{tls.X25519MLKEM768, tls.X25519}},
-		{name: "aliases", input: "P-256:CurveP384:x25519", want: []tls.CurveID{tls.CurveP256, tls.CurveP384, tls.X25519}},
-		{name: "unsupported", input: "secp256k1", wantErr: true},
+		{name: "empty", input: nil, want: nil},
+		{name: "X25519", input: []int32{int32(tls.X25519)}, want: []tls.CurveID{tls.X25519}},
+		{
+			name:  "X25519MLKEM768 with classical fallback",
+			input: []int32{int32(tls.X25519MLKEM768), int32(tls.X25519)},
+			want:  []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
+		},
+		{name: "P-256 and P-384", input: []int32{23, 24}, want: []tls.CurveID{tls.CurveP256, tls.CurveP384}},
+		{name: "unsupported", input: []int32{99999}, wantErr: true},
+		{name: "duplicate", input: []int32{29, 29}, wantErr: true},
 	}
 
 	for _, tc := range tests {
@@ -125,10 +161,7 @@ func TestParseTLSCurvePreferences(t *testing.T) {
 func TestValidateTLSConfig(t *testing.T) {
 	t.Parallel()
 
-	// ECDHE-GCM suites list only VersionTLS12 in SupportedVersions, but a MinVersion of
-	// 1.1 still allows TLS 1.2, so they must be accepted.
 	var cipherTLS12Only uint16
-	var cipherTLS12OnlyName string
 	found := false
 	for _, cs := range tls.CipherSuites() {
 		supports12 := false
@@ -143,7 +176,6 @@ func TestValidateTLSConfig(t *testing.T) {
 		}
 		if supports12 && !supports13 {
 			cipherTLS12Only = cs.ID
-			cipherTLS12OnlyName = cs.Name
 			found = true
 			break
 		}
@@ -152,18 +184,17 @@ func TestValidateTLSConfig(t *testing.T) {
 		t.Skip("no TLS 1.2-only cipher suite available")
 	}
 
-	if err := ValidateTLSConfig(tls.VersionTLS11, []uint16{cipherTLS12Only}); err != nil {
-		t.Fatalf("min TLS 1.1 with %s should pass (TLS 1.2 is still allowed): %v", cipherTLS12OnlyName, err)
-	}
 	if err := ValidateTLSConfig(tls.VersionTLS12, []uint16{cipherTLS12Only}); err != nil {
 		t.Fatalf("expected compatible cipher to pass: %v", err)
 	}
-	// CipherSuites have no effect above TLS 1.2, so min 1.3 skips the check.
-	if err := ValidateTLSConfig(tls.VersionTLS13, []uint16{cipherTLS12Only}); err != nil {
-		t.Fatalf("min TLS 1.3 should skip cipher check: %v", err)
-	}
+	// Unset min version uses Go's default floor (TLS 1.2).
 	if err := ValidateTLSConfig(0, []uint16{cipherTLS12Only}); err != nil {
-		t.Fatalf("empty min version should skip cipher check: %v", err)
+		t.Fatalf("empty min version should validate against TLS 1.2: %v", err)
+	}
+	// Callers must clear ciphers before validating when min is TLS 1.3+;
+	// otherwise every suite fails the [min, TLS1.2] range check.
+	if err := ValidateTLSConfig(tls.VersionTLS13, []uint16{cipherTLS12Only}); err == nil {
+		t.Fatal("expected TLS 1.2 cipher to fail validation against min TLS 1.3")
 	}
 }
 
@@ -184,8 +215,8 @@ func TestTLSSettingsBuildTLSConfig(t *testing.T) {
 	t.Run("min version and curves", func(t *testing.T) {
 		t.Parallel()
 		cfg, warnings, err := TLSSettings{
-			MinVersion:       "1.2",
-			CurvePreferences: "X25519:P-256",
+			MinVersion:       "VersionTLS12",
+			CurvePreferences: []int32{int32(tls.X25519), int32(tls.CurveP256)},
 		}.BuildTLSConfig()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -202,12 +233,26 @@ func TestTLSSettingsBuildTLSConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("ciphers ignored when min is 1.3", func(t *testing.T) {
+	t.Run("ciphers ignored when min is VersionTLS13", func(t *testing.T) {
 		t.Parallel()
-		name := tls.CipherSuites()[0].Name
+		var tls12Name string
+		for _, cs := range tls.CipherSuites() {
+			for _, v := range cs.SupportedVersions {
+				if v <= tls.VersionTLS12 {
+					tls12Name = cs.Name
+					break
+				}
+			}
+			if tls12Name != "" {
+				break
+			}
+		}
+		if tls12Name == "" {
+			t.Fatal("expected a TLS 1.2 cipher suite")
+		}
 		cfg, warnings, err := TLSSettings{
-			MinVersion: "1.3",
-			Ciphers:    name,
+			MinVersion:   "VersionTLS13",
+			CipherSuites: []string{tls12Name},
 		}.BuildTLSConfig()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -220,9 +265,37 @@ func TestTLSSettingsBuildTLSConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("TLS 1.3 cipher rejected without min version", func(t *testing.T) {
+		t.Parallel()
+		var tls13Name string
+		for _, cs := range tls.CipherSuites() {
+			supports12 := false
+			for _, v := range cs.SupportedVersions {
+				if v <= tls.VersionTLS12 {
+					supports12 = true
+					break
+				}
+			}
+			if !supports12 {
+				tls13Name = cs.Name
+				break
+			}
+		}
+		if tls13Name == "" {
+			t.Fatal("expected a TLS 1.3-only cipher suite")
+		}
+		_, _, err := TLSSettings{CipherSuites: []string{tls13Name}}.BuildTLSConfig()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "TLS 1.3 cipher suites are not configurable in Go") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("invalid min version", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := TLSSettings{MinVersion: "9.9"}.BuildTLSConfig()
+		_, _, err := TLSSettings{MinVersion: "1.2"}.BuildTLSConfig()
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -231,8 +304,8 @@ func TestTLSSettingsBuildTLSConfig(t *testing.T) {
 
 func TestTLSVersionName(t *testing.T) {
 	t.Parallel()
-	if got := TLSVersionName(tls.VersionTLS12); got != "1.2" {
-		t.Fatalf("got %q, want 1.2", got)
+	if got := TLSVersionName(tls.VersionTLS12); got != "VersionTLS12" {
+		t.Fatalf("got %q, want VersionTLS12", got)
 	}
 	if got := TLSVersionName(0); got != "unknown (0)" {
 		t.Fatalf("got %q, want unknown (0)", got)
@@ -244,16 +317,15 @@ func TestSetProcessTLSSettingsAndApply(t *testing.T) {
 	t.Cleanup(ResetProcessTLSSettingsForTest)
 	ResetProcessTLSSettingsForTest()
 
-	if HasProcessTLSPolicy() {
-		t.Fatal("expected empty process TLS policy")
-	}
-	if opt := ProcessTLSOpt(); opt != nil {
-		t.Fatal("expected nil ProcessTLSOpt when unset")
+	empty := &tls.Config{}
+	ApplyProcessTLSConfig(empty)
+	if empty.MinVersion != 0 || len(empty.CipherSuites) != 0 || len(empty.CurvePreferences) != 0 {
+		t.Fatalf("empty policy should be a no-op, got %+v", empty)
 	}
 
 	warnings, err := SetProcessTLSSettings(TLSSettings{
-		MinVersion:       "1.3",
-		CurvePreferences: "X25519",
+		MinVersion:       "VersionTLS13",
+		CurvePreferences: []int32{int32(tls.X25519)},
 	})
 	if err != nil {
 		t.Fatalf("SetProcessTLSSettings: %v", err)
@@ -261,11 +333,8 @@ func TestSetProcessTLSSettingsAndApply(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
-	if !HasProcessTLSPolicy() {
-		t.Fatal("expected process TLS policy to be set")
-	}
 
-	cfg := &tls.Config{} //nolint:gosec // test applies policy below
+	cfg := &tls.Config{}
 	ApplyProcessTLSConfig(cfg)
 	if cfg.MinVersion != tls.VersionTLS13 {
 		t.Fatalf("MinVersion got %d, want %d", cfg.MinVersion, tls.VersionTLS13)
@@ -274,20 +343,12 @@ func TestSetProcessTLSSettingsAndApply(t *testing.T) {
 		t.Fatalf("CurvePreferences got %v", cfg.CurvePreferences)
 	}
 
-	opt := ProcessTLSOpt()
-	if opt == nil {
-		t.Fatal("expected non-nil ProcessTLSOpt")
-	}
-	cfg2 := &tls.Config{} //nolint:gosec // empty config; MinVersion set by ProcessTLSOpt
-	opt(cfg2)
-	if cfg2.MinVersion != tls.VersionTLS13 {
-		t.Fatalf("opt MinVersion got %d, want %d", cfg2.MinVersion, tls.VersionTLS13)
-	}
-
 	if _, err := SetProcessTLSSettings(TLSSettings{}); err != nil {
 		t.Fatalf("clear settings: %v", err)
 	}
-	if HasProcessTLSPolicy() {
-		t.Fatal("expected process TLS policy cleared")
+	cleared := &tls.Config{MinVersion: tls.VersionTLS12}
+	ApplyProcessTLSConfig(cleared)
+	if cleared.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("cleared policy should leave existing MinVersion, got %d", cleared.MinVersion)
 	}
 }

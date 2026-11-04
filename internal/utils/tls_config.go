@@ -4,42 +4,21 @@ import (
 	"crypto/tls"
 	"fmt"
 	"slices"
-	"strings"
 	"sync"
+
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
-// tlsVersionMap maps version strings to tls version constants.
-// TLS 1.0 is not supported as it is considered insecure.
-var tlsVersionMap = map[string]uint16{
-	"1.1":    tls.VersionTLS11,
-	"tls1.1": tls.VersionTLS11,
-	"1.2":    tls.VersionTLS12,
-	"tls1.2": tls.VersionTLS12,
-	"1.3":    tls.VersionTLS13,
-	"tls1.3": tls.VersionTLS13,
-}
-
-// tlsCurveMap maps curve preference names to tls.CurveID values.
-var tlsCurveMap = map[string]tls.CurveID{
-	"curvep256": tls.CurveP256,
-	"p256":      tls.CurveP256,
-	"p-256":     tls.CurveP256,
-	"curvep384": tls.CurveP384,
-	"p384":      tls.CurveP384,
-	"p-384":     tls.CurveP384,
-	"curvep521": tls.CurveP521,
-	"p521":      tls.CurveP521,
-	"p-521":          tls.CurveP521,
-	"x25519":         tls.X25519,
-	"x25519mlkem768": tls.X25519MLKEM768,
-}
-
-// TLSSettings holds string-form TLS policy knobs (typically from CLI flags).
+// TLSSettings holds TLS policy knobs in the same shapes as Kubernetes
+// RecommendedOptions.SecureServing (typically from CLI flags).
 // Empty fields mean "use Go defaults" — nothing is hardcoded by this package.
 type TLSSettings struct {
-	MinVersion       string
-	Ciphers          string
-	CurvePreferences string
+	// MinVersion is a Kubernetes TLS version name (e.g. "VersionTLS12").
+	MinVersion string
+	// CipherSuites are cipher suite names (comma-separated on the CLI).
+	CipherSuites []string
+	// CurvePreferences are numeric crypto/tls CurveID values.
+	CurvePreferences []int32
 }
 
 // processTLS holds the parsed process-wide TLS policy set at startup.
@@ -48,6 +27,10 @@ type processTLSPolicy struct {
 	cipherSuites     []uint16
 	curvePreferences []tls.CurveID
 	minVersion       uint16
+}
+
+func (p processTLSPolicy) empty() bool {
+	return p.minVersion == 0 && len(p.cipherSuites) == 0 && len(p.curvePreferences) == 0
 }
 
 var (
@@ -59,21 +42,17 @@ var (
 // metrics/webhook servers, http.DefaultTransport, and outbound mTLS clients.
 // Empty settings clear any previously installed policy (Go defaults).
 func SetProcessTLSSettings(s TLSSettings) ([]string, error) {
-	cfg, warnings, err := s.BuildTLSConfig()
+	policy, warnings, err := s.parse()
 	if err != nil {
 		return nil, err
 	}
 
 	processTLSMu.Lock()
 	defer processTLSMu.Unlock()
-	if cfg == nil {
-		processTLS = processTLSPolicy{}
-		return warnings, nil
-	}
 	processTLS = processTLSPolicy{
-		minVersion:       cfg.MinVersion,
-		cipherSuites:     slices.Clone(cfg.CipherSuites),
-		curvePreferences: slices.Clone(cfg.CurvePreferences),
+		minVersion:       policy.minVersion,
+		cipherSuites:     slices.Clone(policy.cipherSuites),
+		curvePreferences: slices.Clone(policy.curvePreferences),
 	}
 	return warnings, nil
 }
@@ -85,16 +64,9 @@ func ResetProcessTLSSettingsForTest() {
 	processTLS = processTLSPolicy{}
 }
 
-// HasProcessTLSPolicy reports whether any process-wide TLS knob is set.
-func HasProcessTLSPolicy() bool {
-	processTLSMu.RLock()
-	defer processTLSMu.RUnlock()
-	return processTLS.minVersion != 0 || len(processTLS.cipherSuites) > 0 || len(processTLS.curvePreferences) > 0
-}
-
 // ApplyProcessTLSConfig merges the process-wide TLS policy into dst.
 // It only sets fields that were explicitly configured; Certificates, RootCAs,
-// and other fields on dst are left untouched.
+// and other fields on dst are left untouched. An empty policy is a no-op.
 func ApplyProcessTLSConfig(dst *tls.Config) {
 	if dst == nil {
 		return
@@ -112,107 +84,95 @@ func ApplyProcessTLSConfig(dst *tls.Config) {
 	}
 }
 
-// ProcessTLSOpt returns a tls.Config mutator for controller-runtime TLSOpts.
-// Returns nil when no process-wide TLS policy is configured.
-func ProcessTLSOpt() func(*tls.Config) {
-	if !HasProcessTLSPolicy() {
-		return nil
-	}
-	return ApplyProcessTLSConfig
-}
-
 // TLSVersionName returns a human-readable name for a TLS version constant.
 func TLSVersionName(version uint16) string {
 	switch version {
+	case tls.VersionTLS10:
+		return "VersionTLS10"
 	case tls.VersionTLS11:
-		return "1.1"
+		return "VersionTLS11"
 	case tls.VersionTLS12:
-		return "1.2"
+		return "VersionTLS12"
 	case tls.VersionTLS13:
-		return "1.3"
+		return "VersionTLS13"
 	default:
 		return fmt.Sprintf("unknown (%d)", version)
 	}
 }
 
-// ParseTLSVersion parses a TLS version string (e.g. "1.2", "1.3", "TLS1.2") into a tls version constant.
-// Returns 0 if the string is empty (meaning "use default").
+// ParseTLSVersion parses a Kubernetes TLS version name (e.g. "VersionTLS12").
+// Returns 0 if the string is empty (meaning "leave MinVersion unset / Go default").
+// Unlike cliflag.TLSVersion, empty does not force DefaultTLSVersion so callers can
+// omit --tls-min-version without writing MinVersion onto every tls.Config.
 func ParseTLSVersion(version string) (uint16, error) {
 	if version == "" {
 		return 0, nil
 	}
-	v, ok := tlsVersionMap[strings.ToLower(strings.TrimSpace(version))]
-	if !ok {
-		return 0, fmt.Errorf("unsupported TLS version: %q (supported: 1.1, 1.2, 1.3)", version)
-	}
-	return v, nil
+	return cliflag.TLSVersion(version)
 }
 
-// ParseTLSCiphers parses a colon-separated list of cipher suite names into cipher suite IDs.
-// Only secure cipher suites (from tls.CipherSuites()) are allowed.
-// Returns nil if the input is empty.
-func ParseTLSCiphers(ciphers string) ([]uint16, error) {
-	if ciphers == "" {
-		return nil, nil
+// ParseTLSCiphers parses cipher suite names via cliflag.TLSCipherSuites.
+// TLS 1.3 suite names are rejected: Go's tls.Config.CipherSuites does not
+// configure TLS 1.3, and listing only those IDs leaves no usable suites for
+// TLS 1.2 handshakes.
+func ParseTLSCiphers(cipherNames []string) ([]uint16, error) {
+	ids, err := cliflag.TLSCipherSuites(cipherNames)
+	if err != nil {
+		return nil, err
 	}
-
-	cipherMap := make(map[string]uint16, len(tls.CipherSuites()))
-	for _, cs := range tls.CipherSuites() {
-		cipherMap[cs.Name] = cs.ID
+	if err := rejectTLS13OnlyCiphers(ids); err != nil {
+		return nil, err
 	}
-
-	var result []uint16
-	for _, name := range strings.Split(ciphers, ":") {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		id, ok := cipherMap[name]
-		if !ok {
-			return nil, fmt.Errorf("unsupported TLS cipher suite: %q", name)
-		}
-		result = append(result, id)
-	}
-	return result, nil
+	return ids, nil
 }
 
-// ParseTLSCurvePreferences parses a colon-separated list of elliptic curve names into CurveIDs.
-// Returns nil if the input is empty.
-func ParseTLSCurvePreferences(curves string) ([]tls.CurveID, error) {
-	if curves == "" {
-		return nil, nil
+func rejectTLS13OnlyCiphers(ids []uint16) error {
+	for _, id := range ids {
+		for _, cs := range tls.CipherSuites() {
+			if cs.ID != id {
+				continue
+			}
+			supportsTLS12 := false
+			for _, v := range cs.SupportedVersions {
+				if v <= tls.VersionTLS12 {
+					supportsTLS12 = true
+					break
+				}
+			}
+			if !supportsTLS12 {
+				return fmt.Errorf("TLS 1.3 cipher suites are not configurable in Go: %q", cs.Name)
+			}
+			break
+		}
 	}
+	return nil
+}
 
-	var result []tls.CurveID
-	for _, name := range strings.Split(curves, ":") {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		id, ok := tlsCurveMap[strings.ToLower(name)]
-		if !ok {
-			return nil, fmt.Errorf("unsupported TLS curve preference: %q (supported: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768)", name)
-		}
-		result = append(result, id)
-	}
-	return result, nil
+// ParseTLSCurvePreferences parses numeric crypto/tls CurveID values via
+// cliflag.TLSCurvePreferences (same shape as --tls-curve-preferences on apiserver).
+func ParseTLSCurvePreferences(curveIDs []int32) ([]tls.CurveID, error) {
+	return cliflag.TLSCurvePreferences(curveIDs)
 }
 
 // ValidateTLSConfig validates the TLS configuration parameters.
 // It checks that each configured cipher suite can be negotiated under the given
 // minimum TLS version. A cipher is accepted when it supports any version in the
-// inclusive range [minVersion, TLS 1.2]: MinVersion is a floor (so TLS 1.1 still
-// allows TLS 1.2), and Go's tls.Config.CipherSuites has no effect above TLS 1.2.
+// inclusive range [minVersion, TLS 1.2]: MinVersion is a floor (higher versions
+// up to TLS 1.2 remain allowed), and Go's tls.Config.CipherSuites has no effect
+// above TLS 1.2. When minVersion is 0, Go's default floor (TLS 1.2) is used so
+// cipher lists are validated even when --tls-min-version is unset.
+// Callers must clear cipherSuites when minVersion is TLS 1.3+ before calling;
+// CipherSuites have no effect at those versions.
 func ValidateTLSConfig(minVersion uint16, cipherSuites []uint16) error {
-	if len(cipherSuites) == 0 || minVersion == 0 {
+	if len(cipherSuites) == 0 {
 		return nil
 	}
-	// CipherSuites only apply to TLS 1.0–1.2; nothing to validate above that.
-	if minVersion > tls.VersionTLS12 {
-		return nil
+	if minVersion == 0 {
+		minVersion = tls.VersionTLS12
 	}
 
-	availableCiphers := tls.CipherSuites()
+	availableCiphers := append([]*tls.CipherSuite(nil), tls.CipherSuites()...)
+	availableCiphers = append(availableCiphers, tls.InsecureCipherSuites()...)
 	for _, cipherID := range cipherSuites {
 		for _, cs := range availableCiphers {
 			if cs.ID != cipherID {
@@ -236,25 +196,21 @@ func ValidateTLSConfig(minVersion uint16, cipherSuites []uint16) error {
 	return nil
 }
 
-// BuildTLSConfig creates a *tls.Config from TLSSettings.
-// Returns (nil, nil, nil) when no settings are configured (use Go defaults).
-// The second return value is optional warning messages (e.g. ignored ciphers with TLS 1.3).
-func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
-	if t.MinVersion == "" && t.Ciphers == "" && t.CurvePreferences == "" {
-		return nil, nil, nil
+// parse converts TLSSettings into a processTLSPolicy.
+// Returns a zero policy when no settings are configured.
+func (t TLSSettings) parse() (processTLSPolicy, []string, error) {
+	if t.MinVersion == "" && len(t.CipherSuites) == 0 && len(t.CurvePreferences) == 0 {
+		return processTLSPolicy{}, nil, nil
 	}
-
-	tlsCfg := &tls.Config{} //nolint:gosec // MinVersion comes from caller config; empty means Go default
 
 	minVer, err := ParseTLSVersion(t.MinVersion)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid TLS min version: %w", err)
+		return processTLSPolicy{}, nil, fmt.Errorf("invalid TLS min version: %w", err)
 	}
-	tlsCfg.MinVersion = minVer
 
-	ciphers, err := ParseTLSCiphers(t.Ciphers)
+	ciphers, err := ParseTLSCiphers(t.CipherSuites)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid TLS ciphers: %w", err)
+		return processTLSPolicy{}, nil, fmt.Errorf("invalid TLS ciphers: %w", err)
 	}
 
 	var warnings []string
@@ -262,20 +218,40 @@ func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
 	// TLS 1.3 cipher suites are not configurable and are always enabled.
 	if len(ciphers) > 0 && minVer >= tls.VersionTLS13 {
 		warnings = append(warnings,
-			"TLS ciphers have no effect when TLS min version is 1.3 or higher (TLS 1.3 cipher suites are not configurable); ignoring")
+			"TLS ciphers have no effect when min version is VersionTLS13 or higher; ignoring")
 		ciphers = nil
 	}
-	tlsCfg.CipherSuites = ciphers
 
 	curves, err := ParseTLSCurvePreferences(t.CurvePreferences)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid TLS curve preferences: %w", err)
+		return processTLSPolicy{}, nil, fmt.Errorf("invalid TLS curve preferences: %w", err)
 	}
-	tlsCfg.CurvePreferences = curves
 
 	if err := ValidateTLSConfig(minVer, ciphers); err != nil {
-		return nil, nil, err
+		return processTLSPolicy{}, nil, err
 	}
 
-	return tlsCfg, warnings, nil
+	return processTLSPolicy{
+		minVersion:       minVer,
+		cipherSuites:     ciphers,
+		curvePreferences: curves,
+	}, warnings, nil
+}
+
+// BuildTLSConfig creates a *tls.Config from TLSSettings.
+// Returns (nil, nil, nil) when no settings are configured (use Go defaults).
+// The second return value is optional warning messages (e.g. ignored ciphers with TLS 1.3).
+func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
+	policy, warnings, err := t.parse()
+	if err != nil {
+		return nil, nil, err
+	}
+	if policy.empty() {
+		return nil, warnings, nil
+	}
+	return &tls.Config{
+		MinVersion:       policy.minVersion,
+		CipherSuites:     slices.Clone(policy.cipherSuites),
+		CurvePreferences: slices.Clone(policy.curvePreferences),
+	}, warnings, nil
 }

@@ -254,8 +254,8 @@ var _ = Describe("BuildTLSClient", func() {
 
 	It("applies process-wide TLS policy to the client transport", func() {
 		_, err := utils.SetProcessTLSSettings(utils.TLSSettings{
-			MinVersion:       "1.3",
-			CurvePreferences: "X25519",
+			MinVersion:       "VersionTLS13",
+			CurvePreferences: []int32{int32(tls.X25519)},
 		})
 		Expect(err).NotTo(HaveOccurred())
 

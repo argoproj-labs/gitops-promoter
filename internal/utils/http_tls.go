@@ -16,25 +16,18 @@ import (
 // SSL_CERT_FILE for http.DefaultTransport. That breaks MITM proxies unless
 // we install an explicit root pool. Git subprocesses use GIT_SSL_CAINFO instead;
 // see internal/git.proxyRelatedEnvVars.
-//
-// No-op when neither SSL_CERT_FILE nor a process TLS policy is configured.
 func ConfigureDefaultHTTPTransport() error {
-	caPath := os.Getenv("SSL_CERT_FILE")
-	if caPath == "" && !HasProcessTLSPolicy() {
-		return nil
-	}
-
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return fmt.Errorf("http.DefaultTransport is %T, expected *http.Transport", http.DefaultTransport)
 	}
 	cloned := base.Clone()
 	if cloned.TLSClientConfig == nil {
-		cloned.TLSClientConfig = &tls.Config{} //nolint:gosec // policy applied below; empty means Go defaults
+		cloned.TLSClientConfig = &tls.Config{}
 	}
 	ApplyProcessTLSConfig(cloned.TLSClientConfig)
 
-	if caPath != "" {
+	if caPath := os.Getenv("SSL_CERT_FILE"); caPath != "" {
 		pem, err := os.ReadFile(caPath)
 		if err != nil {
 			return fmt.Errorf("read TLS CA file %q: %w", caPath, err)
