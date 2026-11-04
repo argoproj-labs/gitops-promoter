@@ -1171,6 +1171,10 @@ func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) e
 		return fmt.Errorf("failed to fetch git notes for ref %q: %w", ref, err)
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
+	if ref == PromoterHistoryNotesRef {
+		// Notes LoadHistoryNotes cached before this fetch may be stale now.
+		clear(g.historyNotes)
+	}
 
 	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil

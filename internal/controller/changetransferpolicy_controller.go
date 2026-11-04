@@ -1819,6 +1819,21 @@ func (r *ChangeTransferPolicyReconciler) ensureRestoreActiveCommitForRestoreTip(
 	if !state.IsRestore || state.Unblocked || state.RestoredFrom == "" {
 		return nil
 	}
+	// The notes above may come from the remote snapshot taken at the start of this reconcile. A
+	// RestoreActiveCommit pushes Promoter-restore-unblocked-at and then deletes itself, so if it did both
+	// between that snapshot and the list above, this tip only looks blocked. Adopting it would create a
+	// RestoreActiveCommit that can never restore (the tip is already unblocked) and so blocks promotion
+	// for good. The list ran after any such delete, so notes fetched now include its stamp.
+	if err := gitOperations.FetchNotes(ctx); err != nil {
+		return fmt.Errorf("failed to refresh notes before adopting restore tip %q: %w", tip, err)
+	}
+	state, err = gitOperations.RestoreBlockState(ctx, tip, ctp.Spec.ActivePath)
+	if err != nil {
+		return fmt.Errorf("failed to re-read restore gate for active tip %q: %w", tip, err)
+	}
+	if state.Unblocked {
+		return nil
+	}
 
 	ps, err := r.getPromotionStrategy(ctx, ctp)
 	if err != nil {
