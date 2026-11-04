@@ -13,6 +13,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	v1 "k8s.io/api/core/v1"
@@ -691,5 +692,19 @@ func InheritNotReadyConditionFromObjects[T PromoterResource](parent PromoterReso
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
+	}
+}
+
+// CheckStatusToCommitStatusPhase converts an SCMCheckPhase to a CommitStatusPhase
+func CheckStatusToCommitStatusPhase(status scms.SCMCheckPhase) promoterv1alpha1.CommitStatusPhase {
+	switch status {
+	case scms.SCMCheckStatusSucceeded:
+		return promoterv1alpha1.CommitPhaseSuccess
+	case scms.SCMCheckStatusFailed, scms.SCMCheckStatusCanceled:
+		return promoterv1alpha1.CommitPhaseFailure
+	case scms.SCMCheckStatusPending, scms.SCMCheckStatusInProgress:
+		return promoterv1alpha1.CommitPhasePending
+	default:
+		return promoterv1alpha1.CommitPhasePending
 	}
 }
