@@ -23,7 +23,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  box-shadow: -8px 0 24px $shadow-medium;
 }
 
 // While dragging the edge, kill the width animation so the panel tracks the
@@ -171,17 +171,22 @@
     stroke-width: 1.4;
     overflow: visible;
   }
+  // Gray fills invert with the theme, so their label takes the surface color
+  // rather than white.
   &--blocked {
     background: $text-secondary;
+    color: $bg-surface;
   }
   &--was-here {
     background: $text-secondary;
+    color: $bg-surface;
   }
   &--failed {
     background: $failure-ink;
   }
   &--no-op {
     background: $text-muted;
+    color: $bg-surface;
   }
   &--no-changes {
     background: $bg-softer;
@@ -194,7 +199,7 @@
   font-size: 12px;
   font-weight: 600;
   color: $accent;
-  background: rgba(31, 79, 94, 0.08);
+  background: $accent-tint;
   padding: 2px 8px;
   border-radius: 999px;
 }
@@ -228,7 +233,7 @@
   font-weight: 600;
   color: $accent;
   text-decoration: none;
-  background: rgba(31, 79, 94, 0.08);
+  background: $accent-tint;
   padding: 1px 6px;
   border-radius: $radius-sm;
 }
@@ -296,10 +301,10 @@
     border-radius: $radius-md;
     padding: 12px 14px;
     h3 {
-      color: $failure-ink;
+      color: $failure-text;
     }
     strong {
-      color: $failure-ink;
+      color: $failure-text;
     }
   }
 
@@ -392,15 +397,15 @@
   border-radius: $radius-sm;
 
   &--success {
-    color: $success-ink;
+    color: $success-text;
     background: $success-soft;
   }
   &--failure {
-    color: $failure-ink;
+    color: $failure-text;
     background: $failure-soft;
   }
   &--pending {
-    color: $pending-ink;
+    color: $pending-text;
     background: $pending-soft;
   }
   &--unknown {
@@ -567,7 +572,7 @@
 
   &--current {
     border-color: $selection;
-    background: rgba(75, 75, 75, 0.08);
+    background: $selection-tint;
     box-shadow: inset 0 0 0 1px $selection;
   }
   &--no-changes {
@@ -582,7 +587,7 @@
 
     &:hover {
       border-color: $accent;
-      background: rgba(31, 79, 94, 0.06);
+      background: $accent-tint-light;
     }
     &:focus-visible {
       outline: 2px solid $accent;
@@ -619,7 +624,7 @@
   font-family: inherit;
   &:hover {
     border-color: $accent;
-    background: rgba(31, 79, 94, 0.06);
+    background: $accent-tint-light;
   }
   svg {
     color: $accent;

@@ -1,3 +1,5 @@
+@use '../components-lib/src/styles/palette' as p;
+
 .gp-controls {
   display: flex;
   align-items: center;
@@ -34,20 +36,21 @@
   display: flex;
   align-items: center;
   font-size: 1rem;
-  color: #4a5a6a;
+  color: p.ref(control-option-text) !important;
   padding: 10px 12px;
 }
 
 .strategy-dropdown__option--is-selected {
-  background: #d1eaff;
-  color: #0d8ecf;
+  background: p.ref(control-option-selected);
+  color: p.ref(control-option-selected-text);
 }
 
 .strategy-dropdown__control {
   width: 400px !important;
   border-radius: 4px !important;
   min-height: 38px !important;
-  background-color: white !important;
+  background-color: p.ref(control-bg) !important;
+  border-color: p.ref(control-border) !important;
 
   &:hover {
     border-color: #0dadea !important;
@@ -60,11 +63,12 @@
 
 .strategy-dropdown__menu {
   margin-top: 4px !important;
-  border: 1px solid #ccd6dd !important;
+  border: 1px solid p.ref(control-border) !important;
+  background-color: p.ref(control-bg) !important;
   border-radius: 0.375rem !important;
   box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+    0 4px 6px -1px p.ref(shadow-soft),
+    0 2px 4px -1px p.ref(shadow-faint) !important;
 }
 
 .strategy-dropdown__option {
@@ -74,13 +78,13 @@
   align-items: center !important;
 
   &--is-focused {
-    background-color: #f5f8fa !important;
-    color: #2d3748 !important;
+    background-color: p.ref(control-option-hover) !important;
+    color: p.ref(control-text) !important;
   }
 
   &--is-selected {
-    background-color: #e6f6ff !important;
-    color: #0dadea !important;
+    background-color: p.ref(control-option-selected) !important;
+    color: p.ref(control-option-selected-text) !important;
   }
 }
 
@@ -89,30 +93,30 @@
 }
 
 .strategy-dropdown__input {
-  color: #2d3748 !important;
+  color: p.ref(control-text) !important;
 }
 
 .strategy-dropdown__placeholder {
-  color: #a0aec0 !important;
+  color: p.ref(control-placeholder) !important;
 }
 
 .strategy-dropdown__clear-indicator {
   cursor: pointer !important;
-  color: #a0aec0 !important;
+  color: p.ref(control-placeholder) !important;
 
   &:hover {
-    color: #718096 !important;
+    color: p.ref(control-icon-hover) !important;
   }
 }
 
 .strategy-dropdown__dropdown-indicator {
-  color: #a0aec0 !important;
+  color: p.ref(control-placeholder) !important;
 
   &:hover {
-    color: #718096 !important;
+    color: p.ref(control-icon-hover) !important;
   }
 }
 
 .strategy-dropdown__single-value {
-  color: #2d3748 !important;
+  color: p.ref(control-text) !important;
 }

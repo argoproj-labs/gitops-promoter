@@ -1,3 +1,5 @@
+@use '@lib/styles/palette' as p;
+
 .strategy-page {
   display: flex;
   flex-direction: column;
@@ -9,7 +11,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: white;
+  background: p.ref(bg-surface);
+  border-bottom: 1px solid p.ref(stroke);
   padding: 6px 16px;
   flex: 0 0 auto;
 }
@@ -30,12 +33,13 @@
   padding: 0;
   font-size: 14px;
   font-weight: 600;
+  color: p.ref(text-primary);
 }
 
 .strategy-page-tabs {
   display: flex;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.05);
+  background: p.ref(bg-softer);
   border-radius: 6px;
   padding: 4px;
 }
@@ -47,15 +51,15 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  color: #666;
+  color: p.ref(text-secondary);
 }
 
 .strategy-page-tab:hover {
-  background: rgba(0, 0, 0, 0.1);
-  color: #333;
+  background: p.ref(stroke);
+  color: p.ref(text-primary);
 }
 
 .strategy-page-tab.active {
-  background: #6d7f8b;
-  color: white;
+  background: p.ref(text-secondary);
+  color: p.ref(bg-surface);
 }

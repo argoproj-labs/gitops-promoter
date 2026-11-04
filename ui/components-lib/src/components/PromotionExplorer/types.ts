@@ -68,10 +68,10 @@ export interface EnvColumn {
  * Env identity palette. Order matters: assigned positionally to envs as they
  * appear in the spec.
  */
-// Every hue meets WCAG AA (>=4.5:1 on white) because
-// these colors are applied to text (branch labels, SHA pills), not just
-// accents. #d97706 (3.2:1) was darkened to #9a5a0f (5.5:1 on white).
-export const LANE_COLORS = ['#1f4f5e', '#6f42c1', '#9a5a0f', '#0f766e', '#b91c1c', '#4338ca'];
+// The hues live in styles/_palette.scss (`lane-0`..`lane-5`) so they can follow
+// the light/dark theme. Every hue meets WCAG AA (>=4.5:1) on its theme's
+// surface.
+export const LANE_COLORS = [0, 1, 2, 3, 4, 5].map((i) => `var(--hp-lane-${i})`);
 
 export interface RowReference {
   shaShort: string;

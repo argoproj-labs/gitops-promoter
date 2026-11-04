@@ -1,3 +1,4 @@
+import '@lib/styles/theme.scss';
 import '@lib/styles/main.scss';
 
 import { StrictMode } from 'react';

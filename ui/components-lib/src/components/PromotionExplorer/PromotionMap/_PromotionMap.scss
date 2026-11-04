@@ -1,9 +1,8 @@
-@use 'sass:color';
 @use '../tokens' as *;
 
 $map-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-$edge-idle: rgba(88, 103, 115, 0.55);
-$status-previous: #586773;
+$edge-idle: ref(map-edge-idle);
+$status-previous: ref(map-status-previous);
 $drawer-offset: var(--hp-drawer-offset, 0px);
 
 .hp-map {
@@ -13,7 +12,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   min-height: 240px;
   overflow: hidden;
   background-color: $bg-page;
-  background-image: radial-gradient(circle, rgba(88, 103, 115, 0.2) 1px, transparent 1px);
+  background-image: radial-gradient(circle, ref(map-dot) 1px, transparent 1px);
   background-size: 48px 48px;
   border-bottom: 1px solid $stroke;
   cursor: grab;
@@ -60,7 +59,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   }
 
   &--inspecting {
-    background-image: radial-gradient(circle, rgba(88, 103, 115, 0.12) 1px, transparent 1px);
+    background-image: radial-gradient(circle, ref(map-dot-faint) 1px, transparent 1px);
   }
 }
 
@@ -126,7 +125,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   &--lit {
     stroke: $accent;
     stroke-width: 2.6;
-    filter: drop-shadow(0 0 4px rgba($accent, 0.3));
+    filter: drop-shadow(0 0 4px ref(map-edge-glow));
   }
   &--dimmed {
     opacity: 0.18;
@@ -165,7 +164,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   border: 1px solid $stroke;
   border-radius: $radius-lg;
   background: $bg-surface;
-  box-shadow: 0 1px 2px rgba(15, 35, 60, 0.05);
+  box-shadow: 0 1px 2px $shadow-faint;
   color: $text-primary;
   font-family: inherit;
   text-align: left;
@@ -178,15 +177,15 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
     transform 0.2s ease;
 
   &--live {
-    background: color.mix($success-soft, #ffffff, 60%);
+    background: ref(map-node-success-bg);
     border-color: $success-border;
   }
   &--proposed {
-    background: color.mix($pending-soft, #ffffff, 60%);
+    background: ref(map-node-pending-bg);
     border-color: $pending-border;
   }
   &--failed {
-    background: color.mix($failure-soft, #ffffff, 60%);
+    background: ref(map-node-failure-bg);
     border-color: $failure-border;
   }
   &--previously-live {
@@ -213,7 +212,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
     box-shadow:
       0 0 0 2px $bg-surface,
       0 0 0 4px $accent,
-      0 8px 20px rgba(15, 35, 60, 0.12);
+      0 8px 20px $shadow-medium;
   }
   &--tint-live {
     border-color: $success-ink;
@@ -336,7 +335,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
 }
 
 .hp-minigraph__node {
-  fill: #b4c0cc;
+  fill: ref(map-status-unknown);
 
   &--live {
     fill: $success-ink;
@@ -366,7 +365,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   border: 1px solid $stroke;
   border-radius: $radius-lg;
   background: $bg-surface;
-  box-shadow: 0 4px 14px rgba(15, 35, 60, 0.1);
+  box-shadow: 0 4px 14px $shadow-soft;
   color: $text-primary;
   font-family: inherit;
   cursor: pointer;
@@ -417,7 +416,7 @@ $drawer-offset: var(--hp-drawer-offset, 0px);
   background: $bg-surface;
   border: 1px solid $stroke;
   border-radius: $radius-lg;
-  box-shadow: 0 4px 14px rgba(15, 35, 60, 0.1);
+  box-shadow: 0 4px 14px $shadow-soft;
   font-size: 11px;
   transition: opacity 0.28s ease;
 

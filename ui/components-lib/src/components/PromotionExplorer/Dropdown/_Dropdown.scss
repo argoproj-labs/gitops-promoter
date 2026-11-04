@@ -1,4 +1,3 @@
-@use 'sass:color';
 @use '../tokens' as *;
 
 .hp-dd {
@@ -33,12 +32,12 @@
   }
 
   &--active {
-    color: #ffffff;
+    color: $on-accent;
     border-color: $accent;
     background: $accent;
 
     &:hover {
-      background: color.adjust($accent, $lightness: -4%);
+      background: $accent-hover;
     }
   }
 }
@@ -51,7 +50,7 @@
 }
 
 .hp-dd__trigger--active .hp-dd__icon {
-  color: rgba(255, 255, 255, 0.92);
+  color: $on-accent-strong;
 }
 
 .hp-dd__value {
@@ -67,7 +66,7 @@
 }
 
 .hp-dd__trigger--active .hp-dd__caret {
-  color: rgba(255, 255, 255, 0.85);
+  color: $on-accent-muted;
 }
 
 .hp-dd__menu {
@@ -80,7 +79,7 @@
   background: $bg-surface;
   border: 1px solid $stroke-strong;
   border-radius: $radius-md;
-  box-shadow: 0 8px 24px rgba(15, 35, 60, 0.18);
+  box-shadow: 0 8px 24px $shadow-strong;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -108,7 +107,7 @@
 
   &--selected {
     color: $accent;
-    background: rgba(31, 79, 94, 0.08);
+    background: $accent-tint;
   }
 }
 
@@ -126,7 +125,7 @@
   border: 1px solid $stroke-strong;
   border-radius: $radius-sm;
   font-size: 8px;
-  color: #ffffff;
+  color: $on-accent;
   background: $bg-surface;
 }
 

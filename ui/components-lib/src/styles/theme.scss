@@ -1,0 +1,16 @@
+@use './palette';
+
+// Light is the default. Dark follows the theme class Argo CD puts on its layout
+// wrapper (`.theme-dark`, with its "auto" preference already resolved). Argo
+// renders that wrapper inside <body>, so the `:has()` form also reaches content
+// portaled to <body> (menus, tooltips). The standalone dashboard sets the same
+// class on <html>.
+:root,
+.theme-light {
+  @include palette.declare(palette.$light);
+}
+
+.theme-dark,
+:root:has(.theme-dark) {
+  @include palette.declare(palette.$dark);
+}

@@ -1,92 +1,118 @@
-@use 'sass:color';
+@forward '../../styles/palette' show ref;
 @use '../../styles/colors' as *;
+@use '../../styles/palette' as *;
 
-$bg-page: #eef1f6;
-$bg-surface: #ffffff;
-$bg-soft: #f9fafb;
-$bg-softer: #f3f5f8;
-// Text colors tuned for WCAG 2.2 AA (4.5:1 on white/soft surfaces).
-// The shared $argo-color-gray-5/6 are too light (2.1:1 / 3.5:1) for text.
-$text-primary: $argo-color-gray-7; // #4b4b4b — 8.7:1 on white
-$text-secondary: #586773; // 5.8:1 on white (was gray-6 3.5:1)
-$text-muted: #677483; // 4.8:1 on white (was gray-5 2.1:1)
-$stroke: rgba(15, 35, 60, 0.14);
-$stroke-strong: rgba(15, 35, 60, 0.5); // 3.19:1 vs white — UI/control boundaries (1.4.11)
-$accent: #1f4f5e;
-$selection: $argo-color-gray-7;
+$bg-page: ref(bg-page);
+$bg-surface: ref(bg-surface);
+$bg-soft: ref(bg-soft);
+$bg-softer: ref(bg-softer);
+// Text colors tuned for WCAG 2.2 AA (4.5:1 on their surfaces in both themes).
+$text-primary: ref(text-primary);
+$text-secondary: ref(text-secondary);
+$text-muted: ref(text-muted);
+$stroke: ref(stroke);
+$stroke-strong: ref(stroke-strong); // UI/control boundaries (1.4.11)
+$accent: ref(accent);
+$accent-hover: ref(accent-hover);
+$accent-tint-faint: ref(accent-tint-faint);
+$accent-tint-light: ref(accent-tint-light);
+$accent-tint: ref(accent-tint);
+$accent-line: ref(accent-line);
+$accent-line-strong: ref(accent-line-strong);
+$on-accent: ref(on-accent);
+$on-accent-muted: ref(on-accent-muted);
+$on-accent-strong: ref(on-accent-strong);
+$on-accent-tint: ref(on-accent-tint);
+$selection: ref(selection);
+$selection-tint: ref(selection-tint);
 
 $success: $argo-success;
 $failure: $argo-failed;
 $pending: $argo-running;
 
-// Accessible text/solid-fill variants — meet 4.5:1 for white-on-fill pill
-// labels and colored-text-on-tint. Keep separate from brand hues so other
-// components are unaffected.
-$success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
-$failure-ink: #c0392b; // white-on 5.4:1
-$pending-ink: #0b78a6; // white-on 4.9:1
+// Accessible solid-fill variants — meet 4.5:1 for white-on-fill pill labels.
+// Keep separate from brand hues so other components are unaffected.
+$success-ink: ref(success-ink);
+$failure-ink: ref(failure-ink);
+$pending-ink: ref(pending-ink);
 
 // Manual restore (a human moved the branch, no promotion PR). Amber reads as an
-// unusual event without implying failure. 5.5:1 both on white and white-on-fill.
-$restored-ink: #9a5a0f;
+// unusual event without implying failure.
+$restored-ink: ref(restored-ink);
 
-$success-soft: rgba(45, 153, 96, 0.12);
-$success-border: rgba(18, 128, 90, 0.55);
-$failure-soft: rgba(220, 67, 67, 0.1);
-$failure-border: rgba(192, 57, 43, 0.55);
-$pending-soft: rgba(13, 173, 234, 0.14);
-$pending-border: rgba(11, 120, 166, 0.55);
-$neutral-rail: #7a8aa0;
-$restored-soft: rgba(154, 90, 15, 0.12);
-$restored-border: rgba(154, 90, 15, 0.55);
+// Status-colored text on page surfaces. Same as the inks in light mode; lighter
+// in dark mode, where the inks are too dark to read as text.
+$success-text: ref(success-text);
+$failure-text: ref(failure-text);
+$pending-text: ref(pending-text);
+$restored-text: ref(restored-text);
+
+$success-soft: ref(success-soft);
+$success-border: ref(success-border);
+$failure-soft: ref(failure-soft);
+$failure-border: ref(failure-border);
+$pending-soft: ref(pending-soft);
+$pending-border: ref(pending-border);
+$neutral-rail: ref(neutral-rail);
+$restored-soft: ref(restored-soft);
+$restored-border: ref(restored-border);
 
 // Blocked mark inside a blue pill for a proposed commit a RestoreActiveCommit is holding. Bright
 // enough to read on the pending fill with no backing disc.
-$held-stop: #ff5a4e;
+$held-stop: ref(held-stop);
 
-$cell-live-bg: #e4efeb;
-$cell-live-border: #79ad99;
-$cell-live-rail: #3d916f;
-$cell-live-pill: #328765;
-$cell-proposed-bg: #e8f0f3;
-$cell-proposed-border: #a9c3cf;
-$cell-proposed-rail: #668fa1;
-$cell-proposed-pill: #527f91;
-$cell-failed-bg: #f3e8ea;
-$cell-failed-border: #cfa0a8;
-$cell-failed-rail: #b5636f;
-$cell-failed-pill: #a64f5d;
-$cell-prev-bg: #edf1f2;
-$cell-prev-border: #aebbc2;
-$cell-prev-rail: #8198a2;
-$cell-prev-label: #52616d;
-$cell-prev-link: #667784;
-$cell-empty-bg: #f5f6f8;
-$cell-empty-border: #c6d0d5;
-$cell-empty-text: #7b8791;
-$cell-divider: #bdcec7;
-$cell-chip-bg: #e8eef0;
-$cell-chip-ink: #315565;
-$cell-link-ink: #315c6c;
-$cell-time-ink: #64748b;
-$cell-check-name: #344b55;
-$cell-more-bg: #315565;
-$cell-more-ink: #f2f7f8;
-$cell-more-shadow: rgba(21, 48, 60, 0.35);
-$cell-scroll-thumb: #8fa9b3;
-$cell-scroll-track: rgba(49, 85, 101, 0.1);
+$cell-live-bg: ref(cell-live-bg);
+$cell-live-border: ref(cell-live-border);
+$cell-live-rail: ref(cell-live-rail);
+$cell-live-pill: ref(cell-live-pill);
+$cell-proposed-bg: ref(cell-proposed-bg);
+$cell-proposed-border: ref(cell-proposed-border);
+$cell-proposed-rail: ref(cell-proposed-rail);
+$cell-proposed-pill: ref(cell-proposed-pill);
+$cell-failed-bg: ref(cell-failed-bg);
+$cell-failed-border: ref(cell-failed-border);
+$cell-failed-rail: ref(cell-failed-rail);
+$cell-failed-pill: ref(cell-failed-pill);
+$cell-prev-bg: ref(cell-prev-bg);
+$cell-prev-border: ref(cell-prev-border);
+$cell-prev-rail: ref(cell-prev-rail);
+$cell-prev-label: ref(cell-prev-label);
+$cell-prev-link: ref(cell-prev-link);
+$cell-empty-bg: ref(cell-empty-bg);
+$cell-empty-border: ref(cell-empty-border);
+$cell-empty-text: ref(cell-empty-text);
+$cell-divider: ref(cell-divider);
+$cell-chip-bg: ref(cell-chip-bg);
+$cell-chip-ink: ref(cell-chip-ink);
+$cell-link-ink: ref(cell-link-ink);
+$cell-time-ink: ref(cell-time-ink);
+$cell-check-name: ref(cell-check-name);
+$cell-more-bg: ref(cell-more-bg);
+$cell-more-ink: ref(cell-more-ink);
+$cell-more-shadow: ref(cell-more-shadow);
+$cell-scroll-thumb: ref(cell-scroll-thumb);
+$cell-scroll-track: ref(cell-scroll-track);
+$cell-hatch: ref(cell-hatch);
 $cell-checks-fade: 16px;
-$cell-run-ring: #38a7e5;
-$cell-run-track: #d9eef9;
-$cell-pass-ring: #49b98a;
-$cell-pass-mark: #2da875;
-$cell-fail-ring: #dc6676;
-$cell-fail-mark: #c94759;
-$app-ink: #1d5fa8;
-$app-soft: rgba(29, 95, 168, 0.1);
-$app-soft-strong: rgba(29, 95, 168, 0.2);
-$row-border: #cbd4d9;
-$row-bg: rgba(255, 255, 255, 0.72);
+$cell-run-ring: ref(cell-run-ring);
+$cell-run-track: ref(cell-run-track);
+$cell-pass-ring: ref(cell-pass-ring);
+$cell-pass-mark: ref(cell-pass-mark);
+$cell-fail-ring: ref(cell-fail-ring);
+$cell-fail-mark: ref(cell-fail-mark);
+$app-ink: ref(app-ink);
+$app-soft: ref(app-soft);
+$app-soft-strong: ref(app-soft-strong);
+$row-border: ref(row-border);
+$row-bg: ref(row-bg);
+
+$tooltip-bg: ref(tooltip-bg);
+$tooltip-ink: ref(tooltip-ink);
+$shadow-faint: ref(shadow-faint);
+$shadow-soft: ref(shadow-soft);
+$shadow-medium: ref(shadow-medium);
+$shadow-strong: ref(shadow-strong);
+$shadow-lift: ref(shadow-lift);
 
 $radius-sm: 4px;
 $radius-md: 6px;

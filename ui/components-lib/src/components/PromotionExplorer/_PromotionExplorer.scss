@@ -1,4 +1,3 @@
-@use 'sass:color';
 @use 'tokens' as *;
 
 .hp {
@@ -12,6 +11,7 @@
   // `.hp--viewport`.
   height: 100%;
   background: $bg-page;
+  color-scheme: ref(scheme);
   overflow: hidden;
 }
 
@@ -138,7 +138,7 @@
       background: $success-ink;
     }
     strong {
-      color: $success-ink;
+      color: $success-text;
     }
     background: $success-soft;
     border-color: $success-border;
@@ -148,7 +148,7 @@
       background: $pending-ink;
     }
     strong {
-      color: $pending-ink;
+      color: $pending-text;
     }
     background: $pending-soft;
     border-color: $pending-border;
@@ -158,7 +158,7 @@
       background: $failure-ink;
     }
     strong {
-      color: $failure-ink;
+      color: $failure-text;
     }
     background: $failure-soft;
     border-color: $failure-border;
@@ -170,8 +170,8 @@
     strong {
       color: $accent;
     }
-    background: rgba(31, 79, 94, 0.08);
-    border-color: rgba(31, 79, 94, 0.3);
+    background: $accent-tint;
+    border-color: $accent-line-strong;
   }
 }
 
@@ -246,11 +246,11 @@
 
   &--active {
     background: $accent;
-    color: #ffffff;
+    color: $on-accent;
     border-color: $accent;
     .hp-chip__count {
-      color: rgba(255, 255, 255, 0.92);
-      background: rgba(255, 255, 255, 0.18);
+      color: $on-accent-strong;
+      background: $on-accent-tint;
     }
   }
 }
@@ -265,7 +265,7 @@
 }
 
 .hp-chip--env.hp-chip--active .hp-chip__dot {
-  background: #fff;
+  background: $on-accent;
 }
 
 .hp-chip__dot {
@@ -364,8 +364,8 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: $accent;
-  background: color.change($accent, $alpha: 0.08);
-  border: 1px solid color.change($accent, $alpha: 0.22);
+  background: $accent-tint;
+  border: 1px solid $accent-line;
   border-radius: $radius-md;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -441,7 +441,7 @@
 }
 
 .hp-row__env-slot--focus > .cell:not(.cell--no-changes) {
-  outline: 2px solid rgba(31, 79, 94, 0.3);
+  outline: 2px solid $accent-line-strong;
   outline-offset: -1px;
 }
 
@@ -464,7 +464,7 @@
   }
   &--selected {
     border-color: $accent;
-    background: rgba(31, 79, 94, 0.04);
+    background: $accent-tint-faint;
   }
 }
 
