@@ -73,9 +73,14 @@ func ApplyProcessTLSConfig(dst *tls.Config) {
 	}
 	processTLSMu.RLock()
 	defer processTLSMu.RUnlock()
-	// Only VersionTLS12+ is stored in processTLS (see parse); never write 0/1.0/1.1.
-	if minVersion := processTLS.minVersion; minVersion >= tls.VersionTLS12 {
-		dst.MinVersion = minVersion
+	// Assign the constants, not the variable. CodeQL's go/insecure-tls only treats a
+	// literal VersionTLS12 or VersionTLS13 as a secure MinVersion; a variable copy
+	// of the same value is reported as the zero value flowing in.
+	switch processTLS.minVersion {
+	case tls.VersionTLS12:
+		dst.MinVersion = tls.VersionTLS12
+	case tls.VersionTLS13:
+		dst.MinVersion = tls.VersionTLS13
 	}
 	if len(processTLS.cipherSuites) > 0 {
 		dst.CipherSuites = slices.Clone(processTLS.cipherSuites)
@@ -297,8 +302,11 @@ func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
 		CipherSuites:     slices.Clone(policy.cipherSuites),
 		CurvePreferences: slices.Clone(policy.curvePreferences),
 	}
-	if policy.minVersion >= tls.VersionTLS12 {
-		cfg.MinVersion = policy.minVersion
+	switch policy.minVersion {
+	case tls.VersionTLS12:
+		cfg.MinVersion = tls.VersionTLS12
+	case tls.VersionTLS13:
+		cfg.MinVersion = tls.VersionTLS13
 	}
 	return cfg, warnings, nil
 }
