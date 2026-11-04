@@ -63,7 +63,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -108,6 +110,9 @@ var (
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
+
+	// localApplicationsProvider is the suite manager's provider for the local cluster's Applications.
+	localApplicationsProvider *LocalApplicationsProvider
 	// faultsInjected is true when K8S_FAULT_PROBABILITY or PROMOTER_TEST_SCM_FAULT_PROBABILITY is
 	// enabled. Specs then stop asserting best-effort side effects (see expectEventEmitted).
 	faultsInjected bool
@@ -155,17 +160,17 @@ var _ = SynchronizedBeforeSuite(func() {
 	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
 	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
 
+	applicationClusterOptions := func(clusterOptions *cluster.Options) {
+		clusterOptions.Scheme = scheme
+		clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
+	}
+
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
 		Namespace:             constants.KubeconfigSecretNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		ClusterOptions: []cluster.Option{
-			func(clusterOptions *cluster.Options) {
-				clusterOptions.Scheme = scheme
-				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
-			},
-		},
+		ClusterOptions:        []cluster.Option{applicationClusterOptions},
 	})
 
 	//nolint:fatcontext // ctx is intentionally reassigned in test setup
@@ -186,7 +191,12 @@ var _ = SynchronizedBeforeSuite(func() {
 		faultsInjected = true
 	}
 
-	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
+	localApplicationsProvider = NewLocalApplicationsProvider(cfg, applicationClusterOptions)
+	provider := multiprovider.New(multiprovider.Options{Separator: ClusterNameSeparator})
+	Expect(provider.AddProvider(KubeConfigProviderName, kubeconfigProvider)).To(Succeed())
+	Expect(provider.AddProvider(LocalApplicationsProviderName, localApplicationsProvider)).To(Succeed())
+
+	multiClusterManager, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
 		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
@@ -318,8 +328,20 @@ var _ = SynchronizedBeforeSuite(func() {
 		Manager:            multiClusterManager,
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: kubeconfigProvider,
+		LocalApplications:  localApplicationsProvider,
 		Recorder:           k8sManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	// The ControllerConfiguration controller engages the local cluster's Applications for watchLocalApplications.
+	err = (&ControllerConfigurationReconciler{
+		Client:              k8sManager.GetClient(),
+		Scheme:              k8sManager.GetScheme(),
+		Recorder:            k8sManager.GetEventRecorder("ControllerConfiguration"),
+		ControllerNamespace: "default",
+		StartupInstanceID:   settings.ControllerInstanceID(),
+		LocalApplications:   localApplicationsProvider,
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitCommitStatusReconciler{
@@ -383,13 +405,18 @@ var _ = SynchronizedBeforeSuite(func() {
 
 	// Wait for remote cluster caches to sync as well
 	By("waiting for remote cluster caches to sync")
-	for _, clusterName := range kubeconfigProvider.ListClusters() {
+	for _, name := range kubeconfigProvider.ListClusters() {
+		clusterName := multicluster.ClusterName(KubeConfigProviderName + ClusterNameSeparator + name.String())
 		cluster, err := multiClusterManager.GetCluster(ctx, clusterName)
 		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", clusterName)
 		Eventually(func() bool {
 			return cluster.GetCache().WaitForCacheSync(ctx)
 		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", clusterName)
 	}
+
+	By("waiting for the local cluster's Applications to be engaged")
+	Eventually(localApplicationsProvider.Engaged, constants.EventuallyTimeout).Should(BeTrue(),
+		"the shipped ControllerConfiguration sets watchLocalApplications, so the local cluster should be engaged")
 
 	// Wait for ArgoCDCommitStatus informer to be ready
 	// The general cache sync above only ensures Application informers are ready (from Watches()).

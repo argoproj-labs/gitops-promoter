@@ -1,24 +1,17 @@
 package cache
 
 import (
-	"fmt"
-	"maps"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	argocd "github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 // partitionedSecretObject is the cache.ByObject key for corev1.Secret. A package-level pointer
@@ -36,9 +29,10 @@ var (
 )
 
 // unpartitionedObjects returns the ByObject keys that always opt out of instance-id filtering
-// on every cache that uses OptionsForInstanceID. Argo CD Application is not in this list: it
-// is added only on the host manager via WithArgoCDApplicationIfInstalled. Provider clusters get their
-// own ClusterOptions and do not inherit the host ByObject map.
+// on every cache that uses OptionsForInstanceID. Argo CD Application is not in this list: the
+// host manager never watches Applications. They are watched only on provider clusters (remote
+// kubeconfig clusters, and the local cluster through a dedicated cluster while
+// watchLocalApplications is true), which use ProviderClusterCacheOptions.
 func unpartitionedObjects() []client.Object {
 	return []client.Object{unpartitionedNamespaceObject}
 }
@@ -55,11 +49,8 @@ func unpartitionedObjects() []client.Object {
 // secretDataTransform so only promoter credential keys are retained in cache
 // (see secret_transform.go).
 //
-// These options do not list Argo CD Application. Apply WithArgoCDApplicationIfInstalled only to the
-// host manager's Cache (ctrl.Options passed to mcmanager.New). Provider clusters use
-// ProviderClusterCacheOptions and must not reuse the host Application ByObject key:
-// cache.New RESTMaps every ByObject entry, so a local-cluster CRD check must not gate remote
-// Application informers.
+// These options do not list Argo CD Application, so the host manager starts whether or not the
+// Application CRD is installed (cache.New RESTMaps every ByObject entry).
 func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.Options {
 	sel := instanceIDSelector(instanceID)
 	objs := PartitionedObjects()
@@ -90,34 +81,14 @@ func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.
 	}
 }
 
-// WithArgoCDApplicationIfInstalled copies opts and lists Argo CD Application in ByObject (unfiltered)
-// when the Application CRD is installed on the cluster described by cfg. Call this only for the
-// host manager cache. cache.New resolves every ByObject key through the RESTMapper, so listing
-// Application here would make the local manager fail to start when that CRD is absent.
-// Provider clusters use ProviderClusterCacheOptions instead — do not reuse this helper there.
-func WithArgoCDApplicationIfInstalled(opts cache.Options, cfg *rest.Config) (cache.Options, error) {
-	include, err := applicationCRDInstalled(cfg)
-	if err != nil {
-		return cache.Options{}, err
-	}
-	if !include {
-		return opts, nil
-	}
-	byObject := make(map[client.Object]cache.ByObject, len(opts.ByObject))
-	maps.Copy(byObject, opts.ByObject)
-	opts.ByObject = byObject
-	opts.ByObject[unpartitionedApplicationObject] = cache.ByObject{Label: labels.Everything()}
-	return opts, nil
-}
-
-// ProviderClusterCacheOptions returns cache options for kubeconfig provider clusters.
+// ProviderClusterCacheOptions returns cache options for the clusters Argo CD Applications are
+// watched on: remote kubeconfig provider clusters, and the dedicated local Applications cluster.
 // Argo CD Application is the only type watched on those clusters (ArgoCDCommitStatus).
 // Lists are read-only, so UnsafeDisableDeepCopy skips the per-List DeepCopy of Application
 // objects. Callers must not mutate Applications returned from Get/List.
 //
-// Unlike WithArgoCDApplicationIfInstalled, this always lists Application in ByObject: provider
-// clusters are expected to have the Application CRD (they are Argo CD clusters). Host CRD
-// discovery must not gate these options — keep them separate from OptionsForInstanceID.
+// This always lists Application in ByObject, so these options are only for clusters that have the
+// Application CRD. Keep them separate from OptionsForInstanceID.
 func ProviderClusterCacheOptions() cache.Options {
 	return cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
@@ -126,28 +97,6 @@ func ProviderClusterCacheOptions() cache.Options {
 			},
 		},
 	}
-}
-
-func applicationCRDInstalled(cfg *rest.Config) (bool, error) {
-	httpClient, err := rest.HTTPClientFor(cfg)
-	if err != nil {
-		return false, fmt.Errorf("create HTTP client to discover Argo CD Application CRD: %w", err)
-	}
-	mapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
-	if err != nil {
-		return false, fmt.Errorf("create RESTMapper to discover Argo CD Application CRD: %w", err)
-	}
-	_, err = mapper.RESTMapping(schema.GroupKind{
-		Group: argocd.SchemeGroupVersion.Group,
-		Kind:  "Application",
-	}, argocd.SchemeGroupVersion.Version)
-	if err == nil {
-		return true, nil
-	}
-	if meta.IsNoMatchError(err) {
-		return false, nil
-	}
-	return false, fmt.Errorf("RESTMapping for Argo CD Application: %w", err)
 }
 
 func instanceIDSelector(instanceID *string) labels.Selector {
@@ -188,14 +137,14 @@ func PartitionedSecretObject() client.Object {
 }
 
 // UnpartitionedObjects returns the type keys that always opt out of instance-id filtering.
-// Argo CD Application is not included; it is added only by WithArgoCDApplicationIfInstalled.
+// Argo CD Application is not included; the host manager never watches it.
 // Exported for tests.
 func UnpartitionedObjects() []client.Object {
 	return unpartitionedObjects()
 }
 
-// UnpartitionedApplicationObject returns the Argo CD Application type key that WithArgoCDApplicationIfInstalled
-// adds to cache.ByObject when the CRD is installed on the host cluster. Exported for tests.
+// UnpartitionedApplicationObject returns the Argo CD Application type key that ProviderClusterCacheOptions
+// lists in cache.ByObject. Exported for tests.
 func UnpartitionedApplicationObject() client.Object {
 	return unpartitionedApplicationObject
 }

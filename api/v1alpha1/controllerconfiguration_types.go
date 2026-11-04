@@ -266,6 +266,9 @@ type ArgoCDCommitStatusConfiguration struct {
 	// in the local cluster. When false, the controller will only watch Applications in remote clusters
 	// configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
 	// in the local cluster or when all Applications are deployed to remote clusters.
+	// Changes take effect without restarting the controller. If this is true but the Application CRD is
+	// not installed on the local cluster, the ControllerConfiguration reports Ready=False and the
+	// controller starts watching once the CRD is installed.
 	// +required
 	// +kubebuilder:default=true
 	WatchLocalApplications bool `json:"watchLocalApplications"`
@@ -538,6 +541,19 @@ type ControllerConfigurationStatus struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
 	InstanceID *string `json:"instanceID,omitempty"`
+
+	// ArgoCDCommitStatus reports the runtime state of the ArgoCDCommitStatus controller.
+	// +optional
+	ArgoCDCommitStatus *ArgoCDCommitStatusControllerStatus `json:"argocdCommitStatus,omitempty"`
+}
+
+// ArgoCDCommitStatusControllerStatus reports the runtime state of the ArgoCDCommitStatus controller.
+type ArgoCDCommitStatusControllerStatus struct {
+	// LocalClusterEngaged is true while the controller is watching Argo CD Applications on the local cluster. It
+	// follows spec.argocdCommitStatus.watchLocalApplications without a restart, and stays false while that setting
+	// is true but the Argo CD Application CRD is not installed on the local cluster.
+	// +required
+	LocalClusterEngaged bool `json:"localClusterEngaged"`
 }
 
 // +kubebuilder:ac:generate=true

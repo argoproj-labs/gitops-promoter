@@ -37,6 +37,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ArgoCDCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ArgoCDCommitStatusConfiguration"):
 		return &apiv1alpha1.ArgoCDCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ArgoCDCommitStatusControllerStatus"):
+		return &apiv1alpha1.ArgoCDCommitStatusControllerStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ArgoCDCommitStatusSpec"):
 		return &apiv1alpha1.ArgoCDCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ArgoCDCommitStatusStatus"):

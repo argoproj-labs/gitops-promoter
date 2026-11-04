@@ -38,6 +38,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ApplicationsSelected{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ApplicationsSelected(ref),
 		apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref),
 		apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfiguration(ref),
+		apiv1alpha1.ArgoCDCommitStatusControllerStatus{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusControllerStatus(ref),
 		apiv1alpha1.ArgoCDCommitStatusList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusList(ref),
 		apiv1alpha1.ArgoCDCommitStatusSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(ref),
 		apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(ref),
@@ -657,7 +658,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfigu
 					},
 					"watchLocalApplications": {
 						SchemaProps: spec.SchemaProps{
-							Description: "WatchLocalApplications controls whether the controller monitors Argo CD Applications in the local cluster. When false, the controller will only watch Applications in remote clusters configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed in the local cluster or when all Applications are deployed to remote clusters.",
+							Description: "WatchLocalApplications controls whether the controller monitors Argo CD Applications in the local cluster. When false, the controller will only watch Applications in remote clusters configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed in the local cluster or when all Applications are deployed to remote clusters. Changes take effect without restarting the controller. If this is true but the Application CRD is not installed on the local cluster, the ControllerConfiguration reports Ready=False and the controller starts watching once the CRD is installed.",
 							Default:     false,
 							Type:        []string{"boolean"},
 							Format:      "",
@@ -669,6 +670,28 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfigu
 		},
 		Dependencies: []string{
 			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusControllerStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ArgoCDCommitStatusControllerStatus reports the runtime state of the ArgoCDCommitStatus controller.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"localClusterEngaged": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LocalClusterEngaged is true while the controller is watching Argo CD Applications on the local cluster. It follows spec.argocdCommitStatus.watchLocalApplications without a restart, and stays false while that setting is true but the Argo CD Application CRD is not installed on the local cluster.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"localClusterEngaged"},
+			},
+		},
 	}
 }
 
@@ -2682,11 +2705,17 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSt
 							Format:      "",
 						},
 					},
+					"argocdCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ArgoCDCommitStatus reports the runtime state of the ArgoCDCommitStatus controller.",
+							Ref:         ref(apiv1alpha1.ArgoCDCommitStatusControllerStatus{}.OpenAPIModelName()),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusControllerStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 

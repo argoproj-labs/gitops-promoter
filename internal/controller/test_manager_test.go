@@ -30,6 +30,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -53,23 +54,22 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	skipNameValidation := true
 	scheme := utils.GetScheme()
 
-	provider := kubeconfigprovider.New(kubeconfigprovider.Options{
+	applicationClusterOptions := func(clusterOptions *cluster.Options) {
+		clusterOptions.Scheme = scheme
+		clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
+	}
+	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
 		Namespace:             constants.KubeconfigSecretNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		ClusterOptions: []cluster.Option{
-			func(clusterOptions *cluster.Options) {
-				clusterOptions.Scheme = scheme
-				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
-			},
-		},
+		ClusterOptions:        []cluster.Option{applicationClusterOptions},
 	})
+	localApplications := NewLocalApplicationsProvider(cfg, applicationClusterOptions)
+	provider := multiprovider.New(multiprovider.Options{Separator: ClusterNameSeparator})
+	Expect(provider.AddProvider(KubeConfigProviderName, kubeconfigProvider)).To(Succeed())
+	Expect(provider.AddProvider(LocalApplicationsProviderName, localApplications)).To(Succeed())
 
-	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
-		promotercache.OptionsForInstanceID(instanceID, namespace),
-		cfg,
-	)
-	Expect(err).NotTo(HaveOccurred())
+	cacheOpts := promotercache.OptionsForInstanceID(instanceID, namespace)
 
 	mcMgr, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
@@ -85,7 +85,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	Expect(provider.SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
+	Expect(kubeconfigProvider.SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
 	localMgr := mcMgr.GetLocalManager()
 
@@ -144,9 +144,20 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	Expect((&ArgoCDCommitStatusReconciler{
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
-		KubeConfigProvider: provider,
+		KubeConfigProvider: kubeconfigProvider,
+		LocalApplications:  localApplications,
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
+
+	// Engages local Applications for watchLocalApplications, as in cmd/main.go.
+	Expect((&ControllerConfigurationReconciler{
+		Client:              localMgr.GetClient(),
+		Scheme:              localMgr.GetScheme(),
+		Recorder:            localMgr.GetEventRecorder("ControllerConfiguration"),
+		ControllerNamespace: namespace,
+		StartupInstanceID:   instanceID,
+		LocalApplications:   localApplications,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	// Ordering gate: DependentsSuccessfulCommitStatus; PS hard-fails without one.
 	Expect((&DependentsSuccessfulCommitStatusReconciler{

@@ -69,6 +69,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -168,26 +169,35 @@ func runController(
 		TLSOpts: tlsOpts,
 	})
 
-	// Create the kubeconfig provider with options
-	providerOpts := kubeconfigprovider.Options{
+	// Clusters that Argo CD Applications are watched on get an Application-only cache, never the host
+	// manager's cache options.
+	applicationClusterOptions := func(clusterOptions *cluster.Options) {
+		clusterOptions.Scheme = scheme
+		clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
+	}
+
+	// The kubeconfig provider engages remote clusters from kubeconfig Secrets.
+	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
 		Namespace:             controllerNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		ClusterOptions: []cluster.Option{
-			func(clusterOptions *cluster.Options) {
-				clusterOptions.Scheme = scheme
-				// Do not copy host Cache ByObject here. Application CRD presence is a local-cluster
-				// concern (WithArgoCDApplicationIfInstalled). Provider clusters get their own
-				// Application ByObject with UnsafeDisableDeepCopy (read-only Lists).
-				clusterOptions.Cache = promotercache.ProviderClusterCacheOptions()
-			},
-		},
-	}
-
-	// Create the provider first, then the manager with the provider
-	provider := kubeconfigprovider.New(providerOpts)
+		ClusterOptions:        []cluster.Option{applicationClusterOptions},
+	})
 
 	restConfig := ctrl.GetConfigOrDie()
+
+	// The local Applications provider engages the local cluster while watchLocalApplications is true. The
+	// ControllerConfiguration controller toggles it, so the host manager never needs the Application CRD.
+	localApplicationsProvider := controller.NewLocalApplicationsProvider(restConfig, applicationClusterOptions)
+
+	provider := multiprovider.New(multiprovider.Options{Separator: controller.ClusterNameSeparator})
+	if err := provider.AddProvider(controller.KubeConfigProviderName, kubeconfigProvider); err != nil {
+		return fmt.Errorf("add kubeconfig provider: %w", err)
+	}
+	if err := provider.AddProvider(controller.LocalApplicationsProviderName, localApplicationsProvider); err != nil {
+		return fmt.Errorf("add local Applications provider: %w", err)
+	}
+
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
 	if err := settings.BootstrapControllerInstanceID(processSignalsCtx, restConfig, controllerNamespace); err != nil {
@@ -209,15 +219,9 @@ func runController(
 		setupLog.Info("ClusterScmProvider support disabled")
 	}
 
-	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
-	// below and must not inherit a ByObject key that depends on the local Application CRD.
-	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
-		promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
-		restConfig,
-	)
-	if err != nil {
-		return fmt.Errorf("build instance-id cache options: %w", err)
-	}
+	// Cache on mcmanager.New is the host manager only. Clusters that Applications are watched on use
+	// applicationClusterOptions above.
+	cacheOpts := promotercache.OptionsForInstanceID(instanceID, controllerNamespace)
 
 	// Namespace scoping composes with the instance-id partition above: DefaultNamespaces applies
 	// to every ByObject entry that does not set its own Namespaces. Cluster-scoped kinds (for
@@ -363,7 +367,8 @@ func runController(
 	if err = (&controller.ArgoCDCommitStatusReconciler{
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
-		KubeConfigProvider: provider,
+		KubeConfigProvider: kubeconfigProvider,
+		LocalApplications:  localApplicationsProvider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(runCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
@@ -375,6 +380,7 @@ func runController(
 		ControllerNamespace: controllerNamespace,
 		StartupInstanceID:   instanceID,
 		Shutdown:            shutdown,
+		LocalApplications:   localApplicationsProvider,
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
@@ -448,9 +454,10 @@ func runController(
 
 	g, ctx := errgroup.WithContext(runCtx)
 
-	// Initialize the provider controller with the manager
-	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
-		panic("unable to setup provider with manager")
+	// Initialize the kubeconfig provider controller with the manager. The multi provider (and through it the
+	// local Applications provider) is started by mcMgr.Start.
+	if err := kubeconfigProvider.SetupWithManager(ctx, mcMgr); err != nil {
+		panic("unable to setup kubeconfig provider with manager")
 	}
 
 	g.Go(func() error {

@@ -36,6 +36,11 @@ func (in ArgoCDCommitStatusConfiguration) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ArgoCDCommitStatusControllerStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ArgoCDCommitStatusControllerStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ArgoCDCommitStatusList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ArgoCDCommitStatusList"
 }
