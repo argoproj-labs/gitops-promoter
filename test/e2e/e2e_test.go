@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -180,6 +181,36 @@ var _ = Describe("controller", Ordered, func() {
 				return nil
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
+
+			By("validating that the metrics-token secret was minted by the controller")
+			// This can only be verified end-to-end: it depends on the real TokenRequest
+			// subresource, the RBAC actually granted to the controller's ServiceAccount, and
+			// controller-runtime's watch/cache wiring - none of which a fake-client unit test
+			// (see internal/metrics/token_minter_test.go) exercises.
+			verifyMetricsTokenSecret := func() error {
+				cmd = exec.Command("kubectl", "get", "secret", "metrics-token",
+					"-n", namespace,
+					"-o", "jsonpath={.data.token}",
+				)
+				out, err := utils.Run(cmd)
+				if err != nil {
+					return fmt.Errorf("metrics-token secret not found yet: %w", err)
+				}
+				if strings.TrimSpace(string(out)) == "" {
+					return errors.New("metrics-token secret has no token data yet")
+				}
+				return nil
+			}
+			EventuallyWithOffset(1, verifyMetricsTokenSecret, time.Minute, time.Second).Should(Succeed())
+
+			By("validating the metrics-token secret carries an expiry annotation")
+			cmd = exec.Command("kubectl", "get", "secret", "metrics-token",
+				"-n", namespace,
+				"-o", "jsonpath={.metadata.annotations}",
+			)
+			annotationsOut, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			ExpectWithOffset(1, string(annotationsOut)).To(ContainSubstring("promoter.argoproj.io/token-expiry"))
 		})
 	})
 
