@@ -46,7 +46,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
-	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -122,23 +121,27 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
-	// Flag names/values match RecommendedOptions.SecureServing / component-base/cli/flag
-	// so controller and apiserver accept the same TLS knob syntax.
+	// Flag names match RecommendedOptions.SecureServing. Versions below TLS 1.2 and
+	// insecure cipher suites are rejected: unlike the apiserver, these flags also
+	// govern outbound connections to SCMs.
 	coverageNote := "Applies to the controller's metrics/webhook servers, Go HTTP clients built from " +
 		"http.DefaultTransport, and mTLS clients. Does not apply to git subprocesses or the Kubernetes API client."
 	cmd.Flags().StringVar(&tlsMinVersion, "tls-min-version", "",
-		"Minimum TLS version. Possible values: VersionTLS12, VersionTLS13 "+
-			"(VersionTLS10/VersionTLS11 are rejected; Go's default floor is already TLS 1.2). "+
-			coverageNote+" Empty uses Go defaults.")
+		"Minimum TLS version. Possible values: VersionTLS12, VersionTLS13. "+
+			"VersionTLS10 and VersionTLS11 are rejected. "+
+			coverageNote+" Empty uses Go defaults (TLS 1.2).")
 	cmd.Flags().StringSliceVar(&tlsCipherSuites, "tls-cipher-suites", nil,
-		"Comma-separated list of cipher suites. "+
-			"Preferred values: "+strings.Join(cliflag.PreferredTLSCipherNames(), ", ")+". "+
-			"Insecure values: "+strings.Join(cliflag.InsecureTLSCipherNames(), ", ")+". "+
+		"Comma-separated list of TLS 1.2 cipher suites. Possible values: "+
+			strings.Join(utils.ConfigurableTLSCipherNames(), ", ")+". "+
+			"TLS 1.3 suite names and insecure suites are rejected. "+
 			coverageNote+" Has no effect when --tls-min-version is VersionTLS13 or higher.")
 	cmd.Flags().Int32SliceVar(&tlsCurvePreferences, "tls-curve-preferences", nil,
-		"Comma-separated list of numeric Go crypto/tls CurveID values for allowed key exchange mechanisms. "+
+		"Comma-separated list of numeric Go crypto/tls CurveID values. "+
 			"See https://pkg.go.dev/crypto/tls#CurveID. The list order is ignored; Go chooses using its own "+
-			"preference order. "+coverageNote+" Empty uses Go defaults.")
+			"preference order. A non-empty list replaces Go's default set, so any omitted group is disabled, "+
+			"including the hybrid post-quantum groups (on Go 1.27: X25519MLKEM768=4588, SecP256r1MLKEM768=4587, "+
+			"SecP384r1MLKEM1024=4589). Hybrid groups are TLS 1.3-only, so keep a classical group when TLS 1.2 "+
+			"is still allowed. "+coverageNote+" Empty uses Go defaults.")
 
 	return cmd
 }

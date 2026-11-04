@@ -122,18 +122,46 @@ func ParseTLSVersion(version string) (uint16, error) {
 }
 
 // ParseTLSCiphers parses cipher suite names via cliflag.TLSCipherSuites.
-// TLS 1.3 suite names are rejected: Go's tls.Config.CipherSuites does not
-// configure TLS 1.3, and listing only those IDs leaves no usable suites for
-// TLS 1.2 handshakes.
+// Two sets of names that cliflag accepts are rejected here:
+//   - TLS 1.3 suite names: Go's tls.Config.CipherSuites does not configure TLS 1.3,
+//     and listing only those IDs leaves no usable suites for TLS 1.2 handshakes.
+//   - Suites from tls.InsecureCipherSuites (RC4, 3DES, and other legacy suites):
+//     this flag must not be able to re-enable them on outbound SCM connections.
 func ParseTLSCiphers(cipherNames []string) ([]uint16, error) {
 	ids, err := cliflag.TLSCipherSuites(cipherNames)
 	if err != nil {
 		return nil, fmt.Errorf("parse TLS cipher suites: %w", err)
 	}
+	if err := rejectInsecureCiphers(ids); err != nil {
+		return nil, err
+	}
 	if err := rejectTLS13OnlyCiphers(ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
+}
+
+// ConfigurableTLSCipherNames returns cipher suite names accepted by ParseTLSCiphers,
+// for CLI help text. TLS 1.3 names and insecure suites are omitted.
+func ConfigurableTLSCipherNames() []string {
+	var names []string
+	for _, name := range cliflag.PreferredTLSCipherNames() {
+		if _, err := ParseTLSCiphers([]string{name}); err == nil {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func rejectInsecureCiphers(ids []uint16) error {
+	for _, id := range ids {
+		for _, cs := range tls.InsecureCipherSuites() {
+			if cs.ID == id {
+				return fmt.Errorf("insecure cipher suite %q cannot be configured", cs.Name)
+			}
+		}
+	}
+	return nil
 }
 
 func rejectTLS13OnlyCiphers(ids []uint16) error {
@@ -160,6 +188,8 @@ func rejectTLS13OnlyCiphers(ids []uint16) error {
 
 // ParseTLSCurvePreferences parses numeric crypto/tls CurveID values via
 // cliflag.TLSCurvePreferences (same shape as --tls-curve-preferences on apiserver).
+// A non-empty list replaces Go's default set: any group not listed is disabled,
+// including the hybrid post-quantum groups Go enables by default.
 func ParseTLSCurvePreferences(curveIDs []int32) ([]tls.CurveID, error) {
 	curves, err := cliflag.TLSCurvePreferences(curveIDs)
 	if err != nil {
