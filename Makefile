@@ -361,19 +361,24 @@ run-dashboard: build-dashboard
 # Run the dashboard aggregation apiserver from your host (out-of-cluster), against
 # the current kubeconfig context. It self-signs a serving cert into APISERVER_CERT_DIR
 # (no --tls-cert-file), and delegates authn/authz to the cluster via the kubeconfig.
+# ControllerConfiguration is read from the kubeconfig context namespace. Override that
+# when the context points somewhere else (for example the Argo CD namespace):
+#   make run-apiserver APISERVER_NAMESPACE=promoter-system
 # Note: `kubectl get promotionstrategydetails` won't route here (the cluster's
 # aggregator can't reach your host) — curl it directly, e.g.
 #   curl -k https://127.0.0.1:$(APISERVER_SECURE_PORT)/healthz
 APISERVER_KUBECONFIG ?= $(HOME)/.kube/config
 APISERVER_SECURE_PORT ?= 6443
 APISERVER_CERT_DIR ?= /tmp/promoter-apiserver-certs
+APISERVER_NAMESPACE ?=
 .PHONY: run-apiserver
-run-apiserver: ## Run the dashboard aggregation apiserver locally (out-of-cluster) against the current kubeconfig.
+run-apiserver: ## Run the dashboard aggregation apiserver locally. Set APISERVER_NAMESPACE to override the kubeconfig namespace.
 	go run ./cmd/main.go apiserver \
 		--authentication-kubeconfig "$(APISERVER_KUBECONFIG)" \
 		--authorization-kubeconfig "$(APISERVER_KUBECONFIG)" \
 		--secure-port $(APISERVER_SECURE_PORT) \
-		--cert-dir "$(APISERVER_CERT_DIR)"
+		--cert-dir "$(APISERVER_CERT_DIR)" \
+		$(if $(APISERVER_NAMESPACE),--namespace "$(APISERVER_NAMESPACE)")
 
 # Register/unregister the APIService so a kind/Docker-Desktop cluster routes the
 # aggregated PromotionStrategyDetails resource to your locally-running `make
