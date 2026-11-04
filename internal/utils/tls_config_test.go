@@ -277,9 +277,9 @@ func splitCipherSuites() (tls12 []*tls.CipherSuite, tls13OnlyName string) {
 	return tls12, tls13OnlyName
 }
 
-func cipherSupportsVersionAtMost(cs *tls.CipherSuite, max uint16) bool {
+func cipherSupportsVersionAtMost(cs *tls.CipherSuite, highest uint16) bool {
 	for _, v := range cs.SupportedVersions {
-		if v <= max {
+		if v <= highest {
 			return true
 		}
 	}

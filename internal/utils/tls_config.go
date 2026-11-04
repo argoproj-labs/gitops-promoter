@@ -81,6 +81,8 @@ func ApplyProcessTLSConfig(dst *tls.Config) {
 		dst.MinVersion = tls.VersionTLS12
 	case tls.VersionTLS13:
 		dst.MinVersion = tls.VersionTLS13
+	default:
+		// Leave MinVersion unset so Go's default floor applies.
 	}
 	if len(processTLS.cipherSuites) > 0 {
 		dst.CipherSuites = slices.Clone(processTLS.cipherSuites)
@@ -307,6 +309,8 @@ func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
 		cfg.MinVersion = tls.VersionTLS12
 	case tls.VersionTLS13:
 		cfg.MinVersion = tls.VersionTLS13
+	default:
+		// Leave MinVersion unset so Go's default floor applies.
 	}
 	return cfg, warnings, nil
 }
