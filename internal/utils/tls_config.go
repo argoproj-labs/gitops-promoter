@@ -73,8 +73,9 @@ func ApplyProcessTLSConfig(dst *tls.Config) {
 	}
 	processTLSMu.RLock()
 	defer processTLSMu.RUnlock()
-	if processTLS.minVersion != 0 {
-		dst.MinVersion = processTLS.minVersion
+	// Only VersionTLS12+ is stored in processTLS (see parse); never write 0/1.0/1.1.
+	if minVersion := processTLS.minVersion; minVersion >= tls.VersionTLS12 {
+		dst.MinVersion = minVersion
 	}
 	if len(processTLS.cipherSuites) > 0 {
 		dst.CipherSuites = slices.Clone(processTLS.cipherSuites)
@@ -108,7 +109,16 @@ func ParseTLSVersion(version string) (uint16, error) {
 	if version == "" {
 		return 0, nil
 	}
-	return cliflag.TLSVersion(version)
+	v, err := cliflag.TLSVersion(version)
+	if err != nil {
+		return 0, fmt.Errorf("parse TLS version: %w", err)
+	}
+	// cliflag also accepts VersionTLS10/11; reject them so this flag cannot lower
+	// Go's default floor (TLS 1.2) and so we never assign an insecure MinVersion.
+	if v < tls.VersionTLS12 {
+		return 0, fmt.Errorf("unsupported TLS version %q (supported: VersionTLS12, VersionTLS13)", version)
+	}
+	return v, nil
 }
 
 // ParseTLSCiphers parses cipher suite names via cliflag.TLSCipherSuites.
@@ -118,7 +128,7 @@ func ParseTLSVersion(version string) (uint16, error) {
 func ParseTLSCiphers(cipherNames []string) ([]uint16, error) {
 	ids, err := cliflag.TLSCipherSuites(cipherNames)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse TLS cipher suites: %w", err)
 	}
 	if err := rejectTLS13OnlyCiphers(ids); err != nil {
 		return nil, err
@@ -151,7 +161,11 @@ func rejectTLS13OnlyCiphers(ids []uint16) error {
 // ParseTLSCurvePreferences parses numeric crypto/tls CurveID values via
 // cliflag.TLSCurvePreferences (same shape as --tls-curve-preferences on apiserver).
 func ParseTLSCurvePreferences(curveIDs []int32) ([]tls.CurveID, error) {
-	return cliflag.TLSCurvePreferences(curveIDs)
+	curves, err := cliflag.TLSCurvePreferences(curveIDs)
+	if err != nil {
+		return nil, fmt.Errorf("parse TLS curve preferences: %w", err)
+	}
+	return curves, nil
 }
 
 // ValidateTLSConfig validates the TLS configuration parameters.
@@ -249,9 +263,12 @@ func (t TLSSettings) BuildTLSConfig() (*tls.Config, []string, error) {
 	if policy.empty() {
 		return nil, warnings, nil
 	}
-	return &tls.Config{
-		MinVersion:       policy.minVersion,
+	cfg := &tls.Config{
 		CipherSuites:     slices.Clone(policy.cipherSuites),
 		CurvePreferences: slices.Clone(policy.curvePreferences),
-	}, warnings, nil
+	}
+	if policy.minVersion >= tls.VersionTLS12 {
+		cfg.MinVersion = policy.minVersion
+	}
+	return cfg, warnings, nil
 }

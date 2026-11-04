@@ -127,7 +127,8 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	coverageNote := "Applies to the controller's metrics/webhook servers, Go HTTP clients built from " +
 		"http.DefaultTransport, and mTLS clients. Does not apply to git subprocesses or the Kubernetes API client."
 	cmd.Flags().StringVar(&tlsMinVersion, "tls-min-version", "",
-		"Minimum TLS version. Possible values: "+strings.Join(cliflag.TLSPossibleVersions(), ", ")+". "+
+		"Minimum TLS version. Possible values: VersionTLS12, VersionTLS13 "+
+			"(VersionTLS10/VersionTLS11 are rejected; Go's default floor is already TLS 1.2). "+
 			coverageNote+" Empty uses Go defaults.")
 	cmd.Flags().StringSliceVar(&tlsCipherSuites, "tls-cipher-suites", nil,
 		"Comma-separated list of cipher suites. "+
