@@ -444,19 +444,19 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var commitStatus promoterv1alpha1.CommitStatus
 				devCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchDevelopment)
-				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devCSName}, &commitStatus)).To(Succeed())
-				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
-				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchDevelopment)))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devCSName}, &commitStatus)).To(Succeed())
+				g.Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				g.Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchDevelopment)))
 
 				stageCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchStaging)
-				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stageCSName}, &commitStatus)).To(Succeed())
-				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
-				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchStaging)))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stageCSName}, &commitStatus)).To(Succeed())
+				g.Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				g.Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchStaging)))
 
 				prodCSName := utils.CommitStatusResourceName(ctx, taskTCS, testBranchProduction)
-				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: prodCSName}, &commitStatus)).To(Succeed())
-				Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
-				Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchProduction)))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: prodCSName}, &commitStatus)).To(Succeed())
+				g.Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(key))
+				g.Expect(commitStatus.Labels[promoterv1alpha1.EnvironmentLabel]).To(Equal(utils.KubeSafeLabel(testBranchProduction)))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
