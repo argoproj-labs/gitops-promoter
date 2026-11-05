@@ -87,6 +87,7 @@ nav:
   - CRD Specs: crd-specs.md
   - Contributing:
       - Overview: contributing/index.md
+      - Development Setup: contributing/development-setup.md
       - Developing a CommitStatus: contributing/developing-a-commitstatus.md
       - Developing the Argo CD Extension: contributing/developing-the-argocd-extension.md
       - Adding an SCM Provider: contributing/adding-an-scm-provider.md
