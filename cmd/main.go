@@ -150,7 +150,10 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
-//nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
+// One parameter per flag group; the registration sequence is linear and splitting it would obscure
+// the startup order.
+//
+//nolint:gocyclo,revive // see above
 func runController(
 	metricsAddr string,
 	probeAddr string,
