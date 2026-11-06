@@ -1,0 +1,50 @@
+# Turns the apply workflow's check run on each environment's active commit into
+# the "terraform-apply" active commit status.
+#
+# Replace ORG/REPO with the Terraform configuration repository. check_name must
+# equal the apply job's name in examples/workflows/apply.yaml. The request uses
+# the ScmProvider's GitHub App credentials (authentication.scm), which already
+# need "Checks: read".
+#
+# Phases: the latest completed, successful run gives "success". No run yet, a
+# run still in progress, or a failed run all give "pending" (a
+# WebRequestCommitStatus never reports "failure"), so a failed apply blocks
+# downstream promotion until a re-run succeeds.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: terraform-example
+spec:
+  promotionStrategyRef:
+    name: terraform-example
+  key: terraform-apply
+  reportOn: active
+  descriptionTemplate: 'terraform-apply: {{ index .SuccessVariables "state" }}'
+  urlTemplate: '{{ index .SuccessVariables "url" }}'
+  httpRequest:
+    urlTemplate: "https://api.github.com/repos/ORG/REPO/commits/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}/check-runs?check_name=terraform-apply&filter=latest"
+    methodTemplate: GET
+    headerTemplates:
+      Accept: application/vnd.github+json
+      X-GitHub-Api-Version: "2022-11-28"
+    authentication:
+      scm: {}
+  success:
+    when:
+      variables:
+        expression: |
+          let found = Response != nil && Response.StatusCode == 200 && Response.Body.total_count > 0;
+          let run = found ? Response.Body.check_runs[0] : nil;
+          {
+            ok: found && run.status == "completed" && run.conclusion == "success",
+            state: found
+              ? (run.status == "completed" ? run.conclusion : run.status)
+              : (Response == nil && SuccessOutput != nil ? SuccessOutput["state"] : "waiting for apply run"),
+            url: found ? run.html_url : ""
+          }
+      expression: Variables.ok
+      output:
+        expression: '{ state: Variables.state, url: Variables.url }'
+  mode:
+    polling:
+      interval: 1m

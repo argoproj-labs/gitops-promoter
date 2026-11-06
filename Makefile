@@ -281,6 +281,18 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 	GOMEMLIMIT=8GiB $(NILAWAY) -test=false -exclude-pkgs="sigs.k8s.io,k8s.io" ./...
 
+##@ Integrations
+
+SHELLCHECK ?= shellcheck
+
+.PHONY: lint-integrations
+lint-integrations: ## Run shellcheck on the community integrations under integrations/
+	$(SHELLCHECK) -x $$(find integrations -type f \( -name '*.sh' -o -path '*/tests/stubs/*' \))
+
+.PHONY: test-integrations
+test-integrations: ## Run the community integration script tests (uses terraform or tofu from PATH when installed)
+	integrations/terraform/tests/run.sh
+
 ##@ Build
 
 .PHONY: build
