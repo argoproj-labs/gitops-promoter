@@ -181,6 +181,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
 		apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusConfiguration(ref),
 		apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName():              schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastRequest(ref),
 		apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName():          schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastSuccessfulShaItem(ref),
 		apiv1alpha1.WebRequestCommitStatusList{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusList(ref),
 		apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName():             schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPhasePerBranchItem(ref),
@@ -6972,7 +6973,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "TriggerModeSpec defines expression-based trigger configuration.\n\nDelivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.\n\nTreat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).",
+				Description: "TriggerModeSpec defines expression-based trigger configuration.\n\nDelivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.\n\nTreat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"requeueDuration": {
@@ -7155,17 +7156,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 							Format:      "",
 						},
 					},
-					"lastRequestTime": {
+					"lastRequest": {
 						SchemaProps: spec.SchemaProps{
-							Description: "LastRequestTime is when the last HTTP request was made.",
-							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
-						},
-					},
-					"lastResponseStatusCode": {
-						SchemaProps: spec.SchemaProps{
-							Description: "LastResponseStatusCode is the HTTP status code from the last request.",
-							Type:        []string{"integer"},
-							Format:      "int32",
+							Description: "LastRequest captures metadata about the most recent HTTP request for this environment. Populated on the first request; values carry forward on reconciles that skip the request.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName()),
 						},
 					},
 					"triggerOutput": {
@@ -7191,7 +7186,49 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 			},
 		},
 		Dependencies: []string{
-			apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"method": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"time": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Time is when the last HTTP request was made.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"responseStatusCode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ResponseStatusCode is the HTTP status code from the last request.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -7330,17 +7367,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 							},
 						},
 					},
-					"lastRequestTime": {
+					"lastRequest": {
 						SchemaProps: spec.SchemaProps{
-							Description: "LastRequestTime is when the last HTTP request was made.",
-							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
-						},
-					},
-					"lastResponseStatusCode": {
-						SchemaProps: spec.SchemaProps{
-							Description: "LastResponseStatusCode is the HTTP status code from the last request.",
-							Type:        []string{"integer"},
-							Format:      "int32",
+							Description: "LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context. Populated on the first request; values carry forward on reconciles that skip the request.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName()),
 						},
 					},
 					"triggerOutput": {
@@ -7386,7 +7417,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName()},
 	}
 }
 
