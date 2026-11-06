@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { formatEnvSelection, parseEnvSelection } from '@lib/components/PromotionExplorer/helpers';
+import {
+  formatEnvSelection,
+  groupRowsByDay,
+  parseEnvSelection,
+} from '@lib/components/PromotionExplorer/helpers';
 
 describe('env selection param', () => {
   it('parses a single legacy value', () => {
@@ -24,5 +28,27 @@ describe('env selection param', () => {
 
   it('formats an empty selection as null', () => {
     expect(formatEnvSelection([])).toBeNull();
+  });
+});
+
+describe('groupRowsByDay', () => {
+  const row = (id: string, at: number) => ({ id, freshestAt: at });
+  const local = (day: number, hour: number) => new Date(2026, 10, day, hour).getTime();
+
+  it('groups consecutive rows by local calendar day, keeping order', () => {
+    const rows = [
+      row('a', local(2, 23)),
+      row('b', local(2, 0)),
+      row('c', local(1, 12)),
+      row('d', 0),
+    ];
+    const groups = groupRowsByDay(rows);
+    expect(groups.map((g) => g.rows.map((r) => r.id))).toEqual([['a', 'b'], ['c'], ['d']]);
+    expect(groups.map((g) => g.key)).toEqual(['2026-11-2', '2026-11-1', 'unknown']);
+    expect(groups[0].at).toBe(local(2, 23));
+  });
+
+  it('returns no groups for no rows', () => {
+    expect(groupRowsByDay([])).toEqual([]);
   });
 });

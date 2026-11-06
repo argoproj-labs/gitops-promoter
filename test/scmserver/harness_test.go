@@ -66,7 +66,7 @@ var _ = BeforeSuite(func() {
 	Expect(os.WriteFile(caFile, srv.CAPEM(), 0o600)).To(Succeed())
 	Expect(os.Setenv("SSL_CERT_FILE", caFile)).To(Succeed())
 	DeferCleanup(func() { Expect(os.Unsetenv("SSL_CERT_FILE")).To(Succeed()) })
-	Expect(utils.ConfigureDefaultTransportFromEnv()).To(Succeed())
+	Expect(utils.ConfigureDefaultHTTPTransport()).To(Succeed())
 
 	Expect(srv.Start(ctx)).To(Succeed())
 	DeferCleanup(func(ctx SpecContext) { Expect(srv.Shutdown(ctx)).To(Succeed()) }, NodeTimeout(30*time.Second))
