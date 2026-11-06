@@ -725,11 +725,12 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Set all environments to success so the runs get pruned")
-				setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
-
 				By("Make sure TektonRuns were deleted")
 				Eventually(func(g Gomega) {
+					// Set the runs inside of this eventually block to avoid race conditions of the SHAs updating
+					By("Set all environments to success so the runs get pruned")
+					setAllEnvironmentsTektonRunCondition(ctx, tcs.Name, kind, condition)
+
 					var updated promoterv1alpha1.TektonCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      tcs.Name,
