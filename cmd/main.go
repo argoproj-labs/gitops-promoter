@@ -35,6 +35,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/certrotation"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -85,6 +86,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	apiserverCertRotation := certrotation.NewOptions()
 	var tlsMinVersion string
 	var tlsCipherSuites []string
 	var tlsCurvePreferences []int32
@@ -100,6 +102,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				&apiserverCertRotation,
 				utils.TLSSettings{
 					MinVersion:       tlsMinVersion,
 					CipherSuites:     tlsCipherSuites,
@@ -120,6 +123,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	apiserverCertRotation.AddFlags(cmd.Flags())
 
 	// Flag names match RecommendedOptions.SecureServing. Versions below TLS 1.2 and
 	// insecure cipher suites are rejected: unlike the apiserver, these flags also
@@ -146,7 +150,10 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
-//nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
+// One parameter per flag group; the registration sequence is linear and splitting it would obscure
+// the startup order.
+//
+//nolint:gocyclo,revive // see above
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -154,6 +161,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	apiserverCertRotation *certrotation.Options,
 	tlsSettings utils.TLSSettings,
 	clientConfig clientcmd.ClientConfig,
 ) error {
@@ -164,6 +172,11 @@ func runController(
 	}
 	if controllerNamespace == "" {
 		return errors.New("kubeconfig must set a default (install) namespace")
+	}
+	// The dashboard apiserver is installed alongside the controller, in the same namespace.
+	apiserverCertRotation.Namespace = controllerNamespace
+	if err := apiserverCertRotation.Validate(); err != nil {
+		return fmt.Errorf("invalid apiserver cert rotation options: %w", err)
 	}
 
 	// Install process-wide TLS policy first so DefaultTransport and mTLS clients share it.
@@ -310,6 +323,17 @@ func runController(
 	}
 
 	localManager := mcMgr.GetLocalManager()
+
+	if apiserverCertRotation.Enabled {
+		// Issue, rotate and inject the dashboard apiserver's serving cert. Runs only on the
+		// elected leader; an error stops the controller so the pod restarts.
+		setupLog.Info("enabling dashboard apiserver serving-cert rotation",
+			"secret", apiserverCertRotation.Namespace+"/"+apiserverCertRotation.SecretName,
+			"apiService", apiserverCertRotation.APIServiceName)
+		if err := certrotation.AddToManager(localManager, apiserverCertRotation); err != nil {
+			panic(fmt.Errorf("unable to add apiserver cert rotation: %w", err))
+		}
+	}
 
 	if err := localManager.Add(
 		metrics.NewResourceCountRunnable(localManager.GetCache(), clusterScmProviderEnabled),

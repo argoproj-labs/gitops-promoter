@@ -16,5 +16,6 @@ spec:
     name: promoter-apiserver
     namespace: promoter-system
     port: 443
-  # caBundle is supplied by a cert overlay (certs-manual or certs-cert-manager),
-  # or set insecureSkipTLSVerify in a dev overlay. The base intentionally omits it.
+  # caBundle is supplied by a cert overlay (certs-builtin, certs-manual or
+  # certs-cert-manager), or set insecureSkipTLSVerify in a dev overlay. The base
+  # intentionally omits it.

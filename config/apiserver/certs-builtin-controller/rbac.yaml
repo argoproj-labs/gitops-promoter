@@ -1,0 +1,84 @@
+---
+# cert-controller (running in the controller-manager) updates the dashboard apiserver's
+# serving-cert Secret. The controller already reads Secrets in its namespace, so only
+# update on this one Secret is added.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - promoter-apiserver-serving-cert
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-apiserver-cert-rotation
+subjects:
+  - kind: ServiceAccount
+    name: promoter-controller-manager
+    namespace: promoter-system
+---
+# cert-controller injects the generated CA into the dashboard APIService .spec.caBundle.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promoter-apiserver-cert-rotation
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - apiregistration.k8s.io
+    resources:
+      - apiservices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiregistration.k8s.io
+    resources:
+      - apiservices
+    resourceNames:
+      - v1alpha1.view.promoter.argoproj.io
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-apiserver-cert-rotation
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver-cert-rotation
+subjects:
+  - kind: ServiceAccount
+    name: promoter-controller-manager
+    namespace: promoter-system

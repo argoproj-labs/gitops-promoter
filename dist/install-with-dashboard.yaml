@@ -10049,10 +10049,40 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: serviceaccount
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - promoter-apiserver-serving-cert
+  resources:
+  - secrets
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -10098,6 +10128,80 @@ rules:
   verbs:
   - create
   - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  - changetransferpolicyhistories
+  - changetransferpolicies
+  - restoreactivecommits
+  - pullrequests
+  - commitstatuses
+  - argocdcommitstatuses
+  - gitcommitstatuses
+  - timedcommitstatuses
+  - webrequestcommitstatuses
+  - scheduledcommitstatuses
+  - dependentssuccessfulcommitstatuses
+  - gitrepositories
+  - scmproviders
+  - clusterscmproviders
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+rules:
+- apiGroups:
+  - apiregistration.k8s.io
+  resources:
+  - apiservices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apiregistration.k8s.io
+  resourceNames:
+  - v1alpha1.view.promoter.argoproj.io
+  resources:
+  - apiservices
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -10932,6 +11036,24 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+rules:
+- apiGroups:
+  - view.promoter.argoproj.io
+  resources:
+  - promotionstrategydetails
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: proxy-role
@@ -11359,6 +11481,42 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-extension-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-apiserver-cert-rotation
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: leader-election-rolebinding
@@ -11371,6 +11529,57 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: promoter-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver-cert-rotation
 subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
@@ -11400,6 +11609,23 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-promotionstrategydetails-viewer
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: proxy-rolebinding
@@ -11415,6 +11641,36 @@ subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-serving-cert
+  namespace: promoter-system
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: service
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/component: dashboard-apiserver
 ---
 apiVersion: v1
 kind: Service
@@ -11450,6 +11706,101 @@ spec:
     targetPort: 3333
   selector:
     control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: deployment
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: dashboard-apiserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: dashboard-apiserver
+    spec:
+      containers:
+      - args:
+        - --secure-port=6443
+        - --tls-cert-file=/serving-certs/tls.crt
+        - --tls-private-key-file=/serving-certs/tls.key
+        command:
+        - /usr/bin/tini
+        - --
+        - /gitops-promoter
+        - apiserver
+        image: quay.io/argoprojlabs/gitops-promoter:latest
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: apiserver
+        ports:
+        - containerPort: 6443
+          name: https
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 2
+            memory: 2048Mi
+          requests:
+            cpu: 1
+            memory: 1024Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /serving-certs
+          name: serving-cert
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: promoter-apiserver
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: serving-cert
+        secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          optional: true
+          secretName: promoter-apiserver-serving-cert
+      - emptyDir: {}
+        name: tmp
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -11496,6 +11847,7 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+        - --apiserver-cert-rotation
         command:
         - /usr/bin/tini
         - --
@@ -11556,6 +11908,25 @@ spec:
           type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: apiservice
+    app.kubernetes.io/part-of: promoter
+  name: v1alpha1.view.promoter.argoproj.io
+spec:
+  group: view.promoter.argoproj.io
+  groupPriorityMinimum: 1000
+  service:
+    name: promoter-apiserver
+    namespace: promoter-system
+    port: 443
+  version: v1alpha1
+  versionPriority: 15
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
