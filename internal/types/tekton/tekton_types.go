@@ -1,0 +1,136 @@
+// Package tekon defines API Schemas for tekton.dev/v1
+package tekton
+
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+// Data represents a Tekton input or output
+type Data struct {
+	Name  string                `json:"name,omitempty"`
+	Value *apiextensionsv1.JSON `json:"value,omitempty"`
+	Type  string                `json:"type,omitempty"`
+}
+
+// ObjectReference represents a reference to a Pipeline or Task by name that is in the same
+// namespace as the PipelineRun or TaskRun.
+type ObjectReference struct {
+	Name string `json:"name,omitempty"`
+}
+
+// RunResource represents an interface for TektonRun resources
+// +kubebuilder:object:generate=false
+type RunResource interface {
+	GetConditions() []metav1.Condition
+}
+
+// +versionName=v1
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// TaskRun is an object that runs a specific Task
+type TaskRun struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+
+	Spec   TaskRunSpec `json:"spec"`
+	Status RunStatus   `json:"status,omitempty"`
+}
+
+// TaskRunSpec is the spec for a TaskRun resource
+type TaskRunSpec struct {
+	ServiceAccountName string          `json:"serviceAccountName,omitempty"`
+	TaskRef            ObjectReference `json:"taskRef,omitempty"`
+	Params             []Data          `json:"params,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// PipelineRun is an object that runs a specific pipeline
+type PipelineRun struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+
+	Spec   PipelineRunSpec `json:"spec"`
+	Status RunStatus       `json:"status,omitempty"`
+}
+
+// PipelineRunSpec is the spec for a PipelineRun resource
+type PipelineRunSpec struct {
+	TaskRunTemplate PipelineTaskRunTemplate `json:"taskRunTemplate,omitempty"`
+	PipelineRef     ObjectReference         `json:"pipelineRef,omitempty"`
+	Params          []Data                  `json:"params,omitempty"`
+}
+
+// PipelineTaskRunTemplate is the field where TaskRun specific settings are included for Pipelines
+type PipelineTaskRunTemplate struct {
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+}
+
+// RunStatus is an object that represents the status of a TaskRun or PipelineRun
+type RunStatus struct {
+	// +optional
+	Conditions []metav1.Condition `json:"conditions"`
+	// +optional
+	Results []Data `json:"results,omitempty"`
+}
+
+// The below constants represent the different run phases for a Tekton resource
+const (
+	TektonConditionType     = "Succeeded"
+	TektonRunPhaseSucceeded = "Succeeded"
+	TektonRunPhaseFailed    = "Failed"
+	TektonRunPhaseRunning   = "Running"
+)
+
+// The following constants represent the different Kind of runs that exist
+const (
+	TektonKindTask     = "Task"
+	TektonKindPipeline = "Pipeline"
+)
+
+// The following constants represent the different kind of types a parameter/result can be
+const (
+	TektonDataTypeString = "string"
+	TektonDataTypeArray  = "array"
+	TektonDataTypeObject = "object"
+)
+
+// +kubebuilder:object:root=true
+
+// TaskRunList contains a list of Tekton TaskRuns.
+type TaskRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []TaskRun `json:"items"`
+}
+
+// +kubebuilder:object:root=true
+
+// PipelineRunList contains a list of Tekton PipelineRuns.
+type PipelineRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PipelineRun `json:"items"`
+}
+
+// GetConditions returns the conditions on the TaskRun so it can fulfil the interface
+func (t *TaskRun) GetConditions() []metav1.Condition {
+	return t.Status.Conditions
+}
+
+// GetConditions returns the conditions on the PipelineRun so it can fulfil the interface
+func (p *PipelineRun) GetConditions() []metav1.Condition {
+	return p.Status.Conditions
+}
+
+func init() {
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &TaskRun{}, &TaskRunList{}, &PipelineRun{}, &PipelineRunList{})
+		return nil
+	})
+}

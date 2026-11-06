@@ -159,6 +159,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ScheduledCommitStatuses = nilIfEmpty(scheduledCSList.Items)
 
+	tektonCSList := &promoterv1alpha1.TektonCommitStatusList{}
+	if err := reader.List(ctx, tektonCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list TektonCommitStatuses: %w", err)
+	}
+	bundle.TektonCommitStatuses = nilIfEmpty(tektonCSList.Items)
+
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
 	if err := attachGitConfig(ctx, reader, namespace, ps, bundle, clusterScmProviderEnabled); err != nil {
