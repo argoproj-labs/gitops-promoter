@@ -20,8 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -124,9 +127,51 @@ func Run(ctx context.Context, restConfig *clientrest.Config, opts *Options) erro
 		return err
 	}
 
+	// The serving cert files must exist before the apiserver config is built (they are
+	// loaded eagerly and then reloaded on change). When the paths are set, wait for them:
+	// the built-in rotator fills the mounted Secret after this pod starts, and a cert that
+	// is already mounted returns immediately. With no paths, serving falls back to a
+	// generated self-signed cert.
+	certKey := opts.RecommendedOptions.SecureServing.ServerCert.CertKey
+	if certKey.CertFile != "" && certKey.KeyFile != "" {
+		if err := waitForServingCert(ctx, certKey.CertFile, certKey.KeyFile, servingCertPollInterval); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return err
+		}
+	}
+
 	runtime, err := newDashboardRuntime(ctx, restConfig, opts, nil)
 	if err != nil {
 		return err
 	}
 	return runtime.run(ctx)
+}
+
+const servingCertPollInterval = 2 * time.Second
+
+// waitForServingCert blocks until certFile and keyFile both exist and are non-empty, or ctx
+// is done.
+func waitForServingCert(ctx context.Context, certFile, keyFile string, interval time.Duration) error {
+	present := func() bool {
+		for _, f := range []string{certFile, keyFile} {
+			if st, err := os.Stat(f); err != nil || st.Size() == 0 {
+				return false
+			}
+		}
+		return true
+	}
+	if present() {
+		return nil
+	}
+	log.Info("waiting for the serving certificate to be mounted", "certFile", certFile, "keyFile", keyFile)
+	err := wait.PollUntilContextCancel(ctx, interval, false, func(context.Context) (bool, error) {
+		return present(), nil
+	})
+	if err != nil {
+		return fmt.Errorf("waiting for serving certificate: %w", err)
+	}
+	log.Info("serving certificate is mounted")
+	return nil
 }

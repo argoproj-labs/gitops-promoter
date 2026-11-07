@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -34,6 +35,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/certrotation"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -84,6 +86,10 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	apiserverCertRotation := certrotation.NewOptions()
+	var tlsMinVersion string
+	var tlsCipherSuites []string
+	var tlsCurvePreferences []int32
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -96,6 +102,12 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				&apiserverCertRotation,
+				utils.TLSSettings{
+					MinVersion:       tlsMinVersion,
+					CipherSuites:     tlsCipherSuites,
+					CurvePreferences: tlsCurvePreferences,
+				},
 				clientConfig,
 			)
 		},
@@ -111,11 +123,37 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	apiserverCertRotation.AddFlags(cmd.Flags())
+
+	// Flag names match RecommendedOptions.SecureServing. Versions below TLS 1.2 and
+	// insecure cipher suites are rejected: unlike the apiserver, these flags also
+	// govern outbound connections to SCMs.
+	coverageNote := "Applies to the controller's metrics/webhook servers, Go HTTP clients built from " +
+		"http.DefaultTransport, and mTLS clients. Does not apply to git subprocesses or the Kubernetes API client."
+	cmd.Flags().StringVar(&tlsMinVersion, "tls-min-version", "",
+		"Minimum TLS version. Possible values: VersionTLS12, VersionTLS13. "+
+			"VersionTLS10 and VersionTLS11 are rejected. "+
+			coverageNote+" Empty uses Go defaults (TLS 1.2).")
+	cmd.Flags().StringSliceVar(&tlsCipherSuites, "tls-cipher-suites", nil,
+		"Comma-separated list of TLS 1.2 cipher suites. Possible values: "+
+			strings.Join(utils.ConfigurableTLSCipherNames(), ", ")+". "+
+			"TLS 1.3 suite names and insecure suites are rejected. "+
+			coverageNote+" Has no effect when --tls-min-version is VersionTLS13 or higher.")
+	cmd.Flags().Int32SliceVar(&tlsCurvePreferences, "tls-curve-preferences", nil,
+		"Comma-separated list of numeric Go crypto/tls CurveID values. "+
+			"See https://pkg.go.dev/crypto/tls#CurveID. The list order is ignored; Go chooses using its own "+
+			"preference order. A non-empty list replaces Go's default set, so any omitted group is disabled, "+
+			"including the hybrid post-quantum groups (on Go 1.27: X25519MLKEM768=4588, SecP256r1MLKEM768=4587, "+
+			"SecP384r1MLKEM1024=4589). Hybrid groups are TLS 1.3-only, so keep a classical group when TLS 1.2 "+
+			"is still allowed. "+coverageNote+" Empty uses Go defaults.")
 
 	return cmd
 }
 
-//nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
+// One parameter per flag group; the registration sequence is linear and splitting it would obscure
+// the startup order.
+//
+//nolint:gocyclo,revive // see above
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -123,6 +161,8 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	apiserverCertRotation *certrotation.Options,
+	tlsSettings utils.TLSSettings,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -133,9 +173,24 @@ func runController(
 	if controllerNamespace == "" {
 		return errors.New("kubeconfig must set a default (install) namespace")
 	}
+	// The dashboard apiserver is installed alongside the controller, in the same namespace.
+	apiserverCertRotation.Namespace = controllerNamespace
+	if err := apiserverCertRotation.Validate(); err != nil {
+		return fmt.Errorf("invalid apiserver cert rotation options: %w", err)
+	}
 
-	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
-		setupLog.Error(err, "failed to configure HTTP TLS roots from environment")
+	// Install process-wide TLS policy first so DefaultTransport and mTLS clients share it.
+	tlsWarnings, err := utils.SetProcessTLSSettings(tlsSettings)
+	if err != nil {
+		setupLog.Error(err, "invalid TLS settings")
+		os.Exit(1)
+	}
+	for _, warning := range tlsWarnings {
+		setupLog.Info(warning)
+	}
+
+	if err := utils.ConfigureDefaultHTTPTransport(); err != nil {
+		setupLog.Error(err, "failed to configure default HTTP transport TLS")
 		os.Exit(1)
 	}
 
@@ -159,7 +214,7 @@ func runController(
 		c.NextProtos = []string{"http/1.1"}
 	}
 
-	tlsOpts := []func(*tls.Config){}
+	tlsOpts := []func(*tls.Config){utils.ApplyProcessTLSConfig}
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
@@ -268,6 +323,17 @@ func runController(
 	}
 
 	localManager := mcMgr.GetLocalManager()
+
+	if apiserverCertRotation.Enabled {
+		// Issue, rotate and inject the dashboard apiserver's serving cert. Runs only on the
+		// elected leader; an error stops the controller so the pod restarts.
+		setupLog.Info("enabling dashboard apiserver serving-cert rotation",
+			"secret", apiserverCertRotation.Namespace+"/"+apiserverCertRotation.SecretName,
+			"apiService", apiserverCertRotation.APIServiceName)
+		if err := certrotation.AddToManager(localManager, apiserverCertRotation); err != nil {
+			panic(fmt.Errorf("unable to add apiserver cert rotation: %w", err))
+		}
+	}
 
 	if err := localManager.Add(
 		metrics.NewResourceCountRunnable(localManager.GetCache(), clusterScmProviderEnabled),

@@ -67,7 +67,7 @@ func GetClient(secret v1.Secret, domain string) (*gitlab.Client, error) {
 	}
 
 	// client-go defaults to its own pooled transport; use http.DefaultTransport so the CA pool
-	// installed by utils.ConfigureDefaultTransportFromEnv applies to GitLab as well.
+	// installed by utils.ConfigureDefaultHTTPTransport applies to GitLab as well.
 	opts := []gitlab.ClientOptionFunc{gitlab.WithHTTPClient(&http.Client{Transport: http.DefaultTransport})}
 	if domain != "" {
 		opts = append(opts, gitlab.WithBaseURL(fmt.Sprintf("https://%s/api/v4", domain)))
