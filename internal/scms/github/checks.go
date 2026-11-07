@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -67,25 +68,18 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Retrieving checks from SCM")
 
-	prNumber := -1
-	var err error
-	for _, env := range ps.Status.Environments {
-		if env.Branch == branch {
-			prNumber, err = strconv.Atoi(env.PullRequest.ID)
-			break
-		}
-	}
+	branchID, err := utils.GetPullRequestIDForBranch(ps, branch)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert PR number to int: %w", err)
+		return nil, fmt.Errorf("failed to get pull request id: %w", err)
 	}
-
-	if prNumber < 0 {
-		return nil, fmt.Errorf("failed to find environment in promotion strategy status")
+	prNumber, err := strconv.Atoi(branchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, c.k8sClient, client.ObjectKey{Namespace: ps.Namespace, Name: ps.Spec.RepositoryReference.Name})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository", err)
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
@@ -100,7 +94,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		return nil, fmt.Errorf("failed to get pull request: %w", err)
 	}
 	if githubPR == nil {
-		return nil, fmt.Errorf("retrieved PR is empty")
+		return nil, errors.New("retrieved PR is empty")
 	}
 
 	checks := []scms.SCMCheckResult{}
@@ -111,19 +105,19 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get list of github checks")
+		return nil, errors.New("failed to get list of github checks")
 	}
 
 	for _, check := range commitCheckList.GetCheckRuns() {
 		if check == nil {
-			return nil, fmt.Errorf("received a null check from GitHub")
+			return nil, errors.New("received a null check from GitHub")
 		}
 
 		// if conclusion is null then the check is still running, so refer to the status
 		if check.Conclusion == nil {
 			checks = append(checks, scms.SCMCheckResult{
 				Name:   check.GetName(),
-				Status: scms.SCMCheckStatusInProgress,
+				Status: determineCheckStatusFromGHStatus(*check),
 				URL:    check.GetURL(),
 			})
 			continue
@@ -140,8 +134,8 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 
 // determineCheckStatusFromGHConclusion is a helper function that determines the checks status based on the
 // conclusion.
-func determineCheckStatusFromGHConclusion(check github.CheckRun) scms.SCMCheckPhase {
-	switch *check.Conclusion {
+func determineCheckStatusFromGHConclusion(check github.CheckRun) scms.SCMCheckStatus {
+	switch check.GetConclusion() {
 	case CheckRunConclusionFailure, CheckRunConclusionStale:
 		return scms.SCMCheckStatusFailed
 	case CheckRunConclusionNeutral, CheckRunConclusionSuccess, CheckRunConclusionSkipped:
@@ -149,8 +143,17 @@ func determineCheckStatusFromGHConclusion(check github.CheckRun) scms.SCMCheckPh
 		return scms.SCMCheckStatusSucceeded
 	case CheckRunConclusionTimedOut, CheckRunConclusionCancelled:
 		return scms.SCMCheckStatusCancelled
-	case CheckRunConclusionActionRequired:
+	default:
 		return scms.SCMCheckStatusInProgress
+	}
+}
+
+// determineCheckStatusFromGHStatus is a helper function that determines the checks status based on the
+// status.
+func determineCheckStatusFromGHStatus(check github.CheckRun) scms.SCMCheckStatus {
+	switch check.GetStatus() {
+	case CheckRunStatusQueued, CheckRunStatusWaiting, CheckRunStatusPending, CheckRunStatusRequested:
+		return scms.SCMCheckStatusPending
 	default:
 		return scms.SCMCheckStatusInProgress
 	}

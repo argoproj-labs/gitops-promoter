@@ -695,16 +695,24 @@ func InheritNotReadyConditionFromObjects[T PromoterResource](parent PromoterReso
 	}
 }
 
-// CheckStatusToCommitStatusPhase converts an SCMCheckPhase to a CommitStatusPhase
-func CheckStatusToCommitStatusPhase(status scms.SCMCheckPhase) promoterv1alpha1.CommitStatusPhase {
+// CheckStatusToCommitStatusPhase converts an SCMCheckStatus to a CommitStatusPhase
+func CheckStatusToCommitStatusPhase(status scms.SCMCheckStatus) promoterv1alpha1.CommitStatusPhase {
 	switch status {
 	case scms.SCMCheckStatusSucceeded:
 		return promoterv1alpha1.CommitPhaseSuccess
-	case scms.SCMCheckStatusFailed, scms.SCMCheckStatusCanceled:
+	case scms.SCMCheckStatusFailed, scms.SCMCheckStatusCancelled:
 		return promoterv1alpha1.CommitPhaseFailure
-	case scms.SCMCheckStatusPending, scms.SCMCheckStatusInProgress:
-		return promoterv1alpha1.CommitPhasePending
 	default:
 		return promoterv1alpha1.CommitPhasePending
 	}
+}
+
+// GetPullRequestIDForBranch gets the PullRequest ID from the status of a PromotionStrategy
+func GetPullRequestIDForBranch(ps promoterv1alpha1.PromotionStrategy, branch string) (string, error) {
+	for _, env := range ps.Status.Environments {
+		if env.Branch == branch {
+			return env.PullRequest.ID, nil
+		}
+	}
+	return "", errors.New("environment is not in promotion strategy status")
 }

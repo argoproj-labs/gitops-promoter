@@ -6,26 +6,27 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-type SCMCheckPhase string
+// SCMCheckStatus represents the status of a SCM check
+type SCMCheckStatus string
 
 // The following constants represent the status a check might be in
 const (
-	SCMCheckStatusPending    SCMCheckPhase = "pending"
-	SCMCheckStatusInProgress SCMCheckPhase = "in-progress"
-	SCMCheckStatusSucceeded  SCMCheckPhase = "succeeded"
-	SCMCheckStatusFailed     SCMCheckPhase = "failed"
-	SCMCheckStatusCancelled  SCMCheckPhase = "cancelled"
+	SCMCheckStatusPending    SCMCheckStatus = "pending"
+	SCMCheckStatusInProgress SCMCheckStatus = "in-progress"
+	SCMCheckStatusSucceeded  SCMCheckStatus = "succeeded"
+	SCMCheckStatusFailed     SCMCheckStatus = "failed"
+	SCMCheckStatusCancelled  SCMCheckStatus = "cancelled"
 )
 
-// SCMCheck encapsulates a check from an SCM by name and status
+// SCMCheckResult encapsulates a check from an SCM by name and status
 type SCMCheckResult struct {
 	Name   string
-	Status SCMCheckPhase
+	Status SCMCheckStatus
 	URL    string
 }
 
 // SCMCheckParser defines the interface for retrieving SCM checks
 type SCMCheckParser interface {
-	// Get retreives information about the checks happening on a PullRequest
+	// Get retrieves information about the checks happening on a PullRequest
 	Get(ctx context.Context, ps v1alpha1.PromotionStrategy, env string) ([]SCMCheckResult, error)
 }
