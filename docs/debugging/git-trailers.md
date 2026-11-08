@@ -20,7 +20,7 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 | `Sha-hydrated-proposed` | Hydrated SHA of the proposed change. | `status.history[].proposed.hydrated` (the entry is loaded from Git at that SHA). |
 | `Sha-dry-active` | Dry SHA of the active branch at snapshot time. | Not read back — the active side of a history entry is reconstructed from the merge commit itself. |
 | `Sha-hydrated-active` | Hydrated SHA of the active branch at snapshot time, i.e. the commit this promotion replaced. | Identifies which history entry the `Commit-status-active-*` trailers describe. |
-| `Commit-status-active-<key>-phase` | Phase of gate `<key>` on the active branch at snapshot time, e.g. `success`. These describe the commit being replaced, not the one being promoted. | `status.history[].active.commitStatuses[]` of the entry whose hydrated SHA is `Sha-hydrated-active` |
+| `Commit-status-active-<key>-phase` | Phase of gate `<key>` on the active branch at snapshot time, e.g. `success`. These describe the commit being replaced, not the one being promoted. | `status.history[].active.commitStatuses[]` of the entry whose hydrated SHA is `Sha-hydrated-active`. When several snapshots name that commit, the newest is used. A note with `Promoter-restored-from` is a copy and is not used. |
 | `Commit-status-active-<key>-url` | Gate detail link. Ignored unless `http://` or `https://`. | Same as `-phase`. |
 | `Commit-status-active-<key>-description` | Gate description, **JSON-encoded** so it survives multi-line and quoted text. | Same as `-phase`. |
 | `Commit-status-proposed-<key>-*` | Same three suffixes for gates on the proposed branch. | `status.history[].proposed.commitStatuses[]` |

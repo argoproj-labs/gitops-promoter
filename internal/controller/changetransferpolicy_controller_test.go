@@ -3614,7 +3614,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 	})
 
 	It("falls back to commit message trailers when no history note exists", func() {
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.PullRequest.ID).To(Equal("77"))
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/77"))
@@ -3626,7 +3626,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.PullRequest.ID).To(Equal("88"), "the note must win over the commit message trailers")
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
@@ -3643,7 +3643,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
 		Expect(entry.RestoreUnblockedAt).To(BeNil())
@@ -3663,7 +3663,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
 		Expect(entry.RestoreUnblockedAt).NotTo(BeNil())
@@ -3671,7 +3671,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 	})
 
 	It("leaves restoredFrom empty for an ordinary promotion", func() {
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.RestoredFrom).To(BeEmpty())
 	})
@@ -3715,9 +3715,91 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 			constants.TrailerShaHydratedActive:                              {"2222222222222222222222222222222222222222"},
 			constants.TrailerCommitStatusActivePrefix + "flux-health-phase": {"failure"},
 		}
-		entry, _, err := buildHistoryEntry(ctx, commitSha, "", replacerTrailers, gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", replacerTrailers, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.Active.CommitStatuses).To(BeEmpty())
+	})
+
+	It("uses the newest active snapshot that names a commit, even when another commit sits between them", func() {
+		By("Recording a pending snapshot on the middle commit and a later failure on the tip, both naming the first commit")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("middle"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Land an unrelated commit on the active branch")
+		middleSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["pending"]}`, middleSha)
+
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("tip"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Promote the next change")
+		tipSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["79"],"`+
+				constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["failure"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-description":["\"Flux failed\""],"`+
+				constants.TrailerCommitStatusProposedPrefix+`gate-phase":["success"]}`, tipSha)
+		mustRunGit(workDir, "push", "origin", branch, git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+		history, err := calculateHistory(ctx, branch, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(3))
+
+		Expect(history[0].Active.Hydrated.Sha).To(Equal(tipSha))
+		Expect(history[0].Active.CommitStatuses).To(BeEmpty(), "the active tip has not been replaced, so no snapshot describes it yet")
+		Expect(history[0].Proposed.CommitStatuses).To(ConsistOf(HaveField("Key", "gate")))
+
+		Expect(history[1].Active.Hydrated.Sha).To(Equal(middleSha))
+		Expect(history[1].Active.CommitStatuses).To(BeEmpty(), "the tip's snapshot names the first commit, not this one")
+
+		Expect(history[2].Active.Hydrated.Sha).To(Equal(commitSha))
+		Expect(history[2].Active.CommitStatuses).To(Equal([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{{
+			Key:         "flux-health",
+			Phase:       "failure",
+			Description: "Flux failed",
+		}}), "the newer snapshot replaces the pending one recorded on the middle commit")
+	})
+
+	It("does not let a copied restore snapshot replace the active statuses recorded for that commit", func() {
+		By("Recording a successful active check on the first commit in the note of the promotion that replaced it")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("promoted"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Promote the change")
+		promotionSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["success"]}`, promotionSha)
+
+		By("Restoring with a copied note that names the same commit but records a failure")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("restored"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Restore the active branch")
+		restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["failure"],"`+
+				constants.TrailerRestoredFrom+`":["`+promotionSha+`"]}`, restoreSha)
+		mustRunGit(workDir, "push", "origin", branch, git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+		history, err := calculateHistory(ctx, branch, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(3))
+
+		Expect(history[0].Active.Hydrated.Sha).To(Equal(restoreSha))
+		Expect(history[0].RestoredFrom).To(Equal(promotionSha))
+		Expect(history[0].Active.CommitStatuses).To(BeEmpty(), "nothing has snapshotted the restore commit itself")
+
+		Expect(history[1].Active.Hydrated.Sha).To(Equal(promotionSha))
+		Expect(history[1].Active.CommitStatuses).To(BeEmpty())
+
+		Expect(history[2].Active.Hydrated.Sha).To(Equal(commitSha))
+		Expect(history[2].Active.CommitStatuses).To(Equal([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{{
+			Key:   "flux-health",
+			Phase: "success",
+		}}), "the copied restore note must not override the snapshot recorded when this commit was replaced")
 	})
 })
 
@@ -3856,7 +3938,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		Eventually(recorder.Events).Should(Receive(ContainSubstring(constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason)))
 
 		By("Verifying the rebuilt history entry is flagged with mergeCommitSnapshotMismatch")
-		entry, _, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.MergeCommitSnapshotMismatch).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("99"))
@@ -3878,7 +3960,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 
 		Consistently(recorder.Events).ShouldNot(Receive())
 
-		entry, _, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
+		entry, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entry.MergeCommitSnapshotMismatch).To(BeFalse())
 	})

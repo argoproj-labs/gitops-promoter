@@ -416,11 +416,15 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 		}
 	}
 
+	// A snapshot describes the commit named by Sha-hydrated-active, which is not always the
+	// immediate parent: another commit can land on the active branch between the snapshot and
+	// the merge. Index every snapshot so it reaches that commit. The rev-list is newest-first,
+	// and the first snapshot stored for a sha wins.
+	snapshots := activeSnapshotsByHydratedSha(ctx, shaListActive, gitOperations)
+
 	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
-	var replacerTrailers map[string][]string
 	for _, sha := range shaListActive {
-		historyEntry, activeTrailers, err := buildHistoryEntry(ctx, sha, activePath, replacerTrailers, gitOperations)
-		replacerTrailers = activeTrailers
+		historyEntry, err := buildHistoryEntry(ctx, sha, activePath, snapshots[sha], gitOperations)
 		if err != nil {
 			logger.V(4).Info("failed to build history entry", "sha", sha, "err", err)
 			continue
@@ -437,22 +441,13 @@ func calculateHistory(ctx context.Context, activeBranch, activePath string, gitO
 // because finalization failed — it falls back to the commit message trailers, which the promoter still
 // writes on every managed pull request and which survive any merge style that preserves the message.
 //
-// A commit's trailers snapshot the active branch as it was just before that commit merged, so the active
-// commit statuses describing sha live on the commit that replaced it. replacerTrailers are that commit's
-// trailers (nil for the active tip) and are returned alongside the entry as this sha's own trailers, so
-// the caller can pass them on to the next older sha.
-func buildHistoryEntry(ctx context.Context, sha, activePath string, replacerTrailers map[string][]string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, map[string][]string, error) {
-	logger := log.FromContext(ctx)
-
-	activeTrailers, err := gitOperations.GetHistoryNote(ctx, sha)
+// A commit's own trailers describe the proposed change and the pull request. The active commit statuses
+// for sha come from activeSnapshot, the newest non-restore snapshot whose Sha-hydrated-active equals sha
+// (nil when nothing has recorded this commit, including the current active tip).
+func buildHistoryEntry(ctx context.Context, sha, activePath string, activeSnapshot map[string][]string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, error) {
+	activeTrailers, err := historyTrailers(ctx, sha, gitOperations)
 	if err != nil {
-		logger.V(4).Info("failed to get history note, falling back to commit message trailers", "sha", sha, "err", err)
-	}
-	if len(activeTrailers) == 0 {
-		activeTrailers, err = gitOperations.GetTrailers(ctx, sha)
-		if err != nil {
-			return promoterv1alpha1.History{}, nil, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
-		}
+		return promoterv1alpha1.History{}, err
 	}
 
 	historyEntry := promoterv1alpha1.History{
@@ -465,7 +460,7 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, replacerTrai
 	populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
 	populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	populateProposedCommitStatuses(ctx, &historyEntry, activeTrailers)
-	populateActiveCommitStatuses(ctx, &historyEntry, sha, replacerTrailers)
+	populateActiveCommitStatuses(ctx, &historyEntry, sha, activeSnapshot)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
 	historyEntry.RestoredFrom = getFirstTrailerValue(activeTrailers, constants.TrailerRestoredFrom)
 	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerRestoreUnblockedAt); timeStr != "" {
@@ -480,7 +475,52 @@ func buildHistoryEntry(ctx context.Context, sha, activePath string, replacerTrai
 	// branch, so the entry's own sha is that commit; no trailer records it.
 	historyEntry.PullRequest.MergedTargetSha = sha
 
-	return historyEntry, activeTrailers, nil
+	return historyEntry, nil
+}
+
+// historyTrailers returns the promotion-history note for sha, falling back to the commit message
+// trailers when no note is readable.
+func historyTrailers(ctx context.Context, sha string, gitOperations *git.EnvironmentOperations) (map[string][]string, error) {
+	logger := log.FromContext(ctx)
+
+	trailers, err := gitOperations.GetHistoryNote(ctx, sha)
+	if err != nil {
+		logger.V(4).Info("failed to get history note, falling back to commit message trailers", "sha", sha, "err", err)
+	}
+	if len(trailers) == 0 {
+		trailers, err = gitOperations.GetTrailers(ctx, sha)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+		}
+	}
+	return trailers, nil
+}
+
+// activeSnapshotsByHydratedSha indexes promotion snapshots by the active commit they describe.
+// shaListActive is newest-first, and the first snapshot stored for a sha is kept. A restore note
+// is a copy of the restored commit's snapshot, so its Sha-hydrated-active names that commit's
+// predecessor rather than the commit the restore replaced, and it is left out of the index.
+func activeSnapshotsByHydratedSha(ctx context.Context, shaListActive []string, gitOperations *git.EnvironmentOperations) map[string]map[string][]string {
+	logger := log.FromContext(ctx)
+	snapshots := make(map[string]map[string][]string, len(shaListActive))
+	for _, sha := range shaListActive {
+		trailers, err := historyTrailers(ctx, sha, gitOperations)
+		if err != nil {
+			logger.V(4).Info("failed to read trailers while indexing active snapshots", "sha", sha, "err", err)
+			continue
+		}
+		if getFirstTrailerValue(trailers, constants.TrailerRestoredFrom) != "" {
+			continue
+		}
+		named := getFirstTrailerValue(trailers, constants.TrailerShaHydratedActive)
+		if named == "" {
+			continue
+		}
+		if _, seen := snapshots[named]; !seen {
+			snapshots[named] = trailers
+		}
+	}
+	return snapshots
 }
 
 func decodeTrailerDescription(ctx context.Context, encoded string) string {
@@ -570,27 +610,27 @@ func populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.Histor
 	}
 }
 
-// populateActiveCommitStatuses populates the active commit statuses for the history entry of sha from the
-// trailers of the commit that replaced it. They are only used when that snapshot was taken against sha, which
-// excludes a restore commit, whose trailers are copied from the restored version.
-func populateActiveCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, sha string, replacerTrailers map[string][]string) {
+// populateActiveCommitStatuses populates the active commit statuses for the history entry of sha from
+// activeSnapshot. The snapshot is only used when it was taken against sha. A nil snapshot, or one that
+// names a different commit, leaves the statuses empty.
+func populateActiveCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, sha string, activeSnapshot map[string][]string) {
 	h.Active.CommitStatuses = []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
-	if getFirstTrailerValue(replacerTrailers, constants.TrailerShaHydratedActive) != sha {
+	if getFirstTrailerValue(activeSnapshot, constants.TrailerShaHydratedActive) != sha {
 		return
 	}
 
-	activeKeys, _ := getCommitStatusKeysFromTrailers(ctx, replacerTrailers)
+	activeKeys, _ := getCommitStatusKeysFromTrailers(ctx, activeSnapshot)
 	for _, key := range activeKeys {
-		url := getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
+		url := getFirstTrailerValue(activeSnapshot, constants.TrailerCommitStatusActivePrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:         key,
-			Phase:       getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
+			Phase:       getFirstTrailerValue(activeSnapshot, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
 			Url:         url,
-			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(replacerTrailers, constants.TrailerCommitStatusActivePrefix+key+"-description")),
+			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(activeSnapshot, constants.TrailerCommitStatusActivePrefix+key+"-description")),
 		})
 	}
 }
