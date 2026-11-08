@@ -794,8 +794,13 @@ var _ = Describe("DAG graph logic", func() {
 			g, _ := buildDAG(dagEnvs("dev", "", "e2e", "dev", "perf", "dev", "prd", "e2e,perf"))
 			return g
 		}
-		upstreamsPendingFor := func(g *dag, branch string, commitTime metav1.Time, status map[string]promoterv1alpha1.EnvironmentStatus) (bool, string) {
-			snapshots := buildUpstreamSnapshots(g, branch, newDry, commitTime, status)
+		upstreamsPendingFor := func(g *dag, branch string, commitTime metav1.Time, status map[string]promoterv1alpha1.EnvironmentStatus, lookup ...nonRestoreDryLookup) (bool, string) {
+			var resolve nonRestoreDryLookup
+			if len(lookup) > 0 {
+				resolve = lookup[0]
+			}
+			snapshots, err := buildUpstreamSnapshots(context.Background(), g, branch, newDry, commitTime, status, resolve)
+			Expect(err).NotTo(HaveOccurred())
 			return upstreamsPending(snapshots, g.dependsOn[branch])
 		}
 
@@ -808,6 +813,58 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
+		})
+
+		// A restore tip's active dry is the restored tree. The dry SHA that was promoted is on the
+		// last non-restore commit, which the lookup reads from git. That match releases the gate
+		// even though the tip's active commit statuses describe the restored tree.
+		It("is ready when a restore tip's latest non-restore commit deployed the target dry", func() {
+			stg := dagEnvStatus("stg", oldDry, newDry, false, old)
+			stg.Active.Hydrated.Sha = "restore-tip"
+			status := map[string]promoterv1alpha1.EnvironmentStatus{"stg": stg}
+			lookup := func(_ context.Context, branch, hydratedSha string) (promoterv1alpha1.CommitShaState, bool, error) {
+				Expect(branch).To(Equal("stg"))
+				Expect(hydratedSha).To(Equal("restore-tip"))
+				return promoterv1alpha1.CommitShaState{Sha: newDry, CommitTime: metav1.NewTime(newer)}, true, nil
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status, lookup)
+			Expect(pending).To(BeFalse(), reason)
+		})
+
+		It("holds pending when the non-restore commit deployed a different dry SHA", func() {
+			stg := dagEnvStatus("stg", oldDry, newDry, true, old)
+			stg.Active.Hydrated.Sha = "restore-tip"
+			status := map[string]promoterv1alpha1.EnvironmentStatus{"stg": stg}
+			lookup := func(context.Context, string, string) (promoterv1alpha1.CommitShaState, bool, error) {
+				return promoterv1alpha1.CommitShaState{Sha: "other-dry", CommitTime: metav1.NewTime(newer)}, true, nil
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status, lookup)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "stg" to be promoted`))
+		})
+
+		It("holds pending when the non-restore commit is older than the current environment", func() {
+			stg := dagEnvStatus("stg", oldDry, newDry, true, old)
+			stg.Active.Hydrated.Sha = "restore-tip"
+			status := map[string]promoterv1alpha1.EnvironmentStatus{"stg": stg}
+			lookup := func(context.Context, string, string) (promoterv1alpha1.CommitShaState, bool, error) {
+				return promoterv1alpha1.CommitShaState{Sha: newDry, CommitTime: metav1.NewTime(old)}, true, nil
+			}
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status, lookup)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(ContainSubstring("older"))
+		})
+
+		It("does not read git when the upstream active dry is already the target", func() {
+			stg := dagEnvStatus("stg", newDry, newDry, true, newer)
+			stg.Active.Hydrated.Sha = "merge-tip"
+			status := map[string]promoterv1alpha1.EnvironmentStatus{"stg": stg}
+			lookup := func(context.Context, string, string) (promoterv1alpha1.CommitShaState, bool, error) {
+				Fail("lookup called for an upstream whose active dry already matches the target")
+				return promoterv1alpha1.CommitShaState{}, false, nil
+			}
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status, lookup)
+			Expect(pending).To(BeFalse())
 		})
 
 		// Case 1 (not hydrated): stg's hydrator is still on oldDry (Proposed.Dry = oldDry), so it
@@ -830,7 +887,8 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", current, current, true, old),
 			}
-			snapshots := buildUpstreamSnapshots(linear(), "prd", target, metav1.NewTime(newer), status)
+			snapshots, err := buildUpstreamSnapshots(context.Background(), linear(), "prd", target, metav1.NewTime(newer), status, nil)
+			Expect(err).NotTo(HaveOccurred())
 			pending, reason := upstreamsPending(snapshots, linear().dependsOn["prd"])
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for hydrator on "stg" to process dry abcdef1 (currently 0123456)`))
@@ -1062,7 +1120,8 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
 			}
-			snapshots := buildUpstreamSnapshots(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			snapshots, err := buildUpstreamSnapshots(context.Background(), diamond(), "prd", newDry, metav1.NewTime(newer), status, nil)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(snapshots).To(HaveLen(3))
 			Expect(snapshots[0].Branch).To(Equal("dev"))
 			Expect(snapshots[0].Satisfied).To(BeTrue())

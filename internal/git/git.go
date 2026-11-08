@@ -1864,6 +1864,54 @@ type RestoreBlock struct {
 	Unblocked bool
 }
 
+// LatestNonRestoreDry returns hydrator.metadata for the latest commit at or before sha that is not a
+// restore. sha itself is included. A restore commit is skipped by following its first parent until a
+// commit without Promoter-restored-from, bounded by MaxHydratorNoteFirstParentWalk.
+//
+// found is false when sha is empty, when sha itself is not a restore (the caller already has that
+// commit's dry SHA from status), when the walk ends without a non-restore ancestor, or when that
+// ancestor has no hydrator.metadata. Callers that gate promotion use found to decide whether a
+// restore tip still counts as having deployed an earlier dry SHA.
+func (g *EnvironmentOperations) LatestNonRestoreDry(ctx context.Context, sha, activePath string) (v1alpha1.CommitShaState, bool, error) {
+	if sha == "" {
+		return v1alpha1.CommitShaState{}, false, nil
+	}
+	logger := log.FromContext(ctx)
+	current := sha
+	for i := 0; i < MaxHydratorNoteFirstParentWalk; i++ {
+		isRestore, err := g.CommitIsRestore(ctx, current)
+		if err != nil {
+			return v1alpha1.CommitShaState{}, false, fmt.Errorf("failed to check whether %q is a restore: %w", current, err)
+		}
+		if !isRestore {
+			if current == sha {
+				return v1alpha1.CommitShaState{}, false, nil
+			}
+			meta, err := g.GetShaMetadataFromFile(ctx, current, activePath)
+			if err != nil {
+				return v1alpha1.CommitShaState{}, false, fmt.Errorf("failed to read hydrator metadata for non-restore commit %q: %w", current, err)
+			}
+			if meta.Sha == "" {
+				logger.V(4).Info("non-restore ancestor has no hydrator metadata", "sha", current, "startedAt", sha)
+				return v1alpha1.CommitShaState{}, false, nil
+			}
+			logger.V(4).Info("resolved dry SHA from non-restore ancestor", "startedAt", sha, "commit", current, "drySha", meta.Sha)
+			return meta, true, nil
+		}
+		parents, err := g.GetCommitParents(ctx, current)
+		if err != nil {
+			return v1alpha1.CommitShaState{}, false, fmt.Errorf("failed to read parents of restore commit %q: %w", current, err)
+		}
+		if len(parents) == 0 {
+			logger.V(4).Info("restore commit has no parent to walk", "sha", current, "startedAt", sha)
+			return v1alpha1.CommitShaState{}, false, nil
+		}
+		current = parents[0]
+	}
+	logger.V(4).Info("stopped walking restore commits at the parent limit", "startedAt", sha, "limit", MaxHydratorNoteFirstParentWalk)
+	return v1alpha1.CommitShaState{}, false, nil
+}
+
 // RestoreBlockState reports whether sha is a restore commit, whether promotion has been unblocked for
 // it, and the dry SHA that restore moved off of. Callers that gate on a pending RestoreActiveCommit
 // (status.restoredFrom still empty) should not call this: that hold is decided from the CR alone.

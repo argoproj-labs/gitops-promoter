@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,6 +41,8 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -86,6 +89,10 @@ type DependentsSuccessfulCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile reads the referenced PromotionStrategy and, using the dependency graph declared
 // in the DependentsSuccessfulCommitStatus, determines which environments are eligible for promotion (all of
@@ -205,6 +212,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 	logger := logf.FromContext(ctx)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(graph.branches))
 	dcs.Status.Environments = make([]promoterv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus, 0, len(graph.branches))
+	// One lookup for the reconcile. Git is opened on the first restore walk, then reused for every branch.
+	nonRestoreDry := r.nonRestoreDryLookup(dcs, ps)
 
 	for _, branch := range graph.branches {
 		envStatus := statusByBranch[branch]
@@ -213,8 +222,13 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		// not merely because it is in some healthy state from a previous round. Checking upstreams
 		// against the target dry SHA (rather than a target-less "is it healthy") is what prevents a
 		// downstream from merging a new change ahead of upstreams that have not yet taken it.
+		// A restore tip is the exception: its active dry is the restored tree, so the gate reads
+		// git for the dry SHA of the last non-restore commit on that branch.
 		targetDrySha := getEffectiveHydratedDrySha(envStatus)
-		snapshots, isPending, reason := evaluateUpstreams(graph, branch, targetDrySha, envStatus.Active.Dry.CommitTime, statusByBranch)
+		snapshots, isPending, reason, err := evaluateUpstreams(ctx, graph, branch, targetDrySha, envStatus.Active.Dry.CommitTime, statusByBranch, nonRestoreDry)
+		if err != nil {
+			return fmt.Errorf("failed to evaluate upstreams for branch %q: %w", branch, err)
+		}
 
 		entry := promoterv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{
 			Branch:               branch,
@@ -365,39 +379,54 @@ func collectAncestorBranches(g *dag, branch string) []string {
 	return order
 }
 
+// nonRestoreDryLookup reads the dry SHA deployed by the latest non-restore commit at or before
+// hydratedSha on branch. found is false when the tip is not a restore. A nil lookup leaves the gate
+// on status.active.dry.
+type nonRestoreDryLookup func(ctx context.Context, branch, hydratedSha string) (dry promoterv1alpha1.CommitShaState, found bool, err error)
+
 // buildUpstreamSnapshots evaluates every transitive upstream of branch once via isUpstreamPending.
 func buildUpstreamSnapshots(
+	ctx context.Context,
 	g *dag,
 	branch string,
 	targetDrySha string,
 	commitTime metav1.Time,
 	statusByBranch map[string]promoterv1alpha1.EnvironmentStatus,
-) []promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus {
+	lookup nonRestoreDryLookup,
+) ([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, error) {
 	ancestors := collectAncestorBranches(g, branch)
 	snapshots := make([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, 0, len(ancestors))
 	for _, upstream := range ancestors {
-		pending, reason := isUpstreamPending(g, upstream, targetDrySha, commitTime, statusByBranch)
+		pending, reason, err := isUpstreamPending(ctx, g, upstream, targetDrySha, commitTime, statusByBranch, lookup)
+		if err != nil {
+			return nil, err
+		}
 		snapshots = append(snapshots, promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{
 			Branch:    upstream,
 			Satisfied: !pending,
 			Reason:    reason,
 		})
 	}
-	return snapshots
+	return snapshots, nil
 }
 
 // evaluateUpstreams builds transitive upstream snapshots and reports whether any direct dependsOn
 // upstream is unsatisfied.
 func evaluateUpstreams(
+	ctx context.Context,
 	g *dag,
 	branch string,
 	targetDrySha string,
 	commitTime metav1.Time,
 	statusByBranch map[string]promoterv1alpha1.EnvironmentStatus,
-) ([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, bool, string) {
-	snapshots := buildUpstreamSnapshots(g, branch, targetDrySha, commitTime, statusByBranch)
+	lookup nonRestoreDryLookup,
+) ([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, bool, string, error) {
+	snapshots, err := buildUpstreamSnapshots(ctx, g, branch, targetDrySha, commitTime, statusByBranch, lookup)
+	if err != nil {
+		return nil, false, "", err
+	}
 	isPending, reason := upstreamsPending(snapshots, g.dependsOn[branch])
-	return snapshots, isPending, reason
+	return snapshots, isPending, reason, nil
 }
 
 // upstreamsPending reports whether any direct dependsOn upstream is unsatisfied in snapshots.
@@ -419,10 +448,21 @@ func upstreamsPending(snapshots []promoterv1alpha1.DependentsSuccessfulCommitSta
 
 // isUpstreamPending checks a single upstream (and, for no-op upstreams, its own upstreams) against
 // targetDrySha.
-func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+//
+// When the active tip is a restore, status.active.dry is the restored tree, not the commit the
+// restore moved off of. lookup reads that commit from git. A match satisfies the upstream without
+// consulting the tip's active commit statuses, which describe the restored tree.
+func isUpstreamPending(
+	ctx context.Context,
+	g *dag,
+	branch, targetDrySha string,
+	currentActiveCommitTime metav1.Time,
+	statusByBranch map[string]promoterv1alpha1.EnvironmentStatus,
+	lookup nonRestoreDryLookup,
+) (isPending bool, reason string, err error) {
 	envStatus, ok := statusByBranch[branch]
 	if !ok {
-		return true, fmt.Sprintf("Waiting for %q environment status to be reported", branch)
+		return true, fmt.Sprintf("Waiting for %q environment status to be reported", branch), nil
 	}
 	envHydratedForDrySha := getEffectiveHydratedDrySha(envStatus)
 	envProposedDrySha := envStatus.Proposed.Dry.Sha
@@ -430,18 +470,32 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	// The upstream's hydrator must have processed the same dry SHA the current environment is
 	// promoting.
 	if envHydratedForDrySha != targetDrySha {
-		return true, hydratorPendingReason(branch, targetDrySha, envHydratedForDrySha)
+		return true, hydratorPendingReason(branch, targetDrySha, envHydratedForDrySha), nil
 	}
 
 	// If the upstream has merged the target dry SHA, verify commit-time ordering and health.
 	if envStatus.Active.Dry.Sha == targetDrySha {
-		envDryShaEqualOrNewer := envStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentActiveCommitTime.Time}) ||
-			envStatus.Active.Dry.CommitTime.After(currentActiveCommitTime.Time)
-		if !envDryShaEqualOrNewer {
+		if !commitTimeEqualOrAfter(envStatus.Active.Dry.CommitTime, currentActiveCommitTime) {
 			// This should basically never happen.
-			return true, "Previous environment's commit is older than current environment's commit"
+			return true, "Previous environment's commit is older than current environment's commit", nil
 		}
-		return checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch)
+		pending, reason := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch)
+		return pending, reason, nil
+	}
+
+	// The tip's dry SHA is the restored tree. The last non-restore commit is what was promoted
+	// before the rollback, and that is what a downstream is allowed to follow.
+	if lookup != nil && envStatus.Active.Hydrated.Sha != "" {
+		dry, found, err := lookup(ctx, branch, envStatus.Active.Hydrated.Sha)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to read non-restore dry SHA for %q at %q: %w", branch, envStatus.Active.Hydrated.Sha, err)
+		}
+		if found && dry.Sha == targetDrySha {
+			if !commitTimeEqualOrAfter(dry.CommitTime, currentActiveCommitTime) {
+				return true, "Previous environment's commit is older than current environment's commit", nil
+			}
+			return false, "", nil
+		}
 	}
 
 	// The upstream has not merged the target. It is only skippable if it is a clean no-op (git note
@@ -449,21 +503,101 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	envIsNoOp := envHydratedForDrySha != envProposedDrySha
 	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
 	if !envIsNoOp || envHasPendingChanges {
-		return true, fmt.Sprintf(`Waiting for %q to be promoted`, branch)
+		return true, fmt.Sprintf(`Waiting for %q to be promoted`, branch), nil
 	}
 
 	// Even a clean no-op must be healthy before we look past it.
 	if isPend, r := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch); isPend {
-		return isPend, r
+		return isPend, r, nil
 	}
 
 	// Clean, healthy no-op: recurse into this upstream's own upstreams.
 	for _, upstream := range g.dependsOn[branch] {
-		if pending, reason := isUpstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
-			return true, reason
+		pending, reason, err := isUpstreamPending(ctx, g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch, lookup)
+		if err != nil {
+			return false, "", err
+		}
+		if pending {
+			return true, reason, nil
 		}
 	}
-	return false, ""
+	return false, "", nil
+}
+
+// commitTimeEqualOrAfter reports whether upstream's dry commit is at least as new as current.
+func commitTimeEqualOrAfter(upstream, current metav1.Time) bool {
+	return upstream.Equal(&metav1.Time{Time: current.Time}) || upstream.After(current.Time)
+}
+
+// nonRestoreDryLookup returns a lookup that opens the PromotionStrategy repository on first use and
+// reads the latest non-restore dry SHA from git. The clone stays for the life of the process, keyed
+// by this DependentsSuccessfulCommitStatus, and branches are fetched at most once per reconcile.
+func (r *DependentsSuccessfulCommitStatusReconciler) nonRestoreDryLookup(dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) nonRestoreDryLookup {
+	var (
+		once    sync.Once
+		ops     *git.EnvironmentOperations
+		openErr error
+	)
+	fetched := make(map[string]struct{})
+	return func(ctx context.Context, branch, hydratedSha string) (promoterv1alpha1.CommitShaState, bool, error) {
+		if hydratedSha == "" {
+			return promoterv1alpha1.CommitShaState{}, false, nil
+		}
+		once.Do(func() {
+			ops, openErr = r.openRepository(ctx, dcs, ps)
+		})
+		if openErr != nil {
+			return promoterv1alpha1.CommitShaState{}, false, openErr
+		}
+		if _, ok := fetched[branch]; !ok {
+			if err := ops.FetchBranch(ctx, branch); err != nil {
+				return promoterv1alpha1.CommitShaState{}, false, err
+			}
+			fetched[branch] = struct{}{}
+		}
+		dry, found, err := ops.LatestNonRestoreDry(ctx, hydratedSha, activePathForEnvironment(ps, branch))
+		if err != nil {
+			return promoterv1alpha1.CommitShaState{}, false, err
+		}
+		return dry, found, nil
+	}
+}
+
+// openRepository clones the PromotionStrategy's GitRepository and fetches its notes. Branch commits
+// are fetched later, per branch, by the lookup.
+func (r *DependentsSuccessfulCommitStatusReconciler) openRepository(ctx context.Context, dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (*git.EnvironmentOperations, error) {
+	repoKey := client.ObjectKey{Namespace: dcs.Namespace, Name: ps.Spec.RepositoryReference.Name}
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr, ps.Spec.RepositoryReference, dcs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ps.Spec.RepositoryReference.Name, err)
+	}
+	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, repoKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
+	}
+	ops := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, dcs.Namespace+"/"+dcs.Name)
+	if err := ops.CloneRepo(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone repo %q: %w", ps.Spec.RepositoryReference.Name, err)
+	}
+	if err := ops.FetchNotes(ctx); err != nil {
+		return nil, fmt.Errorf("failed to fetch git notes for repo %q: %w", ps.Spec.RepositoryReference.Name, err)
+	}
+	return ops, nil
+}
+
+// activePathForEnvironment returns the environment's activePath override, or the strategy default.
+func activePathForEnvironment(ps *promoterv1alpha1.PromotionStrategy, branch string) string {
+	for i := range ps.Spec.Environments {
+		env := &ps.Spec.Environments[i]
+		if env.Branch != branch {
+			continue
+		}
+		if env.ActivePath != "" {
+			return env.ActivePath
+		}
+		break
+	}
+	return ps.Spec.ActivePath
 }
 
 func hydratorPendingReason(branch, targetDrySha, currentHydratedDrySha string) string {

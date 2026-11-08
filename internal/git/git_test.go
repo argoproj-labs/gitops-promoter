@@ -18,6 +18,8 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
 func TestGit(t *testing.T) {
@@ -1491,5 +1493,84 @@ var _ = Describe("git HTTP header auth", func() {
 		_, _, err := git.RunCmdWithEnv(context.Background(), headerGitAuthProvider{}, GinkgoT().TempDir(), nil, "ls-remote", server.URL+"/repo")
 		Expect(err).To(HaveOccurred())
 		Expect(headers).To(Receive(BeEmpty()))
+	})
+})
+
+// fixedRepoURLProvider satisfies scms.GitOperationsProvider with a constant HTTPS URL.
+type fixedRepoURLProvider struct {
+	url string
+}
+
+func (p fixedRepoURLProvider) GetGitHttpsRepoUrl(v1alpha1.GitRepository) string { return p.url }
+func (p fixedRepoURLProvider) GetToken(context.Context) (string, error)         { return "", nil }
+func (p fixedRepoURLProvider) GetUser(context.Context) (string, error)          { return "git", nil }
+
+var _ = Describe("LatestNonRestoreDry", func() {
+	const (
+		promotedDry = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		restoredDry = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+
+	var (
+		repoDir string
+		ops     *git.EnvironmentOperations
+	)
+
+	commitFile := func(drySha, message string) string {
+		body := []byte(`{"drySha":"` + drySha + `","date":"2026-11-06T20:43:13Z"}`)
+		Expect(os.WriteFile(filepath.Join(repoDir, "hydrator.metadata"), body, 0o644)).To(Succeed())
+		_, err := runGitCmd(repoDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(repoDir, "commit", "-m", message)
+		Expect(err).NotTo(HaveOccurred())
+		sha, err := runGitCmd(repoDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(sha)
+	}
+
+	BeforeEach(func() {
+		repoDir = GinkgoT().TempDir()
+		_, err := runGitCmd(repoDir, "init", "-b", "main")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(repoDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(repoDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(repoDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		repoURL := "https://example.com/latest-non-restore.git"
+		ops = git.NewEnvironmentOperations(&v1alpha1.GitRepository{}, fixedRepoURLProvider{url: repoURL}, "latest-non-restore")
+		gitpaths.Set(gitpaths.Key{RepoURL: repoURL, Identity: "latest-non-restore"}, repoDir)
+		DeferCleanup(func() {
+			gitpaths.Delete(gitpaths.Key{RepoURL: repoURL, Identity: "latest-non-restore"})
+		})
+	})
+
+	It("reports nothing to substitute when the tip is not a restore", func() {
+		tip := commitFile(promotedDry, "promote")
+		dry, found, err := ops.LatestNonRestoreDry(context.Background(), tip, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeFalse())
+		Expect(dry.Sha).To(BeEmpty())
+	})
+
+	It("returns the dry SHA of the commit a restore moved off of", func() {
+		commitFile(promotedDry, "promote")
+		tip := commitFile(restoredDry, "Restore main to abc\n\n"+constants.TrailerRestoredFrom+": abcdef")
+		dry, found, err := ops.LatestNonRestoreDry(context.Background(), tip, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(dry.Sha).To(Equal(promotedDry))
+	})
+
+	It("walks past a chain of restore commits", func() {
+		commitFile(promotedDry, "promote")
+		commitFile(restoredDry, "Restore main to abc\n\n"+constants.TrailerRestoredFrom+": abcdef")
+		tip := commitFile("cccccccccccccccccccccccccccccccccccccccc", "Restore main to def\n\n"+constants.TrailerRestoredFrom+": 123456")
+		dry, found, err := ops.LatestNonRestoreDry(context.Background(), tip, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(dry.Sha).To(Equal(promotedDry))
 	})
 })
