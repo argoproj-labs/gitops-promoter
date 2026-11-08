@@ -32,7 +32,7 @@ self-signed serving cert for the dashboard API, keeps it rotated, and keeps the 
 `caBundle` injected automatically — no cert-manager required:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.49.0/install-with-dashboard.yaml
 ```
 
 ///
@@ -44,7 +44,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.49.0/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -56,7 +56,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.49.0/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -81,7 +81,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-cert-manager-namespaced.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.49.0/install-with-dashboard-cert-manager-namespaced.yaml
 ```
 
 ///
@@ -93,7 +93,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.48.0/install-with-dashboard-byo-cert-namespaced.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.49.0/install-with-dashboard-byo-cert-namespaced.yaml
 ```
 
 ///
