@@ -287,6 +287,21 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		pipelineKey := "tcs-pipelinerun-basic"
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: taskKey},
+					{Key: pipelineKey},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus for the TaskRun")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -333,7 +348,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				expectedTektonPhase string, getTCS func() *promoterv1alpha1.TektonCommitStatus,
 			) {
 				tcs := getTCS()
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -411,6 +425,20 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		key := "tcs-child-commitstatus-test"
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: key},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -433,8 +461,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		})
 
 		It("Child CommitStatuses get created by the TektonCommitStatus", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
-
 			By("Pushing a hydrated commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
@@ -492,6 +518,21 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		}
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: taskKey},
+					{Key: pipelineKey},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus for the TaskRun")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -538,7 +579,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		DescribeTable("TCS should populate TektonRun with parameters",
 			func(key, kind string, getTCS func() *promoterv1alpha1.TektonCommitStatus) {
 				tcs := getTCS()
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -644,6 +684,21 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		pipelineKey := "tcs-pipelinerun-prune"
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: taskKey},
+					{Key: pipelineKey},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus for the TaskRun")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -692,7 +747,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				getTCS func() *promoterv1alpha1.TektonCommitStatus,
 			) {
 				tcs := getTCS()
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -828,6 +882,21 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		}
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: taskKey},
+					{Key: pipelineKey},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus for the TaskRun")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -875,7 +944,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 				expressionResult bool, csPhase promoterv1alpha1.CommitStatusPhase, getTCS func() *promoterv1alpha1.TektonCommitStatus,
 			) {
 				tcs := getTCS()
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -946,7 +1014,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 			) {
 				tcs := getTCS()
 				setExpectedResultsOnTCS(ctx, tcs.Name, expectedResults, true)
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -1045,7 +1112,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 			) {
 				tcs := getTCS()
 				setExpectedResultsOnTCS(ctx, tcs.Name, expectedResults, false)
-				setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
 
 				By("Pushing a hydrated commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -1144,6 +1210,20 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		key := "tcs-expression-eval-with-prune"
 
 		BeforeEach(func() {
+			By("Registering both TCS keys in PromotionStrategy spec before creating TCS objects")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+					{Key: key},
+				}
+				for i := range ps.Spec.Environments {
+					ps.Spec.Environments[i].ProposedCommitStatuses = nil
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("create the TektonCommitStatus for the TaskRun")
 			taskTCS = &promoterv1alpha1.TektonCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1170,8 +1250,6 @@ var _ = Describe("TektonCommitStatus Controller", Ordered, func() {
 		})
 
 		It("Run is not pruned when expression evaluation fails", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, key)
-
 			By("Pushing a hydrated commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
