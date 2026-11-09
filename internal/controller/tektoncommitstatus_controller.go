@@ -248,7 +248,8 @@ func (r *TektonCommitStatusReconciler) processEnvironments(ctx context.Context, 
 	for _, env := range applicableEnvs {
 		envStatus, found := envStatuses[env.Branch]
 		if !found {
-			return nil, nil, fmt.Errorf("environment %q not found in PromotionStrategy %s status", env.Branch, ps.Name)
+			logger.Info("Environment not yet in PromotionStrategy status, skipping for now", "branch", env.Branch)
+			continue
 		}
 
 		// Figure out which sha should be used for the Tekton run
