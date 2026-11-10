@@ -25,8 +25,8 @@ package v1alpha1
 // This configuration controls how the PullRequest controller processes reconciliation requests
 // and generates pull requests, including WorkQueue settings and template configuration.
 type PullRequestConfigurationApplyConfiguration struct {
-	// Template is the template configuration used to generate pull request titles and descriptions.
-	// Uses Go template syntax with Sprig functions available.
+	// Template is the template configuration used to generate pull request titles, descriptions,
+	// and merge commit messages. Uses Go template syntax with Sprig functions available.
 	Template *PullRequestTemplateApplyConfiguration `json:"template,omitempty"`
 	// WorkQueue contains the work queue configuration for the PullRequest controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
