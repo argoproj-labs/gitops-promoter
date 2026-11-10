@@ -2,6 +2,49 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.49 — Controller-only install bundles are removed
+
+> [!IMPORTANT]
+> `install-without-ui.yaml` and `install-without-ui-namespaced.yaml` are no longer published.
+> Every release bundle includes the dashboard aggregation API. Update GitOps manifests, CI, and
+> anything else that downloads those two assets before upgrading.
+
+The cluster-wide default is `install-with-dashboard.yaml`. The controller-manager issues and rotates
+the dashboard apiserver's serving certificate and writes the `APIService` `caBundle`. That bundle
+does not need cert-manager.
+
+| Previous bundle | Replacement |
+| --- | --- |
+| `install-without-ui.yaml` | `install-with-dashboard.yaml` (built-in certs), `install-with-dashboard-cert-manager.yaml`, or `install-with-dashboard-byo-cert.yaml` |
+| `install-without-ui-namespaced.yaml` | `install-with-dashboard-cert-manager-namespaced.yaml` or `install-with-dashboard-byo-cert-namespaced.yaml` |
+
+A namespaced install has no built-in cert bundle. Writing `APIService.spec.caBundle` requires the
+`promoter-apiserver-cert-rotation` ClusterRole, and the namespaced install does not grant the
+controller that role. Use the cert-manager bundle, or the bring-your-own-cert bundle and supply the
+serving Secret and `caBundle` yourself.
+
+Applying `install-with-dashboard.yaml` onto a controller-only install adds:
+
+- the `promoter-apiserver` Deployment, Service, and ServiceAccount
+- `APIService` `v1alpha1.view.promoter.argoproj.io`
+- a `RoleBinding` for `extension-apiserver-authentication-reader` in `kube-system`
+- the empty `promoter-apiserver-serving-cert` Secret, which the controller-manager fills when started with `--apiserver-cert-rotation`
+- rotation RBAC: `update` on that Secret, plus `get`, `list`, and `watch` on APIServices and `update` on the dashboard APIService
+
+Installs that already apply a cert-manager or bring-your-own-cert bundle, including the `-namespaced`
+variants, keep those bundles. Those manifests are unchanged from 0.48.
+
+The Helm chart is generated from `install-with-dashboard.yaml`, so a chart upgrade includes the
+dashboard apiserver, the `APIService`, and the `kube-system` RoleBinding.
+
+The shipped manifests leave `promoter-apiserver-serving-cert` `.data` and `APIService.spec.caBundle`
+empty. The controller-manager owns both under the field manager `promoter-apiserver-cert-rotator`,
+so a client-side or server-side apply leaves the generated values in place. A sync with
+`Replace=true` overwrites them until the next rotation.
+
+See [Installation](getting-started.md#installation) and
+[Serving certs](advanced-usage/dashboard-apiserver.md#serving-certs).
+
 ## 0.49 — Rate limiters must name exactly one strategy
 
 Every `spec.<controller>.workQueue.rateLimiter` in the ControllerConfiguration must now set exactly one of

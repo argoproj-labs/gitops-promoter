@@ -4405,7 +4405,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
+							Description: "Active is the state of the active branch after the PR merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses are the active commit statuses last recorded for that commit, taken from the snapshot trailers of the commit that replaced it; they are empty for the current active commit, whose live statuses are on the ChangeTransferPolicy.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
@@ -4418,14 +4418,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"mergeCommitSnapshotMismatch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from its snapshot trailers — proposed.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},
 					"restoredFrom": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.",
+							Description: "RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and proposed commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

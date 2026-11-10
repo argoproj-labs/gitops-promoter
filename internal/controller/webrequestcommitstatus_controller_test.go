@@ -1741,6 +1741,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Waiting for first request and response data")
 			var firstResponseData []byte
+			var requestsBeforePersist int
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1751,7 +1752,20 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).NotTo(BeNil())
 				firstResponseData = wrcs.Status.Environments[0].ResponseOutput.Raw
+				// Snapshot after the status read: the request that produced this status has already
+				// been counted, and no later reconcile fires once triggerOutput is persisted.
+				mu.Lock()
+				requestsBeforePersist = requestCount
+				mu.Unlock()
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// WebRequestCommitStatus delivery is at-least-once (see the web-request-commit-status docs):
+			// if the status apply after a request fails, triggerOutput is not persisted and the next
+			// reconcile re-sends. Injected Kubernetes write faults do exactly that, so only assert a
+			// single request when faults are off.
+			if !faultsInjected {
+				Expect(requestsBeforePersist).To(Equal(1), "Should only make one request")
+			}
 
 			By("Verifying response data is preserved on subsequent reconciles")
 			Consistently(func(g Gomega) {
@@ -1769,7 +1783,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				mu.Lock()
 				c := requestCount
 				mu.Unlock()
-				g.Expect(c).To(Equal(1), "Should only make one request")
+				g.Expect(c).To(Equal(requestsBeforePersist), "Should make no further requests once triggerOutput is persisted")
 			}, 15*time.Second, 3*time.Second).Should(Succeed())
 		})
 

@@ -69,7 +69,7 @@ spec:
 
 ## Getting Started
 
-The project is currently experimental, please use with caution. See the 
+See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
 
 ## Contributing
