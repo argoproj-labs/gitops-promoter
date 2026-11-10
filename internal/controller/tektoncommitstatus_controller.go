@@ -735,8 +735,14 @@ func (r *TektonCommitStatusReconciler) getOrCreateTektonRun(ctx context.Context,
 	if needToCreate {
 		runName, currentStatus, err := r.createTektonRun(ctx, tcs, branch, sha)
 		if k8s_errors.IsAlreadyExists(err) {
-			runName = prevEnvStatus.TektonRunName
-			currentStatus, err = r.getTektonRun(ctx, tcs, prevEnvStatus)
+			// If status updated failed for environment the name might be blank on the run. If it is blank
+			// get the name from createUniqueSafeRunName
+			runName = determineRunNameFromPreviousEnv(tcs, prevEnvStatus, branch, sha)
+			// Build a fake prevEnvStatus with the run name so getTektonRun can fetch it
+			envStatusWithName := promoterv1alpha1.TektonCommitStatusEnvironmentStatus{
+				TektonRunName: runName,
+			}
+			currentStatus, err = r.getTektonRun(ctx, tcs, envStatusWithName)
 		}
 		return runName, currentStatus, err
 	}
@@ -745,12 +751,24 @@ func (r *TektonCommitStatusReconciler) getOrCreateTektonRun(ctx context.Context,
 		return "", tekton.RunStatus{}, nil
 	}
 
-	runName := prevEnvStatus.TektonRunName
+	// Same deal as the needToCreate case, we need to make sure that the previous environment isn't blank.
+	runName := determineRunNameFromPreviousEnv(tcs, prevEnvStatus, branch, sha)
 	currentStatus, err := r.getTektonRun(ctx, tcs, prevEnvStatus)
 	if k8s_errors.IsNotFound(err) {
 		return r.createTektonRun(ctx, tcs, branch, sha)
 	}
 	return runName, currentStatus, err
+}
+
+// determineRunNameFromPreviousEnv is a helper function to determine the runName if the previous env name is blank
+func determineRunNameFromPreviousEnv(tcs *promoterv1alpha1.TektonCommitStatus, prevEnvStatus promoterv1alpha1.TektonCommitStatusEnvironmentStatus, branch, sha string) string {
+	var runName string
+	if prevEnvStatus.TektonRunName == "" {
+		runName = createUniqueSafeRunName(tcs, branch, sha)
+	} else {
+		runName = prevEnvStatus.TektonRunName
+	}
+	return runName
 }
 
 // pruneTektonResource prunes a Tekton Resource
