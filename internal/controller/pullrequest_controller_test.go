@@ -1330,25 +1330,34 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 		})
 
-		It("should close the PullRequest when FindOpen misses but Get confirms it is still open during deletion", Label(fakeSCMOnlyLabel), func() {
-			By("Simulating SCM list lag: Get-by-ID finds the PR open but FindOpen does not")
+		It("should report an error instead of closing a PR that Get reports open after FindOpen missed it", Label(fakeSCMOnlyLabel), func() {
+			// FindOpen missing a PR that is still open is a provider bug (issue #2371: GitHub resolves the head filter
+			// to a same-owner parent repository), not evidence that the PR was merged or closed. Closing the PR then
+			// starts a create/close loop, so the contradiction must surface as an error and leave the PR alone.
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
+			releasePullRequestFinalizerOnCleanup(typeNamespacedName)
 
-			By("Triggering reconciliation by updating the PR spec")
+			By("Making FindOpen miss the PR while Get still finds it open")
+			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
 			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
-			By("Verifying the PullRequest is eventually deleted after merged-or-closed resolution")
-			// FindOpen miss while spec.state is still open sets merged-or-closed and triggers terminal deletion
-			// without consulting Get on the open lane (the terminating lane may still close the SCM PR afterward).
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io"))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Verifying the PR on the SCM was never closed")
+			Consistently(func(g Gomega) {
+				exists, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(exists).To(BeTrue())
+				g.Expect(state).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+			By("Verifying the contradiction is reported on the PullRequest")
+			expectPullRequestHeldWithReconciliationError(typeNamespacedName)
 		})
 
-		It("should delete the PullRequest when status is merged-or-closed even if FindOpen still lists it open", func() {
+		It("should report an error instead of closing the PR when status is merged-or-closed but the PR is still open", func() {
+			// merged-or-closed records that FindOpen did not find the PR. If Get then finds it open, one of the two
+			// reads is wrong, and closing the PR on that basis is what drives the issue #2371 loop.
+			releasePullRequestFinalizerOnCleanup(typeNamespacedName)
+
 			By("Recording merged-or-closed while the PR is in fact still open on the SCM")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -1356,13 +1365,8 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying the PullRequest is deleted because merged-or-closed is terminal")
-			// merged-or-closed is not retracted when FindOpen still lists the PR open; terminal status triggers deletion.
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Verifying the PullRequest is held by the finalizer and reports the contradiction")
+			expectPullRequestHeldWithReconciliationError(typeNamespacedName)
 		})
 
 		It("should set state merged and mergedTargetSha when externally merged on provider", Label(fakeSCMOnlyLabel), func() {
@@ -1909,6 +1913,39 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
+}
+
+// releasePullRequestFinalizerOnCleanup removes the promoter finalizer from the PullRequest at key when the current
+// spec finishes, for specs that expect the PullRequest to be left terminating.
+func releasePullRequestFinalizerOnCleanup(key types.NamespacedName) {
+	DeferCleanup(func(ctx SpecContext) {
+		var pr promoterv1alpha1.PullRequest
+		if err := k8sClient.Get(ctx, key, &pr); err != nil {
+			return
+		}
+		orig := pr.DeepCopy()
+		controllerutil.RemoveFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer)
+		_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(orig))
+	})
+}
+
+// expectPullRequestHeldWithReconciliationError waits until the PullRequest at key reports Ready=False with
+// ReconciliationError, failing at once if the PullRequest is gone: deletion completing means the promoter resolved
+// the PR on the SCM (closing it) instead of reporting the error.
+func expectPullRequestHeldWithReconciliationError(key types.NamespacedName) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var pr promoterv1alpha1.PullRequest
+		err := k8sClient.Get(ctx, key, &pr)
+		if k8serrors.IsNotFound(err) {
+			StopTrying("the PullRequest was deleted: the promoter resolved the PR on the SCM instead of reporting an error").Now()
+		}
+		g.Expect(err).NotTo(HaveOccurred())
+		readyCond := meta.FindStatusCondition(pr.Status.Conditions, string(conditions.Ready))
+		g.Expect(readyCond).ToNot(BeNil())
+		g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+		g.Expect(readyCond.Reason).To(Equal(string(conditions.ReconciliationError)))
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 // triggerPRReconcile bumps spec.Labels so the PullRequest controller's

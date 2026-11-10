@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v93/github"
@@ -197,6 +198,18 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
+//
+// It lists the open pull requests on the target branch and matches the head itself, by repository and branch, instead
+// of using the API's head filter. Neither form of that filter can be trusted:
+//   - "owner:branch" names the head by owner, not repository. When the owner has more than one repository in a fork
+//     network, GitHub picks one of them: on a fork owned by its parent's owner it matched the parent's branch and never
+//     the fork's own pull request (issue #2371). GitHub does not document this; the closest public account is
+//     https://github.com/cli/cli/issues/6462, where the filter returns nothing for same-organization forks, a GitHub CLI
+//     maintainer calls it a known API problem "tracked internally", and GitHub's fix (head_repo) exists only for
+//     creating pull requests, not for listing them.
+//   - A head without an owner is silently ignored, and every pull request on the base branch is returned (#1417).
+//
+// Checking the head repository also keeps a same-named branch on someone else's fork from matching.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
@@ -205,43 +218,54 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil || gitRepo == nil {
 		return scms.FindOpenResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
+	fullName := gitRepo.Spec.GitHub.Owner + "/" + gitRepo.Spec.GitHub.Name
 
-	start := time.Now()
-	pullRequests, response, err := pr.client.PullRequests.List(
-		ctx, gitRepo.Spec.GitHub.Owner,
-		gitRepo.Spec.GitHub.Name,
-		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: fmt.Sprintf("%s:%s", gitRepo.Spec.GitHub.Owner, pullRequest.Spec.SourceBranch), State: "open"})
-	if response != nil {
-		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	opts := &github.PullRequestListOptions{
+		Base:        pullRequest.Spec.TargetBranch,
+		State:       "open",
+		ListOptions: github.ListOptions{PerPage: 100},
 	}
-	if err != nil {
-		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
-	}
-	logger.Info("github rate limit",
-		"limit", response.Rate.Limit,
-		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Reset,
-		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
-		"status", response.Status)
-	if len(pullRequests) > 0 {
-		pr0 := pullRequests[0]
-		scmLabels := make([]string, 0, len(pr0.Labels))
-		for _, label := range pr0.Labels {
-			if label != nil && label.Name != "" {
-				scmLabels = append(scmLabels, label.Name)
-			}
+	for {
+		start := time.Now()
+		pullRequests, response, err := pr.client.PullRequests.List(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, opts)
+		if response != nil {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 		}
-		return scms.FindOpenResult{
-			Found:          true,
-			ID:             strconv.Itoa(*pr0.Number),
-			CreationTime:   pr0.CreatedAt.Time,
-			SCMLabels:      scmLabels,
-			LabelsReported: true,
-		}, nil
-	}
+		if err != nil {
+			return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
+		}
+		logger.Info("github rate limit",
+			"limit", response.Rate.Limit,
+			"remaining", response.Rate.Remaining,
+			"reset", response.Rate.Reset,
+			"url", response.Request.URL)
+		logger.V(4).Info("github response status",
+			"status", response.Status)
 
-	return scms.FindOpenResult{}, nil
+		for _, candidate := range pullRequests {
+			head := candidate.GetHead()
+			if head.GetRef() != pullRequest.Spec.SourceBranch || !strings.EqualFold(head.GetRepo().GetFullName(), fullName) {
+				continue
+			}
+			scmLabels := make([]string, 0, len(candidate.Labels))
+			for _, label := range candidate.Labels {
+				if label != nil && label.Name != "" {
+					scmLabels = append(scmLabels, label.Name)
+				}
+			}
+			return scms.FindOpenResult{
+				Found:          true,
+				ID:             strconv.Itoa(candidate.GetNumber()),
+				CreationTime:   candidate.GetCreatedAt().Time,
+				SCMLabels:      scmLabels,
+				LabelsReported: true,
+			}, nil
+		}
+		if response.NextPage == 0 {
+			return scms.FindOpenResult{}, nil
+		}
+		opts.Page = response.NextPage
+	}
 }
 
 // Get fetches a pull request by status.id.
