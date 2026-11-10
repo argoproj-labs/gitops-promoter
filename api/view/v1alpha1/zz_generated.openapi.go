@@ -5147,7 +5147,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(
 				Properties: map[string]spec.Schema{
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is the template configuration used to generate pull request titles and descriptions. Uses Go template syntax with Sprig functions available.",
+							Description: "Template is the template configuration used to generate pull request titles, descriptions, and merge commit messages. Uses Go template syntax with Sprig functions available.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName()),
 						},
@@ -5456,7 +5456,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
+				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nThe CommitMessage template is the whole human-readable merge commit message; an empty template stays empty. Commit trailers required by the promoter are appended automatically after the rendered message.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"title": {
@@ -5475,8 +5475,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 							Format:      "",
 						},
 					},
+					"commitMessage": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitMessage is the template used to generate the merge commit message for the pull request. The rendered template is the whole human-readable message. When empty, the human-readable message stays empty. Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended after the rendered message; do not attempt to include them in the template. Uses Go template syntax with Sprig functions available for string manipulation.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
-				Required: []string{"title", "description"},
+				Required: []string{"title", "description", "commitMessage"},
 			},
 		},
 	}

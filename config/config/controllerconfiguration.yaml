@@ -108,6 +108,44 @@ spec:
         {{- end }}
         {{- end }}
         {{- end }}
+      # Merge commit message for this environment only (no promotion-pipeline table).
+      # Machine-read promotion trailers are always appended after the rendered message.
+      commitMessage: |
+        Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{ end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`
+
+        This commit promotes changes to **`{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`**{{ if .PromotionStrategy }} (PromotionStrategy `{{ .PromotionStrategy.Name }}`){{ end }}.
+
+        ### Deployment commit
+
+        | | Active (deployed) | Proposed |
+        |---|---|---|
+        | SHA | {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} | {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} |
+        | Subject | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
+
+        {{- $repo := "" -}}
+        {{- $base := "" -}}
+        {{- $head := "" -}}
+        {{- $activeSubject := "" -}}
+        {{- $proposedSubject := "" -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- if or $base $head }}
+
+        ### Code reference
+        {{- if $base }}
+        **Active:** {{ if and $repo $base }}[{{ trunc 7 $base }}]({{ trimSuffix "/" $repo }}/commit/{{ $base }}){{ else }}{{ trunc 7 $base }}{{ end }} — {{ $activeSubject }}
+        {{- end }}
+        {{- if $head }}
+        **Proposed:** {{ if and $repo $head }}[{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/commit/{{ $head }}){{ else }}{{ trunc 7 $head }}{{ end }} — {{ $proposedSubject }}
+        {{- end }}
+        {{- if and $repo $base $head }}
+        **Diff:** [{{ trunc 7 $base }}...{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }})
+        {{- end }}
+        {{- end }}
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10

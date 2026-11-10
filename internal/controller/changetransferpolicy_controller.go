@@ -1460,6 +1460,14 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
+	baseCommitMessage, err := TemplateCommitMessage(templatePullRequestTemplate, templateData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to template pull request commit message: %w", err)
+	}
+	// The trailer block must remain the final paragraph of the commit message, so trailing newlines from the
+	// rendered template must not detach it.
+	baseCommitMessage = strings.TrimRight(baseCommitMessage, "\n")
+
 	// Check if the PR already exists to determine the commit message
 	existingPR := &promoterv1alpha1.PullRequest{}
 	prExists := true
@@ -1487,11 +1495,13 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Determine the commit message based on whether this is a new or existing PR
+	// Determine the commit message based on whether this is a new or existing PR.
+	// The rendered commitMessage template is the whole human-readable message; there is no fallback
+	// to title or description. An empty template stays empty.
 	var commitMessage string
 	if !prExists {
 		// New PR
-		commitMessage = fmt.Sprintf("%s\n\n%s", title, description)
+		commitMessage = baseCommitMessage
 	} else {
 		// Update existing PR - add trailers
 		commitTrailers := trailers{}
@@ -1512,7 +1522,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
+		commitMessage = assembleCommitMessageWithTrailers(baseCommitMessage, commitTrailers)
 	}
 
 	// Determine the state: preserve existing state if PR exists, otherwise default to open
@@ -2103,6 +2113,29 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// TemplateCommitMessage renders the commit message template of a pull request template using the
+// provided data map. Returns an empty string if the commit message template is empty.
+func TemplateCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (string, error) {
+	if prt.CommitMessage == "" {
+		return "", nil
+	}
+	commitMessage, err := utils.RenderStringTemplate(prt.CommitMessage, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to render pull request commit message template: %w", err)
+	}
+	return commitMessage, nil
+}
+
+// assembleCommitMessageWithTrailers joins a human-readable base message with promoter trailers.
+// When base is empty, the result is the trailer block alone (no leading blank line). The title and
+// description are never substituted for an empty base.
+func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) string {
+	if base == "" {
+		return commitTrailers.String()
+	}
+	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
 }
 
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned

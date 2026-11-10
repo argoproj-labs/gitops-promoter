@@ -2,10 +2,6 @@
 
 ## Planned features
 
-### Promotion strategy and pipelines
-
-- **[Configurable promotion merge commit message template](https://github.com/argoproj-labs/gitops-promoter/issues/1562)** — Customize the commit message when Promoter merges a `-next` branch into an environment branch.
-
 ### Commit status and gating
 
 - **[Self-registering commit status controllers](https://github.com/argoproj-labs/gitops-promoter/issues/1154)** — Register commit status keys with Promoter without listing them on every PromotionStrategy.
