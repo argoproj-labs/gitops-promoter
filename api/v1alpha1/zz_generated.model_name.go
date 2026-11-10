@@ -751,6 +751,11 @@ func (in WebRequestCommitStatusEnvironmentStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in WebRequestCommitStatusLastRequest) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.WebRequestCommitStatusLastRequest"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in WebRequestCommitStatusLastSuccessfulShaItem) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.WebRequestCommitStatusLastSuccessfulShaItem"
 }

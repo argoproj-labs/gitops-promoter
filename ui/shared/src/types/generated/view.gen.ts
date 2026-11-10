@@ -2029,7 +2029,7 @@ export type components = {
         /**
          * @description TriggerModeSpec defines expression-based trigger configuration.
          *
-         *     Delivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.
+         *     Delivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.
          *
          *     Treat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).
          */
@@ -2103,13 +2103,11 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this environment. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulSha is the last commit SHA that achieved success status for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             lastSuccessfulSha?: string;
             /**
@@ -2125,6 +2123,20 @@ export type components = {
             successOutput?: components["schemas"]["JSON"];
             /** @description TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys). */
             triggerOutput?: components["schemas"]["JSON"];
+        };
+        /** @description WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made. */
+        WebRequestCommitStatusLastRequest: {
+            /** @description Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method). */
+            method?: string;
+            /**
+             * Format: int32
+             * @description ResponseStatusCode is the HTTP status code from the last request.
+             */
+            responseStatusCode?: number;
+            /** @description Time is when the last HTTP request was made. */
+            time?: components["schemas"]["Time"];
+            /** @description URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            url?: string;
         };
         /** @description WebRequestCommitStatusLastSuccessfulShaItem records the last successful SHA for one branch in promotionstrategy context status. */
         WebRequestCommitStatusLastSuccessfulShaItem: {
@@ -2151,13 +2163,11 @@ export type components = {
         };
         /** @description WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus). */
         WebRequestCommitStatusPromotionStrategyContextStatus: {
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulShas tracks the last SHA that achieved success for each branch. Used with reportOn "proposed" + polling to skip HTTP requests when all environments have already succeeded for their current SHAs. */
             lastSuccessfulShas?: components["schemas"]["WebRequestCommitStatusLastSuccessfulShaItem"][];
             /** @description PhasePerBranch holds the resolved phase for each applicable branch. Every applicable branch is always present after reconciliation. */
