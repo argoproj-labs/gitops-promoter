@@ -333,13 +333,13 @@ func (t *scmTestTarget) expectPromotionMergeCommit(g Gomega, hydrated promoterv1
 	if t.isFake() {
 		g.Expect(hydrated.Author).To(Equal("GitOps Promoter"))
 		g.Expect(hydrated.Subject).To(ContainSubstring("Promote"))
-		g.Expect(hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
+		g.Expect(hydrated.Body).To(ContainSubstring("This commit promotes changes to"))
 		return
 	}
 	message := hydrated.Subject + "\n\n" + hydrated.Body
 	g.Expect(hydrated.Author).NotTo(BeEmpty())
 	g.Expect(message).To(ContainSubstring("Promote"))
-	g.Expect(message).To(ContainSubstring("This PR promotes changes to"))
+	g.Expect(message).To(ContainSubstring("This commit promotes changes to"))
 }
 
 // mergeReportsTargetSha reports whether the provider's Merge returns the resulting target-branch
