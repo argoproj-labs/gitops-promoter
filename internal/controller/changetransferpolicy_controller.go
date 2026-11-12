@@ -1455,18 +1455,10 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		"ChangeTransferPolicy": ctp,
 		"PromotionStrategy":    ps,
 	}
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
+	title, description, baseCommitMessage, err := templatePullRequestAndCommitMessage(templatePullRequestTemplate, templateData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request: %w", err)
+		return nil, err
 	}
-
-	baseCommitMessage, err := TemplateCommitMessage(templatePullRequestTemplate, templateData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request commit message: %w", err)
-	}
-	// The trailer block must remain the final paragraph of the commit message, so trailing newlines from the
-	// rendered template must not detach it.
-	baseCommitMessage = strings.TrimRight(baseCommitMessage, "\n")
 
 	// Check if the PR already exists to determine the commit message
 	existingPR := &promoterv1alpha1.PullRequest{}
@@ -2126,6 +2118,21 @@ func TemplateCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[st
 		return "", fmt.Errorf("failed to render pull request commit message template: %w", err)
 	}
 	return commitMessage, nil
+}
+
+// templatePullRequestAndCommitMessage renders the title, description and merge commit message of a
+// pull request template. Trailing newlines are trimmed from the commit message so the trailer block
+// appended later remains its final paragraph.
+func templatePullRequestAndCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (title, description, commitMessage string, err error) {
+	title, description, err = TemplatePullRequest(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request: %w", err)
+	}
+	commitMessage, err = TemplateCommitMessage(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request commit message: %w", err)
+	}
+	return title, description, strings.TrimRight(commitMessage, "\n"), nil
 }
 
 // assembleCommitMessageWithTrailers joins a human-readable base message with promoter trailers.
