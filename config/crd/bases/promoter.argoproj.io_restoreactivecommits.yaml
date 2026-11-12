@@ -76,6 +76,11 @@ spec:
                   trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is
                   still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true)
                   so the field can be set false again.
+                  While this field blocks and the environment has an open promotion pull request, the controller
+                  posts a pending commit status named restore-block/<branch> on that pull request's merge SHA.
+                  Setting the field to false publishes that status as success before the trailer is stamped and
+                  this object is deleted. Deleting the object while the field is still true leaves it pending. The
+                  status explains the hold; it is not a promotion gate.
                 type: boolean
               branch:
                 description: |-
