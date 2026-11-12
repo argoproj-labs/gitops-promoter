@@ -1,0 +1,57 @@
+name: integrations
+
+on:
+  push:
+    branches: [main, 'release-*']
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yaml'
+  pull_request:
+    branches: [main, 'release-*']
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  terraform:
+    name: Terraform integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - binary: terraform
+          - binary: tofu
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint shell scripts
+        run: make lint-integrations
+
+      - name: Install Terraform
+        if: matrix.binary == 'terraform'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Install OpenTofu
+        if: matrix.binary == 'tofu'
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1.0.8
+        with:
+          tofu_wrapper: false
+
+      - name: Run integration tests
+        run: make test-integrations
+        env:
+          TF_BINARY: ${{ matrix.binary }}
