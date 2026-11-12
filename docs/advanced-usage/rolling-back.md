@@ -19,7 +19,17 @@ live and you need the previous version back now, before a fix can go through the
    `status.blockedDrySha`) cannot open a pull request, and nothing is auto-merged, while that note carries
    `Promoter-restored-from` and lacks `Promoter-restore-unblocked-at`.
 3. **Wait.** A pull request for a newer dry SHA can still open and run its checks, but auto-merge waits until the
-   environment is unblocked.
+   environment is unblocked. So the pull request shows why, the RestoreActiveCommit posts a commit status named
+   `restore-block/<environment branch>` on the open promotion pull request's merge SHA: `pending` ("Blocked by an
+   environment restore") while `spec.blockEnvironment` blocks, and `success` ("Environment restore released") once it
+   is set to false. No status is posted when no promotion pull request is open, and it follows the pull request as
+   the proposed branch moves.
+
+> [!NOTE]
+> The `restore-block/<branch>` status explains the hold; it is not a promotion gate, and auto-merge is held by the
+> restore note whether or not you use it. You can add it as a required check in branch protection to stop a manual
+> merge while the environment is blocked. Deleting the RestoreActiveCommit while `spec.blockEnvironment` is still
+> true leaves the status pending.
 
 The restore runs once. `promotionStrategyRef`, `branch`, and `sha` are immutable; to restore a different version,
 create another RestoreActiveCommit. `spec.blockEnvironment` defaults to true and may be changed. Once
@@ -80,9 +90,10 @@ The restore also shows up in the environment's promotion history, marked by `res
 > commit lands on the proposed branch. Plan to fix forward.
 
 1. Fix forward: get a new dry commit hydrated onto the environment's proposed branch.
-2. Set `spec.blockEnvironment` to `false` on the RestoreActiveCommit. The controller stamps
-   `Promoter-restore-unblocked-at: <RFC3339>` on the restore commit's promotion-history note, then deletes the
-   RestoreActiveCommit. A finalizer blocks that delete until the note is written. Auto-merge is allowed again, and
+2. Set `spec.blockEnvironment` to `false` on the RestoreActiveCommit. The controller first publishes the
+   `restore-block/<branch>` commit status as `success` on any open promotion pull request and waits until it has been
+   sent to the SCM, then stamps `Promoter-restore-unblocked-at: <RFC3339>` on the restore commit's promotion-history
+   note, then deletes the RestoreActiveCommit. A finalizer blocks that delete until the note is written. Auto-merge is allowed again, and
    the new commit promotes as usual. The unblock time shows up on the restore history entry as `restoreUnblockedAt`.
    If the git repository is unreachable, the RestoreActiveCommit stays until the note can be written. Deleting the
    RestoreActiveCommit while `blockEnvironment` is still true does not stamp the trailer, so deleting the

@@ -5734,7 +5734,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RestoreActiveCommitSpec(r
 					},
 					"blockEnvironment": {
 						SchemaProps: spec.SchemaProps{
-							Description: "BlockEnvironment blocks promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again.",
+							Description: "BlockEnvironment blocks promotion for this environment while true. It defaults to true. Set it to false to stamp Promoter-restore-unblocked-at on the restore commit's promotion-history note and delete this object. Deleting it while the field is still true does not stamp that trailer, so deleting the PromotionStrategy cannot release the block. While the active tip is still a blocked restore, the ChangeTransferPolicy recreates this object (with the default true) so the field can be set false again. While this field blocks and the environment has an open promotion pull request, the controller posts a pending commit status named restore-block/<branch> on that pull request's merge SHA. Setting the field to false publishes that status as success before the trailer is stamped and this object is deleted. Deleting the object while the field is still true leaves it pending. The status explains the hold; it is not a promotion gate.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},

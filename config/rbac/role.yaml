@@ -63,6 +63,7 @@ rules:
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
+  - restoreactivecommits/finalizers
   - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers

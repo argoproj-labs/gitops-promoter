@@ -670,12 +670,26 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 				expectPromotionStrategyActiveDry(g, s.promotionStrategy, s.drySha1, s.drySha2)
 			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
+			By("Posting a pending restore-block commit status on the pull request's merge SHA")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				cs := getRestoreBlockCommitStatus(ctx, g, s.rc)
+				g.Expect(cs).NotTo(BeNil())
+				expectRestoreBlockCommitStatus(g, cs, pr.Spec.MergeSha, promoterv1alpha1.CommitPhasePending, promoterv1alpha1.RestoreBlockPendingDescription)
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Setting spec.blockEnvironment to false so the later dry SHA can promote through every environment")
 			clearRevertBlockEnvironment(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace})
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RestoreActiveCommit{})
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Having published the released restore-block commit status before the RestoreActiveCommit was deleted")
+			// envtest runs no garbage collector, so the CommitStatus owned by the deleted object is still there.
+			cs := getRestoreBlockCommitStatus(ctx, Default, s.rc)
+			Expect(cs).NotTo(BeNil())
+			expectRestoreBlockCommitStatus(Default, cs, pr.Spec.MergeSha, promoterv1alpha1.CommitPhaseSuccess, promoterv1alpha1.RestoreBlockReleasedDescription)
 
 			s.mustRun("fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef)
 			rawNote = s.mustRun("notes", "--ref="+git.PromoterHistoryNotesRef, "show", activeSha)
@@ -721,9 +735,175 @@ var _ = Describe("RestoreActiveCommit Controller", func() {
 			s.mustRun("fetch", "origin", testBranchDevelopment, testBranchDevelopmentNext)
 			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopment)).To(Equal(s.rc.Status.ActiveSha))
 			Expect(s.mustRun("rev-parse", "origin/"+testBranchDevelopmentNext)).To(Equal(s.proposedTip))
+
+			By("Never having posted a restore-block commit status, because no promotion pull request was open")
+			Expect(getRestoreBlockCommitStatus(ctx, Default, s.rc)).To(BeNil())
+		})
+		It("leaves the restore-block commit status pending when deleted while still blocking", func() {
+			ctx := context.Background()
+			s := setupRestoredPromotionStrategy()
+
+			By("Hydrating a later dry SHA, which opens a development pull request")
+			s.hydrate("a later dry commit")
+			prKey := s.developmentPRKey()
+			var pr promoterv1alpha1.PullRequest
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				cs := getRestoreBlockCommitStatus(ctx, g, s.rc)
+				g.Expect(cs).NotTo(BeNil())
+				expectRestoreBlockCommitStatus(g, cs, pr.Spec.MergeSha, promoterv1alpha1.CommitPhasePending, promoterv1alpha1.RestoreBlockPendingDescription)
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the RestoreActiveCommit while spec.blockEnvironment is still true")
+			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Consistently(func(g Gomega) {
+				cs := getRestoreBlockCommitStatus(ctx, g, s.rc)
+				g.Expect(cs).NotTo(BeNil())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+			}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+		})
+		It("publishes the released restore-block commit status when deleting itself for an already-unblocked tip", func() {
+			ctx := context.Background()
+			s := setupRestoredPromotionStrategy()
+
+			By("Turning auto-merge off for development so the promotion pull request stays open once the restore is released")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: s.promotionStrategy.Name, Namespace: "default"}, s.promotionStrategy)).To(Succeed())
+				autoMerge := false
+				s.promotionStrategy.Spec.Environments[0].AutoMerge = &autoMerge
+				g.Expect(k8sClient.Update(ctx, s.promotionStrategy)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				g.Expect(k8sClient.Get(ctx, s.devKey, &ctp)).To(Succeed())
+				g.Expect(ctp.Spec.AutoMerge).To(HaveValue(BeFalse()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Hydrating a later dry SHA, which opens a development pull request showing the pending status")
+			s.hydrate("a later dry commit")
+			prKey := s.developmentPRKey()
+			var pr promoterv1alpha1.PullRequest
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				cs := getRestoreBlockCommitStatus(ctx, g, s.rc)
+				g.Expect(cs).NotTo(BeNil())
+				expectRestoreBlockCommitStatus(g, cs, pr.Spec.MergeSha, promoterv1alpha1.CommitPhasePending, promoterv1alpha1.RestoreBlockPendingDescription)
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Releasing the restore outside this RestoreActiveCommit, then deleting it while spec.blockEnvironment is still true")
+			unblockRestoreViaGit(ctx, s.gitPath, s.rc.Status.ActiveSha, time.Date(2026, 10, 2, 18, 0, 0, 0, time.UTC))
+			Expect(k8sClient.Delete(ctx, s.rc)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: s.rc.Name, Namespace: s.rc.Namespace}, &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating the same restore again, which finds the tip already released")
+			again := &promoterv1alpha1.RestoreActiveCommit{
+				Name: s.rc.Name + "-again", Namespace: "default",
+				Spec: promoterv1alpha1.RestoreActiveCommitSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: s.promotionStrategy.Name},
+					Branch:               testBranchDevelopment,
+					Sha:                  s.restoreTo,
+				},
+			}
+			Expect(k8sClient.Create(ctx, again)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, again) })
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: again.Name, Namespace: again.Namespace}, &promoterv1alpha1.RestoreActiveCommit{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Having published the released status on the same pull request before deleting itself")
+			// envtest runs no garbage collector, so the CommitStatus owned by the deleted object is still there.
+			Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			cs := getRestoreBlockCommitStatus(ctx, Default, again)
+			Expect(cs).NotTo(BeNil())
+			expectRestoreBlockCommitStatus(Default, cs, pr.Spec.MergeSha, promoterv1alpha1.CommitPhaseSuccess, promoterv1alpha1.RestoreBlockReleasedDescription)
 		})
 	})
 })
+
+var _ = Describe("selectOpenPromotionPullRequest", func() {
+	pr := func(name string, state promoterv1alpha1.PullRequestState, terminating bool) promoterv1alpha1.PullRequest {
+		p := promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       promoterv1alpha1.PullRequestSpec{State: state, MergeSha: strings.Repeat("a", 40)},
+		}
+		if terminating {
+			now := metav1.Now()
+			p.DeletionTimestamp = &now
+		}
+		return p
+	}
+
+	It("returns nil when no pull request is open", func() {
+		got, err := selectOpenPromotionPullRequest(&promoterv1alpha1.PullRequestList{Items: []promoterv1alpha1.PullRequest{
+			pr("closed", promoterv1alpha1.PullRequestClosed, false),
+			pr("merged", promoterv1alpha1.PullRequestMerged, false),
+			pr("terminating", promoterv1alpha1.PullRequestOpen, true),
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeNil())
+	})
+
+	It("returns the single open pull request", func() {
+		got, err := selectOpenPromotionPullRequest(&promoterv1alpha1.PullRequestList{Items: []promoterv1alpha1.PullRequest{
+			pr("merged", promoterv1alpha1.PullRequestMerged, false),
+			pr("open", promoterv1alpha1.PullRequestOpen, false),
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).NotTo(BeNil())
+		Expect(got.Name).To(Equal("open"))
+	})
+
+	It("errors when more than one pull request is open", func() {
+		_, err := selectOpenPromotionPullRequest(&promoterv1alpha1.PullRequestList{Items: []promoterv1alpha1.PullRequest{
+			pr("a", promoterv1alpha1.PullRequestOpen, false),
+			pr("b", promoterv1alpha1.PullRequestOpen, false),
+		}})
+		Expect(err).To(HaveOccurred())
+	})
+})
+
+// getRestoreBlockCommitStatus returns the restore-block CommitStatus owned by rc, or nil when there is none.
+func getRestoreBlockCommitStatus(ctx context.Context, g Gomega, rc *promoterv1alpha1.RestoreActiveCommit) *promoterv1alpha1.CommitStatus {
+	var list promoterv1alpha1.CommitStatusList
+	g.Expect(k8sClient.List(ctx, &list, ctrlclient.InNamespace(rc.Namespace), ctrlclient.MatchingLabels{
+		promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.RestoreBlockCommitStatusKey,
+		promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(rc.Spec.Branch),
+	})).To(Succeed())
+	var found *promoterv1alpha1.CommitStatus
+	for i := range list.Items {
+		cs := &list.Items[i]
+		for _, ref := range cs.OwnerReferences {
+			if ref.UID == rc.UID && ref.Kind == "RestoreActiveCommit" && ref.Controller != nil && *ref.Controller {
+				g.Expect(found).To(BeNil(), "more than one restore-block CommitStatus owned by %s", rc.Name)
+				found = cs
+			}
+		}
+	}
+	return found
+}
+
+// expectRestoreBlockCommitStatus checks a restore-block CommitStatus's spec and that the CommitStatus
+// controller has published that phase for that SHA.
+func expectRestoreBlockCommitStatus(g Gomega, cs *promoterv1alpha1.CommitStatus, sha string, phase promoterv1alpha1.CommitStatusPhase, description string) {
+	g.Expect(cs.Spec.Name).To(Equal(promoterv1alpha1.RestoreBlockCommitStatusKey + "/" + testBranchDevelopment))
+	g.Expect(cs.Spec.Sha).To(Equal(sha))
+	g.Expect(cs.Spec.Phase).To(Equal(phase))
+	g.Expect(cs.Spec.Description).To(Equal(description))
+	g.Expect(cs.Status.Phase).To(Equal(phase))
+	g.Expect(cs.Status.Sha).To(Equal(sha))
+}
 
 // restoredPromotionStrategy is a PromotionStrategy whose development environment has been promoted
 // twice and then restored to the first promotion. drySha2 is the dry SHA the restore moved off
@@ -734,6 +914,7 @@ type restoredPromotionStrategy struct {
 	hydrate           func(message string) string
 	promotionStrategy *promoterv1alpha1.PromotionStrategy
 	mustRun           func(args ...string) string
+	gitPath           string
 	gitRepo           *promoterv1alpha1.GitRepository
 	firstNote         map[string][]string
 	rc                *promoterv1alpha1.RestoreActiveCommit
@@ -922,6 +1103,7 @@ func setupRestoredPromotionStrategy() restoredPromotionStrategy {
 		ctpDev:            ctpDev,
 		devKey:            devKey,
 		mustRun:           mustRun,
+		gitPath:           gitPath,
 		hydrate:           hydrate,
 		drySha1:           drySha1,
 		drySha2:           drySha2,

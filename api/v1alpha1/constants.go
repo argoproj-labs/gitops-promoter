@@ -77,6 +77,19 @@ const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.
 // without writing the note.
 const RestoreActiveCommitFinalizer = "restoreactivecommit.promoter.argoproj.io/finalizer"
 
+// RestoreBlockCommitStatusKey is the commit status key a RestoreActiveCommit posts on the open promotion
+// pull request's merge SHA for its environment. The SCM context is "restore-block/<environment branch>".
+// It explains why the pull request is not auto-merged; it is not a promotion gate.
+const RestoreBlockCommitStatusKey = "restore-block"
+
+// RestoreBlockPendingDescription is the restore-block commit status description while
+// spec.blockEnvironment blocks the environment.
+const RestoreBlockPendingDescription = "Blocked by an environment restore"
+
+// RestoreBlockReleasedDescription is the restore-block commit status description once
+// spec.blockEnvironment is set to false.
+const RestoreBlockReleasedDescription = "Environment restore released"
+
 // InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
