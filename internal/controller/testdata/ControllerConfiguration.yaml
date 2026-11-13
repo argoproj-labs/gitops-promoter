@@ -138,6 +138,17 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # DependentsQualifiedCommitStatus controller moves per-environment tags in the dry repository and gates
+  # promotions on what upstream environments have qualified
+  dependentsQualifiedCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

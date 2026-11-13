@@ -46,3 +46,11 @@ const (
 	// DependentsSuccessfulCommitStatusNotReady is the reason when owned CommitStatuses are not Ready.
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
+
+// Reasons that apply to DependentsQualifiedCommitStatus.
+const (
+	// DryRepositoryUnavailable is the reason when the dry branch or the environment tags could not be read.
+	DryRepositoryUnavailable CommonReason = "DryRepositoryUnavailable"
+	// TagPushFailed is the reason when an environment tag could not be created or moved.
+	TagPushFailed CommonReason = "TagPushFailed"
+)

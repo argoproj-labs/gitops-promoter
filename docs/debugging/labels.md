@@ -33,6 +33,7 @@ Built-in parent-gate label keys (derived from Kind):
 | Parent gate Kind | Label key |
 | ---------------- | --------- |
 | `DependentsSuccessfulCommitStatus` | `promoter.argoproj.io/dependents-successful-commit-status` |
+| `DependentsQualifiedCommitStatus` | `promoter.argoproj.io/dependents-qualified-commit-status` |
 | `TimedCommitStatus` | `promoter.argoproj.io/timed-commit-status` |
 | `ScheduledCommitStatus` | `promoter.argoproj.io/scheduled-commit-status` |
 | `ArgoCDCommitStatus` | `promoter.argoproj.io/argo-cd-commit-status` |
