@@ -10,6 +10,7 @@ import (
 	"golang.org/x/time/rate"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -24,7 +25,10 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cc.Spec.InstanceID, nil
+	if cc.Spec.InstanceID == nil {
+		return nil, nil
+	}
+	return ptr.To(*cc.Spec.InstanceID), nil
 }
 
 // ControllerConfigurationTypes is a constraint that defines the set of controller configuration types
@@ -114,7 +118,12 @@ type Manager struct {
 // Returns the ControllerConfiguration resource, or an error if it cannot be retrieved from the cluster.
 func (m *Manager) getControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
+	// The returned object is shared with the informer cache and must be treated as read-only. Accessors on
+	// Manager return scalars or copies (GetInstanceID copies the pointer target, getWorkQueueForController deep
+	// copies the WorkQueue) rather than anything aliasing the object, so the deep copy here would only cost:
+	// this is read two or three times per reconcile by every controller, and the object carries every
+	// controller's configuration plus the pull request template.
+	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration, client.UnsafeDisableDeepCopy); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
@@ -327,36 +336,40 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 	if err != nil {
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
-
 	var controllerConfig T
+	var src *promoterv1alpha1.WorkQueue
 	switch cfg := any(controllerConfig).(type) {
 	case promoterv1alpha1.PromotionStrategyConfiguration:
-		return config.Spec.PromotionStrategy.WorkQueue, nil
+		src = &config.Spec.PromotionStrategy.WorkQueue
 	case promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration:
-		return config.Spec.ChangeTransferPolicyHistory.WorkQueue, nil
+		src = &config.Spec.ChangeTransferPolicyHistory.WorkQueue
 	case promoterv1alpha1.ChangeTransferPolicyConfiguration:
-		return config.Spec.ChangeTransferPolicy.WorkQueue, nil
+		src = &config.Spec.ChangeTransferPolicy.WorkQueue
 	case promoterv1alpha1.PullRequestConfiguration:
-		return config.Spec.PullRequest.WorkQueue, nil
+		src = &config.Spec.PullRequest.WorkQueue
 	case promoterv1alpha1.CommitStatusConfiguration:
-		return config.Spec.CommitStatus.WorkQueue, nil
+		src = &config.Spec.CommitStatus.WorkQueue
 	case promoterv1alpha1.ArgoCDCommitStatusConfiguration:
-		return config.Spec.ArgoCDCommitStatus.WorkQueue, nil
+		src = &config.Spec.ArgoCDCommitStatus.WorkQueue
 	case promoterv1alpha1.TimedCommitStatusConfiguration:
-		return config.Spec.TimedCommitStatus.WorkQueue, nil
+		src = &config.Spec.TimedCommitStatus.WorkQueue
 	case promoterv1alpha1.GitCommitStatusConfiguration:
-		return config.Spec.GitCommitStatus.WorkQueue, nil
+		src = &config.Spec.GitCommitStatus.WorkQueue
 	case promoterv1alpha1.WebRequestCommitStatusConfiguration:
-		return config.Spec.WebRequestCommitStatus.WorkQueue, nil
+		src = &config.Spec.WebRequestCommitStatus.WorkQueue
 	case promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration:
-		return config.Spec.DependentsSuccessfulCommitStatus.WorkQueue, nil
+		src = &config.Spec.DependentsSuccessfulCommitStatus.WorkQueue
 	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
-		return config.Spec.ScheduledCommitStatus.WorkQueue, nil
+		src = &config.Spec.ScheduledCommitStatus.WorkQueue
 	case promoterv1alpha1.RestoreActiveCommitConfiguration:
-		return config.Spec.RestoreActiveCommit.WorkQueue, nil
+		src = &config.Spec.RestoreActiveCommit.WorkQueue
 	default:
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", cfg)
 	}
+	// Copy out so callers never hold the cache object's slices or pointers (see getControllerConfiguration).
+	var out promoterv1alpha1.WorkQueue
+	src.DeepCopyInto(&out)
+	return out, nil
 }
 
 // buildRateLimiter constructs a workqueue.TypedRateLimiter from the RateLimiter configuration.
