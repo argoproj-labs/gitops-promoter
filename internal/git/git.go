@@ -687,6 +687,53 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	return shas, nil
 }
 
+// TagRef returns the full ref name of a tag.
+func TagRef(tag string) string {
+	return "refs/tags/" + tag
+}
+
+// BranchRef returns the full ref name of a branch.
+func BranchRef(branch string) string {
+	return branchRef(branch)
+}
+
+// LsRemoteRefs returns the remote SHA of each of the given full ref names (for example refs/heads/main or
+// refs/tags/v1) using a single git ls-remote. Every requested ref is present in the result; a ref that
+// does not exist on the remote maps to "".
+//
+// An annotated tag reports the SHA of its tag object, not of the commit it points at.
+//
+// LsRemoteRefs is concurrency-safe: it queries the remote directly and uses no on-disk clone or other shared state.
+func LsRemoteRefs(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, refs ...string) (map[string]string, error) {
+	return lsRemoteRefs(ctx, gap, gitRepo, refs...)
+}
+
+// PushTag points the remote tag at sha, creating it when it does not exist and moving it when it does. The
+// tag is lightweight: the ref holds the commit SHA itself, so the remote reports that SHA for the tag.
+//
+// The push only succeeds while the remote tag is still at expectedSha ("" means the tag must not exist yet),
+// so a tag that something else moved since the caller last looked is left alone and an error is returned.
+//
+// sha must already be in the clone (for example through FetchBranch of a branch that contains it). The
+// remote normally has the commit too, in which case no objects are sent.
+func (g *EnvironmentOperations) PushTag(ctx context.Context, tag, sha, expectedSha string) error {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	ref := TagRef(tag)
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, "push", "--force-with-lease="+ref+":"+expectedSha, "origin", sha+":"+ref)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
+	g.forgetRemoteRef(ref)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "could not push tag", "tag", tag, "sha", sha, "gitError", stderr)
+		return fmt.Errorf("failed to push tag %q at %s: %w", tag, sha, err)
+	}
+	return nil
+}
+
 // runCmd runs a git command in the given directory with the provided arguments and returns stdout, stderr, and error.
 func (g *EnvironmentOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
 	return runCmdWithEnv(ctx, g.gap, directory, nil, args...)

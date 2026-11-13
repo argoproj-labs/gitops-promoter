@@ -98,6 +98,12 @@ type ControllerConfigurationSpec struct {
 	// +required
 	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 
+	// TagOrderedCommitStatus contains the configuration for the TagOrderedCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior. The requeue duration is
+	// how often the controller polls the DRY branch for new commits.
+	// +required
+	TagOrderedCommitStatus TagOrderedCommitStatusConfiguration `json:"tagOrderedCommitStatus"`
+
 	// RestoreActiveCommit contains the configuration for the RestoreActiveCommit controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -328,6 +334,17 @@ type WebRequestCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type ScheduledCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the ScheduledCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// TagOrderedCommitStatusConfiguration defines the configuration for the TagOrderedCommitStatus controller.
+//
+// This configuration controls how the TagOrderedCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type TagOrderedCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the TagOrderedCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
