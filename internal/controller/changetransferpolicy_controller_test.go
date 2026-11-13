@@ -2736,6 +2736,24 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring(fmt.Sprintf("`%s` **(this PR)**", testBranchDevelopment)))
 			Expect(description).To(ContainSubstring("[#42](https://github.com/example/gitops/pull/42)"))
 			Expect(description).To(ContainSubstring(fmt.Sprintf("| `%s` | %s | %s | — |", testBranchStaging, activeDrySha[:7], proposedDrySha[:7])))
+
+			commitMessage, err := TemplateCommitMessage(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cc.Spec.PullRequest.Template.CommitMessage).NotTo(BeEmpty())
+			Expect(strings.SplitN(commitMessage, "\n", 2)[0]).To(Equal(title))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("This commit promotes changes to **`%s`** (PromotionStrategy `%s`)", testBranchDevelopment, psName)))
+			Expect(commitMessage).To(ContainSubstring("### Deployment commit"))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", activeDrySha[:7], strings.TrimSuffix(gitopsRepoURL, "/"), activeDrySha)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", proposedDrySha[:7], strings.TrimSuffix(gitopsRepoURL, "/"), proposedDrySha)))
+			Expect(commitMessage).To(ContainSubstring("### Code reference"))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", baseRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), baseRefSha)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", headRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), headRefSha)))
+			Expect(commitMessage).NotTo(ContainSubstring("### Promotion pipeline"))
+			Expect(commitMessage).NotTo(ContainSubstring(fmt.Sprintf("| `%s` |", testBranchStaging)))
+			Expect(commitMessage).NotTo(ContainSubstring("[#42](https://github.com/example/gitops/pull/42)"))
 		})
 
 		It("omits optional sections when PromotionStrategy and code references are absent", func() {
@@ -2775,7 +2793,148 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring("| currently deployed | proposed update |"))
 			Expect(description).NotTo(ContainSubstring("### Code reference"))
 			Expect(description).NotTo(ContainSubstring("### Promotion pipeline"))
+
+			commitMessage, err := TemplateCommitMessage(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.SplitN(commitMessage, "\n", 2)[0]).To(Equal(title))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("This commit promotes changes to **`%s`**.", testBranchDevelopment)))
+			Expect(commitMessage).To(ContainSubstring("### Deployment commit"))
+			Expect(commitMessage).To(ContainSubstring("| currently deployed | proposed update |"))
+			Expect(commitMessage).NotTo(ContainSubstring("### Code reference"))
+			Expect(commitMessage).NotTo(ContainSubstring("### Promotion pipeline"))
+			Expect(commitMessage).NotTo(ContainSubstring("PromotionStrategy"))
 		})
+	})
+})
+
+var _ = Describe("TemplateCommitMessage", func() {
+	Context("Commit message template with ChangeTransferPolicy and optional PromotionStrategy", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   testBranchDevelopment,
+				ProposedBranch: testBranchDevelopmentNext,
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:     "abc1234def",
+						Subject: "feat: add new feature",
+					},
+				},
+			},
+		}
+
+		It("returns an empty string when no commit message template is configured", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "some title",
+				Description: "some description",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(BeEmpty())
+		})
+
+		It("renders the commit message with only CTP when PromotionStrategy is absent", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} (dry: {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}){{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature (dry: abc1234)"))
+		})
+
+		It("renders the commit message with CTP and PromotionStrategy when PromotionStrategy is present", func() {
+			psName := "my-promotion-strategy"
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Name: psName, Namespace: "default",
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature Strategy: " + psName))
+		})
+
+		It("returns an error when the commit message template is invalid", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .Invalid",
+			}
+			_, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to render pull request commit message template"))
+		})
+	})
+})
+
+var _ = Describe("assembleCommitMessageWithTrailers", func() {
+	It("keeps the trailer block as the final paragraph after a non-empty base", func() {
+		base := "promote: feat\n\n"
+		commitTrailers := trailers{
+			constants.TrailerPullRequestID:  "42",
+			constants.TrailerShaDryProposed: "abc",
+		}
+		trimmed := strings.TrimRight(base, "\n")
+		got := assembleCommitMessageWithTrailers(trimmed, commitTrailers)
+		Expect(got).To(HavePrefix("promote: feat\n\n"))
+		Expect(got).To(ContainSubstring(constants.TrailerPullRequestID + ": 42"))
+		Expect(got).To(ContainSubstring(constants.TrailerShaDryProposed + ": abc"))
+		Expect(got).NotTo(ContainSubstring("some title"))
+		Expect(got).NotTo(ContainSubstring("some description"))
+		Expect(strings.HasSuffix(strings.TrimRight(got, "\n"), constants.TrailerShaDryProposed+": abc")).To(BeTrue())
+	})
+
+	It("adds a minimal subject when the base is empty so the trailers stay parseable", func() {
+		commitTrailers := trailers{
+			constants.TrailerPullRequestID:           "7",
+			constants.TrailerPullRequestTargetBranch: testBranchDevelopment,
+			constants.TrailerShaDryProposed:          "abc",
+		}
+		got := assembleCommitMessageWithTrailers("", commitTrailers)
+		Expect(got).To(Equal("Promote to `" + testBranchDevelopment + "`\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestTargetBranch, []string{testBranchDevelopment}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerShaDryProposed, []string{"abc"}))
+	})
+
+	It("uses a generic subject when the base is empty and no target branch trailer is set", func() {
+		commitTrailers := trailers{constants.TrailerPullRequestID: "7"}
+		got := assembleCommitMessageWithTrailers("", commitTrailers)
+		Expect(got).To(Equal("Promote\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+	})
+
+	It("keeps trailers parseable after a non-empty base", func() {
+		commitTrailers := trailers{constants.TrailerPullRequestID: "42"}
+		got := assembleCommitMessageWithTrailers("promote: feat\n\nsome body", commitTrailers)
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"42"}))
+	})
+
+	It("returns an empty string when both the base and trailers are empty", func() {
+		Expect(assembleCommitMessageWithTrailers("", trailers{})).To(BeEmpty())
 	})
 })
 

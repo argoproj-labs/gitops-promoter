@@ -13,3 +13,7 @@ spec:
         See the default template in config/config/controllerconfiguration.yaml for the full
         dashboard-style description (deployment commits, code-reference diffs, promotion pipeline).
         Template data: .ChangeTransferPolicy, .PromotionStrategy. Sprig helpers such as trimSuffix are available.
+      commitMessage: |
+        See the default template in config/config/controllerconfiguration.yaml for the full
+        environment-specific merge commit message (deployment commits and code-reference diffs for
+        this environment only). Template data: .ChangeTransferPolicy, .PromotionStrategy.
