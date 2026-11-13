@@ -2136,11 +2136,21 @@ func templatePullRequestAndCommitMessage(prt promoterv1alpha1.PullRequestTemplat
 }
 
 // assembleCommitMessageWithTrailers joins a human-readable base message with promoter trailers.
-// When base is empty, the result is the trailer block alone (no leading blank line). The title and
-// description are never substituted for an empty base.
+// The title and description are never substituted for an empty base.
 func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) string {
+	if len(commitTrailers) == 0 {
+		return base
+	}
 	if base == "" {
-		return commitTrailers.String()
+		// git treats the first paragraph of a message as the subject and never parses it as trailers,
+		// so a message made only of the trailer block yields no trailers from git interpret-trailers
+		// (ParseTrailersFromMessage), and the promotion history note would be silently skipped. A
+		// leading blank line is not enough: git strips leading blank lines when it creates the merge
+		// commit. Use a minimal subject so the trailers always form a separate, final paragraph.
+		base = "Promote"
+		if target := commitTrailers[constants.TrailerPullRequestTargetBranch]; target != "" {
+			base = fmt.Sprintf("Promote to `%s`", target)
+		}
 	}
 	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
 }

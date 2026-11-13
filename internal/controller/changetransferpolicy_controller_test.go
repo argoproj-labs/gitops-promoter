@@ -2899,11 +2899,38 @@ var _ = Describe("assembleCommitMessageWithTrailers", func() {
 		Expect(strings.HasSuffix(strings.TrimRight(got, "\n"), constants.TrailerShaDryProposed+": abc")).To(BeTrue())
 	})
 
-	It("returns the trailer block alone when the base is empty", func() {
+	It("adds a minimal subject when the base is empty so the trailers stay parseable", func() {
+		commitTrailers := trailers{
+			constants.TrailerPullRequestID:           "7",
+			constants.TrailerPullRequestTargetBranch: testBranchDevelopment,
+			constants.TrailerShaDryProposed:          "abc",
+		}
+		got := assembleCommitMessageWithTrailers("", commitTrailers)
+		Expect(got).To(Equal("Promote to `" + testBranchDevelopment + "`\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestTargetBranch, []string{testBranchDevelopment}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerShaDryProposed, []string{"abc"}))
+	})
+
+	It("uses a generic subject when the base is empty and no target branch trailer is set", func() {
 		commitTrailers := trailers{constants.TrailerPullRequestID: "7"}
 		got := assembleCommitMessageWithTrailers("", commitTrailers)
-		Expect(got).To(Equal(commitTrailers.String()))
-		Expect(got).NotTo(HavePrefix("\n"))
+		Expect(got).To(Equal("Promote\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+	})
+
+	It("keeps trailers parseable after a non-empty base", func() {
+		commitTrailers := trailers{constants.TrailerPullRequestID: "42"}
+		got := assembleCommitMessageWithTrailers("promote: feat\n\nsome body", commitTrailers)
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"42"}))
 	})
 
 	It("returns an empty string when both the base and trailers are empty", func() {
