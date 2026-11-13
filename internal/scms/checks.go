@@ -25,8 +25,8 @@ type SCMCheckResult struct {
 	URL    string
 }
 
-// SCMCheckParser defines the interface for retrieving SCM checks
-type SCMCheckParser interface {
+// CheckParser defines the interface for retrieving SCM checks
+type CheckParser interface {
 	// Get retrieves information about the checks happening on a PullRequest
 	Get(ctx context.Context, ps v1alpha1.PromotionStrategy, env string) ([]SCMCheckResult, error)
 }

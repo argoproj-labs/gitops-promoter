@@ -103,6 +103,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	RestoreActiveCommit RestoreActiveCommitConfiguration `json:"restoreActiveCommit"`
 
+	// SCMCheckCommitStatus contains the configuration for the SCMCheckCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	SCMCheckCommitStatus SCMCheckCommitStatusConfiguration `json:"scmCheckCommitStatus"`
+
 	// ClusterScmProvider contains the configuration for ClusterScmProvider support.
 	// +optional
 	// +kubebuilder:default={}
@@ -339,6 +344,17 @@ type ScheduledCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type RestoreActiveCommitConfiguration struct {
 	// WorkQueue contains the work queue configuration for the RestoreActiveCommit controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// SCMCheckCommitStatusConfiguration defines the configuration for the SCMCheckCommitStatus controller.
+//
+// This configuration controls how the SCMCheckCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type SCMCheckCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the SCMCheckCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

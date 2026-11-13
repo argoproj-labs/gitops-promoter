@@ -502,9 +502,12 @@ func runController(
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
 	if err := (&controller.SCMCheckCommitStatusReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		SettingsMgr: settingsMgr,
+		Recorder:    localManager.GetEventRecorder("SCMCheckCommitStatus"),
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "scmcheckcommitstatus")
 		os.Exit(1)
 	}

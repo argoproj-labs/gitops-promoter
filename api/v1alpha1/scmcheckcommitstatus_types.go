@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ const (
 type SCMCheckCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
 	// The controller will validate commits from ALL environments in the referenced PromotionStrategy
-	// where this GitCommitStatus.Spec.Key matches an entry in either:
+	// where this SCMCheckCommitStatus.Spec.Key matches an entry in either:
 	//   - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR
 	//   - Environment.ProposedCommitStatuses (applies to specific environment)
 	// +required
@@ -73,7 +73,7 @@ type SCMCheckCommitStatusSpec struct {
 
 	// Filters is a list of expressions evaluated using the expr library (github.com/expr-lang/expr). These expressions
 	// can be used to filter which SCM checks will be used to create CommitStatuses. If the name of an SCM check matches
-	// one of the expressions it will not be included. The name can be accessed via the variable "Check.Name" that is passed
+	// one of the expressions it will be included. The name can be accessed via the variable "CheckName" that is passed
 	// into the expression. Do note that some SCMs might not support a name per checks and if they don't then this will not work
 	// with it. Check the docs for this CommitStatus for which SCMs support this.
 	Filters []string `json:"filters"`
@@ -147,7 +147,8 @@ type SCMCheckCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	ProposedHydratedSha string `json:"proposedHydratedSha"`
 
-	// Phase represents the current validation state of the commit.
+	// Phase represents the current validation state of the commit. It is aggregated between all of the
+	// checks. If the check was filtered it is not included in the aggregation.
 	// - "pending": validation has not completed, commit data is not yet available, or SHAs are empty
 	// - "success": expression evaluated to true, validation passed
 	// - "failure": expression evaluated to false, validation failed, or expression compilation failed
@@ -167,10 +168,11 @@ type SCMCheckResults struct {
 	Status SCMCheckStatus `json:"status"`
 	// URL is a link to where details on the check can be found in the SCM.
 	URL string `json:"url"`
-	// Filtered is whether the check was filtered by the expression provided in the spec.
-	Filtered bool `json:"filtered"`
+	// Matched is whether the check was included by a filter expression provided in the spec.
+	Matched bool `json:"matched"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -198,6 +200,21 @@ type SCMCheckCommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []SCMCheckCommitStatus `json:"items"`
+}
+
+// GetConditions returns the conditions of the SCMCheckCommitStatus.
+func (s *SCMCheckCommitStatus) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (s *SCMCheckCommitStatus) SetObservedGeneration(generation int64) {
+	s.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (s *SCMCheckCommitStatus) SetStatusInstanceID(v *string) {
+	s.Status.InstanceID = v
 }
 
 func init() {

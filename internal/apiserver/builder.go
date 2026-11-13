@@ -159,6 +159,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ScheduledCommitStatuses = nilIfEmpty(scheduledCSList.Items)
 
+	scmCheckCSList := &promoterv1alpha1.SCMCheckCommitStatusList{}
+	if err := reader.List(ctx, scmCheckCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list SCMCheckCommitStatuses: %w", err)
+	}
+	bundle.SCMCheckCommitStatuses = nilIfEmpty(scmCheckCSList.Items)
+
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
 	if err := attachGitConfig(ctx, reader, namespace, ps, bundle, clusterScmProviderEnabled); err != nil {
