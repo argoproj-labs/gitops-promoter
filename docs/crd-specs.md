@@ -210,9 +210,11 @@ All fields are required, but defaults are provided in the installation manifests
 The `pullRequest.template` section controls the title, description, and merge commit message of
 promotion PRs. The `commitMessage` field is the human-readable merge commit message for the
 environment being promoted. The shipped default describes only that environment (deployment commit
-and code reference) and does not include the promotion-pipeline table from the PR description. When
-the template is empty, the human-readable message stays empty. Commit trailers used by the promoter
-to reconstruct promotion history are always appended after the rendered message.
+and code reference) and does not include the promotion-pipeline table from the PR description. The
+title and description are never used in place of the commit message. Commit trailers used by the
+promoter to reconstruct promotion history are always appended after the rendered message. When the
+template renders empty and trailers are appended, a minimal ``Promote to `<branch>` `` subject is
+added, because git does not parse trailers from the first paragraph of a message.
 
 ```yaml
 {!internal/controller/testdata/ControllerConfiguration.yaml!}
