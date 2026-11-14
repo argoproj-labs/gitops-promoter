@@ -8,11 +8,13 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/tidwall/gjson"
 
@@ -52,11 +54,29 @@ const (
 // without modifying the CTP object. This matches controller.CTPEnqueueFunc.
 type EnqueueFunc func(namespace, name string)
 
-// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
+// Option configures a WebhookReceiver.
+type Option func(*WebhookReceiver)
+
+// WithValidatedCommitStatusEnqueue makes the receiver also enqueue the ValidatedCommitStatuses that read
+// a pushed ref: the dry branch they follow, or one of their environment tags. Without it only
+// ChangeTransferPolicies are looked up. It needs the constants.ValidatedCommitStatusRefShaField index,
+// which the ValidatedCommitStatus controller registers.
+func WithValidatedCommitStatusEnqueue(enqueue EnqueueFunc) Option {
+	return func(wr *WebhookReceiver) {
+		wr.enqueueValidatedCommitStatus = enqueue
+	}
+}
+
+// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies
+// and ValidatedCommitStatuses.
 type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
+
+	// enqueueValidatedCommitStatus is nil unless WithValidatedCommitStatusEnqueue was given, in which
+	// case ValidatedCommitStatuses are not looked up at all.
+	enqueueValidatedCommitStatus EnqueueFunc
 
 	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
 	// it so they are cancelled on shutdown without watching a separate signal.
@@ -75,12 +95,16 @@ type WebhookReceiver struct {
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *WebhookReceiver {
-	return &WebhookReceiver{
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, opts ...Option) *WebhookReceiver {
+	wr := &WebhookReceiver{
 		mgr:        mgr,
 		k8sClient:  mgr.GetClient(),
 		enqueueCTP: enqueueCTP,
 	}
+	for _, opt := range opts {
+		opt(wr)
+	}
+	return wr
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -214,12 +238,12 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found, retryable, lookupErr := wr.tryLookupAndEnqueue(ctx, beforeSha, ref, "webhook")
+	lookup, lookupErr := wr.tryLookupAndEnqueue(ctx, beforeSha, ref, "webhook")
 	switch {
-	case found:
-		ctpFound = true
-	case retryable:
-		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
+	case lookup.found():
+		ctpFound = lookup.ctp
+	case lookup.retryable:
+		reqLogger.Info("nothing matched webhook delivery; scheduling miss retry")
 		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
 	default:
@@ -274,8 +298,8 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		// Retryable misses (no match yet, transient list failure) return (false, nil) to keep
 		// backing off until the outer timeout; terminal outcomes return an error to stop.
-		found, _, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
-		return found, err
+		lookup, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
+		return lookup.found(), err
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
@@ -323,36 +347,89 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 	return maxPendingMissRetries
 }
 
-// tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching
-// ChangeTransferPolicy when exactly one is found. via distinguishes the synchronous webhook
-// path from the deferred retry path in logs. found reports whether a CTP was enqueued;
-// retryable reports whether a later attempt could still succeed (no match yet, or a
-// transient list failure). err is non-nil only for terminal outcomes.
-func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, via string) (found, retryable bool, err error) {
+// lookupResult says what a pushed ref was matched to.
+type lookupResult struct {
+	// ctp is true when a ChangeTransferPolicy was enqueued.
+	ctp bool
+	// gates is true when one or more ValidatedCommitStatuses were enqueued.
+	gates bool
+	// retryable is true when nothing was enqueued but a later attempt could still succeed (no match
+	// yet, or a transient list failure).
+	retryable bool
+}
+
+// found reports whether anything was enqueued.
+func (l lookupResult) found() bool {
+	return l.ctp || l.gates
+}
+
+// tryLookupAndEnqueue looks up, once, what reads the pushed ref, and enqueues it: the
+// ChangeTransferPolicy whose hydrated branch was pushed, when exactly one is found, and every
+// ValidatedCommitStatus whose dry branch or environment tag was pushed. via distinguishes the
+// synchronous webhook path from the deferred retry path in logs. err is non-nil only for terminal
+// outcomes.
+func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, via string) (lookupResult, error) {
 	logger := log.FromContext(ctx)
+
+	// A ref is either dry or hydrated, so a push that matched a gate has nothing to say to a
+	// ChangeTransferPolicy.
+	gatesFound, gatesErr := wr.lookupAndEnqueueValidatedCommitStatuses(ctx, sha, ref, via)
+	if gatesFound {
+		return lookupResult{gates: true}, nil
+	}
+
 	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
 	switch outcome {
 	case ctpLookupFound:
 		if ctp == nil {
 			// Defensive: lookupCTPByHydratedSHA should never return Found with a nil CTP.
-			return false, false, errors.New("CTP lookup reported found but returned nil")
+			return lookupResult{}, errors.New("CTP lookup reported found but returned nil")
 		}
 		if wr.enqueueCTP != nil {
 			wr.enqueueCTP(ctp.Namespace, ctp.Name)
 		}
 		logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
-		return true, false, nil
+		return lookupResult{ctp: true}, nil
 	case ctpLookupNotFound:
-		return false, true, nil
+		// A tag nothing reads is an ordinary tag. Repositories push many of those, and the status a
+		// lookup would be waiting for cannot explain one, so only a failed lookup is tried again.
+		return lookupResult{retryable: gatesErr != nil || !strings.HasPrefix(ref, "refs/tags/")}, nil
 	case ctpLookupListError:
 		// Transient API/index failures: a retry may succeed.
 		logger.V(4).Info("transient CTP lookup failure", "error", lookupErr)
-		return false, true, nil
+		return lookupResult{retryable: true}, nil
 	case ctpLookupTooManyMatches:
-		return false, false, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", sha, ref)
+		return lookupResult{}, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", sha, ref)
 	default:
-		return false, false, fmt.Errorf("unexpected CTP lookup outcome: %v", outcome)
+		return lookupResult{}, fmt.Errorf("unexpected CTP lookup outcome: %v", outcome)
 	}
+}
+
+// lookupAndEnqueueValidatedCommitStatuses enqueues every ValidatedCommitStatus that last saw the
+// pre-push commit at the head of its dry branch or on one of its environment tags. Several can match:
+// PromotionStrategies in one repository share a dry branch. It is a no-op unless the receiver was
+// given WithValidatedCommitStatusEnqueue.
+func (wr *WebhookReceiver) lookupAndEnqueueValidatedCommitStatuses(ctx context.Context, sha, ref, via string) (bool, error) {
+	if wr.enqueueValidatedCommitStatus == nil {
+		return false, nil
+	}
+	logger := log.FromContext(ctx)
+
+	var gates promoterv1alpha1.ValidatedCommitStatusList
+	if err := wr.k8sClient.List(ctx, &gates, &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			constants.ValidatedCommitStatusRefShaField: sha,
+		}),
+	}); err != nil {
+		logger.V(4).Info("transient ValidatedCommitStatus lookup failure", "error", err)
+		return false, fmt.Errorf("failed to list validatedcommitstatuses for webhook receiver: %w", err)
+	}
+	for i := range gates.Items {
+		gate := &gates.Items[i]
+		wr.enqueueValidatedCommitStatus(gate.Namespace, gate.Name)
+		logger.Info("Triggered reconcile of ValidatedCommitStatus via "+via, "namespace", gate.Namespace, "name", gate.Name, "ref", ref)
+	}
+	return len(gates.Items) > 0, nil
 }
 
 // ctpLookupOutcome is the result of a hydrated-SHA field-index lookup.
@@ -388,10 +465,12 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 			if changes.IsArray() && len(changes.Array()) > 0 {
 				firstChange := changes.Array()[0]
 				beforeSha = firstChange.Get("old.target.hash").String()
-				if newName := firstChange.Get("new.name"); newName.Exists() {
-					ref = "refs/heads/" + newName.String()
-				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
-					ref = "refs/heads/" + oldName.String()
+				// "new" is null when the ref was deleted, and "old" when it was created.
+				for _, side := range []string{"new", "old"} {
+					if name := firstChange.Get(side + ".name"); name.Exists() {
+						ref = bitbucketCloudRef(firstChange.Get(side+".type").String(), name.String())
+						break
+					}
 				}
 			}
 		}
@@ -412,6 +491,15 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 		// Unsupported or unknown provider: leave beforeSha empty so the caller no-ops.
 	}
 	return beforeSha, ref
+}
+
+// bitbucketCloudRef returns the full name of a ref from a Bitbucket Cloud push change, which gives
+// the short name and says separately whether it is a branch or a tag.
+func bitbucketCloudRef(refType, name string) string {
+	if refType == "tag" {
+		return "refs/tags/" + name
+	}
+	return "refs/heads/" + name
 }
 
 // lookupCTPByHydratedSHA finds a ChangeTransferPolicy by proposed (then active) hydrated SHA.

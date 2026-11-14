@@ -102,6 +102,60 @@ var _ = Describe("Resolve", func() {
 		Expect(err).To(MatchError(ContainSubstring("promotionStrategyRef.name is \"other\"")))
 	})
 
+	It("resolves ValidatedCommitStatus via a typed Get", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{
+			Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind,
+			Name: "demo",
+		})
+		gate := &promoterv1alpha1.ValidatedCommitStatus{
+			Name: "demo", Namespace: "default",
+			Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
+				Key:                  promoterv1alpha1.ValidatedCommitStatusKey,
+				DryBranch:            "main",
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
+		key, err := Resolve(context.Background(), c, nil, ps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(key).To(Equal(promoterv1alpha1.ValidatedCommitStatusKey))
+	})
+
+	It("does not take a DependentsSuccessfulCommitStatus for a referenced ValidatedCommitStatus of the same name", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{
+			Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind,
+			Name: "demo",
+		})
+		other := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			Name: "demo", Namespace: "default",
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(other).Build()
+		_, err := Resolve(context.Background(), c, nil, ps)
+		Expect(err).To(MatchError(ContainSubstring("but it was not found")))
+	})
+
+	It("rejects a ValidatedCommitStatus whose promotionStrategyRef does not match", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{
+			Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind,
+			Name: "demo",
+		})
+		gate := &promoterv1alpha1.ValidatedCommitStatus{
+			Name: "demo", Namespace: "default",
+			Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other"},
+				Key:                  promoterv1alpha1.ValidatedCommitStatusKey,
+				DryBranch:            "main",
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
+		_, err := Resolve(context.Background(), c, nil, ps)
+		Expect(err).To(MatchError(ContainSubstring("promotionStrategyRef.name is \"other\"")))
+	})
+
 	It("resolves out-of-tree gate CRs at v1alpha1", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
 			Name: "demo", Namespace: "default",

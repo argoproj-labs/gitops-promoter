@@ -501,6 +501,16 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
+	validatedCommitStatusReconciler := &controller.ValidatedCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("ValidatedCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}
+	if err := validatedCommitStatusReconciler.SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ValidatedCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -510,7 +520,9 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	enqueueValidatedCommitStatus := webhookreceiver.EnqueueFunc(validatedCommitStatusReconciler.GetEnqueueFunc())
+	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.WithValidatedCommitStatusEnqueue(enqueueValidatedCommitStatus))
 
 	g, ctx := errgroup.WithContext(runCtx)
 

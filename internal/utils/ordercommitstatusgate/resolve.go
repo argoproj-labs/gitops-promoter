@@ -18,8 +18,8 @@ import (
 //
 // In-tree orderCommitStatus gates must use a typed Get so they hit the existing
 // instance-id-partitioned informer instead of a second unstructured store.
-// DependentsSuccessfulCommitStatus is the current in-tree ordering gate; add a typed
-// branch here for any new in-tree kind that can be referenced from orderCommitStatusRef.
+// DependentsSuccessfulCommitStatus and ValidatedCommitStatus are the in-tree ordering gates; add a
+// typed branch here for any new in-tree kind that can be referenced from orderCommitStatusRef.
 //
 // Out-of-tree kinds are fetched as unstructured objects. The manager client caches those
 // Gets (Cache.Unstructured) and partitions the informer with the same instance-id selector
@@ -41,9 +41,15 @@ func resolve(
 ) (string, error) {
 	// In-tree orderCommitStatus gates use a typed Get (existing partitioned informer).
 	// Add a branch here for any new in-tree kind; do not send them through unstructured.
-	if ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup &&
-		ref.Kind == promoterv1alpha1.DefaultOrderCommitStatusKind {
-		return resolveDependentsSuccessful(ctx, c, ps, ref)
+	if ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup {
+		switch ref.Kind {
+		case promoterv1alpha1.DefaultOrderCommitStatusKind:
+			return resolveDependentsSuccessful(ctx, c, ps, ref)
+		case promoterv1alpha1.ValidatedOrderCommitStatusKind:
+			return resolveValidated(ctx, c, ps, ref)
+		default:
+			// Any other kind in the promoter group is looked up like an out-of-tree gate.
+		}
 	}
 	return resolveUnstructured(ctx, c, mapper, ps, ref)
 }
@@ -55,6 +61,25 @@ func resolveDependentsSuccessful(
 	ref promoterv1alpha1.OrderCommitStatusRef,
 ) (string, error) {
 	var gate promoterv1alpha1.DependentsSuccessfulCommitStatus
+	getErr := c.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &gate)
+	if getErr != nil {
+		if k8serrors.IsNotFound(getErr) {
+			return "", fmt.Errorf("PromotionStrategy %q references %s/%s %q via orderCommitStatusRef, but it was not found",
+				ps.Name, ref.Group, ref.Kind, ref.Name)
+		}
+		return "", fmt.Errorf("failed to get %s/%s %q for PromotionStrategy %q: %w",
+			ref.Group, ref.Kind, ref.Name, ps.Name, getErr)
+	}
+	return orderingGateKey(ps, ref, gate.Spec.Key, gate.Spec.PromotionStrategyRef.Name)
+}
+
+func resolveValidated(
+	ctx context.Context,
+	c client.Client,
+	ps *promoterv1alpha1.PromotionStrategy,
+	ref promoterv1alpha1.OrderCommitStatusRef,
+) (string, error) {
+	var gate promoterv1alpha1.ValidatedCommitStatus
 	getErr := c.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &gate)
 	if getErr != nil {
 		if k8serrors.IsNotFound(getErr) {

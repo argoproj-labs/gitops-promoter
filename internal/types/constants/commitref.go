@@ -8,3 +8,8 @@ const (
 	// CommitRefProposed is the value for "proposed" (to be promoted) commit.
 	CommitRefProposed = "proposed"
 )
+
+// ValidatedCommitStatusRefShaField is the cache field index over the commits a ValidatedCommitStatus last
+// saw at the head of its dry branch and on each environment tag (status.dryBranch.sha and
+// status.environments[].tag.sha). The webhook receiver uses it to find the gates that read a pushed ref.
+const ValidatedCommitStatusRefShaField = ".status.refShas"

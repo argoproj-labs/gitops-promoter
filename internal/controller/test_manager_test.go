@@ -156,6 +156,14 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
+	Expect((&ValidatedCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("ValidatedCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),

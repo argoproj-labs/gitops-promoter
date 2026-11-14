@@ -114,6 +114,21 @@ var _ = Describe("A git server that does not serve unadvertised commits", func()
 		Expect(err).To(MatchError(ContainSubstring("does not serve commit")))
 	})
 
+	It("reads what is live on an active branch", func() {
+		Expect(git.LiveDrySha(ctx, gap, dry.repo, "environment/dev", "")).To(BeEmpty(), "no such branch yet")
+
+		mustGit(dry.workDir, "checkout", "--orphan", "environment/dev")
+		mustGit(dry.workDir, "rm", "-rf", "--ignore-unmatch", ".")
+		Expect(os.WriteFile(dry.workDir+"/hydrator.metadata", []byte(`{"drySha":"`+second+`"}`), 0o644)).To(Succeed())
+		mustGit(dry.workDir, "add", "-A")
+		mustGit(dry.workDir, "commit", "-m", "hydrate")
+		mustGit(dry.workDir, "push", "origin", "environment/dev")
+		mustGit(dry.workDir, "checkout", dry.branch)
+
+		Expect(git.LiveDrySha(ctx, gap, dry.repo, "environment/dev", "")).To(Equal(second))
+		Expect(git.LiveDrySha(ctx, gap, dry.repo, "environment/dev", "apps/one")).To(BeEmpty())
+	})
+
 	It("records and lists validations", func() {
 		ops := newOps("default/gate")
 		cursor, err := ops.AppendValidations(ctx, []git.ValidationEntry{

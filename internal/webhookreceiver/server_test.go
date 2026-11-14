@@ -13,6 +13,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -127,10 +128,10 @@ const (
 	testShaB                 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-func githubPushPayload(beforeSha string) []byte {
+func githubPushPayloadForRef(beforeSha, ref string) []byte {
 	payload := map[string]any{
 		"before": beforeSha,
-		"ref":    testProposedRef,
+		"ref":    ref,
 		"pusher": map[string]any{
 			"name":  "test-user",
 			"email": "test@example.com",
@@ -173,12 +174,48 @@ func newFakeClient(objs ...client.Object) client.Client {
 				return nil
 			}
 			return []string{ctp.Status.Active.Hydrated.Sha}
+		}).
+		WithIndex(&promoterv1alpha1.ValidatedCommitStatus{}, constants.ValidatedCommitStatusRefShaField, func(obj client.Object) []string {
+			gate, ok := obj.(*promoterv1alpha1.ValidatedCommitStatus)
+			if !ok {
+				return nil
+			}
+			var shas []string
+			if gate.Status.DryBranch != nil {
+				shas = append(shas, gate.Status.DryBranch.Sha)
+			}
+			for _, environment := range gate.Status.Environments {
+				if environment.Tag != nil {
+					shas = append(shas, environment.Tag.Sha)
+				}
+			}
+			return shas
 		})
 	return builder.Build()
 }
 
+// newGate returns a ValidatedCommitStatus that last saw drySha at the head of its dry branch and
+// tagSha on its one environment tag.
+func newGate(name, drySha, tagSha string) *promoterv1alpha1.ValidatedCommitStatus {
+	return &promoterv1alpha1.ValidatedCommitStatus{
+		Name:      name,
+		Namespace: testNamespace,
+		Status: promoterv1alpha1.ValidatedCommitStatusStatus{
+			DryBranch: &promoterv1alpha1.ValidatedCommitStatusDryBranchStatus{Sha: drySha},
+			Environments: []promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{{
+				Branch: "environment/development",
+				Tag:    &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "environment/development-tag", Sha: tagSha},
+			}},
+		},
+	}
+}
+
 func postGitHubPush(wr *WebhookReceiver, beforeSha string) *httptest.ResponseRecorder {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader(githubPushPayload(beforeSha)))
+	return postGitHubPushForRef(wr, beforeSha, testProposedRef)
+}
+
+func postGitHubPushForRef(wr *WebhookReceiver, beforeSha, ref string) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader(githubPushPayloadForRef(beforeSha, ref)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Github-Event", "push")
 	req.Header.Set("X-Github-Delivery", "test-delivery")
@@ -202,6 +239,16 @@ func (e *enqueueRecorder) count() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return len(e.calls)
+}
+
+func (e *enqueueRecorder) names() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	names := make([]string, 0, len(e.calls))
+	for _, call := range e.calls {
+		names = append(names, call[1])
+	}
+	return names
 }
 
 func (e *enqueueRecorder) last() (namespace, name string) {
@@ -230,6 +277,20 @@ func (f *flakyListClient) List(ctx context.Context, list client.ObjectList, opts
 	}
 	if err := f.Client.List(ctx, list, opts...); err != nil {
 		return fmt.Errorf("list changetransferpolicies: %w", err)
+	}
+	return nil
+}
+
+// listRecordingClient records the type of every list it is asked for.
+type listRecordingClient struct {
+	client.Client
+	listed []string
+}
+
+func (l *listRecordingClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	l.listed = append(l.listed, fmt.Sprintf("%T", list))
+	if err := l.Client.List(ctx, list, opts...); err != nil {
+		return fmt.Errorf("list: %w", err)
 	}
 	return nil
 }
@@ -424,5 +485,173 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		// Still only one in-flight retry; second was dropped.
 		Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(1.0))
 		Expect(enqueues.count()).To(Equal(0))
+	})
+})
+
+var _ = Describe("WebhookReceiver pushes to a dry branch or an environment tag", func() {
+	const (
+		dryRef = "refs/heads/main"
+		tagRef = "refs/tags/environment/development-tag"
+	)
+
+	var lc testLifecycle
+
+	BeforeEach(func() {
+		lc = newTestLifecycle()
+		metrics.WebhookMissRetryPending.Set(0)
+	})
+
+	AfterEach(func() {
+		lc.stop()
+		Eventually(func() float64 {
+			return testutil.ToFloat64(metrics.WebhookMissRetryPending)
+		}, 2*time.Second, 10*time.Millisecond).Should(Equal(0.0))
+	})
+
+	newReceiver := func(cl client.Client, ctps, gates *enqueueRecorder) *WebhookReceiver {
+		wr := &WebhookReceiver{
+			baseCtx:        lc.ctx,
+			k8sClient:      cl,
+			enqueueCTP:     ctps.enqueue,
+			retryTimeout:   150 * time.Millisecond,
+			retryBaseDelay: 20 * time.Millisecond,
+			retryMaxDelay:  40 * time.Millisecond,
+			retryFactor:    2.0,
+		}
+		if gates != nil {
+			WithValidatedCommitStatusEnqueue(gates.enqueue)(wr)
+		}
+		return wr
+	}
+
+	It("enqueues the gate that last saw the pushed dry branch at the pre-push commit", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		wr := newReceiver(newFakeClient(newGate("gate", testShaA, testShaB)), ctps, gates)
+
+		rec := postGitHubPushForRef(wr, testShaA, dryRef)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(gates.names()).To(Equal([]string{"gate"}))
+		Expect(ctps.count()).To(Equal(0))
+		Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(0.0), "a match needs no retry")
+	})
+
+	It("enqueues the gate whose environment tag was moved by hand", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		wr := newReceiver(newFakeClient(newGate("gate", testShaA, testShaB)), ctps, gates)
+
+		rec := postGitHubPushForRef(wr, testShaB, tagRef)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(gates.names()).To(Equal([]string{"gate"}))
+	})
+
+	It("enqueues every gate that follows the pushed dry branch", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		cl := newFakeClient(
+			newGate("gate-one", testShaA, testShaB),
+			newGate("gate-two", testShaA, testShaA),
+			newGate("gate-elsewhere", testShaB, testShaB),
+		)
+		wr := newReceiver(cl, ctps, gates)
+
+		rec := postGitHubPushForRef(wr, testShaA, dryRef)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(gates.names()).To(ConsistOf("gate-one", "gate-two"))
+	})
+
+	It("still enqueues the ChangeTransferPolicy for a push to a hydrated branch", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		wr := newReceiver(newFakeClient(newCTP("ctp-match"), newGate("gate", testShaB, testShaB)), ctps, gates)
+
+		rec := postGitHubPush(wr, testShaA)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(ctps.names()).To(Equal([]string{"ctp-match"}))
+		Expect(gates.count()).To(Equal(0))
+	})
+
+	It("does not retry a tag push that nothing reads", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		wr := newReceiver(newFakeClient(newGate("gate", testShaB, testShaB)), ctps, gates)
+
+		rec := postGitHubPushForRef(wr, testShaA, "refs/tags/v1.2.3")
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(0.0))
+		Expect(gates.count()).To(Equal(0))
+		Expect(ctps.count()).To(Equal(0))
+	})
+
+	It("retries a branch push that nothing reads yet, and enqueues the gate once its status shows the commit", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		cl := newFakeClient()
+		wr := newReceiver(cl, ctps, gates)
+		wr.retryTimeout = 2 * time.Second
+
+		rec := postGitHubPushForRef(wr, testShaA, dryRef)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(gates.count()).To(Equal(0))
+
+		Expect(cl.Create(context.Background(), newGate("gate-late", testShaA, testShaB))).To(Succeed())
+		Eventually(gates.names, 2*time.Second, 20*time.Millisecond).Should(Equal([]string{"gate-late"}))
+	})
+
+	It("does not look for gates unless it was given a way to enqueue them", func() {
+		ctps := &enqueueRecorder{}
+		recording := &listRecordingClient{Client: newFakeClient(newCTP("ctp-match"), newGate("gate", testShaA, testShaB))}
+		wr := newReceiver(recording, ctps, nil)
+
+		result, err := wr.tryLookupAndEnqueue(context.Background(), testShaA, dryRef, "test")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(lookupResult{ctp: true}))
+		Expect(ctps.names()).To(Equal([]string{"ctp-match"}))
+		Expect(recording.listed).To(Equal([]string{"*v1alpha1.ChangeTransferPolicyList"}))
+	})
+})
+
+var _ = Describe("parseWebhookPush for Bitbucket Cloud", func() {
+	payload := func(change map[string]any) []byte {
+		b, err := json.Marshal(map[string]any{
+			"actor": map[string]any{"display_name": "test-user"},
+			"push":  map[string]any{"changes": []map[string]any{change}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		return b
+	}
+	ref := func(refType, name, hash string) map[string]any {
+		return map[string]any{"type": refType, "name": name, "target": map[string]any{"hash": hash}}
+	}
+
+	It("reads a branch push", func() {
+		sha, pushed := parseWebhookPush(ProviderBitbucketCloud, payload(map[string]any{
+			"old": ref("branch", "environment/development-next", testShaA),
+			"new": ref("branch", "environment/development-next", testShaB),
+		}))
+		Expect(sha).To(Equal(testShaA))
+		Expect(pushed).To(Equal("refs/heads/environment/development-next"))
+	})
+
+	It("reads a tag push as a tag", func() {
+		sha, pushed := parseWebhookPush(ProviderBitbucketCloud, payload(map[string]any{
+			"old": ref("tag", "environment/development-tag", testShaA),
+			"new": ref("tag", "environment/development-tag", testShaB),
+		}))
+		Expect(sha).To(Equal(testShaA))
+		Expect(pushed).To(Equal("refs/tags/environment/development-tag"))
+	})
+
+	It("names a deleted tag from what it was", func() {
+		sha, pushed := parseWebhookPush(ProviderBitbucketCloud, payload(map[string]any{
+			"old": ref("tag", "environment/development-tag", testShaA),
+			"new": nil,
+		}))
+		Expect(sha).To(Equal(testShaA))
+		Expect(pushed).To(Equal("refs/tags/environment/development-tag"))
+	})
+
+	It("names a created branch from what it is", func() {
+		sha, pushed := parseWebhookPush(ProviderBitbucketCloud, payload(map[string]any{
+			"old": nil,
+			"new": ref("branch", "feature", testShaB),
+		}))
+		Expect(sha).To(BeEmpty())
+		Expect(pushed).To(Equal("refs/heads/feature"))
 	})
 })

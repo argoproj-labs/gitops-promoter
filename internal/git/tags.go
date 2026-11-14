@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -398,6 +399,35 @@ func isUnadvertisedObjectFetchError(stderr string) bool {
 	return strings.Contains(stderr, "unadvertised object")
 }
 
+// scratchRepository creates an empty bare repository that knows the remote as origin, for a one-off read
+// that should leave nothing behind in a clone. The caller removes it with the returned function.
+func scratchRepository(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository) (dir string, remove func() error, err error) {
+	dir, err = os.MkdirTemp("", "scratch-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create scratch directory: %w", err)
+	}
+	remove = func() error {
+		if removeErr := os.RemoveAll(dir); removeErr != nil {
+			return fmt.Errorf("failed to remove scratch directory %q: %w", dir, removeErr)
+		}
+		return nil
+	}
+
+	_, stderr, err := runCmd(ctx, gap, dir, "init", "--bare", "--quiet")
+	if err == nil {
+		// A filtered fetch needs a named remote; git records it as a promisor on the first such fetch.
+		_, stderr, err = runCmd(ctx, gap, dir, "config", "remote.origin.url", gap.GetGitHttpsRepoUrl(*gitRepo))
+	}
+	if err != nil {
+		err = fmt.Errorf("failed to set up scratch repository: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		if removeErr := remove(); removeErr != nil {
+			err = fmt.Errorf("%w (%w)", err, removeErr)
+		}
+		return "", nil, err
+	}
+	return dir, remove, nil
+}
+
 // RemoteCommitExists reports whether the repository has the commit, without needing a clone. It fetches
 // that one commit object into a scratch repository, which is removed again.
 //
@@ -411,23 +441,16 @@ func RemoteCommitExists(ctx context.Context, gap scms.GitOperationsProvider, git
 		return false, nil
 	}
 
-	dir, err := os.MkdirTemp("", "commit-exists-*")
+	dir, remove, err := scratchRepository(ctx, gap, gitRepo)
 	if err != nil {
-		return false, fmt.Errorf("failed to create scratch directory: %w", err)
+		return false, err
 	}
 	defer func() {
-		if removeErr := os.RemoveAll(dir); removeErr != nil && err == nil {
-			err = fmt.Errorf("failed to remove scratch directory %q: %w", dir, removeErr)
+		if removeErr := remove(); removeErr != nil && err == nil {
+			err = removeErr
 		}
 	}()
 
-	if _, stderr, err := runCmd(ctx, gap, dir, "init", "--bare", "--quiet"); err != nil {
-		return false, fmt.Errorf("failed to init scratch repository: %w (stderr: %s)", err, stderr)
-	}
-	// The filter needs a named remote; git records it as a promisor on the first filtered fetch.
-	if _, stderr, err := runCmd(ctx, gap, dir, "config", "remote.origin.url", gap.GetGitHttpsRepoUrl(*gitRepo)); err != nil {
-		return false, fmt.Errorf("failed to configure scratch repository: %w (stderr: %s)", err, stderr)
-	}
 	probe := func() bool {
 		_, _, probeErr := runCmdWithEnv(ctx, gap, dir, noLazyFetchEnv, "cat-file", "-e", sha+"^{commit}")
 		return probeErr == nil
@@ -454,4 +477,61 @@ func RemoteCommitExists(ctx context.Context, gap scms.GitOperationsProvider, git
 		return false, fmt.Errorf("failed to fetch branch %q to look for commit %q: %w (stderr: %s)", fallbackBranch, sha, fetchErr, strings.TrimSpace(stderr))
 	}
 	return probe(), nil
+}
+
+// LiveDrySha returns the dry commit that is live in an environment: the dry SHA its active branch was
+// last hydrated from, as recorded in hydrator.metadata at the tip of that branch. It returns "" when
+// nothing is live: the branch does not exist, its tip has no hydrator.metadata under activePath, or the
+// metadata names no commit.
+//
+// It reads the repository itself rather than a ChangeTransferPolicy's status, which reports nothing until
+// the environment's proposed branch exists and can trail the branch by a reconcile. Only the tip commit
+// and that one file are downloaded, into a scratch repository that is removed again.
+//
+// LiveDrySha is concurrency-safe: it uses no shared clone.
+func LiveDrySha(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, activeBranch, activePath string) (drySha string, err error) {
+	dir, remove, err := scratchRepository(ctx, gap, gitRepo)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if removeErr := remove(); removeErr != nil && err == nil {
+			err = removeErr
+		}
+	}()
+
+	ref := branchRef(activeBranch)
+	start := time.Now()
+	_, stderr, fetchErr := runCmd(ctx, gap, dir, "fetch", "--no-tags", "--depth=1", "--filter=blob:none", "origin", "+"+ref+":"+ref)
+	metrics.RecordGitOperation(gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(fetchErr), time.Since(start))
+	if fetchErr != nil {
+		if isAbsentObjectFetchError(stderr) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to fetch active branch %q: %w (stderr: %s)", activeBranch, fetchErr, strings.TrimSpace(stderr))
+	}
+
+	// The tip's trees are here, so whether the file exists is answered locally. Its contents may not be.
+	metaPath := buildHydratorMetadataPath(activePath)
+	blob, stderr, err := runCmdWithEnv(ctx, gap, dir, noLazyFetchEnv, "rev-parse", "--verify", "--quiet", ref+":"+metaPath)
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to look up %q on active branch %q: %w (stderr: %s)", metaPath, activeBranch, err, strings.TrimSpace(stderr))
+	}
+	content, stderr, err := runCmd(ctx, gap, dir, "cat-file", "blob", strings.TrimSpace(blob))
+	if err != nil {
+		return "", fmt.Errorf("failed to read %q on active branch %q: %w (stderr: %s)", metaPath, activeBranch, err, strings.TrimSpace(stderr))
+	}
+
+	var metadata HydratorMetadata
+	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
+		return "", &MalformedHydratorMetadataError{Revision: ref, Path: metaPath, Err: err}
+	}
+	if !fullObjectID.MatchString(metadata.DrySha) {
+		return "", nil
+	}
+	return metadata.DrySha, nil
 }

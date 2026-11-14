@@ -12137,6 +12137,7 @@ rules:
   - promotionstrategies
   - scheduledcommitstatuses
   - timedcommitstatuses
+  - validatedcommitstatuses
   - webrequestcommitstatuses
   verbs:
   - get
@@ -12157,6 +12158,7 @@ rules:
   - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
+  - validatedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
   verbs:
   - update
@@ -12177,6 +12179,7 @@ rules:
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
+  - validatedcommitstatuses/status
   - webrequestcommitstatuses/status
   verbs:
   - get

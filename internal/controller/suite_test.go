@@ -105,6 +105,9 @@ var (
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
 	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	// enqueueValidatedCommitStatus triggers a ValidatedCommitStatus reconcile, standing in for the
+	// polling that picks up validation notes: SCMs send no webhook when a note is pushed.
+	enqueueValidatedCommitStatus ValidatedCommitStatusEnqueueFunc
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
@@ -349,8 +352,23 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	validatedCommitStatusReconciler := &ValidatedCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ValidatedCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		// Shortened from the 15s production default so that specs waiting for a hydrator note to be
+		// picked up, which no webhook announces, do not each wait that long.
+		nudgeInterval: 2 * time.Second,
+	}
+	err = validatedCommitStatusReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+	enqueueValidatedCommitStatus = validatedCommitStatusReconciler.GetEnqueueFunc()
+
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.WithValidatedCommitStatusEnqueue(webhookreceiver.EnqueueFunc(validatedCommitStatusReconciler.GetEnqueueFunc())))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")

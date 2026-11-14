@@ -458,6 +458,91 @@ var _ = Describe("Environment tags", func() {
 		})
 	})
 
+	Describe("LiveDrySha", func() {
+		const active = "environment/dev"
+
+		var gap *fakeGitProvider
+
+		// hydrate commits hydrator.metadata with the given content at path on the active branch and pushes it.
+		hydrate := func(path, content string) {
+			GinkgoHelper()
+			if _, err := runGitCmd(dry.workDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+active); err != nil {
+				mustGit(dry.workDir, "checkout", "--orphan", active)
+				mustGit(dry.workDir, "rm", "-rf", "--ignore-unmatch", ".")
+			} else {
+				mustGit(dry.workDir, "checkout", active)
+			}
+			file := filepath.Join(dry.workDir, path)
+			Expect(os.MkdirAll(filepath.Dir(file), 0o755)).To(Succeed())
+			Expect(os.WriteFile(file, []byte(content), 0o644)).To(Succeed())
+			mustGit(dry.workDir, "add", "-A")
+			mustGit(dry.workDir, "commit", "-m", "hydrate")
+			mustGit(dry.workDir, "push", "origin", active)
+			mustGit(dry.workDir, "checkout", dry.branch)
+		}
+
+		BeforeEach(func() {
+			gap = &fakeGitProvider{tempDirPath: dry.remoteDir}
+		})
+
+		It("returns the dry SHA the tip of the active branch was hydrated from", func() {
+			hydrate("hydrator.metadata", `{"drySha":"`+first+`"}`)
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(Equal(first))
+
+			By("Following the branch to a later hydration")
+			second := dry.commit("second")
+			dry.push()
+			hydrate("hydrator.metadata", `{"drySha":"`+second+`","subject":"second"}`)
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(Equal(second))
+		})
+
+		It("reads the metadata under the active path", func() {
+			second := dry.commit("second")
+			dry.push()
+			hydrate("hydrator.metadata", `{"drySha":"`+first+`"}`)
+			hydrate("apps/one/hydrator.metadata", `{"drySha":"`+second+`"}`)
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "apps/one")).To(Equal(second))
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(Equal(first))
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "apps/two")).To(BeEmpty())
+		})
+
+		It("reports nothing live for a branch that does not exist", func() {
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(BeEmpty())
+		})
+
+		It("reports nothing live for a branch that was never hydrated", func() {
+			hydrate("README.md", "nothing here yet")
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(BeEmpty())
+		})
+
+		It("reports nothing live when the metadata names no commit", func() {
+			hydrate("hydrator.metadata", `{"drySha":"n/a"}`)
+			Expect(git.LiveDrySha(ctx, gap, dry.repo, active, "")).To(BeEmpty())
+		})
+
+		It("returns an error for metadata it cannot read, rather than guessing", func() {
+			hydrate("hydrator.metadata", `not json`)
+			_, err := git.LiveDrySha(ctx, gap, dry.repo, active, "")
+			var malformed *git.MalformedHydratorMetadataError
+			Expect(errors.As(err, &malformed)).To(BeTrue(), "got %v", err)
+		})
+
+		It("returns an error when the repository cannot be reached", func() {
+			_, err := git.LiveDrySha(ctx, &fakeGitProvider{tempDirPath: filepath.Join(dry.remoteDir, "nowhere")}, dry.repo, active, "")
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("IsFullObjectID", func() {
+		It("accepts complete lowercase SHA-1 and SHA-256 IDs only", func() {
+			Expect(git.IsFullObjectID(first)).To(BeTrue())
+			Expect(git.IsFullObjectID(strings.Repeat("ab", 32))).To(BeTrue())
+			for _, other := range []string{"", "n/a", "4f2a9c", strings.ToUpper(first), first + "0", " " + first} {
+				Expect(git.IsFullObjectID(other)).To(BeFalse(), "%q", other)
+			}
+		})
+	})
+
 	Describe("PorcelainRejection", func() {
 		It("returns git's verdict for the rejected ref", func() {
 			out := "To /tmp/remote\n!\tabc123:refs/tags/environment/dev-tag\t[rejected] (stale info)\nDone\n"
