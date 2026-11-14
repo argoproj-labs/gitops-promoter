@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"path"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -958,8 +957,8 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 // The result is only for planning tags. What an environment qualifies is decided from the commit statuses the
 // PromotionStrategy reports, never from this reading, so envs itself is left alone.
 func (r *DependentsQualifiedCommitStatusReconciler) withLiveDryShasFromGit(ctx context.Context, repos *dqRepositories, envs []dqEnvironment, activePaths map[string]string) ([]dqEnvironment, error) {
-	planned := envs
-	cloned := false
+	planned := make([]dqEnvironment, len(envs))
+	copy(planned, envs)
 	for i, env := range envs {
 		if env.TagSha != "" || env.Status.Active.Hydrated.Sha != "" {
 			continue
@@ -968,14 +967,9 @@ func (r *DependentsQualifiedCommitStatusReconciler) withLiveDryShasFromGit(ctx c
 		if err != nil {
 			return nil, err
 		}
-		if live == "" {
-			continue
+		if live != "" {
+			planned[i].LiveDrySha = live
 		}
-		if !cloned {
-			planned = slices.Clone(envs)
-			cloned = true
-		}
-		planned[i].LiveDrySha = live
 	}
 	return planned, nil
 }
