@@ -32,12 +32,18 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// When there is no in-flight proposed change, the controller copies the last child CommitStatus
 	// report instead of re-evaluating the gate.
 	GateEnvironmentCommitStatusApplyConfiguration `json:""`
-	// Tag is the environment's tag as last read from the repository.
+	// Tag is the environment's tag as last read from the repository. Omitted until the controller has
+	// looked at the tag, and while a tag it tried to create could not be pushed.
 	Tag *ValidatedCommitStatusTagStatusApplyConfiguration `json:"tag,omitempty"`
 	// UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on.
 	// For an environment with no upstreams it is the head of the dry branch. It tells an approver what
 	// is ready to validate for a Manual environment.
 	UpstreamCleared *ValidatedCommitStatusUpstreamClearedApplyConfiguration `json:"upstreamCleared,omitempty"`
+	// AutomaticValidation is the newest dry commit the controller validated for this environment on its
+	// own: the commit it last wrote an automatic validation for or, for an environment that follows the
+	// dry branch, the head it last took. The controller validates again once UpstreamCleared is another
+	// commit. Omitted for an environment that people validate.
+	AutomaticValidation *ValidatedCommitStatusAutomaticValidationApplyConfiguration `json:"automaticValidation,omitempty"`
 	// Held is set only while an automatic validation is waiting to be applied.
 	Held *ValidatedCommitStatusHeldApplyConfiguration `json:"held,omitempty"`
 	// Pending is set only while a validated tag move could not be pushed. The controller retries it.
@@ -107,6 +113,14 @@ func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithTag(value
 // If called multiple times, the UpstreamCleared field is set to the value of the last call.
 func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreamCleared(value *ValidatedCommitStatusUpstreamClearedApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.UpstreamCleared = value
+	return b
+}
+
+// WithAutomaticValidation sets the AutomaticValidation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AutomaticValidation field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithAutomaticValidation(value *ValidatedCommitStatusAutomaticValidationApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.AutomaticValidation = value
 	return b
 }
 

@@ -132,10 +132,10 @@ var _ = Describe("Plan: where an environment's tag should point", func() {
 			Expect(result.Held).To(BeNil())
 		})
 
-		It("stops holding a commit once a newer validation is behind the tag", func() {
+		It("goes on holding a commit when a newer validation is of a commit the tag has passed", func() {
 			By("The pipeline validating a commit the hotfix was branched from")
 			result := plan(validations.Input{Tag: "h2", Held: pinned("x4"), Validations: automatic("x2")})
-			Expect(result).To(Equal(validations.Result{Tag: "h2"}))
+			Expect(result).To(Equal(validations.Result{Tag: "h2", Held: pinned("x4")}))
 		})
 
 		It("holds a validated commit that does not contain the commit the tag is on", func() {
@@ -163,11 +163,14 @@ var _ = Describe("Plan: where an environment's tag should point", func() {
 			Expect(result.Held).To(Equal(pinned("x4")))
 		})
 
-		It("drops what is held when the tag's own commit is validated", func() {
+		It("goes on holding a commit when the tag's own commit is validated", func() {
 			result := plan(validations.Input{Tag: "h2", Held: pinned("x4"), Validations: automatic("h2")})
-			Expect(result.Tag).To(Equal("h2"))
-			Expect(result.Source).To(BeEmpty())
-			Expect(result.Held).To(BeNil())
+			Expect(result).To(Equal(validations.Result{Tag: "h2", Held: pinned("x4")}))
+		})
+
+		It("stops holding a commit the tag has reached some other way", func() {
+			result := plan(validations.Input{Tag: "x4", Held: pinned("x4")})
+			Expect(result).To(Equal(validations.Result{Tag: "x4"}))
 		})
 	})
 
@@ -247,9 +250,12 @@ var _ = Describe("Success memory", func() {
 			Expect(validations.RecordSuccess(memory, "x2", at(9))).To(Equal(memory))
 		})
 
-		It("moves a commit back to the front when the environment succeeds on it again", func() {
+		It("leaves a commit where it is when the environment succeeds on it again", func() {
+			By("The environment going back to x1, or reporting x1 again once x2, which changed nothing for it, has a successor")
 			memory := list(success("x2", 2), success("x1", 1))
-			Expect(validations.RecordSuccess(memory, "x1", at(5))).To(Equal(list(success("x1", 5), success("x2", 2))))
+			Expect(validations.RecordSuccess(memory, "x1", at(5))).To(Equal(memory))
+			Expect(validations.UpstreamCleared(validations.RecordSuccess(memory, "x1", at(5)))).To(Equal("x2"),
+				"what was cleared for the next environment does not step back")
 		})
 
 		It("records nothing for an empty SHA", func() {
@@ -304,6 +310,16 @@ var _ = Describe("Success memory", func() {
 			e2e := list(success("x2", 20), success("x3", 5))
 			perf := list(success("x3", 6), success("x2", 3))
 			Expect(validations.UpstreamCleared(e2e, perf)).To(Equal("x2"))
+		})
+
+		It("takes the commit listed first of two that were cleared at the same moment", func() {
+			By("Status keeping times to the second, so that two successes can carry the same one")
+			Expect(validations.UpstreamCleared(list(success("x3", 5), success("x2", 5)))).To(Equal("x3"))
+			Expect(validations.UpstreamCleared(list(success("x2", 5), success("x3", 5)))).To(Equal("x2"))
+
+			e2e := list(success("x3", 5), success("x2", 5))
+			perf := list(success("x2", 5), success("x3", 5))
+			Expect(validations.UpstreamCleared(e2e, perf)).To(Equal("x3"), "the first upstream's order decides")
 		})
 	})
 })

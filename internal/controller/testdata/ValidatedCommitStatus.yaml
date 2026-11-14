@@ -37,6 +37,10 @@ status:
       # For an environment with no upstreams this is the head of the dry branch.
       upstreamCleared:
         sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
+      # Newest SHA the controller validated for the environment on its own. It validates again once
+      # upstreamCleared is another commit.
+      automaticValidation:
+        sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
       successfulShas:
         - sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
           time: "2026-11-13T14:58:10Z"
@@ -55,6 +59,8 @@ status:
       # Newest SHA every upstream has succeeded on.
       upstreamCleared:
         sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
+      automaticValidation:
+        sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
       # Only while an automatic validation is waiting.
       held:
         sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
@@ -65,7 +71,8 @@ status:
       successfulShas:
         - sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
           time: "2026-11-13T15:20:41Z"
-    # Prod is Manual: the controller writes nothing for it and reports what is ready to validate.
+    # Prod is Manual: the controller writes nothing for it and reports what is ready to validate. It has no
+    # automaticValidation.
     - branch: environment/prod
       tag:
         name: environment/prod-tag

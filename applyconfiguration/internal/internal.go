@@ -2184,6 +2184,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusAutomaticValidation
+  map:
+    fields:
+    - name: sha
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusConfiguration
   map:
     fields:
@@ -2213,6 +2219,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironmentStatus
   map:
     fields:
+    - name: automaticValidation
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusAutomaticValidation
     - name: branch
       type:
         scalar: string

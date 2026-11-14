@@ -384,7 +384,7 @@ Upsert the child `CommitStatus`, then mirror `phase`, `description`, `url`, and 
 | Gate CR | `branch` | `phase` | `description` | `url` | `reportedSha` | Gate-specific |
 |---------|----------|---------|---------------|-------|---------------|---------------|
 | DependentsSuccessfulCommitStatus | yes | yes | yes | yes | yes (proposed hydrated) | `activeCommitStatuses`, `upstreams` (`reason` when unsatisfied) |
-| ValidatedCommitStatus | yes | yes | yes | yes | yes (proposed hydrated) | `tag`, `upstreamCleared`, `held`, `pending`, `successfulShas` |
+| ValidatedCommitStatus | yes | yes | yes | yes | yes (proposed hydrated) | `tag`, `upstreamCleared`, `automaticValidation`, `held`, `pending`, `successfulShas` |
 | TimedCommitStatus | yes | yes | — | — | — (`sha`, active hydrated) | timer fields |
 | ScheduledCommitStatus | yes | yes | — | — | — (`sha`, proposed hydrated) | window fields |
 | WebRequestCommitStatus | yes | yes | — | — | — (`reportedSha`) | HTTP outputs |

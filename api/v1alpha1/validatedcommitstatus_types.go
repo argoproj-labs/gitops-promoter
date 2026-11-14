@@ -197,6 +197,16 @@ type ValidatedCommitStatusUpstreamCleared struct {
 	Sha string `json:"sha"`
 }
 
+// ValidatedCommitStatusAutomaticValidation is the newest dry commit the controller validated for an
+// environment on its own.
+type ValidatedCommitStatusAutomaticValidation struct {
+	// Sha is the dry commit.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
+}
+
 // ValidatedCommitStatusHeld is an automatic validation that has not been applied yet.
 type ValidatedCommitStatusHeld struct {
 	// Sha is the validated dry commit that is waiting.
@@ -223,7 +233,9 @@ type ValidatedCommitStatusPending struct {
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 
-	// Source is the kind of validation that asked for the move.
+	// Source is the kind of validation that asked for the move. It is Manual when a manual validation is
+	// part of what moved the tag, also when an automatic one followed it: the move is then made wherever
+	// the commit is.
 	// +required
 	// +kubebuilder:validation:Enum=Manual;Automatic
 	Source ValidatedTagSource `json:"source"`
@@ -258,7 +270,8 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// report instead of re-evaluating the gate.
 	GateEnvironmentCommitStatus `json:",inline"`
 
-	// Tag is the environment's tag as last read from the repository.
+	// Tag is the environment's tag as last read from the repository. Omitted until the controller has
+	// looked at the tag, and while a tag it tried to create could not be pushed.
 	// +optional
 	Tag *ValidatedCommitStatusTagStatus `json:"tag,omitempty"`
 
@@ -267,6 +280,13 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// is ready to validate for a Manual environment.
 	// +optional
 	UpstreamCleared *ValidatedCommitStatusUpstreamCleared `json:"upstreamCleared,omitempty"`
+
+	// AutomaticValidation is the newest dry commit the controller validated for this environment on its
+	// own: the commit it last wrote an automatic validation for or, for an environment that follows the
+	// dry branch, the head it last took. The controller validates again once UpstreamCleared is another
+	// commit. Omitted for an environment that people validate.
+	// +optional
+	AutomaticValidation *ValidatedCommitStatusAutomaticValidation `json:"automaticValidation,omitempty"`
 
 	// Held is set only while an automatic validation is waiting to be applied.
 	// +optional

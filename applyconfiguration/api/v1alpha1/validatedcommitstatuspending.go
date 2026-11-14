@@ -28,7 +28,9 @@ import (
 type ValidatedCommitStatusPendingApplyConfiguration struct {
 	// Sha is the dry commit the tag should point at.
 	Sha *string `json:"sha,omitempty"`
-	// Source is the kind of validation that asked for the move.
+	// Source is the kind of validation that asked for the move. It is Manual when a manual validation is
+	// part of what moved the tag, also when an automatic one followed it: the move is then made wherever
+	// the commit is.
 	Source *apiv1alpha1.ValidatedTagSource `json:"source,omitempty"`
 	// Message is the error from the last attempt to push the tag.
 	Message *string `json:"message,omitempty"`

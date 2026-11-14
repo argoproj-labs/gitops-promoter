@@ -129,9 +129,16 @@ Who validates dry commits for the environment.
   branch counts as validated.
 - **`Manual`**: a person or CI, with a [CommitValidation](#with-a-commitvalidation) or a
   [pushed git note](#by-pushing-a-git-note). The controller writes nothing for the environment and reports what is
-  ready in `status.environments[].upstreamCleared`.
+  ready in `status.environments[].upstreamCleared`. Automatic validations are not applied to the environment.
 
 A manual validation is also accepted for an `Automatic` environment. That is how a hotfix is sent to one.
+
+The setting can be changed while the gate is in use:
+
+- **From `Automatic` to `Manual`**, the environment takes nothing the controller had validated for it and not applied
+  yet. A commit that was waiting (`held`) is dropped, not applied.
+- **From `Manual` to `Automatic`**, the controller validates the commit that is ready for the environment right away. It
+  does not wait for a newer one.
 
 ### `spec.environments[].advance`
 
@@ -278,9 +285,14 @@ order of their clocks. Only the end result is pushed, so the commits in between 
 
 - A **manual** validation moves the tag to its commit at once, wherever the commit is: ahead of the tag, behind it, or
   off the dry branch.
-- An **automatic** validation moves the tag only to a commit that descends from the commit the tag is on. A commit the
-  tag has already passed is ignored.
+- An **automatic** validation moves the tag only to a commit that descends from the commit the tag is on.
+- An automatic validation of the commit the tag is on, or of a commit the tag has already passed, is ignored. It changes
+  nothing.
 - With `advance: WhenIdle`, an automatic validation also waits until the environment is idle.
+
+At most one automatic validation waits for an environment, and status shows it as `held`. A newer automatic validation
+that can move the tag takes its place, so the newest one counts. A manual validation, or a move of the tag by hand,
+drops it. To drop it without moving the tag, validate by hand the commit the tag is on.
 
 ### When the controller validates
 
@@ -293,8 +305,11 @@ environment succeeded on (`status.environments[].successfulShas`) and validates 
 It has to be the same commit: two upstream environments that never run the same commit leave the environment that
 depends on them waiting.
 
+An environment that goes back to a commit it has succeeded on before validates nothing new for the environments after
+it.
+
 A validation is not taken back. If an upstream environment starts failing, or is rolled back, the tags of later
-environments stay where they are.
+environments stay where they are, and a commit that is waiting for a later environment still moves its tag once it can.
 
 ### Hotfixes and the pin
 
@@ -343,6 +358,16 @@ an environment on an older commit, use [RestoreActiveCommit](../../advanced-usag
 
 The controller moves tags with a leased push, so it never overwrites a move it has not seen.
 
+> [!WARNING]
+> Only the status of the `ValidatedCommitStatus` records that a tag was moved by hand. Git does not. If that status is
+> lost, because the `ValidatedCommitStatus` is deleted and created again or is restored without its status, the
+> controller resumes each tag after the newest validation of the commit the tag is on. A validation written after that
+> one is then applied, also when it is older than your move.
+>
+> To rule that out, record the move in git as well: validate the commit you moved the tag to, with a
+> [CommitValidation](#with-a-commitvalidation) or a [note](#by-pushing-a-git-note). The newest validation then matches
+> the tag, and nothing older is applied.
+
 ### Rolling back
 
 [RestoreActiveCommit](../../advanced-usage/rolling-back.md) works as it does with any ordering gate, and is still the
@@ -371,6 +396,8 @@ status:
         movedAt: "2026-11-13T15:02:30Z"
       upstreamCleared:           # newest commit every upstream environment has succeeded on
         sha: 9be01d...
+      automaticValidation:       # newest commit the controller validated for the environment on its own
+        sha: 9be01d...
       held:                      # only while an automatic validation is waiting
         sha: 9be01d...
         reason: Pinned           # Pinned | Busy
@@ -382,13 +409,15 @@ status:
 
 | Field | Meaning |
 | --- | --- |
+| `tag` | The tag as the controller last read it. Left out while a tag the controller tried to create could not be pushed. |
 | `tag.source` | What last moved the tag. `Seeded`: the controller created it. `External`: it was moved by hand. |
 | `upstreamCleared` | What is ready to validate for a `Manual` environment. For an environment with no upstream environments it is the head of the dry branch. |
+| `automaticValidation` | The newest commit the controller validated for the environment on its own. It validates again once `upstreamCleared` is another commit. Not set for a `Manual` environment. |
 | `held` | An automatic validation that has not been applied. `Pinned`: its commit does not contain the commit the tag is on. `Busy`: the environment advances `WhenIdle` and is not idle. |
-| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. |
+| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. `pending.source` is `Manual` when a manual validation is part of the move, which is then made wherever the commit is. |
 
-The gate is `Ready=False` with reason `EnvironmentTagPushFailed` while a tag cannot be moved, for example because a tag
-protection rule refuses the controller's identity.
+The gate is `Ready=False` with reason `EnvironmentTagPushFailed` while a tag cannot be moved or created, for example
+because a tag protection rule refuses the controller's identity.
 
 ## Setup and migration
 
@@ -443,7 +472,7 @@ can stay; nothing else reads them.
 | The gate is `pending` with `Waiting for a validation: <tag> does not exist yet` | Nothing was live in the environment when the gate was created, and no commit has been validated for it. |
 | `held.reason: Pinned` | The environment is on a commit the dry branch does not contain. See [Hotfixes and the pin](#hotfixes-and-the-pin). |
 | `held.reason: Busy` | The environment advances `WhenIdle` and has a promotion under way. |
-| `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. `status.environments[].pending.message` has git's answer. |
+| `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. The condition's message has git's answer, and so does `status.environments[].pending.message` for a tag that exists. |
 | `Ready=False`, reason `ValidationNotRecorded` | The controller could not push to `refs/notes/promoter.validations`. |
 | `Ready=False`, reason `EnvironmentTagsOwnedByAnotherGate` | Another `ValidatedCommitStatus` references the same PromotionStrategy and moves its tags. |
 | `tag.source: External` that you did not expect | Someone, or something, pushed the tag. The controller's own moves are `Manual`, `Automatic` or `Seeded`. |
@@ -465,7 +494,10 @@ moved by hand, or cannot push one.
   `upstreamCleared` shows whether they had succeeded.
 - **Environments can run different commits for longer.** A later environment may be promoting a commit that the
   earlier ones have already moved past.
-- **The validation notes are never pruned.** They grow by a line per validation.
+- **The validation notes are never pruned.** They grow by a line per validation. If you rewrite the ref, to prune it
+  for example, the controller no longer finds the commit it had applied the notes up to
+  (`status.validationsCursor`). It then resumes each tag after the newest validation of the commit the tag is on. A
+  tag that status records as moved by hand takes only the validations written from then on.
 - **Commits off the dry branch on some git servers.** The controller fetches a validated commit by its SHA. Hosted
   SCMs serve any commit that way. A self-hosted server that only serves commits a ref points at will not find a commit
   that is neither on the dry branch nor the tip of a branch or tag; the validation is then ignored, or rejected by a

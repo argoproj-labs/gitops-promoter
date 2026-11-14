@@ -51,7 +51,7 @@ var _ = Describe("Plan: manual validations", func() {
 	DescribeTable("move the tag to the validated commit, wherever it is",
 		func(tag, validated string) {
 			result := plan(validations.Input{Tag: tag, Validations: manual(validated)})
-			Expect(result).To(Equal(validations.Result{Tag: validated, Source: promoterv1alpha1.ValidatedTagSourceManual}))
+			Expect(result).To(Equal(validations.Result{Tag: validated, Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 		},
 		Entry("ahead of the tag", "x2", "x4"),
 		Entry("behind the tag", "x4", "x2"),
@@ -92,7 +92,7 @@ var _ = Describe("Plan: manual validations", func() {
 
 		It("is released by a manual validation, which also drops what was held", func() {
 			result := plan(validations.Input{Tag: "h2", Held: pinned("x4"), Validations: manual("x3")})
-			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual}))
+			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 		})
 
 		It("drops what was held when the tag's own commit is validated by hand", func() {
@@ -110,12 +110,12 @@ var _ = Describe("Plan: manual validations", func() {
 	Context("mixed with automatic validations", func() {
 		It("is followed by an automatic validation of a commit that descends from it", func() {
 			result := plan(validations.Input{Tag: "x4", Validations: inOrder(manual("x2"), automatic("x3"))})
-			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceAutomatic}))
+			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceAutomatic, ManualMove: true}))
 		})
 
 		It("wins over an automatic validation written before it", func() {
 			result := plan(validations.Input{Tag: "x2", Validations: inOrder(automatic("x4"), manual("x3"))})
-			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual}))
+			Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 		})
 
 		It("reports no move when the replay ends where it started", func() {
@@ -130,7 +130,7 @@ var _ = Describe("Plan: manual validations", func() {
 				Tag:     "x4",
 				Pending: &validations.Pending{Sha: "h2", Source: promoterv1alpha1.ValidatedTagSourceManual},
 			})
-			Expect(result).To(Equal(validations.Result{Tag: "h2", Source: promoterv1alpha1.ValidatedTagSourceManual}))
+			Expect(result).To(Equal(validations.Result{Tag: "h2", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 		})
 
 		It("gives way to a newer manual validation", func() {
@@ -141,6 +141,24 @@ var _ = Describe("Plan: manual validations", func() {
 			})
 			Expect(result.Tag).To(Equal("x3"))
 		})
+
+		DescribeTable("is tried again as it was decided when an automatic validation followed the manual one",
+			func(validated []validations.Validation, end string) {
+				By("Deciding on the move")
+				decided := plan(validations.Input{Tag: "x4", Validations: validated})
+				Expect(decided).To(Equal(validations.Result{Tag: end, Source: promoterv1alpha1.ValidatedTagSourceAutomatic, ManualMove: true}))
+
+				By("Not judging it as an automatic one, which the commit the tag is still on would rule out")
+				asAutomatic := plan(validations.Input{Tag: "x4", Pending: &validations.Pending{Sha: end, Source: decided.Source}})
+				Expect(asAutomatic.Tag).To(Equal("x4"))
+
+				By("Making it as a manual one")
+				retried := plan(validations.Input{Tag: "x4", Pending: &validations.Pending{Sha: end, Source: promoterv1alpha1.ValidatedTagSourceManual}})
+				Expect(retried).To(Equal(validations.Result{Tag: end, Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
+			},
+			Entry("onto a hotfix", inOrder(manual("h1"), automatic("h2")), "h2"),
+			Entry("back to an earlier commit", inOrder(manual("x2"), automatic("x3")), "x3"),
+		)
 
 		It("comes before the automatic validation that was held behind it", func() {
 			result := plan(validations.Input{
@@ -224,9 +242,29 @@ var _ = Describe("Plan: advancing when idle", func() {
 		Expect(result).To(Equal(validations.Result{Tag: "x4"}))
 	})
 
+	DescribeTable("goes on holding a commit while newer validations cannot move the tag",
+		func(newer string) {
+			result := plan(validations.Input{Tag: "x3", Held: busy("x4"), Validations: automatic(newer)})
+			Expect(result).To(Equal(validations.Result{Tag: "x3", Held: busy("x4")}))
+		},
+		Entry("of the commit the tag is on", "x3"),
+		Entry("of a commit the tag has passed", "x2"),
+		Entry("of a commit on another line of history, which can never apply", "h2"),
+	)
+
+	It("holds the newest commit the tag can move to, whichever line of history the one before it was on", func() {
+		result := plan(validations.Input{Tag: "x2", Held: busy("h1"), Validations: automatic("x3")})
+		Expect(result).To(Equal(validations.Result{Tag: "x2", Held: busy("x3")}))
+	})
+
+	It("holds a commit that can move the tag in place of one that never could", func() {
+		result := plan(validations.Input{Tag: "h2", Held: pinned("x4"), Validations: automatic("m5")})
+		Expect(result).To(Equal(validations.Result{Tag: "h2", Held: busy("m5")}))
+	})
+
 	It("applies a manual validation whether or not the environment is idle", func() {
 		result := plan(validations.Input{Tag: "x2", Validations: manual("x4")})
-		Expect(result).To(Equal(validations.Result{Tag: "x4", Source: promoterv1alpha1.ValidatedTagSourceManual}))
+		Expect(result).To(Equal(validations.Result{Tag: "x4", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 	})
 
 	It("drops what was held when a manual validation arrives", func() {
@@ -236,7 +274,7 @@ var _ = Describe("Plan: advancing when idle", func() {
 
 	It("counts the environment as busy after a manual validation moved its tag", func() {
 		result := plan(validations.Input{Tag: "x2", Idle: true, Validations: inOrder(manual("x3"), automatic("x4"))})
-		Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual, Held: busy("x4")}))
+		Expect(result).To(Equal(validations.Result{Tag: "x3", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true, Held: busy("x4")}))
 	})
 
 	It("stays idle after a manual validation of the commit the tag is already on", func() {
@@ -247,7 +285,7 @@ var _ = Describe("Plan: advancing when idle", func() {
 	It("gives what was held its turn before a newer manual validation", func() {
 		By("The environment having become idle, the held commit applies, and then the manual validation moves the tag on")
 		result := plan(validations.Input{Tag: "x2", Idle: true, Held: busy("x3"), Validations: manual("h2")})
-		Expect(result).To(Equal(validations.Result{Tag: "h2", Source: promoterv1alpha1.ValidatedTagSourceManual}))
+		Expect(result).To(Equal(validations.Result{Tag: "h2", Source: promoterv1alpha1.ValidatedTagSourceManual, ManualMove: true}))
 	})
 
 	It("creates a tag that does not exist", func() {

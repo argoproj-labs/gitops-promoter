@@ -285,6 +285,21 @@ spec:
                   description: ValidatedCommitStatusEnvironmentStatus defines observed
                     state for one environment branch.
                   properties:
+                    automaticValidation:
+                      description: |-
+                        AutomaticValidation is the newest dry commit the controller validated for this environment on its
+                        own: the commit it last wrote an automatic validation for or, for an environment that follows the
+                        dry branch, the head it last took. The controller validates again once UpstreamCleared is another
+                        commit. Omitted for an environment that people validate.
+                      properties:
+                        sha:
+                          description: Sha is the dry commit.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                      required:
+                      - sha
+                      type: object
                     branch:
                       description: Branch is the environment branch name.
                       minLength: 1
@@ -332,8 +347,10 @@ spec:
                           pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                           type: string
                         source:
-                          description: Source is the kind of validation that asked
-                            for the move.
+                          description: |-
+                            Source is the kind of validation that asked for the move. It is Manual when a manual validation is
+                            part of what moved the tag, also when an automatic one followed it: the move is then made wherever
+                            the commit is.
                           enum:
                           - Manual
                           - Automatic
@@ -387,8 +404,9 @@ spec:
                       type: array
                       x-kubernetes-list-type: atomic
                     tag:
-                      description: Tag is the environment's tag as last read from
-                        the repository.
+                      description: |-
+                        Tag is the environment's tag as last read from the repository. Omitted until the controller has
+                        looked at the tag, and while a tag it tried to create could not be pushed.
                       properties:
                         movedAt:
                           description: MovedAt is when the controller moved the tag,

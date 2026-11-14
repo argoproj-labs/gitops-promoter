@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	_ "embed"
+	stderrors "errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -335,6 +337,51 @@ func (p *validatedPipeline) mergeIntoDry(branch string) string {
 	p.git("push", "origin", p.dryBranch)
 	sendWebhookForPush(p.ctx, before, p.dryBranch)
 	return strings.TrimSpace(p.git("rev-parse", "HEAD"))
+}
+
+// protectTag makes the git server refuse every push to an environment's tag, and returns the hook that
+// does, for the spec to remove. Only the in-process git server lets a spec install one.
+func (p *validatedPipeline) protectTag(branch string) string {
+	GinkgoHelper()
+	owner, name := scmTarget.repoOwnerName(p.gitRepo)
+	hooks := filepath.Join(gitStoragePath, owner, name, "hooks")
+	Expect(hooks).To(BeADirectory())
+	hook := filepath.Join(hooks, "update")
+	script := "#!/bin/sh\nif [ \"$1\" = \"refs/tags/" + validations.TagName(branch, "") + "\" ]; then echo 'this tag is protected' >&2; exit 1; fi\n"
+	Expect(os.WriteFile(hook, []byte(script), 0o755)).To(Succeed())
+	return hook
+}
+
+// setEnvironments replaces the gate's per-environment policies.
+func (p *validatedPipeline) setEnvironments(environments ...promoterv1alpha1.ValidatedCommitStatusEnvironment) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var gate promoterv1alpha1.ValidatedCommitStatus
+		g.Expect(k8sClient.Get(p.ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+		gate.Spec.Environments = environments
+		g.Expect(k8sClient.Update(p.ctx, &gate)).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
+}
+
+// rewriteNotes replaces the newest commit of the validation notes with another that records the same
+// validations, the way pruning or repairing the notes does, and returns the new commit. The commit the
+// controller had applied the notes up to is then no longer part of their history.
+func (p *validatedPipeline) rewriteNotes() string {
+	GinkgoHelper()
+	ref := git.PromoterValidationsNotesRef
+	p.git("fetch", "origin", "+"+ref+":"+ref)
+	// The first field is the commit itself, the rest are its parents.
+	commits := strings.Fields(p.git("rev-list", "--parents", "-n", "1", ref))
+	Expect(commits).NotTo(BeEmpty())
+	args := make([]string, 0, 4+2*(len(commits)-1))
+	args = append(args, "commit-tree", commits[0]+"^{tree}", "-m", "Notes rewritten")
+	for _, parent := range commits[1:] {
+		args = append(args, "-p", parent)
+	}
+	rewritten := strings.TrimSpace(p.git(args...))
+	Expect(rewritten).NotTo(Equal(commits[0]))
+	p.git("push", "--force", "origin", rewritten+":"+ref)
+	return rewritten
 }
 
 // setAutoMerge changes whether an environment's promotion pull request merges by itself.
@@ -694,6 +741,40 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			By("Carrying on through staging in the same way")
 			Expect(addNoteToEnvironment(ctx, p.gitPath, testBranchStagingNext, first)).To(Succeed())
 			p.expectTag(testBranchProduction, first)
+
+			By("Proposing a later commit for development, which then reports the commit it still runs")
+			p.setAutoMerge(testBranchDevelopment, false)
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				key := client.ObjectKey{Namespace: "default", Name: utils.ChangeTransferPolicyNameForEnvironment(p.promotionStrategy.Name, testBranchDevelopment)}
+				g.Expect(k8sClient.Get(ctx, key, &ctp)).To(Succeed())
+				g.Expect(ctp.Spec.AutoMerge).To(HaveValue(BeFalse()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.hydrate(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				observed := p.observed(g, testBranchDevelopment)
+				g.Expect(observed.Active.Dry.Sha).To(Equal(live))
+				g.Expect(observed.Proposed.Dry.Sha).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+
+			By("Not taking that for a new success: what is cleared for staging does not step back, and nothing is validated again")
+			Consistently(func(g Gomega) {
+				cleared := p.environmentStatus(g, testBranchStaging).UpstreamCleared
+				g.Expect(cleared).NotTo(BeNil())
+				g.Expect(cleared.Sha).To(Equal(first))
+
+				var forStaging []validations.Line
+				for _, line := range p.validationsOn(live) {
+					if line.Target == validations.TagName(testBranchStaging, "") {
+						forStaging = append(forStaging, line)
+					}
+				}
+				g.Expect(len(forStaging)).To(BeNumerically("<=", 1), "the commit development runs was validated for staging once at most, when the gate was created")
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+			Expect(p.tag(testBranchStaging)).To(Equal(first))
 		})
 	})
 
@@ -995,12 +1076,7 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 			p.expectTag(testBranchStaging, live)
 
 			By("Protecting staging's tag on the server")
-			owner, name := scmTarget.repoOwnerName(p.gitRepo)
-			hooks := filepath.Join(gitStoragePath, owner, name, "hooks")
-			Expect(hooks).To(BeADirectory())
-			hook := filepath.Join(hooks, "update")
-			script := "#!/bin/sh\nif [ \"$1\" = \"refs/tags/environment/staging-tag\" ]; then echo 'this tag is protected' >&2; exit 1; fi\n"
-			Expect(os.WriteFile(hook, []byte(script), 0o755)).To(Succeed())
+			hook := p.protectTag(testBranchStaging)
 
 			By("Validating a commit for staging, whose tag cannot be moved")
 			p.promote(testBranchDevelopment)
@@ -1011,8 +1087,8 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 				g.Expect(status.Pending.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
 				g.Expect(status.Pending.Message).To(ContainSubstring("hook declined"))
 				g.Expect(status.Tag.Sha).To(Equal(live))
-				g.Expect(status.UpstreamCleared).NotTo(BeNil())
-				g.Expect(status.UpstreamCleared.Sha).To(Equal(first), "the validation itself was recorded")
+				g.Expect(status.AutomaticValidation).NotTo(BeNil())
+				g.Expect(status.AutomaticValidation.Sha).To(Equal(first), "the validation itself was recorded")
 
 				var gate promoterv1alpha1.ValidatedCommitStatus
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
@@ -1034,6 +1110,145 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 				g.Expect(p.environmentStatus(g, testBranchStaging).Pending).To(BeNil())
 			}, constants.EventuallyTimeout).Should(Succeed())
 			p.expectReady()
+		})
+	})
+
+	Context("When the repository refuses the push that creates a tag", func() {
+		It("goes on reporting the failure, and creates the tag once the push goes through although nothing else is new", func() {
+			if !scmTarget.isFake() {
+				Skip("refusing a tag push takes a server-side hook, which only the in-process git server lets a spec install")
+			}
+			// Nothing is live, so the tag of the environment that follows the dry branch starts at its head.
+			p := newValidatedPipelineOn(ctx, "validated-seed-refused", func(_ context.Context, repo *promoterv1alpha1.GitRepository) {
+				setupInitialTestGitRepoWithoutActiveMetadata(repo)
+			})
+
+			By("Protecting development's tag on the server before the gate exists")
+			hook := p.protectTag(testBranchDevelopment)
+			p.create()
+			head := p.dryHead()
+
+			By("Reporting the failure, and keeping no record of a tag that does not exist")
+			refused := func(g Gomega) {
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				ready := meta.FindStatusCondition(gate.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Reason).To(Equal(string(promoterConditions.EnvironmentTagPushFailed)))
+				g.Expect(ready.Message).To(ContainSubstring(`failed to move tag "environment/development-tag" to ` + short(head)))
+				g.Expect(p.environmentStatus(g, testBranchDevelopment).Tag).To(BeNil())
+			}
+			Eventually(refused, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Trying again on the next reconcile, rather than taking the tag for one that waits for a validation")
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+			Consistently(refused, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+			Expect(p.tag(testBranchDevelopment)).To(BeEmpty())
+
+			By("Lifting the protection")
+			Expect(os.Remove(hook)).To(Succeed())
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+			p.expectTag(testBranchDevelopment, head)
+			p.expectTagSource(testBranchDevelopment, promoterv1alpha1.ValidatedTagSourceSeeded)
+			p.expectReady()
+		})
+	})
+
+	Context("When an environment is handed from the controller to people, and back", func() {
+		It("applies nothing that was waiting when people take over, and validates what is cleared when the controller does again", func() {
+			p := newValidatedPipeline(ctx, "validated-handed-over")
+			// Staging's promotions wait for a person to merge them.
+			p.promotionStrategy.Spec.Environments[1].AutoMerge = new(false)
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchStaging, Advance: promoterv1alpha1.AdvanceWhenIdle},
+			}
+			p.create()
+			first := p.dryHead()
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, first)
+			p.hydrate(testBranchStaging)
+			Eventually(func(g Gomega) {
+				observed := p.observed(g, testBranchStaging)
+				g.Expect(observed.PullRequest).NotTo(BeNil())
+				g.Expect(observed.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Holding the next commit while staging's promotion is still open")
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.promote(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				held := p.environmentStatus(g, testBranchStaging).Held
+				g.Expect(held).NotTo(BeNil())
+				g.Expect(held.Sha).To(Equal(second))
+				g.Expect(held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonBusy))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Handing staging to people: the commit that was waiting is not applied, now or once staging is idle")
+			p.setEnvironments(promoterv1alpha1.ValidatedCommitStatusEnvironment{Branch: testBranchStaging, Validation: promoterv1alpha1.ValidationManual})
+			Eventually(func(g Gomega) {
+				status := p.environmentStatus(g, testBranchStaging)
+				g.Expect(status.Held).To(BeNil())
+				g.Expect(status.AutomaticValidation).To(BeNil())
+				g.Expect(status.UpstreamCleared).NotTo(BeNil())
+				g.Expect(status.UpstreamCleared.Sha).To(Equal(second), "what is ready for staging is still reported")
+			}, constants.EventuallyTimeout).Should(Succeed())
+			p.setAutoMerge(testBranchStaging, true)
+			p.expectLive(testBranchStaging, first)
+			Consistently(func() string {
+				return p.tag(testBranchStaging)
+			}, 5*time.Second, 500*time.Millisecond).Should(Equal(first))
+
+			By("Handing staging back to the controller: it validates the commit that is cleared, without waiting for a newer one")
+			p.setEnvironments()
+			p.expectTag(testBranchStaging, second)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceAutomatic)
+			p.promote(testBranchStaging)
+			p.expectReady()
+		})
+	})
+
+	Context("When the validation notes are rewritten after a tag was moved by hand", func() {
+		It("leaves the tag where it was put, and applies only validations written from then on", func() {
+			p := newValidatedPipeline(ctx, "validated-notes-rewritten")
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchProduction, Validation: promoterv1alpha1.ValidationManual},
+			}
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			p.expectTag(testBranchProduction, live)
+
+			By("Validating for production the commit it runs, and then the newer one")
+			p.validateByHand(testBranchProduction, live, "as it is")
+			p.validateByHand(testBranchProduction, first, "go")
+			p.expectTag(testBranchProduction, first)
+
+			By("Rolling production back by moving its tag by hand")
+			p.moveTagByHand(testBranchProduction, live)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceExternal)
+
+			By("Rewriting the notes, so that the controller cannot tell how far it had applied them")
+			rewritten := p.rewriteNotes()
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+			Eventually(func(g Gomega) {
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				g.Expect(gate.Status.ValidationsCursor).To(Equal(rewritten))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Not applying the validation of the newer commit again: it is older than the move by hand")
+			Consistently(func(g Gomega) {
+				g.Expect(p.tag(testBranchProduction)).To(Equal(live))
+				g.Expect(p.environmentStatus(g, testBranchProduction).Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Applying a validation written after that")
+			p.validateByHand(testBranchProduction, first, "go again")
+			p.expectTag(testBranchProduction, first)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)
 		})
 	})
 
@@ -1378,6 +1593,10 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 			validated.previous.Tag = tag("")
 			Expect(run.needsSeed(validated)).To(BeTrue())
 
+			waiting := &validatedEnvironment{held: &validations.Held{Sha: shaTwo, Reason: promoterv1alpha1.ValidatedHeldReasonPinned}}
+			waiting.previous.Tag = tag("")
+			Expect(run.needsSeed(waiting)).To(BeTrue(), "a commit that is waiting would create the tag, and must not create it behind what is live")
+
 			deleted := &validatedEnvironment{}
 			deleted.previous.Tag = tag(shaOne)
 			Expect(run.needsSeed(deleted)).To(BeTrue())
@@ -1394,4 +1613,288 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 			Expect((&validatedRun{firstRun: true}).needsSeed(unrecorded)).To(BeFalse(), "on a first run every tag is taken as found")
 		})
 	})
+
+	Describe("a tag the controller could not create", func() {
+		It("is left out of status, so that the next reconcile works out again where it starts", func() {
+			recorder := events.NewFakeRecorder(10)
+			run := &validatedRun{r: &ValidatedCommitStatusReconciler{Recorder: recorder}, vcs: &promoterv1alpha1.ValidatedCommitStatus{}}
+			env := &validatedEnvironment{branch: testBranchDevelopment, tagName: "environment/development-tag", desired: shaOne}
+			env.next.Branch = env.branch
+			env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName}
+			run.envs = []*validatedEnvironment{env}
+
+			run.keepPending(env, promoterv1alpha1.ValidatedTagSourceSeeded, stderrors.New("remote: this tag is protected"))
+			run.record()
+
+			Expect(run.problems).To(ConsistOf(ContainSubstring(`failed to move tag "environment/development-tag" to 1111111`)))
+			Expect(env.next.Tag).NotTo(BeNil(), "the gate still reports on the tag in this reconcile")
+			recorded := run.vcs.Status.Environments[0]
+			Expect(recorded.Tag).To(BeNil())
+			Expect(recorded.Pending).To(BeNil(), "no validation asked for the move")
+
+			By("Seeding the tag again the next time, although nothing else is new")
+			again := &validatedEnvironment{previous: recorded}
+			Expect((&validatedRun{}).needsSeed(again)).To(BeTrue())
+		})
+	})
+
+	Describe("a move the controller could not push", func() {
+		keep := func(env *validatedEnvironment, source promoterv1alpha1.ValidatedTagSource) *promoterv1alpha1.ValidatedCommitStatusPending {
+			run := &validatedRun{r: &ValidatedCommitStatusReconciler{Recorder: events.NewFakeRecorder(10)}, vcs: &promoterv1alpha1.ValidatedCommitStatus{}}
+			run.keepPending(env, source, stderrors.New("remote: this tag is protected"))
+			return env.next.Pending
+		}
+
+		It("is kept as the kind of move it was", func() {
+			env := &validatedEnvironment{tagName: "environment/staging-tag", desired: shaTwo}
+			Expect(keep(env, promoterv1alpha1.ValidatedTagSourceAutomatic)).To(Equal(&promoterv1alpha1.ValidatedCommitStatusPending{
+				Sha: shaTwo, Source: promoterv1alpha1.ValidatedTagSourceAutomatic, Message: "remote: this tag is protected",
+			}))
+		})
+
+		It("is kept as a manual move when a manual validation was part of it, whatever kind moved the tag last", func() {
+			env := &validatedEnvironment{tagName: "environment/staging-tag", desired: shaTwo, manualMove: true}
+			Expect(keep(env, promoterv1alpha1.ValidatedTagSourceAutomatic).Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual),
+				"tried again as an automatic move, it would be judged against the commit the tag is still on")
+		})
+	})
+
+	DescribeTable("what became of a tag push that reported an error",
+		func(before, after git.TagState, readErr error, expected tagPushOutcome) {
+			Expect(failedPushOutcome(before, after, readErr, shaTwo)).To(Equal(expected))
+		},
+		Entry("is tried again when the tag is where it was",
+			git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{Raw: shaOne, Commit: shaOne}, nil, tagPushFailed),
+		Entry("is tried again when the tag still does not exist", git.TagState{}, git.TagState{}, nil, tagPushFailed),
+		Entry("is tried again when the tag cannot be read",
+			git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{}, stderrors.New("connection reset"), tagPushFailed),
+		Entry("went through when the tag is on the pushed commit",
+			git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{Raw: shaTwo, Commit: shaTwo}, nil, tagPushLanded),
+		Entry("went through when an annotated tag someone pushed points at the same commit",
+			git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{Raw: "4444444444444444444444444444444444444444", Commit: shaTwo}, nil, tagPushLanded),
+		Entry("was overtaken when someone moved the tag elsewhere",
+			git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{Raw: "4444444444444444444444444444444444444444", Commit: "4444444444444444444444444444444444444444"}, nil, tagPushOvertaken),
+		Entry("was overtaken when someone deleted the tag", git.TagState{Raw: shaOne, Commit: shaOne}, git.TagState{}, nil, tagPushOvertaken),
+	)
+
+	Describe("an environment that people validate", func() {
+		automatic := validations.Validation{Sha: shaTwo, Automatic: true}
+		manual := validations.Validation{Sha: shaTwo}
+
+		It("takes no automatic validation", func() {
+			byPeople := &validatedEnvironment{validation: promoterv1alpha1.ValidationManual}
+			byPeople.queue(automatic)
+			byPeople.queue(manual)
+			Expect(byPeople.unapplied).To(Equal([]validations.Validation{manual}))
+
+			byController := &validatedEnvironment{validation: promoterv1alpha1.ValidationAutomatic}
+			byController.queue(automatic)
+			byController.queue(manual)
+			Expect(byController.unapplied).To(Equal([]validations.Validation{automatic, manual}))
+		})
+
+		It("gives up what the controller had validated for it and not applied when it was switched to them", func() {
+			previous := promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
+				Branch:              testBranchStaging,
+				Tag:                 &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "environment/staging-tag", Sha: shaOne},
+				AutomaticValidation: &promoterv1alpha1.ValidatedCommitStatusAutomaticValidation{Sha: shaTwo},
+				Held:                &promoterv1alpha1.ValidatedCommitStatusHeld{Sha: shaTwo, Reason: promoterv1alpha1.ValidatedHeldReasonBusy},
+				Pending:             &promoterv1alpha1.ValidatedCommitStatusPending{Sha: shaTwo, Source: promoterv1alpha1.ValidatedTagSourceAutomatic},
+			}
+			observe := func(policy promoterv1alpha1.ValidationPolicy, pending promoterv1alpha1.ValidatedTagSource) *validatedEnvironment {
+				env := &validatedEnvironment{branch: testBranchStaging, tagName: "environment/staging-tag", validation: policy, previous: *previous.DeepCopy()}
+				env.previous.Pending.Source = pending
+				run := &validatedRun{
+					envs: []*validatedEnvironment{env},
+					refs: git.DryRefs{Tags: map[string]git.TagState{env.tagName: {Raw: shaOne, Commit: shaOne}}},
+				}
+				run.observe()
+				return env
+			}
+
+			By("Keeping all of it while the controller validates for the environment")
+			env := observe(promoterv1alpha1.ValidationAutomatic, promoterv1alpha1.ValidatedTagSourceAutomatic)
+			Expect(env.held).To(Equal(&validations.Held{Sha: shaTwo, Reason: promoterv1alpha1.ValidatedHeldReasonBusy}))
+			Expect(env.next.Pending).NotTo(BeNil())
+			Expect(env.next.AutomaticValidation).To(Equal(previous.AutomaticValidation))
+
+			By("Dropping it once people do, so that the commit that was waiting is not applied the moment they take over")
+			env = observe(promoterv1alpha1.ValidationManual, promoterv1alpha1.ValidatedTagSourceAutomatic)
+			Expect(env.held).To(BeNil())
+			Expect(env.next.Pending).To(BeNil())
+			Expect(env.next.AutomaticValidation).To(BeNil(), "so that the controller validates afresh if it is given the environment back")
+
+			By("Keeping a move a person asked for")
+			env = observe(promoterv1alpha1.ValidationManual, promoterv1alpha1.ValidatedTagSourceManual)
+			Expect(env.next.Pending).NotTo(BeNil())
+		})
+	})
+
+	Describe("a tag that is not where the controller recorded it", func() {
+		// x1 - x2 - x3 - x4, with h1 branched off x2.
+		history := ancestry{"x1": nil, "x2": {"x1"}, "x3": {"x2"}, "x4": {"x3"}, "h1": {"x2"}}
+		const tagName = "environment/staging-tag"
+
+		newRun := func() (*validatedRun, *events.FakeRecorder) {
+			recorder := events.NewFakeRecorder(10)
+			available := map[string]bool{}
+			for sha := range history {
+				available[sha] = true
+			}
+			return &validatedRun{
+				r:         &ValidatedCommitStatusReconciler{Recorder: recorder},
+				vcs:       &promoterv1alpha1.ValidatedCommitStatus{},
+				graph:     history,
+				available: available,
+				now:       metav1.Now(),
+			}, recorder
+		}
+		// environment is one whose tag was recorded on one commit and found on another.
+		environment := func(recorded, found string, unapplied ...validations.Validation) *validatedEnvironment {
+			env := &validatedEnvironment{
+				branch:     testBranchStaging,
+				tagName:    tagName,
+				validation: promoterv1alpha1.ValidationAutomatic,
+				advance:    promoterv1alpha1.AdvanceImmediately,
+				remote:     git.TagState{Raw: found, Commit: found},
+				unapplied:  unapplied,
+			}
+			env.previous.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: tagName, Sha: recorded, Source: promoterv1alpha1.ValidatedTagSourceSeeded}
+			env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: tagName, Sha: found}
+			return env
+		}
+		automatic := func(sha string) validations.Validation { return validations.Validation{Sha: sha, Automatic: true} }
+
+		It("is the controller's own move when the validations lead there", func() {
+			run, recorder := newRun()
+			env := environment("x2", "x3", automatic("x3"))
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+			Expect(env.next.Tag.MovedAt).NotTo(BeNil())
+			Expect(env.desired).To(Equal("x3"), "there is nothing left to move")
+			Expect(recorder.Events).To(BeEmpty())
+		})
+
+		It("is the controller's own move when a validation arrived after it, which then moves the tag on", func() {
+			By("The reconcile that moved the tag to x3 not having written status, or this one not having read it yet")
+			run, recorder := newRun()
+			env := environment("x2", "x3", automatic("x3"), automatic("x4"))
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic), "nobody moved the tag by hand")
+			Expect(env.desired).To(Equal("x4"))
+			Expect(env.desiredSource).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+			Expect(recorder.Events).To(BeEmpty())
+		})
+
+		It("is the controller's own move when a move it had kept as pending leads there", func() {
+			run, _ := newRun()
+			env := environment("x2", "h1")
+			env.next.Pending = &promoterv1alpha1.ValidatedCommitStatusPending{Sha: "h1", Source: promoterv1alpha1.ValidatedTagSourceManual}
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+			Expect(env.next.Pending).To(BeNil())
+			Expect(env.desired).To(Equal("h1"))
+		})
+
+		It("is a tag the controller seeded when it is where the tag would start and there was no record of it", func() {
+			run, _ := newRun()
+			env := environment("", "x2")
+			env.seed = "x2"
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceSeeded))
+		})
+
+		It("was moved by hand when nothing the controller knows of leads there", func() {
+			run, recorder := newRun()
+			env := environment("x3", "x2")
+			env.held = &validations.Held{Sha: "x4", Reason: promoterv1alpha1.ValidatedHeldReasonPinned}
+			env.next.Pending = &promoterv1alpha1.ValidatedCommitStatusPending{Sha: "h1", Source: promoterv1alpha1.ValidatedTagSourceManual}
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+			Expect(env.next.Tag.MovedAt).NotTo(BeNil())
+			Expect(env.desired).To(Equal("x2"), "the tag stays where it was put")
+			Expect(env.held).To(BeNil(), "what was waiting for the old position is void")
+			Expect(env.next.Pending).To(BeNil())
+			Expect(recorder.Events).To(Receive(ContainSubstring(constants.EnvironmentTagMovedByHandReason)))
+		})
+
+		It("was moved by hand and still takes a validation that arrived with the move", func() {
+			run, _ := newRun()
+			env := environment("x3", "x2", validations.Validation{Sha: "h1"})
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+			Expect(env.desired).To(Equal("h1"))
+			Expect(env.desiredSource).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+			Expect(env.manualMove).To(BeTrue())
+		})
+
+		It("was deleted by hand when it is gone, and starts again where it is seeded", func() {
+			run, recorder := newRun()
+			env := environment("x3", "")
+			env.seed = "x3"
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(BeEmpty(), "there is no tag to say anything about yet")
+			Expect(env.desired).To(Equal("x3"))
+			Expect(recorder.Events).To(Receive(ContainSubstring(constants.EnvironmentTagMovedByHandReason)))
+		})
+
+		It("is taken as found on a first run, when there is no record to compare with", func() {
+			run, recorder := newRun()
+			run.firstRun = true
+			env := environment("", "x2", automatic("x3"))
+			env.previous.Tag = nil
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+
+			Expect(env.next.Tag.Source).To(BeEmpty())
+			Expect(env.desired).To(Equal("x3"))
+			Expect(recorder.Events).To(BeEmpty())
+		})
+	})
+
+	Describe("whether the controller still knows that a tag was moved by hand", func() {
+		recorded := func(source promoterv1alpha1.ValidatedTagSource, sha string) *validatedEnvironment {
+			env := &validatedEnvironment{remote: git.TagState{Raw: shaOne, Commit: shaOne}}
+			env.previous.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "environment/staging-tag", Sha: sha, Source: source}
+			return env
+		}
+
+		It("does while status says so and the tag has not moved since", func() {
+			Expect((&validatedRun{}).keptByHand(recorded(promoterv1alpha1.ValidatedTagSourceExternal, shaOne))).To(BeTrue())
+		})
+
+		It("does not once a validation moved the tag, the tag moved again, or status is gone", func() {
+			Expect((&validatedRun{}).keptByHand(recorded(promoterv1alpha1.ValidatedTagSourceManual, shaOne))).To(BeFalse())
+			Expect((&validatedRun{}).keptByHand(recorded(promoterv1alpha1.ValidatedTagSourceExternal, shaTwo))).To(BeFalse())
+			Expect((&validatedRun{firstRun: true}).keptByHand(recorded(promoterv1alpha1.ValidatedTagSourceExternal, shaOne))).To(BeFalse())
+			Expect((&validatedRun{}).keptByHand(&validatedEnvironment{remote: git.TagState{Raw: shaOne, Commit: shaOne}})).To(BeFalse())
+		})
+	})
 })
+
+// ancestry is a dry history for the controller's tag decisions to reason about: each commit maps to its
+// parents.
+type ancestry map[string][]string
+
+func (a ancestry) Contains(_ context.Context, descendant, ancestor string) (bool, error) {
+	seen := map[string]bool{}
+	queue := []string{descendant}
+	for len(queue) > 0 {
+		commit := queue[0]
+		queue = queue[1:]
+		if commit == ancestor {
+			return true, nil
+		}
+		if seen[commit] {
+			continue
+		}
+		seen[commit] = true
+		queue = append(queue, a[commit]...)
+	}
+	return false, nil
+}

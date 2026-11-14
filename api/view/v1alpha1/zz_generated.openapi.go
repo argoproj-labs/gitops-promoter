@@ -186,6 +186,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref),
 		apiv1alpha1.URLConfig{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref),
 		apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusAutomaticValidation{}.OpenAPIModelName():             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusAutomaticValidation(ref),
 		apiv1alpha1.ValidatedCommitStatusConfiguration{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusConfiguration(ref),
 		apiv1alpha1.ValidatedCommitStatusDryBranchStatus{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusDryBranchStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusEnvironment{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironment(ref),
@@ -7460,6 +7461,28 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatus(ref
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusAutomaticValidation(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusAutomaticValidation is the newest dry commit the controller validated for an environment on its own.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha"},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -7586,7 +7609,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 					},
 					"tag": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Tag is the environment's tag as last read from the repository.",
+							Description: "Tag is the environment's tag as last read from the repository. Omitted until the controller has looked at the tag, and while a tag it tried to create could not be pushed.",
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName()),
 						},
 					},
@@ -7594,6 +7617,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 						SchemaProps: spec.SchemaProps{
 							Description: "UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on. For an environment with no upstreams it is the head of the dry branch. It tells an approver what is ready to validate for a Manual environment.",
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()),
+						},
+					},
+					"automaticValidation": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AutomaticValidation is the newest dry commit the controller validated for this environment on its own: the commit it last wrote an automatic validation for or, for an environment that follows the dry branch, the head it last took. The controller validates again once UpstreamCleared is another commit. Omitted for an environment that people validate.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusAutomaticValidation{}.OpenAPIModelName()),
 						},
 					},
 					"held": {
@@ -7631,7 +7660,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusSuccessfulSha{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()},
+			apiv1alpha1.ValidatedCommitStatusAutomaticValidation{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusSuccessfulSha{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()},
 	}
 }
 
@@ -7737,7 +7766,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPend
 					},
 					"source": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Source is the kind of validation that asked for the move.",
+							Description: "Source is the kind of validation that asked for the move. It is Manual when a manual validation is part of what moved the tag, also when an automatic one followed it: the move is then made wherever the commit is.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

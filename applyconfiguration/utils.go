@@ -297,6 +297,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.URLConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatus"):
 		return &apiv1alpha1.ValidatedCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusAutomaticValidation"):
+		return &apiv1alpha1.ValidatedCommitStatusAutomaticValidationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusConfiguration"):
 		return &apiv1alpha1.ValidatedCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusDryBranchStatus"):

@@ -330,6 +330,10 @@ type validatedEnvironment struct {
 
 	// settling is true when the environment advances WhenIdle and is one step from idle: see idleness.
 	settling bool
+	// manualMove is true when a manual validation moved the tag on the way to desired.
+	manualMove bool
+	// seedFailed is true when the tag does not exist and could not be created where it is seeded.
+	seedFailed bool
 }
 
 // automaticRoot reports whether the environment follows the dry branch.
@@ -355,6 +359,21 @@ func (e *validatedEnvironment) start() string {
 	return e.seed
 }
 
+// queue adds a validation of the environment's tag to those that have not been applied. An environment
+// that people validate takes no automatic validation: not one written while the controller still
+// validated for it, and not a line someone marked as automatic.
+func (e *validatedEnvironment) queue(validation validations.Validation) {
+	if validation.Automatic && e.validation != promoterv1alpha1.ValidationAutomatic {
+		return
+	}
+	e.unapplied = append(e.unapplied, validation)
+}
+
+// settle takes over what the tag rules decided for the environment.
+func (e *validatedEnvironment) settle(result validations.Result) {
+	e.held, e.desired, e.desiredSource, e.manualMove = result.Held, result.Tag, result.Source, result.ManualMove
+}
+
 // validatedRun is one reconcile of a ValidatedCommitStatus.
 type validatedRun struct {
 	r   *ValidatedCommitStatusReconciler
@@ -369,6 +388,8 @@ type validatedRun struct {
 	available map[string]bool
 
 	gap scms.GitOperationsProvider
+	// graph answers which dry commit contains which: the run itself, on the gate's clone.
+	graph validations.Ancestry
 
 	// refs is where the dry branch, the environment tags and the validation notes are.
 	refs git.DryRefs
@@ -484,6 +505,7 @@ func (r *ValidatedCommitStatusReconciler) newRun(ctx context.Context, vcs *promo
 		firstRun:       vcs.Status.DryBranch == nil,
 		notReadyReason: promoterConditions.EnvironmentTagPushFailed,
 	}
+	run.graph = run
 	if err := run.resolveEnvironments(); err != nil {
 		return nil, err
 	}
@@ -618,8 +640,16 @@ func (run *validatedRun) observe() {
 			Pending:         env.previous.Pending.DeepCopy(),
 			SuccessfulShas:  validations.RecordSuccess(slices.Clone(env.previous.SuccessfulShas), succeededOn(env.observed), run.now),
 		}
-		if env.previous.Held != nil {
-			env.held = &validations.Held{Sha: env.previous.Held.Sha, Reason: env.previous.Held.Reason}
+		if env.validation == promoterv1alpha1.ValidationAutomatic {
+			env.next.AutomaticValidation = env.previous.AutomaticValidation.DeepCopy()
+			if env.previous.Held != nil {
+				env.held = &validations.Held{Sha: env.previous.Held.Sha, Reason: env.previous.Held.Reason}
+			}
+		} else if env.next.Pending != nil && env.next.Pending.Source != promoterv1alpha1.ValidatedTagSourceManual {
+			// People validate for this environment now. What the controller validated for it while it
+			// still did, and had not applied yet, is not applied any more: neither a move it could not
+			// push, nor, above, a commit that was waiting.
+			env.next.Pending = nil
 		}
 		if env.previous.Tag != nil && env.previous.Tag.Sha == env.remote.Commit {
 			env.next.Tag.Source = env.previous.Tag.Source
@@ -628,9 +658,9 @@ func (run *validatedRun) observe() {
 	}
 }
 
-// movedByHand reports whether the tag is somewhere the controller did not leave it. On a first run
-// there is no record to compare with, so every tag is taken as found.
-func (run *validatedRun) movedByHand(env *validatedEnvironment) bool {
+// tagElsewhere reports whether the tag is somewhere other than where the controller recorded it. On a
+// first run there is no record to compare with, so every tag is taken as found.
+func (run *validatedRun) tagElsewhere(env *validatedEnvironment) bool {
 	return !run.firstRun && env.remote.Commit != env.previousTagSha()
 }
 
@@ -686,7 +716,8 @@ func (run *validatedRun) needsSeed(env *validatedEnvironment) bool {
 	}
 	switch {
 	case env.previous.Tag == nil:
-		// The controller has not looked at this environment before.
+		// The controller has not looked at this environment before, or could not create its tag when it
+		// last did.
 		return true
 	case env.previous.Tag.Sha != "":
 		// The tag was there, and is gone.
@@ -696,7 +727,7 @@ func (run *validatedRun) needsSeed(env *validatedEnvironment) bool {
 		return true
 	default:
 		// Something is about to create the tag. It must not be created behind what is live.
-		return len(env.unapplied) > 0 || env.rootCandidate != "" || env.next.Pending != nil
+		return len(env.unapplied) > 0 || env.rootCandidate != "" || env.next.Pending != nil || env.held != nil
 	}
 }
 
@@ -737,8 +768,8 @@ func (run *validatedRun) clear() {
 }
 
 // collect gathers the validations each environment's tag has not seen yet. It also writes the
-// automatic validations: one for an environment whose upstreams have cleared a commit they had not
-// cleared before. A new head of the dry branch counts as an automatic validation for an environment
+// automatic validations: one for an environment whose upstreams have cleared a commit the controller has
+// not validated for it. A new head of the dry branch counts as an automatic validation for an environment
 // that follows it, and no note is written for those.
 func (run *validatedRun) collect(ctx context.Context) error {
 	if err := run.collectUnapplied(ctx); err != nil {
@@ -752,22 +783,25 @@ func (run *validatedRun) collect(ctx context.Context) error {
 			// The upstreams have no success in common. What they last cleared stands.
 			continue
 		}
-		cleared := &promoterv1alpha1.ValidatedCommitStatusUpstreamCleared{Sha: env.cleared}
-		isNew := env.previous.UpstreamCleared == nil || env.previous.UpstreamCleared.Sha != env.cleared
-		switch {
-		case env.validation != promoterv1alpha1.ValidationAutomatic:
+		env.next.UpstreamCleared = &promoterv1alpha1.ValidatedCommitStatusUpstreamCleared{Sha: env.cleared}
+		if env.validation != promoterv1alpha1.ValidationAutomatic {
 			// A person validates for this environment. The controller only reports what is ready.
-			env.next.UpstreamCleared = cleared
-		case len(env.upstreams) == 0:
-			if isNew {
-				env.rootCandidate = env.cleared
-			}
-			env.next.UpstreamCleared = cleared
-		case !isNew:
+			continue
+		}
+
+		// What the controller last validated is kept apart from what is cleared. An environment that was
+		// validated by people until now has nothing validated by the controller, whatever was cleared for
+		// it in the meantime.
+		automatic := &promoterv1alpha1.ValidatedCommitStatusAutomaticValidation{Sha: env.cleared}
+		switch {
+		case env.previous.AutomaticValidation != nil && env.previous.AutomaticValidation.Sha == env.cleared:
 			// Already validated.
+		case len(env.upstreams) == 0:
+			env.rootCandidate = env.cleared
+			env.next.AutomaticValidation = automatic
 		case slices.Contains(env.unapplied, validations.Validation{Sha: env.cleared, Automatic: true}):
 			// An earlier reconcile wrote the validation and did not get to record that it had.
-			env.next.UpstreamCleared = cleared
+			env.next.AutomaticValidation = automatic
 		default:
 			entries = append(entries, git.ValidationEntry{
 				Sha: env.cleared,
@@ -788,14 +822,14 @@ func (run *validatedRun) collect(ctx context.Context) error {
 	synced := run.cursor
 	tip, err := run.ops.AppendValidations(ctx, entries)
 	if err != nil {
-		// upstreamCleared is left where it was, so the next reconcile writes these again.
+		// automaticValidation is left where it was, so the next reconcile writes these again.
 		run.notReadyReason = promoterConditions.ValidationNotRecorded
 		run.problems = append(run.problems, fmt.Sprintf("failed to record automatic validations: %v", err))
 		return nil
 	}
 	run.cursor = tip
 	for _, env := range validated {
-		env.next.UpstreamCleared = &promoterv1alpha1.ValidatedCommitStatusUpstreamCleared{Sha: env.cleared}
+		env.next.AutomaticValidation = &promoterv1alpha1.ValidatedCommitStatusAutomaticValidation{Sha: env.cleared}
 	}
 
 	// Read back everything written since the notes were synced: the validations above, and any that
@@ -807,7 +841,7 @@ func (run *validatedRun) collect(ctx context.Context) error {
 	if !ok {
 		// The notes were rewritten while this reconcile ran. Apply at least what it wrote itself.
 		for i, env := range validated {
-			env.unapplied = append(env.unapplied, validations.Validation{Sha: entries[i].Sha, Automatic: true})
+			env.queue(validations.Validation{Sha: entries[i].Sha, Automatic: true})
 		}
 		return nil
 	}
@@ -836,6 +870,12 @@ func (run *validatedRun) collectUnapplied(ctx context.Context) error {
 		return fmt.Errorf("failed to list validations: %w", err)
 	}
 	for _, env := range run.envs {
+		if run.keptByHand(env) {
+			// The controller still has it on record that someone put the tag where it is. Which
+			// validations were written before they did can no longer be told, and applying one of those
+			// would undo their move. So none is applied: this tag resumes from the head of the notes.
+			continue
+		}
 		// Resume after the newest validation of the commit the tag is on. With none, resume from the
 		// head of the notes: validations of other commits are older than whatever put the tag there.
 		matched := false
@@ -862,9 +902,19 @@ func (run *validatedRun) collectUnapplied(ctx context.Context) error {
 		if env.next.Tag.Source == "" {
 			env.next.Tag.Source = source
 		}
-		env.unapplied = append(env.unapplied, later...)
+		for _, validation := range later {
+			env.queue(validation)
+		}
 	}
 	return nil
+}
+
+// keptByHand reports whether the controller has it on record that the tag was moved by hand to where it
+// is now, and that no validation has moved it since.
+func (run *validatedRun) keptByHand(env *validatedEnvironment) bool {
+	recorded := env.previous.Tag
+	return !run.firstRun && recorded != nil && env.remote.Commit != "" && recorded.Sha == env.remote.Commit &&
+		recorded.Source == promoterv1alpha1.ValidatedTagSourceExternal
 }
 
 // distribute hands each validation to the environment whose tag it names. Validations for tags that
@@ -873,7 +923,7 @@ func (run *validatedRun) distribute(written []git.ValidationEvent) {
 	for _, validation := range written {
 		for _, env := range run.envs {
 			if validation.Line.Target == env.tagName {
-				env.unapplied = append(env.unapplied, validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
+				env.queue(validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
 			}
 		}
 	}
@@ -895,9 +945,10 @@ func (run *validatedRun) planEnvironment(ctx context.Context, env *validatedEnvi
 		return err
 	}
 
-	if run.movedByHand(env) {
-		if run.movedByController(ctx, env, in) {
-			return nil
+	if run.tagElsewhere(env) {
+		own, err := run.retrace(ctx, env, in)
+		if err != nil || own {
+			return err
 		}
 		// The tag stays where it was put until a newer validation arrives. Whatever was waiting for the
 		// old position is void.
@@ -915,37 +966,50 @@ func (run *validatedRun) planEnvironment(ctx context.Context, env *validatedEnvi
 	if err != nil {
 		return err
 	}
-	env.held, env.desired, env.desiredSource = result.Held, result.Tag, result.Source
+	env.settle(result)
 	return nil
 }
 
-// movedByController reports whether a tag that is not where status says it is was put there by this
-// controller: the reconcile that pushed the tag did not get to write status. In that case the same
-// validations, applied to where the tag was, lead to where it is now, and the move is recorded now.
-func (run *validatedRun) movedByController(ctx context.Context, env *validatedEnvironment, in validations.Input) bool {
+// retrace reports whether a tag that is not where status says it is was put there by this controller.
+// The controller pushes a tag before it records the push, so the reconcile that moved the tag may not
+// have got to write status, or this one may have started before it could read what that one wrote. In
+// either case the validations, applied to where the tag was recorded, lead to where it is now. The move
+// is recorded now, and whatever validations came after it are applied from there.
+func (run *validatedRun) retrace(ctx context.Context, env *validatedEnvironment, in validations.Input) (bool, error) {
 	if env.remote.Commit == "" {
-		return false
+		// The controller never deletes a tag.
+		return false, nil
 	}
 	in.Tag = env.previousTagSha()
 	if in.Tag == "" {
 		in.Tag = env.seed
 	}
-	// Had the controller moved the tag, the environment would have been idle then, whatever it is now
-	// that it has a new commit to promote.
-	in.Idle = true
-	own, err := run.replay(ctx, in)
-	if err != nil || own.Tag != env.remote.Commit {
-		return false
+	if in.Tag != "" {
+		found, err := run.ensureCommit(ctx, in.Tag)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			// Nothing leads anywhere from a commit the repository no longer has.
+			return false, nil
+		}
+	}
+	retraced, own, err := validations.Retrace(ctx, run.graph, in, env.remote.Commit)
+	if err != nil {
+		return false, fmt.Errorf("failed to apply validations: %w", err)
+	}
+	if !own {
+		return false, nil
 	}
 
-	env.next.Tag.Source = own.Source
-	if own.Source == "" {
+	env.next.Tag.Source = retraced.FoundBy
+	if retraced.FoundBy == "" {
 		env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceSeeded
 	}
 	env.next.Tag.MovedAt = &run.now
 	env.next.Pending = nil
-	env.held, env.desired = own.Held, own.Tag
-	return true
+	env.settle(retraced.Result)
+	return true, nil
 }
 
 // planInput gathers what the tag rules need for one environment. Commits that are not in the
@@ -1061,7 +1125,7 @@ func (run *validatedRun) replay(ctx context.Context, in validations.Input) (vali
 			return validations.Result{}, fmt.Errorf("commit %q is not in the repository", in.Tag)
 		}
 	}
-	result, err := validations.Plan(ctx, run, in)
+	result, err := validations.Plan(ctx, run.graph, in)
 	if err != nil {
 		return validations.Result{}, fmt.Errorf("failed to apply validations: %w", err)
 	}
@@ -1093,43 +1157,87 @@ func (run *validatedRun) move(ctx context.Context) {
 		}
 
 		err := run.ops.MoveTag(ctx, env.tagName, env.desired, env.remote.Raw)
-		if err == nil {
-			logger.Info("Moved environment tag", "tag", env.tagName, "from", env.remote.Commit, "to", env.desired, "source", source)
-			run.r.Recorder.Eventf(run.vcs, nil, "Normal", constants.EnvironmentTagMovedReason, "MovingEnvironmentTag",
-				constants.EnvironmentTagMovedMessage, env.tagName, shortOrNone(env.remote.Commit), shortOrNone(env.desired), source)
-			env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName, Sha: env.desired, Source: source, MovedAt: &run.now}
-			env.next.Pending = nil
-			if run.r.EnqueueCTP != nil {
-				run.r.EnqueueCTP(run.ps.Namespace, utils.ChangeTransferPolicyNameForEnvironment(run.ps.Name, env.branch))
+		if err != nil {
+			// The push did not go through, or it did and git could not say so. Where the tag is now tells
+			// the two apart, and tells whether someone else moved it first.
+			current, readErr := run.ops.ReadTag(ctx, env.tagName)
+			switch failedPushOutcome(env.remote, current, readErr, env.desired) {
+			case tagPushLanded:
+				logger.Info("Pushing the environment tag reported an error, but the tag is where it should be", "tag", env.tagName, "error", err.Error())
+				err = nil
+			case tagPushOvertaken:
+				logger.Info("Environment tag was moved while it was being pushed; leaving it", "tag", env.tagName, "to", current.Commit)
+				run.r.Recorder.Eventf(run.vcs, nil, "Normal", constants.EnvironmentTagMovedByHandReason, "ObservingEnvironmentTag",
+					constants.EnvironmentTagMovedByHandMessage, env.tagName, shortOrNone(env.remote.Commit), shortOrNone(current.Commit))
+				env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName, Sha: current.Commit}
+				if current.Commit != "" {
+					env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceExternal
+					env.next.Tag.MovedAt = &run.now
+				}
+				env.next.Pending, env.next.Held = nil, nil
+				continue
+			default:
+				// tagPushFailed: the move is kept as pending, below.
 			}
+		}
+		if err != nil {
+			run.keepPending(env, source, err)
 			continue
 		}
 
-		// The push did not go through. If the tag is somewhere else than where it was read, someone
-		// moved it first, and it stays where they put it.
-		current, readErr := run.ops.ReadTag(ctx, env.tagName)
-		if readErr == nil && current.Raw != env.remote.Raw {
-			logger.Info("Environment tag was moved while it was being pushed; leaving it", "tag", env.tagName, "to", current.Commit)
-			run.r.Recorder.Eventf(run.vcs, nil, "Normal", constants.EnvironmentTagMovedByHandReason, "ObservingEnvironmentTag",
-				constants.EnvironmentTagMovedByHandMessage, env.tagName, shortOrNone(env.remote.Commit), shortOrNone(current.Commit))
-			env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName, Sha: current.Commit}
-			if current.Commit != "" {
-				env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceExternal
-				env.next.Tag.MovedAt = &run.now
-			}
-			env.next.Pending, env.next.Held = nil, nil
-			continue
+		logger.Info("Moved environment tag", "tag", env.tagName, "from", env.remote.Commit, "to", env.desired, "source", source)
+		run.r.Recorder.Eventf(run.vcs, nil, "Normal", constants.EnvironmentTagMovedReason, "MovingEnvironmentTag",
+			constants.EnvironmentTagMovedMessage, env.tagName, shortOrNone(env.remote.Commit), shortOrNone(env.desired), source)
+		env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName, Sha: env.desired, Source: source, MovedAt: &run.now}
+		env.next.Pending = nil
+		if run.r.EnqueueCTP != nil {
+			run.r.EnqueueCTP(run.ps.Namespace, utils.ChangeTransferPolicyNameForEnvironment(run.ps.Name, env.branch))
 		}
-		run.keepPending(env, source, err)
 	}
 }
 
-// keepPending records a tag move that could not be made, so that the next reconcile tries it again. A
-// tag that could not be seeded needs no record: it still does not exist, and is seeded again.
+// tagPushOutcome says what became of a tag push that reported an error.
+type tagPushOutcome int
+
+const (
+	// tagPushFailed means the tag is where it was, or cannot be read: the move is tried again.
+	tagPushFailed tagPushOutcome = iota
+	// tagPushLanded means the tag is on the commit that was pushed. The server took the push and the
+	// error came afterwards, or someone pushed the same commit. Either way the tag is where the
+	// validation asks for it.
+	tagPushLanded
+	// tagPushOvertaken means someone moved the tag elsewhere first. It stays where they put it.
+	tagPushOvertaken
+)
+
+// failedPushOutcome tells what became of a tag push that reported an error, from where the tag was
+// before the push and where it is after.
+func failedPushOutcome(before, after git.TagState, readErr error, pushed string) tagPushOutcome {
+	switch {
+	case readErr != nil:
+		return tagPushFailed
+	case after.Commit == pushed:
+		return tagPushLanded
+	case after.Raw != before.Raw:
+		return tagPushOvertaken
+	default:
+		return tagPushFailed
+	}
+}
+
+// keepPending records a tag move that could not be made, so that the next reconcile tries it again.
 func (run *validatedRun) keepPending(env *validatedEnvironment, source promoterv1alpha1.ValidatedTagSource, err error) {
 	run.problems = append(run.problems, fmt.Sprintf("failed to move tag %q to %s: %v", env.tagName, utils.TruncateString(env.desired, shortShaLength), err))
 	if source == promoterv1alpha1.ValidatedTagSourceSeeded {
+		// No validation asked for this move, so there is none to keep. The tag still does not exist: it
+		// is left out of status, and the next reconcile works out afresh where it starts.
+		env.seedFailed = true
 		return
+	}
+	if env.manualMove {
+		// The tag got to this commit by way of a manual validation. Tried again as an automatic move, it
+		// would be judged against where the tag still is, and might not be made at all.
+		source = promoterv1alpha1.ValidatedTagSourceManual
 	}
 	if env.next.Pending == nil || env.next.Pending.Sha != env.desired {
 		run.r.Recorder.Eventf(run.vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "MovingEnvironmentTag",
@@ -1163,7 +1271,12 @@ func (run *validatedRun) heldStatus(env *validatedEnvironment) *promoterv1alpha1
 func (run *validatedRun) record() {
 	environments := make([]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, 0, len(run.envs))
 	for _, env := range run.envs {
-		environments = append(environments, env.next)
+		status := env.next
+		if env.seedFailed {
+			// With no record of the tag, the next reconcile starts it afresh, at what is live then.
+			status.Tag = nil
+		}
+		environments = append(environments, status)
 	}
 	run.vcs.Status.Environments = environments
 	run.vcs.Status.DryBranch = &promoterv1alpha1.ValidatedCommitStatusDryBranchStatus{Sha: run.refs.Head}

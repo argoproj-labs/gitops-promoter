@@ -40,7 +40,8 @@ type Held struct {
 type Pending struct {
 	// Sha is the dry commit the tag should point at.
 	Sha string
-	// Source is the kind of validation that asked for the move.
+	// Source is Manual when a manual validation is part of what asked for the move, and Automatic
+	// otherwise. A manual move is made again wherever the commit is.
 	Source promoterv1alpha1.ValidatedTagSource
 }
 
@@ -65,34 +66,8 @@ type Input struct {
 	Idle bool
 }
 
-// Result is where an environment's tag should point.
-type Result struct {
-	// Held is the automatic validation that is still waiting, if any.
-	Held *Held
-	// Tag is the commit the tag should point at. It equals Input.Tag when the tag should stay.
-	Tag string
-	// Source is the kind of validation that moves the tag. Empty when the tag stays.
-	Source promoterv1alpha1.ValidatedTagSource
-}
-
-// Plan decides where an environment's tag should point.
-//
-// Validations are replayed in the order they were written and only the end result is returned, so the
-// commits in between are skipped. Manual and automatic validations follow different rules:
-//
-//   - A manual validation moves the tag to its commit, wherever that commit is: ahead of the tag, behind
-//     it, or on another line of history. It applies whether or not the environment is idle, and whatever
-//     automatic validation was waiting before it is dropped.
-//   - An automatic validation moves the tag only to a commit that descends from the commit the tag is on. A
-//     commit the tag has already passed is ignored. A commit on another line of history is held as Pinned,
-//     and stays held until a newer validation replaces it: which commit contains which never changes, so it
-//     can never apply later.
-//   - With WhenIdle, an automatic validation that could move the tag is held as Busy while the environment
-//     is not idle, and is looked at again the next time. After a manual validation moved the tag, the
-//     environment is not idle for the rest of the replay: it has something new to do.
-func Plan(ctx context.Context, graph Ancestry, in Input) (Result, error) {
-	p := planner{graph: graph, tag: in.Tag, busy: in.WhenIdle && !in.Idle, whenIdle: in.WhenIdle}
-
+// steps returns everything there is to replay for the tag, oldest first.
+func (in Input) steps() []Validation {
 	// What was left over from the previous decision comes first, oldest first: the move that was decided
 	// on and could not be pushed, then the automatic validation that was waiting behind it. The waiting
 	// one is looked at afresh, because the environment may have become idle, or the move it waited behind
@@ -107,22 +82,48 @@ func Plan(ctx context.Context, graph Ancestry, in Input) (Result, error) {
 	if in.RootCandidate != "" {
 		leftover = append(leftover, Validation{Sha: in.RootCandidate, Automatic: true})
 	}
+	return slices.Concat(leftover, in.Validations)
+}
 
-	for _, validation := range slices.Concat(leftover, in.Validations) {
-		if !validation.Automatic {
-			p.manual(validation.Sha)
-			continue
-		}
-		if err := p.automatic(ctx, validation.Sha); err != nil {
-			return Result{}, err
-		}
-	}
+// Result is where an environment's tag should point.
+type Result struct {
+	// Held is the automatic validation that is still waiting, if any.
+	Held *Held
+	// Tag is the commit the tag should point at. It equals Input.Tag when the tag should stay.
+	Tag string
+	// Source is the kind of validation that moves the tag. Empty when the tag stays.
+	Source promoterv1alpha1.ValidatedTagSource
+	// ManualMove is true when a manual validation moved the tag on the way to Tag, whatever kind of
+	// validation moved it last. The move then does not depend on where the tag was: should it have to be
+	// made again, it is made as a manual one. False when the tag stays.
+	ManualMove bool
+}
 
-	result := Result{Tag: p.tag, Held: p.held}
-	if p.tag != in.Tag {
-		result.Source = p.source
+// Plan decides where an environment's tag should point.
+//
+// Validations are replayed in the order they were written and only the end result is returned, so the
+// commits in between are skipped. Manual and automatic validations follow different rules:
+//
+//   - A manual validation moves the tag to its commit, wherever that commit is: ahead of the tag, behind
+//     it, or on another line of history. It applies whether or not the environment is idle, and whatever
+//     automatic validation was waiting before it is dropped.
+//   - An automatic validation moves the tag only to a commit that descends from the commit the tag is on.
+//     It then replaces whatever automatic validation was waiting: the newest commit the tag can move to
+//     is the one that counts.
+//   - An automatic validation of a commit the tag is on, or has passed, is ignored. It changes nothing,
+//     and an automatic validation that is waiting goes on waiting.
+//   - An automatic validation of a commit on another line of history cannot apply: which commit contains
+//     which never changes. It is held as Pinned, to say so, and stays held until a newer validation takes
+//     its place. It does not take the place of a validation that waits as Busy, which can still apply.
+//   - With WhenIdle, an automatic validation that could move the tag is held as Busy while the environment
+//     is not idle, and is looked at again the next time. After a manual validation moved the tag, the
+//     environment is not idle for the rest of the replay: it has something new to do.
+func Plan(ctx context.Context, graph Ancestry, in Input) (Result, error) {
+	p := planner{graph: graph, tag: in.Tag, busy: in.WhenIdle && !in.Idle, whenIdle: in.WhenIdle}
+	if err := p.replay(ctx, in.steps()); err != nil {
+		return Result{}, err
 	}
-	return result, nil
+	return p.result(in.Tag), nil
 }
 
 // planner carries one environment's tag through a replay.
@@ -135,6 +136,36 @@ type planner struct {
 	whenIdle bool
 	// busy is true when the environment is not idle.
 	busy bool
+	// manualMove is true once a manual validation has moved the tag.
+	manualMove bool
+}
+
+// replay applies validations in the order given.
+func (p *planner) replay(ctx context.Context, steps []Validation) error {
+	for _, validation := range steps {
+		if err := p.apply(ctx, validation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// apply applies one validation.
+func (p *planner) apply(ctx context.Context, validation Validation) error {
+	if !validation.Automatic {
+		p.manual(validation.Sha)
+		return nil
+	}
+	return p.automatic(ctx, validation.Sha)
+}
+
+// result reports where the replay has taken the tag from start.
+func (p *planner) result(start string) Result {
+	result := Result{Tag: p.tag, Held: p.held}
+	if p.tag != start {
+		result.Source, result.ManualMove = p.source, p.manualMove
+	}
+	return result
 }
 
 // manual applies a manual validation of sha. A person asked for this commit, so the tag goes there, and
@@ -146,14 +177,13 @@ func (p *planner) manual(sha string) {
 	}
 	p.tag = sha
 	p.source = promoterv1alpha1.ValidatedTagSourceManual
+	p.manualMove = true
 	// The environment now has this commit to hydrate and promote.
 	p.busy = p.whenIdle
 }
 
-// automatic applies an automatic validation of sha. It replaces whatever automatic validation was
-// waiting: the newest one is the one that counts.
+// automatic applies an automatic validation of sha.
 func (p *planner) automatic(ctx context.Context, sha string) error {
-	p.held = nil
 	if sha == p.tag {
 		return nil
 	}
@@ -163,49 +193,55 @@ func (p *planner) automatic(ctx context.Context, sha string) error {
 			return fmt.Errorf("failed to check whether %s descends from %s: %w", sha, p.tag, err)
 		}
 		if !ahead {
-			return p.hold(ctx, sha)
+			return p.notAhead(ctx, sha)
 		}
 	}
+	// The commit is the newest the tag can move to, so it takes the place of whatever was waiting.
 	if p.busy {
 		p.held = &Held{Sha: sha, Reason: promoterv1alpha1.ValidatedHeldReasonBusy}
 		return nil
 	}
+	p.held = nil
 	p.tag = sha
 	p.source = promoterv1alpha1.ValidatedTagSourceAutomatic
 	return nil
 }
 
-// hold deals with an automatic validation of a commit that does not descend from the commit the tag is
-// on. Either the tag is already past the commit, and there is nothing to wait for, or the two are on
+// notAhead deals with an automatic validation of a commit that does not descend from the commit the tag
+// is on. Either the tag has passed the commit, and the validation says nothing new, or the two are on
 // different lines of history, and the tag is pinned.
-func (p *planner) hold(ctx context.Context, sha string) error {
+func (p *planner) notAhead(ctx context.Context, sha string) error {
 	behind, err := p.graph.Contains(ctx, p.tag, sha)
 	if err != nil {
 		return fmt.Errorf("failed to check whether %s descends from %s: %w", p.tag, sha, err)
 	}
-	if !behind {
-		p.held = &Held{Sha: sha, Reason: promoterv1alpha1.ValidatedHeldReasonPinned}
+	if behind {
+		return nil
 	}
+	if p.held != nil && p.held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy {
+		// The validation that is waiting moves the tag once the environment is idle. This one never can,
+		// so it is no reason to give that up.
+		return nil
+	}
+	p.held = &Held{Sha: sha, Reason: promoterv1alpha1.ValidatedHeldReasonPinned}
 	return nil
 }
 
-// RecordSuccess returns an environment's success memory with sha as its newest entry. A commit that is
-// already the newest entry keeps the time it was first seen. The memory holds MaxSuccessfulShas commits.
+// RecordSuccess returns an environment's success memory with sha in it. A commit the environment
+// succeeds on for the first time becomes the newest entry. A commit it has succeeded on before keeps its
+// place and its time: an environment that goes back to an earlier commit, or that reports the commit it
+// runs again once a newer commit that changed nothing for it has a successor, has not cleared anything
+// new for the environments after it. The memory holds MaxSuccessfulShas commits.
 func RecordSuccess(successes []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, sha string, now metav1.Time) []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha {
-	if sha == "" || (len(successes) > 0 && successes[0].Sha == sha) {
+	remembered := slices.ContainsFunc(successes, func(success promoterv1alpha1.ValidatedCommitStatusSuccessfulSha) bool {
+		return success.Sha == sha
+	})
+	if sha == "" || remembered {
 		return successes
 	}
 	updated := make([]promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, 0, min(len(successes)+1, MaxSuccessfulShas))
 	updated = append(updated, promoterv1alpha1.ValidatedCommitStatusSuccessfulSha{Sha: sha, Time: now})
-	for _, success := range successes {
-		if len(updated) == MaxSuccessfulShas {
-			break
-		}
-		if success.Sha != sha {
-			updated = append(updated, success)
-		}
-	}
-	return updated
+	return append(updated, successes[:min(len(successes), MaxSuccessfulShas-1)]...)
 }
 
 // UpstreamCleared returns the newest dry commit that every upstream has succeeded on, "" when there is
@@ -236,8 +272,10 @@ func UpstreamCleared(upstreams ...[]promoterv1alpha1.ValidatedCommitStatusSucces
 		if !everywhere {
 			continue
 		}
-		// Ties go to the SHA that sorts first, so the answer does not depend on list order.
-		if cleared == "" || at.After(clearedAt.Time) || (at.Equal(&clearedAt) && candidate.Sha < cleared) {
+		// Status keeps times to the second, so two commits can be cleared at the same moment. The one
+		// listed first then wins: a memory lists the newest commit first. Going by anything else, the SHA
+		// for one, would let the answer flip once the times have been through status.
+		if cleared == "" || at.After(clearedAt.Time) {
 			cleared, clearedAt = candidate.Sha, at
 		}
 	}
