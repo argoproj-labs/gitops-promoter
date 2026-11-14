@@ -217,7 +217,10 @@ func (g *EnvironmentOperations) AppendValidations(ctx context.Context, entries [
 
 		reason := porcelainRejection(stdout, ref)
 		lastErr = fmt.Errorf("failed to push validation notes: %w (%s)", err, strings.TrimSpace(reason+" "+stderr))
-		if !isRetryableNotesRejection(reason, stderr) {
+		// A push that lost a race with another writer is tried again on top of what that writer pushed.
+		// Git says so in words that differ from one version to the next, so the words are only half of
+		// the test: a push that was rejected while the remote ref moved lost a race whatever it was told.
+		if !isRetryableNotesRejection(reason, stderr) && !g.validationNotesMoved(ctx, tip) {
 			break
 		}
 		logger.V(4).Info("Validation notes push rejected, retrying", "attempt", attempt, "reason", reason)
@@ -277,6 +280,9 @@ func (g *EnvironmentOperations) dropUnpushedValidations(ctx context.Context) {
 
 // isRetryableNotesRejection reports whether a rejected notes push lost a race with another writer, as
 // opposed to being refused. reason is git's own verdict for the ref when it gave one.
+//
+// It knows the words git has used for a lost race so far. A server may use others, which is why
+// AppendValidations also looks at whether the remote ref moved.
 func isRetryableNotesRejection(reason, stderr string) bool {
 	if reason == "" {
 		return isRetryableHistoryNotePushStderr(stderr)
@@ -287,7 +293,32 @@ func isRetryableNotesRejection(reason, stderr string) bool {
 	}
 	// "[remote rejected]" covers both a ref that moved while it was being updated and a server that
 	// refuses the push outright. Only the first is worth trying again.
-	return strings.Contains(reason, "lock") || strings.Contains(reason, "failed to update ref")
+	for _, lostRace := range []string{
+		// The ref was being updated by someone else at that moment.
+		"lock",
+		"failed to update ref",
+		// Git 2.50 and later name what the ref transaction ran into. Another writer created the ref
+		// first, or moved it after this writer read it.
+		"reference already exists",
+		"incorrect old value",
+	} {
+		if strings.Contains(reason, lostRace) {
+			return true
+		}
+	}
+	return false
+}
+
+// validationNotesMoved reports whether the remote notes ref is somewhere other than base, which is
+// where this writer found it when it last fetched. An error leaves that unknown, and unknown counts as
+// not moved: a push the server refuses for its own reasons must not be tried again and again.
+func (g *EnvironmentOperations) validationNotesMoved(ctx context.Context, base string) bool {
+	remote, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, PromoterValidationsNotesRef)
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("Could not tell whether the validation notes moved", "error", err.Error())
+		return false
+	}
+	return remote[PromoterValidationsNotesRef] != base
 }
 
 // validationLogFormat is one header line per notes commit: a record separator, then the commit, its

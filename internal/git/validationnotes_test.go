@@ -381,6 +381,61 @@ var _ = Describe("Validation notes", func() {
 		Expect(summarize(events)).To(Equal([]string{"b-tag Automatic " + first, "c-tag Automatic " + first}))
 	})
 
+	It("tries again when the push lost to another writer, in whatever words the server says so", func() {
+		ops := dry.newOps("default/gate")
+		// The server refuses the first push of the notes, in words this package does not know, after
+		// someone else's validation got there first. Hooks run inside the quarantine git sets up for
+		// the incoming push, where refs cannot be written, so the hook steps out of it.
+		marker := filepath.Join(dry.remoteDir, "first-push-refused")
+		other := `{"target":"` + tagProd + `","reason":"pushed by someone else"}`
+		hook := filepath.Join(dry.remoteDir, "hooks", "update")
+		script := `#!/bin/sh
+[ "$1" = "` + git.PromoterValidationsNotesRef + `" ] || exit 0
+[ -e "` + marker + `" ] && exit 0
+: > "` + marker + `"
+unset GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+export GIT_AUTHOR_NAME=someone GIT_AUTHOR_EMAIL=someone@example.com
+export GIT_COMMITTER_NAME=someone GIT_COMMITTER_EMAIL=someone@example.com
+git notes --ref=` + git.PromoterValidationsNotesRef + ` append -m '` + other + `' ` + first + ` || exit 0
+echo 'the ref is not where you last saw it, put a way no git has put it before' >&2
+exit 1
+`
+		Expect(os.WriteFile(hook, []byte(script), 0o755)).To(Succeed())
+
+		tip, err := ops.AppendValidations(ctx, []git.ValidationEntry{{Sha: second, Line: automatic(tagStaging)}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(marker).To(BeAnExistingFile(), "the first push was refused")
+		Expect(dry.remoteRef(git.PromoterValidationsNotesRef)).To(Equal(tip))
+
+		By("Keeping the validation that got there first, and adding this one after it")
+		events, _, err := ops.ListValidations(ctx, "", 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(summarize(events)).To(Equal([]string{
+			tagProd + " Git " + first,
+			tagStaging + " Automatic " + second,
+		}))
+	})
+
+	DescribeTable("whether a rejected push of the notes lost a race with another writer",
+		func(reason, stderr string, lostRace bool) {
+			Expect(git.IsRetryableNotesRejection(reason, stderr)).To(Equal(lostRace))
+		},
+		Entry("the remote ref moved before the push", "[rejected] (fetch first)", "", true),
+		Entry("the remote ref is not an ancestor any more", "[rejected] (non-fast-forward)", "", true),
+		Entry("the ref was locked by another push",
+			"[remote rejected] (cannot lock ref 'refs/notes/promoter.validations': is at 1111111 but expected 2222222)", "", true),
+		Entry("the ref could not be updated", "[remote rejected] (failed to update ref)", "", true),
+		Entry("another writer created the ref first, as git 2.50 and later put it",
+			"[remote rejected] (reference already exists)",
+			"remote: error: cannot lock ref 'refs/notes/promoter.validations': reference already exists", true),
+		Entry("another writer moved the ref first, as git 2.50 and later put it",
+			"[remote rejected] (incorrect old value provided)", "", true),
+		Entry("a hook refused the push", "[remote rejected] (hook declined)", "remote: notes are read-only", false),
+		Entry("the ref is protected", "[remote rejected] (protected branch hook declined)", "", false),
+		Entry("git gave no verdict for the ref, and stderr says the ref moved", "", "! [rejected] (fetch first)", true),
+		Entry("git gave no verdict for the ref, and stderr says nothing of a race", "", "fatal: unable to access the repository", false),
+	)
+
 	It("leaves nothing behind locally when the remote refuses the push", func() {
 		ops := dry.newOps("default/gate")
 		cursor, err := ops.AppendValidations(ctx, []git.ValidationEntry{{Sha: first, Line: automatic(tagStaging)}})
