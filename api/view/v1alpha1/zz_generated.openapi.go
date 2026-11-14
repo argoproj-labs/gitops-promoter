@@ -7609,7 +7609,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 					},
 					"tag": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Tag is the environment's tag as last read from the repository. Omitted until the controller has looked at the tag, and while a tag it tried to create could not be pushed.",
+							Description: "Tag is the environment's tag as last read from the repository.",
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName()),
 						},
 					},
@@ -7621,7 +7621,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 					},
 					"automaticValidation": {
 						SchemaProps: spec.SchemaProps{
-							Description: "AutomaticValidation is the newest dry commit the controller validated for this environment on its own: the commit it last wrote an automatic validation for or, for an environment that follows the dry branch, the head it last took. The controller validates again once UpstreamCleared is another commit. Omitted for an environment that people validate.",
+							Description: "AutomaticValidation is the newest dry commit the controller validated for this environment on its own: the commit it last wrote an automatic validation for or, for an environment that follows the dry branch, the head it last took. The controller validates again once UpstreamCleared is a commit that this one does not contain. Omitted for an environment that people validate.",
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusAutomaticValidation{}.OpenAPIModelName()),
 						},
 					},
@@ -7766,7 +7766,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPend
 					},
 					"source": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Source is the kind of validation that asked for the move. It is Manual when a manual validation is part of what moved the tag, also when an automatic one followed it: the move is then made wherever the commit is.",
+							Description: "Source is the kind of validation that asked for the move. It is Manual when a manual validation is part of what moved the tag, also when an automatic one followed it: the move is then made wherever the commit is. It is Seeded when no validation asked for the move: the tag does not exist and could not be created where it starts. The controller then works out again where that is.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

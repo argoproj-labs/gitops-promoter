@@ -503,6 +503,7 @@ func runController(
 	}
 	validatedCommitStatusReconciler := &controller.ValidatedCommitStatusReconciler{
 		Client:      localManager.GetClient(),
+		APIReader:   localManager.GetAPIReader(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,

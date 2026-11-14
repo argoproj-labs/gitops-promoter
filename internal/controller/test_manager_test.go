@@ -158,6 +158,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 
 	Expect((&ValidatedCommitStatusReconciler{
 		Client:      localMgr.GetClient(),
+		APIReader:   localMgr.GetAPIReader(),
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,

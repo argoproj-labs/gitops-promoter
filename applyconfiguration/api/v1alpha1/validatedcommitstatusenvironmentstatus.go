@@ -32,8 +32,7 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// When there is no in-flight proposed change, the controller copies the last child CommitStatus
 	// report instead of re-evaluating the gate.
 	GateEnvironmentCommitStatusApplyConfiguration `json:""`
-	// Tag is the environment's tag as last read from the repository. Omitted until the controller has
-	// looked at the tag, and while a tag it tried to create could not be pushed.
+	// Tag is the environment's tag as last read from the repository.
 	Tag *ValidatedCommitStatusTagStatusApplyConfiguration `json:"tag,omitempty"`
 	// UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on.
 	// For an environment with no upstreams it is the head of the dry branch. It tells an approver what
@@ -41,8 +40,8 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	UpstreamCleared *ValidatedCommitStatusUpstreamClearedApplyConfiguration `json:"upstreamCleared,omitempty"`
 	// AutomaticValidation is the newest dry commit the controller validated for this environment on its
 	// own: the commit it last wrote an automatic validation for or, for an environment that follows the
-	// dry branch, the head it last took. The controller validates again once UpstreamCleared is another
-	// commit. Omitted for an environment that people validate.
+	// dry branch, the head it last took. The controller validates again once UpstreamCleared is a commit
+	// that this one does not contain. Omitted for an environment that people validate.
 	AutomaticValidation *ValidatedCommitStatusAutomaticValidationApplyConfiguration `json:"automaticValidation,omitempty"`
 	// Held is set only while an automatic validation is waiting to be applied.
 	Held *ValidatedCommitStatusHeldApplyConfiguration `json:"held,omitempty"`

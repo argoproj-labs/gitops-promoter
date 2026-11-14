@@ -172,6 +172,11 @@ var _ = Describe("Plan: where an environment's tag should point", func() {
 			result := plan(validations.Input{Tag: "x4", Held: pinned("x4")})
 			Expect(result).To(Equal(validations.Result{Tag: "x4"}))
 		})
+
+		It("goes on holding a commit when a newer validation is of a commit it already contains", func() {
+			result := plan(validations.Input{Tag: "h2", Held: pinned("x4"), Validations: automatic("x3")})
+			Expect(result).To(Equal(validations.Result{Tag: "h2", Held: pinned("x4")}))
+		})
 	})
 
 	Context("the head of the dry branch, for an environment that follows it", func() {
@@ -242,35 +247,67 @@ var _ = Describe("Success memory", func() {
 
 	Describe("RecordSuccess", func() {
 		It("puts a new commit first", func() {
-			Expect(validations.RecordSuccess(list(success("x1", 1)), "x2", at(2))).To(Equal(list(success("x2", 2), success("x1", 1))))
+			Expect(validations.RecordSuccess(list(success("x1", 1)), "x2", at(2), "x2")).To(Equal(list(success("x2", 2), success("x1", 1))))
 		})
 
 		It("keeps the time a commit was first seen while it stays the newest", func() {
 			memory := list(success("x2", 2), success("x1", 1))
-			Expect(validations.RecordSuccess(memory, "x2", at(9))).To(Equal(memory))
+			Expect(validations.RecordSuccess(memory, "x2", at(9), "x2")).To(Equal(memory))
 		})
 
 		It("leaves a commit where it is when the environment succeeds on it again", func() {
 			By("The environment going back to x1, or reporting x1 again once x2, which changed nothing for it, has a successor")
 			memory := list(success("x2", 2), success("x1", 1))
-			Expect(validations.RecordSuccess(memory, "x1", at(5))).To(Equal(memory))
-			Expect(validations.UpstreamCleared(validations.RecordSuccess(memory, "x1", at(5)))).To(Equal("x2"),
+			Expect(validations.RecordSuccess(memory, "x1", at(5), "x1")).To(Equal(memory))
+			Expect(validations.UpstreamCleared(validations.RecordSuccess(memory, "x1", at(5), "x1"))).To(Equal("x2"),
 				"what was cleared for the next environment does not step back")
 		})
 
 		It("records nothing for an empty SHA", func() {
 			memory := list(success("x1", 1))
-			Expect(validations.RecordSuccess(memory, "", at(2))).To(Equal(memory))
+			Expect(validations.RecordSuccess(memory, "", at(2), "x1")).To(Equal(memory))
 		})
 
 		It("forgets the oldest commit beyond the cap", func() {
+			By("The environment merging one commit after another, so that each is the live one in its turn")
 			var memory []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha
 			for i := range validations.MaxSuccessfulShas + 3 {
-				memory = validations.RecordSuccess(memory, fmt.Sprintf("x%d", i), at(i))
+				sha := fmt.Sprintf("x%d", i)
+				memory = validations.RecordSuccess(memory, sha, at(i), sha)
 			}
 			Expect(memory).To(HaveLen(validations.MaxSuccessfulShas))
 			Expect(memory[0].Sha).To(Equal(fmt.Sprintf("x%d", validations.MaxSuccessfulShas+2)))
 			Expect(memory[validations.MaxSuccessfulShas-1].Sha).To(Equal("x3"))
+		})
+
+		It("does not forget the commit that is live, however many commits that changed nothing came after it", func() {
+			memory := list(success("live", 0))
+			for i := 1; i <= validations.MaxSuccessfulShas+3; i++ {
+				memory = validations.RecordSuccess(memory, fmt.Sprintf("n%d", i), at(i), "live")
+			}
+			Expect(memory).To(HaveLen(validations.MaxSuccessfulShas))
+			Expect(memory[0].Sha).To(Equal(fmt.Sprintf("n%d", validations.MaxSuccessfulShas+3)))
+			Expect(memory[validations.MaxSuccessfulShas-1]).To(Equal(success("live", 0)), "with the time it was first seen")
+			Expect(memory[validations.MaxSuccessfulShas-2].Sha).To(Equal("n5"), "the oldest of the others made room")
+
+			By("The environment reporting the live commit again, once a later commit is proposed for it")
+			again := validations.RecordSuccess(memory, "live", at(99), "live")
+			Expect(again).To(Equal(memory))
+			Expect(validations.UpstreamCleared(again)).To(Equal(fmt.Sprintf("n%d", validations.MaxSuccessfulShas+3)),
+				"what was cleared for the next environment does not step back")
+
+			By("Forgetting it like any other once another commit is live")
+			memory = validations.RecordSuccess(memory, "next", at(100), "next")
+			Expect(memory[validations.MaxSuccessfulShas-1].Sha).To(Equal("n5"))
+		})
+
+		It("puts a commit that changed nothing ahead of the live commit it was first seen with", func() {
+			By("The controller meeting an environment for the first time, with a hydrator note already ahead of what it runs")
+			var memory []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha
+			memory = validations.RecordSuccess(memory, "x1", at(1), "x1")
+			memory = validations.RecordSuccess(memory, "x2", at(1), "x1")
+			Expect(memory).To(Equal(list(success("x2", 1), success("x1", 1))))
+			Expect(validations.UpstreamCleared(memory)).To(Equal("x2"))
 		})
 	})
 

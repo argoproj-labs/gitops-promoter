@@ -38,7 +38,7 @@ status:
       upstreamCleared:
         sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
       # Newest SHA the controller validated for the environment on its own. It validates again once
-      # upstreamCleared is another commit.
+      # upstreamCleared is a commit that this one does not contain.
       automaticValidation:
         sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
       successfulShas:

@@ -110,8 +110,9 @@ type Result struct {
 //   - An automatic validation moves the tag only to a commit that descends from the commit the tag is on.
 //     It then replaces whatever automatic validation was waiting: the newest commit the tag can move to
 //     is the one that counts.
-//   - An automatic validation of a commit the tag is on, or has passed, is ignored. It changes nothing,
-//     and an automatic validation that is waiting goes on waiting.
+//   - An automatic validation of a commit the tag is on, or has passed, is ignored. So is one of a commit
+//     that the commit which is waiting already contains. It changes nothing, and the automatic validation
+//     that is waiting goes on waiting: a validation is not taken back by a later one of an older commit.
 //   - An automatic validation of a commit on another line of history cannot apply: which commit contains
 //     which never changes. It is held as Pinned, to say so, and stays held until a newer validation takes
 //     its place. It does not take the place of a validation that waits as Busy, which can still apply.
@@ -187,6 +188,16 @@ func (p *planner) automatic(ctx context.Context, sha string) error {
 	if sha == p.tag {
 		return nil
 	}
+	if p.held != nil {
+		// What is waiting stands for everything it contains.
+		waiting, err := p.graph.Contains(ctx, p.held.Sha, sha)
+		if err != nil {
+			return fmt.Errorf("failed to check whether %s descends from %s: %w", p.held.Sha, sha, err)
+		}
+		if waiting {
+			return nil
+		}
+	}
 	if p.tag != "" {
 		ahead, err := p.graph.Contains(ctx, sha, p.tag)
 		if err != nil {
@@ -231,17 +242,30 @@ func (p *planner) notAhead(ctx context.Context, sha string) error {
 // succeeds on for the first time becomes the newest entry. A commit it has succeeded on before keeps its
 // place and its time: an environment that goes back to an earlier commit, or that reports the commit it
 // runs again once a newer commit that changed nothing for it has a successor, has not cleared anything
-// new for the environments after it. The memory holds MaxSuccessfulShas commits.
-func RecordSuccess(successes []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, sha string, now metav1.Time) []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha {
+// new for the environments after it.
+//
+// The memory holds MaxSuccessfulShas commits, and the oldest make room for a new one. The exception is
+// live, the commit that is live in the environment: the environment goes on succeeding on it for as long
+// as it runs it, however many newer commits that change nothing are recorded meanwhile, and it has to be
+// remembered still when the environment reports it again.
+func RecordSuccess(successes []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, sha string, now metav1.Time, live string) []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha {
 	remembered := slices.ContainsFunc(successes, func(success promoterv1alpha1.ValidatedCommitStatusSuccessfulSha) bool {
 		return success.Sha == sha
 	})
 	if sha == "" || remembered {
 		return successes
 	}
-	updated := make([]promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, 0, min(len(successes)+1, MaxSuccessfulShas))
+	updated := make([]promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, 0, len(successes)+1)
 	updated = append(updated, promoterv1alpha1.ValidatedCommitStatusSuccessfulSha{Sha: sha, Time: now})
-	return append(updated, successes[:min(len(successes), MaxSuccessfulShas-1)]...)
+	updated = append(updated, successes...)
+	for len(updated) > MaxSuccessfulShas {
+		oldest := len(updated) - 1
+		if updated[oldest].Sha == live && oldest > 0 {
+			oldest--
+		}
+		updated = slices.Delete(updated, oldest, oldest+1)
+	}
+	return updated
 }
 
 // UpstreamCleared returns the newest dry commit that every upstream has succeeded on, "" when there is

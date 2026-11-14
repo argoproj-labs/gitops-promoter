@@ -2221,7 +2221,7 @@ export type components = {
         };
         /** @description ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch. */
         ValidatedCommitStatusEnvironmentStatus: {
-            /** @description AutomaticValidation is the newest dry commit the controller validated for this environment on its own: the commit it last wrote an automatic validation for or, for an environment that follows the dry branch, the head it last took. The controller validates again once UpstreamCleared is another commit. Omitted for an environment that people validate. */
+            /** @description AutomaticValidation is the newest dry commit the controller validated for this environment on its own: the commit it last wrote an automatic validation for or, for an environment that follows the dry branch, the head it last took. The controller validates again once UpstreamCleared is a commit that this one does not contain. Omitted for an environment that people validate. */
             automaticValidation?: components["schemas"]["ValidatedCommitStatusAutomaticValidation"];
             /**
              * @description Branch is the environment branch name.
@@ -2240,7 +2240,7 @@ export type components = {
             reportedSha?: string;
             /** @description SuccessfulShas lists the dry commits this environment succeeded on, newest first, capped at 10. An environment succeeds on a commit when the commit is live in it, or changed nothing for it, and every active commit status passes. */
             successfulShas?: components["schemas"]["ValidatedCommitStatusSuccessfulSha"][];
-            /** @description Tag is the environment's tag as last read from the repository. Omitted until the controller has looked at the tag, and while a tag it tried to create could not be pushed. */
+            /** @description Tag is the environment's tag as last read from the repository. */
             tag?: components["schemas"]["ValidatedCommitStatusTagStatus"];
             /** @description UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on. For an environment with no upstreams it is the head of the dry branch. It tells an approver what is ready to validate for a Manual environment. */
             upstreamCleared?: components["schemas"]["ValidatedCommitStatusUpstreamCleared"];
@@ -2272,7 +2272,7 @@ export type components = {
              */
             sha: string;
             /**
-             * @description Source is the kind of validation that asked for the move. It is Manual when a manual validation is part of what moved the tag, also when an automatic one followed it: the move is then made wherever the commit is.
+             * @description Source is the kind of validation that asked for the move. It is Manual when a manual validation is part of what moved the tag, also when an automatic one followed it: the move is then made wherever the commit is. It is Seeded when no validation asked for the move: the tag does not exist and could not be created where it starts. The controller then works out again where that is.
              * @default
              */
             source: string;

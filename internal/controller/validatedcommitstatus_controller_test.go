@@ -20,8 +20,10 @@ import (
 	"context"
 	_ "embed"
 	stderrors "errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -778,6 +780,67 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 		})
 	})
 
+	Context("When a commit that changed nothing is already ahead of what an environment runs as the gate is created", func() {
+		It("remembers the commit the environment runs too, so that nothing steps back when a later commit is proposed", func() {
+			p := newValidatedPipeline(ctx, "validated-no-op-first")
+			first := p.dryHead()
+			live := p.dryParent(first)
+
+			By("Development's hydrator having processed the head before the gate exists: it changed nothing")
+			Expect(addNoteToEnvironment(ctx, p.gitPath, testBranchDevelopmentNext, first)).To(Succeed())
+			p.create()
+			p.expectTag(testBranchDevelopment, first)
+			p.expectTag(testBranchStaging, first)
+			Eventually(func(g Gomega) {
+				successes := p.environmentStatus(g, testBranchDevelopment).SuccessfulShas
+				remembered := make([]string, 0, len(successes))
+				for _, success := range successes {
+					remembered = append(remembered, success.Sha)
+				}
+				g.Expect(remembered).To(Equal([]string{first, live}))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			validatedForStaging := func(drySha string) int {
+				count := 0
+				for _, line := range p.validationsOn(drySha) {
+					if line.Target == validations.TagName(testBranchStaging, "") {
+						count++
+					}
+				}
+				return count
+			}
+			before := validatedForStaging(live)
+
+			By("Proposing a later commit for development, which then reports the commit it still runs")
+			p.setAutoMerge(testBranchDevelopment, false)
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				key := client.ObjectKey{Namespace: "default", Name: utils.ChangeTransferPolicyNameForEnvironment(p.promotionStrategy.Name, testBranchDevelopment)}
+				g.Expect(k8sClient.Get(ctx, key, &ctp)).To(Succeed())
+				g.Expect(ctp.Spec.AutoMerge).To(HaveValue(BeFalse()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.hydrate(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				observed := p.observed(g, testBranchDevelopment)
+				g.Expect(observed.Active.Dry.Sha).To(Equal(live))
+				g.Expect(observed.Proposed.Dry.Sha).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+
+			By("Leaving what is cleared and validated for staging where it was")
+			Consistently(func(g Gomega) {
+				staging := p.environmentStatus(g, testBranchStaging)
+				g.Expect(staging.UpstreamCleared).NotTo(BeNil())
+				g.Expect(staging.UpstreamCleared.Sha).To(Equal(first))
+				g.Expect(staging.AutomaticValidation).NotTo(BeNil())
+				g.Expect(staging.AutomaticValidation.Sha).To(Equal(first))
+				g.Expect(validatedForStaging(live)).To(Equal(before), "the commit development runs is not validated for staging again")
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+			Expect(p.tag(testBranchStaging)).To(Equal(first))
+		})
+	})
+
 	Context("When a second ValidatedCommitStatus references the same PromotionStrategy", func() {
 		It("leaves the tags to the one the PromotionStrategy uses", func() {
 			p := newValidatedPipeline(ctx, "validated-two-gates")
@@ -1128,7 +1191,7 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 			p.create()
 			head := p.dryHead()
 
-			By("Reporting the failure, and keeping no record of a tag that does not exist")
+			By("Reporting the failure, with what git answered")
 			refused := func(g Gomega) {
 				var gate promoterv1alpha1.ValidatedCommitStatus
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
@@ -1137,7 +1200,14 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 				g.Expect(ready.Reason).To(Equal(string(promoterConditions.EnvironmentTagPushFailed)))
 				g.Expect(ready.Message).To(ContainSubstring(`failed to move tag "environment/development-tag" to ` + short(head)))
-				g.Expect(p.environmentStatus(g, testBranchDevelopment).Tag).To(BeNil())
+
+				status := p.environmentStatus(g, testBranchDevelopment)
+				g.Expect(status.Tag).NotTo(BeNil())
+				g.Expect(status.Tag.Sha).To(BeEmpty())
+				g.Expect(status.Pending).NotTo(BeNil())
+				g.Expect(status.Pending.Sha).To(Equal(head))
+				g.Expect(status.Pending.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceSeeded))
+				g.Expect(status.Pending.Message).To(ContainSubstring("hook declined"))
 			}
 			Eventually(refused, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1151,6 +1221,9 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
 			p.expectTag(testBranchDevelopment, head)
 			p.expectTagSource(testBranchDevelopment, promoterv1alpha1.ValidatedTagSourceSeeded)
+			Eventually(func(g Gomega) {
+				g.Expect(p.environmentStatus(g, testBranchDevelopment).Pending).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
 			p.expectReady()
 		})
 	})
@@ -1377,20 +1450,72 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 		return status
 	}
 
-	DescribeTable("the dry commit an environment has succeeded on",
-		func(observed promoterv1alpha1.EnvironmentStatus, expected string) {
-			Expect(succeededOn(observed)).To(Equal(expected))
+	DescribeTable("the dry commits an environment has succeeded on",
+		func(observed promoterv1alpha1.EnvironmentStatus, expectedLive, expectedUnchanged string) {
+			live, unchanged := succeededOn(observed)
+			Expect(live).To(Equal(expectedLive), "the commit that is live")
+			Expect(unchanged).To(Equal(expectedUnchanged), "the newer commit that changed nothing")
 		},
-		Entry("is the live commit when every active commit status passes", environment(shaOne, shaOne, "", passing), shaOne),
-		Entry("is the live commit when there are no active commit statuses", environment(shaOne, shaOne, "", nil), shaOne),
-		Entry("is none while an active commit status is pending", environment(shaOne, shaOne, "", pending), ""),
-		Entry("is none while nothing is live", environment("", shaOne, "", passing), ""),
-		Entry("is the live commit while a newer one is proposed", environment(shaOne, shaTwo, shaTwo, passing), shaOne),
-		Entry("is the commit a hydrator note records when hydrating it changed nothing", environment(shaOne, shaOne, shaTwo, passing), shaTwo),
-		Entry("is none for a commit that changed nothing while an active commit status is pending", environment(shaOne, shaOne, shaTwo, pending), ""),
-		Entry("is none when the hydrator recorded something that is not a commit", environment("n/a", "n/a", "", passing), ""),
-		Entry("is none when a hydrator note records something that is not a commit", environment(shaOne, shaOne, "4f2a9c", passing), ""),
+		Entry("are the live commit when every active commit status passes", environment(shaOne, shaOne, "", passing), shaOne, ""),
+		Entry("are the live commit when there are no active commit statuses", environment(shaOne, shaOne, "", nil), shaOne, ""),
+		Entry("are none while an active commit status is pending", environment(shaOne, shaOne, "", pending), "", ""),
+		Entry("are none while nothing is live", environment("", shaOne, "", passing), "", ""),
+		Entry("are the live commit alone while a newer one is proposed", environment(shaOne, shaTwo, shaTwo, passing), shaOne, ""),
+		Entry("are the live commit and the commit a hydrator note records when hydrating it changed nothing",
+			environment(shaOne, shaOne, shaTwo, passing), shaOne, shaTwo),
+		Entry("are the live commit alone when the hydrator note is about that commit", environment(shaOne, shaOne, shaOne, passing), shaOne, ""),
+		Entry("are none for a commit that changed nothing while an active commit status is pending", environment(shaOne, shaOne, shaTwo, pending), "", ""),
+		Entry("are none when the hydrator recorded something that is not a commit", environment("n/a", "n/a", "", passing), "", ""),
+		Entry("are the live commit alone when a hydrator note records something that is not a commit",
+			environment(shaOne, shaOne, "4f2a9c", passing), shaOne, ""),
 	)
+
+	Describe("what an environment is remembered to have succeeded on", func() {
+		noOp := func(i int) string { return fmt.Sprintf("%040x", 0xa000+i) }
+		// observe runs one reconcile's look at an environment, starting from what the last one remembered.
+		observe := func(memory []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, observed promoterv1alpha1.EnvironmentStatus, at time.Time) []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha {
+			env := &validatedEnvironment{branch: testBranchDevelopment, tagName: "environment/development-tag", validation: promoterv1alpha1.ValidationAutomatic, observed: observed}
+			env.previous.SuccessfulShas = memory
+			run := &validatedRun{envs: []*validatedEnvironment{env}, now: metav1.NewTime(at)}
+			run.observe()
+			return env.next.SuccessfulShas
+		}
+		start := time.Date(2026, 11, 13, 15, 0, 0, 0, time.UTC)
+
+		It("includes the live commit when the controller first meets the environment with a newer commit that changed nothing", func() {
+			memory := observe(nil, environment(shaOne, shaOne, shaTwo, passing), start)
+			Expect(memory).To(HaveLen(2))
+			Expect(memory[0].Sha).To(Equal(shaTwo), "the commit that changed nothing is the newer of the two")
+			Expect(memory[1].Sha).To(Equal(shaOne))
+
+			By("The environment reporting the live commit again, once a later commit is proposed for it")
+			again := observe(memory, environment(shaOne, "3333333333333333333333333333333333333333", "", passing), start.Add(time.Minute))
+			Expect(again).To(Equal(memory))
+			Expect(validations.UpstreamCleared(again)).To(Equal(shaTwo), "what is cleared for the next environment does not step back")
+		})
+
+		It("still has the live commit after more commits that changed nothing than it holds", func() {
+			memory := observe(nil, environment(shaOne, shaOne, "", passing), start)
+			for i := 1; i <= validations.MaxSuccessfulShas+2; i++ {
+				memory = observe(memory, environment(shaOne, shaOne, noOp(i), passing), start.Add(time.Duration(i)*time.Minute))
+			}
+			newest := noOp(validations.MaxSuccessfulShas + 2)
+			Expect(memory).To(HaveLen(validations.MaxSuccessfulShas))
+			Expect(memory[0].Sha).To(Equal(newest))
+			Expect(memory[validations.MaxSuccessfulShas-1].Sha).To(Equal(shaOne))
+
+			By("The environment reporting the live commit again, once a later commit is proposed for it")
+			again := observe(memory, environment(shaOne, shaTwo, shaTwo, passing), start.Add(time.Hour))
+			Expect(again).To(Equal(memory))
+			Expect(validations.UpstreamCleared(again)).To(Equal(newest))
+		})
+
+		It("records a success to the second, as status keeps it", func() {
+			memory := observe(nil, environment(shaOne, shaOne, "", passing), start.Add(700*time.Millisecond))
+			Expect(memory).To(HaveLen(1))
+			Expect(memory[0].Time.Time).To(Equal(start))
+		})
+	})
 
 	DescribeTable("what the gate reports on a proposed commit",
 		func(observed promoterv1alpha1.EnvironmentStatus, tagSha string, phase promoterv1alpha1.CommitStatusPhase, description string) {
@@ -1534,6 +1659,15 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 		})
 	})
 
+	It("reads the gate from the API server when it was given a reader for it, and from the cache otherwise", func() {
+		cached := fake.NewClientBuilder().WithScheme(utils.GetScheme()).Build()
+		direct := fake.NewClientBuilder().WithScheme(utils.GetScheme()).Build()
+
+		Expect((&ValidatedCommitStatusReconciler{Client: cached, APIReader: direct}).gateReader()).To(BeIdenticalTo(direct),
+			"status is the record of what the controller did in git, and the cache may not have the last of it yet")
+		Expect((&ValidatedCommitStatusReconciler{Client: cached}).gateReader()).To(BeIdenticalTo(cached))
+	})
+
 	It("retries a failure soon the first time only", func() {
 		pushFailed := string(promoterConditions.EnvironmentTagPushFailed)
 		condition := func(status metav1.ConditionStatus, reason string) *metav1.Condition {
@@ -1615,26 +1749,65 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 	})
 
 	Describe("a tag the controller could not create", func() {
-		It("is left out of status, so that the next reconcile works out again where it starts", func() {
-			recorder := events.NewFakeRecorder(10)
-			run := &validatedRun{r: &ValidatedCommitStatusReconciler{Recorder: recorder}, vcs: &promoterv1alpha1.ValidatedCommitStatus{}}
-			env := &validatedEnvironment{branch: testBranchDevelopment, tagName: "environment/development-tag", desired: shaOne}
+		newRun := func(env *validatedEnvironment) *validatedRun {
+			return &validatedRun{
+				r:         &ValidatedCommitStatusReconciler{Recorder: events.NewFakeRecorder(10)},
+				vcs:       &promoterv1alpha1.ValidatedCommitStatus{},
+				envs:      []*validatedEnvironment{env},
+				graph:     ancestry{shaOne: nil, shaTwo: {shaOne}},
+				available: map[string]bool{shaOne: true, shaTwo: true},
+			}
+		}
+		newEnvironment := func() *validatedEnvironment {
+			env := &validatedEnvironment{
+				branch: testBranchDevelopment, tagName: "environment/development-tag", desired: shaOne,
+				validation: promoterv1alpha1.ValidationAutomatic, advance: promoterv1alpha1.AdvanceImmediately,
+			}
 			env.next.Branch = env.branch
 			env.next.Tag = &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.tagName}
-			run.envs = []*validatedEnvironment{env}
+			return env
+		}
 
+		It("is kept as a move that no validation asked for, so that the next reconcile works out again where it starts", func() {
+			env := newEnvironment()
+			run := newRun(env)
 			run.keepPending(env, promoterv1alpha1.ValidatedTagSourceSeeded, stderrors.New("remote: this tag is protected"))
 			run.record()
 
 			Expect(run.problems).To(ConsistOf(ContainSubstring(`failed to move tag "environment/development-tag" to 1111111`)))
-			Expect(env.next.Tag).NotTo(BeNil(), "the gate still reports on the tag in this reconcile")
 			recorded := run.vcs.Status.Environments[0]
-			Expect(recorded.Tag).To(BeNil())
-			Expect(recorded.Pending).To(BeNil(), "no validation asked for the move")
+			Expect(recorded.Tag).To(Equal(&promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "environment/development-tag"}),
+				"the tag's name stays on record, which is how a change of name is noticed")
+			Expect(recorded.Pending).To(Equal(&promoterv1alpha1.ValidatedCommitStatusPending{
+				Sha: shaOne, Source: promoterv1alpha1.ValidatedTagSourceSeeded, Message: "remote: this tag is protected",
+			}))
 
-			By("Seeding the tag again the next time, although nothing else is new")
+			By("Working out where the tag starts again the next time, although nothing else is new")
 			again := &validatedEnvironment{previous: recorded}
+			again.next.Pending = recorded.Pending
 			Expect((&validatedRun{}).needsSeed(again)).To(BeTrue())
+		})
+
+		It("is not replayed as a validation of the commit it was tried at", func() {
+			By("Something else being live by now than when the tag could not be created")
+			env := newEnvironment()
+			env.seed = shaTwo
+			env.next.Pending = &promoterv1alpha1.ValidatedCommitStatusPending{Sha: shaOne, Source: promoterv1alpha1.ValidatedTagSourceSeeded}
+			run := newRun(env)
+			Expect(run.planEnvironment(context.Background(), env)).To(Succeed())
+			Expect(env.desired).To(Equal(shaTwo))
+			Expect(env.desiredSource).To(BeEmpty(), "the tag is created where it starts now")
+			Expect(env.held).To(BeNil())
+		})
+
+		It("takes the place of a move that no longer stands", func() {
+			By("A person having validated a commit, and then the live commit again, while the tag could not be created")
+			env := newEnvironment()
+			env.next.Pending = &promoterv1alpha1.ValidatedCommitStatusPending{Sha: shaTwo, Source: promoterv1alpha1.ValidatedTagSourceManual}
+			run := newRun(env)
+			run.keepPending(env, promoterv1alpha1.ValidatedTagSourceSeeded, stderrors.New("remote: this tag is protected"))
+			Expect(env.next.Pending.Sha).To(Equal(shaOne))
+			Expect(env.next.Pending.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceSeeded))
 		})
 	})
 
@@ -1726,6 +1899,10 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 
 			By("Keeping a move a person asked for")
 			env = observe(promoterv1alpha1.ValidationManual, promoterv1alpha1.ValidatedTagSourceManual)
+			Expect(env.next.Pending).NotTo(BeNil())
+
+			By("Keeping the record of a tag that could not be created, which is how it is tried again")
+			env = observe(promoterv1alpha1.ValidationManual, promoterv1alpha1.ValidatedTagSourceSeeded)
 			Expect(env.next.Pending).NotTo(BeNil())
 		})
 	})
@@ -1854,6 +2031,44 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 			Expect(env.next.Tag.Source).To(BeEmpty())
 			Expect(env.desired).To(Equal("x3"))
 			Expect(recorder.Events).To(BeEmpty())
+		})
+	})
+
+	Describe("whether a cleared commit is one the controller has validated already", func() {
+		// x1 - x2 - x3 - x4, with h1 branched off x2.
+		history := ancestry{"x1": nil, "x2": {"x1"}, "x3": {"x2"}, "x4": {"x3"}, "h1": {"x2"}}
+		validated := func(last, cleared string, missing ...string) bool {
+			GinkgoHelper()
+			available := map[string]bool{}
+			for sha := range history {
+				available[sha] = !slices.Contains(missing, sha)
+			}
+			env := &validatedEnvironment{branch: testBranchStaging, cleared: cleared}
+			if last != "" {
+				env.previous.AutomaticValidation = &promoterv1alpha1.ValidatedCommitStatusAutomaticValidation{Sha: last}
+			}
+			already, err := (&validatedRun{graph: history, available: available}).alreadyValidated(context.Background(), env)
+			Expect(err).NotTo(HaveOccurred())
+			return already
+		}
+
+		It("is not while the controller has validated nothing for the environment", func() {
+			Expect(validated("", "x3")).To(BeFalse())
+		})
+
+		It("is when it is the commit last validated, or one that commit contains", func() {
+			Expect(validated("x3", "x3")).To(BeTrue())
+			Expect(validated("x4", "x2")).To(BeTrue(), "what is cleared stepped back; that takes no validation back")
+		})
+
+		It("is not when it is newer, or on another line of history", func() {
+			Expect(validated("x3", "x4")).To(BeFalse())
+			Expect(validated("x4", "h1")).To(BeFalse(), "a hotfix an upstream environment was put on")
+			Expect(validated("h1", "x4")).To(BeFalse())
+		})
+
+		It("is not when the repository no longer has one of the two commits", func() {
+			Expect(validated("x4", "x2", "x4")).To(BeFalse())
 		})
 	})
 

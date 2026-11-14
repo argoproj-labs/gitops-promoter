@@ -235,9 +235,10 @@ type ValidatedCommitStatusPending struct {
 
 	// Source is the kind of validation that asked for the move. It is Manual when a manual validation is
 	// part of what moved the tag, also when an automatic one followed it: the move is then made wherever
-	// the commit is.
+	// the commit is. It is Seeded when no validation asked for the move: the tag does not exist and could
+	// not be created where it starts. The controller then works out again where that is.
 	// +required
-	// +kubebuilder:validation:Enum=Manual;Automatic
+	// +kubebuilder:validation:Enum=Manual;Automatic;Seeded
 	Source ValidatedTagSource `json:"source"`
 
 	// Message is the error from the last attempt to push the tag.
@@ -270,8 +271,7 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// report instead of re-evaluating the gate.
 	GateEnvironmentCommitStatus `json:",inline"`
 
-	// Tag is the environment's tag as last read from the repository. Omitted until the controller has
-	// looked at the tag, and while a tag it tried to create could not be pushed.
+	// Tag is the environment's tag as last read from the repository.
 	// +optional
 	Tag *ValidatedCommitStatusTagStatus `json:"tag,omitempty"`
 
@@ -283,8 +283,8 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 
 	// AutomaticValidation is the newest dry commit the controller validated for this environment on its
 	// own: the commit it last wrote an automatic validation for or, for an environment that follows the
-	// dry branch, the head it last took. The controller validates again once UpstreamCleared is another
-	// commit. Omitted for an environment that people validate.
+	// dry branch, the head it last took. The controller validates again once UpstreamCleared is a commit
+	// that this one does not contain. Omitted for an environment that people validate.
 	// +optional
 	AutomaticValidation *ValidatedCommitStatusAutomaticValidation `json:"automaticValidation,omitempty"`
 

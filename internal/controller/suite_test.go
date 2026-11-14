@@ -354,6 +354,7 @@ var _ = SynchronizedBeforeSuite(func() {
 
 	validatedCommitStatusReconciler := &ValidatedCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
+		APIReader:   k8sManager.GetAPIReader(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,

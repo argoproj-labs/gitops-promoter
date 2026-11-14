@@ -252,6 +252,12 @@ var _ = Describe("Plan: advancing when idle", func() {
 		Entry("of a commit on another line of history, which can never apply", "h2"),
 	)
 
+	It("goes on holding a commit when a newer validation is of a commit it already contains", func() {
+		By("An upstream environment succeeding on an older commit after the newer one: no validation is taken back")
+		result := plan(validations.Input{Tag: "x2", Held: busy("x4"), Validations: automatic("x3")})
+		Expect(result).To(Equal(validations.Result{Tag: "x2", Held: busy("x4")}))
+	})
+
 	It("holds the newest commit the tag can move to, whichever line of history the one before it was on", func() {
 		result := plan(validations.Input{Tag: "x2", Held: busy("h1"), Validations: automatic("x3")})
 		Expect(result).To(Equal(validations.Result{Tag: "x2", Held: busy("x3")}))

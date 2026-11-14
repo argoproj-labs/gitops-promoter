@@ -30,7 +30,8 @@ type ValidatedCommitStatusPendingApplyConfiguration struct {
 	Sha *string `json:"sha,omitempty"`
 	// Source is the kind of validation that asked for the move. It is Manual when a manual validation is
 	// part of what moved the tag, also when an automatic one followed it: the move is then made wherever
-	// the commit is.
+	// the commit is. It is Seeded when no validation asked for the move: the tag does not exist and could
+	// not be created where it starts. The controller then works out again where that is.
 	Source *apiv1alpha1.ValidatedTagSource `json:"source,omitempty"`
 	// Message is the error from the last attempt to push the tag.
 	Message *string `json:"message,omitempty"`

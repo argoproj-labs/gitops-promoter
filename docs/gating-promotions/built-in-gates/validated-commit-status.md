@@ -136,7 +136,8 @@ A manual validation is also accepted for an `Automatic` environment. That is how
 The setting can be changed while the gate is in use:
 
 - **From `Automatic` to `Manual`**, the environment takes nothing the controller had validated for it and not applied
-  yet. A commit that was waiting (`held`) is dropped, not applied.
+  yet. A commit that was waiting (`held`) is dropped, not applied. A move that a person's validation is part of, and
+  that could not be pushed yet (`pending` with `source: Manual`), is still made.
 - **From `Manual` to `Automatic`**, the controller validates the commit that is ready for the environment right away. It
   does not wait for a newer one.
 
@@ -291,8 +292,9 @@ order of their clocks. Only the end result is pushed, so the commits in between 
 - With `advance: WhenIdle`, an automatic validation also waits until the environment is idle.
 
 At most one automatic validation waits for an environment, and status shows it as `held`. A newer automatic validation
-that can move the tag takes its place, so the newest one counts. A manual validation, or a move of the tag by hand,
-drops it. To drop it without moving the tag, validate by hand the commit the tag is on.
+that can move the tag takes its place, unless the commit that is waiting already contains the newer one's commit: an
+automatic validation of an older commit takes nothing back. A manual validation, or a move of the tag by hand, drops
+what is waiting. To drop it without moving the tag, validate by hand the commit the tag is on.
 
 ### When the controller validates
 
@@ -301,12 +303,13 @@ commit. An environment has succeeded on a commit when the commit is live in it, 
 nothing, and every active commit status passes.
 
 Environments that fan in need not succeed at the same moment. The controller remembers the last ten commits each
-environment succeeded on (`status.environments[].successfulShas`) and validates the newest one they have in common.
-It has to be the same commit: two upstream environments that never run the same commit leave the environment that
-depends on them waiting.
+environment succeeded on (`status.environments[].successfulShas`), the commit that is live in it always among them,
+and validates the newest one they have in common. It has to be the same commit: two upstream environments that never
+run the same commit leave the environment that depends on them waiting.
 
 An environment that goes back to a commit it has succeeded on before validates nothing new for the environments after
-it.
+it. Nor does one that is taken back to a commit it had not run: the controller does not validate a commit that the one
+it last validated for an environment already contains.
 
 A validation is not taken back. If an upstream environment starts failing, or is rolled back, the tags of later
 environments stay where they are, and a commit that is waiting for a later environment still moves its tag once it can.
@@ -409,12 +412,11 @@ status:
 
 | Field | Meaning |
 | --- | --- |
-| `tag` | The tag as the controller last read it. Left out while a tag the controller tried to create could not be pushed. |
 | `tag.source` | What last moved the tag. `Seeded`: the controller created it. `External`: it was moved by hand. |
 | `upstreamCleared` | What is ready to validate for a `Manual` environment. For an environment with no upstream environments it is the head of the dry branch. |
-| `automaticValidation` | The newest commit the controller validated for the environment on its own. It validates again once `upstreamCleared` is another commit. Not set for a `Manual` environment. |
+| `automaticValidation` | The newest commit the controller validated for the environment on its own. It validates again once `upstreamCleared` is a commit that one does not contain. Not set for a `Manual` environment. |
 | `held` | An automatic validation that has not been applied. `Pinned`: its commit does not contain the commit the tag is on. `Busy`: the environment advances `WhenIdle` and is not idle. |
-| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. `pending.source` is `Manual` when a manual validation is part of the move, which is then made wherever the commit is. |
+| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. `pending.source` is `Manual` when a manual validation is part of the move, which is then made wherever the commit is. It is `Seeded` for a tag that does not exist yet and could not be created. |
 
 The gate is `Ready=False` with reason `EnvironmentTagPushFailed` while a tag cannot be moved or created, for example
 because a tag protection rule refuses the controller's identity.
@@ -472,7 +474,7 @@ can stay; nothing else reads them.
 | The gate is `pending` with `Waiting for a validation: <tag> does not exist yet` | Nothing was live in the environment when the gate was created, and no commit has been validated for it. |
 | `held.reason: Pinned` | The environment is on a commit the dry branch does not contain. See [Hotfixes and the pin](#hotfixes-and-the-pin). |
 | `held.reason: Busy` | The environment advances `WhenIdle` and has a promotion under way. |
-| `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. The condition's message has git's answer, and so does `status.environments[].pending.message` for a tag that exists. |
+| `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. `status.environments[].pending.message` has git's answer. |
 | `Ready=False`, reason `ValidationNotRecorded` | The controller could not push to `refs/notes/promoter.validations`. |
 | `Ready=False`, reason `EnvironmentTagsOwnedByAnotherGate` | Another `ValidatedCommitStatus` references the same PromotionStrategy and moves its tags. |
 | `tag.source: External` that you did not expect | Someone, or something, pushed the tag. The controller's own moves are `Manual`, `Automatic` or `Seeded`. |
