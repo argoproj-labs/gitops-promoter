@@ -1,0 +1,81 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsQualifiedCommitStatus
+metadata:
+  name: example-promotion-strategy
+spec:
+  key: dependents-qualified
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  drySource:
+    # The branch of the dry repository that the tags follow.
+    branch: main
+    # Optional. Defaults to the PromotionStrategy's repository.
+    gitRepositoryRef:
+      name: example-git-repository
+  # One entry per PromotionStrategy environment. Each environment's hydrator reads from its tag.
+  environments:
+    - branch: environment/dev
+      tag: env/dev
+    - branch: environment/staging
+      tag: env/staging
+    - branch: environment/prod
+      tag: env/prod
+      # Optional. Auto (the default) has the controller move the tag; Manual leaves it to a person.
+      advance: Manual
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
+status:
+  observedGeneration: 1
+  dry:
+    sha: fedcba9876543210fedcba9876543210fedcba98
+  environments:
+    - branch: environment/dev
+      tag:
+        name: env/dev
+        sha: fedcba9876543210fedcba9876543210fedcba98
+      qualified:
+        drySha: 0123456789abcdef0123456789abcdef01234567
+        hydratedSha: "1111111111111111111111111111111111111111"
+        qualifiedAt: "2026-01-02T03:04:05Z"
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: pending
+          description: Waiting for sync
+    - branch: environment/staging
+      tag:
+        name: env/staging
+        sha: 0123456789abcdef0123456789abcdef01234567
+      qualified:
+        drySha: 0123456789abcdef0123456789abcdef01234567
+        hydratedSha: "2222222222222222222222222222222222222222"
+        qualifiedAt: "2026-01-02T03:14:05Z"
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+          description: Application healthy
+      upstreams:
+        - branch: environment/dev
+          satisfied: true
+      phase: success
+      description: Tag "env/staging" at 0123456 is hydrated and qualified upstream
+      url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fstaging
+      reportedSha: abc123def4567890abcdef1234567890abcdef12
+    - branch: environment/prod
+      tag:
+        name: env/prod
+        sha: fedcba9876543210fedcba9876543210fedcba98
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+          description: Application healthy
+      upstreams:
+        - branch: environment/staging
+          satisfied: false
+          reason: 'Waiting for "environment/staging" to qualify dry fedcba9 (newest qualified: 0123456)'
+      phase: pending
+      description: 'Waiting for "environment/staging" to qualify dry fedcba9 (newest qualified: 0123456)'
+      url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fprod
+      reportedSha: def456abc7890123def456abc7890123def456ab

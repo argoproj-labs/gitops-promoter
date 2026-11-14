@@ -12,7 +12,8 @@ apiserver that serves a single, read-only, server-computed resource that bundles
 
 Each bundle contains the `PromotionStrategy`, its `ChangeTransferPolicy`,
 `PullRequest`, and `CommitStatus` children, the commit-status manager kinds
-(`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
+(`ArgoCDCommitStatus`, `DependentsQualifiedCommitStatus`,
+`DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
 `ScheduledCommitStatus`, `TimedCommitStatus`,
 `WebRequestCommitStatus`), and the git config (`GitRepository` plus its
 `ScmProvider` or `ClusterScmProvider`).

@@ -660,6 +660,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
+    - name: dependentsQualifiedCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusConfiguration
     - name: dependentsSuccessfulCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
@@ -729,6 +732,188 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: activeCommitStatuses
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeRequestPolicyCommitStatusPhase
+          elementRelationship: associative
+          keys:
+          - key
+    - name: branch
+      type:
+        scalar: string
+    - name: description
+      type:
+        scalar: string
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: qualified
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedWatermark
+    - name: reportedSha
+      type:
+        scalar: string
+    - name: tag
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedTagStatus
+    - name: upstreams
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusUpstreamStatus
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusSpec
+  map:
+    fields:
+    - name: drySource
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedDrySource
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedEnvironment
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: dry
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedDryStatus
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatusUpstreamStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: reason
+      type:
+        scalar: string
+    - name: satisfied
+      type:
+        scalar: boolean
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedDrySource
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: gitRepositoryRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedDryStatus
+  map:
+    fields:
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedEnvironment
+  map:
+    fields:
+    - name: advance
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TagAdvanceMode
+      default: Auto
+    - name: branch
+      type:
+        scalar: string
+    - name: tag
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedTagStatus
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedWatermark
+  map:
+    fields:
+    - name: drySha
+      type:
+        scalar: string
+    - name: hydratedSha
+      type:
+        scalar: string
+    - name: qualifiedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus
   map:
     fields:
@@ -1928,6 +2113,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: secretRef
       type:
         namedType: io.k8s.api.core.v1.LocalObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TagAdvanceMode
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatus
   map:
     fields:

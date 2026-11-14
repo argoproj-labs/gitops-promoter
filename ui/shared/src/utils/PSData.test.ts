@@ -76,6 +76,21 @@ function dependents(key: string, branches: string[]) {
   >[number];
 }
 
+function dependentsQualified(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' } },
+    status: {
+      environments: branches.map((branch) => ({
+        branch,
+        phase: 'pending',
+        tag: { name: `env/${branch}` },
+      })),
+    },
+  } as unknown as NonNullable<
+    CommitStatusManagerBundle['dependentsQualifiedCommitStatuses']
+  >[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -111,6 +126,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
     ['DependentsSuccessfulCommitStatus', 'dependentsSuccessfulCommitStatuses', dependents],
+    ['DependentsQualifiedCommitStatus', 'dependentsQualifiedCommitStatuses', dependentsQualified],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);

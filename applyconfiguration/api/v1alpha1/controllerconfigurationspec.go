@@ -70,6 +70,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
+	// DependentsQualifiedCommitStatus contains the configuration for the DependentsQualifiedCommitStatus controller,
+	// which gates promotions on whether dependent environments have ever run the target dry SHA successfully.
+	DependentsQualifiedCommitStatus *DependentsQualifiedCommitStatusConfigurationApplyConfiguration `json:"dependentsQualifiedCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -176,6 +179,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStat
 // If called multiple times, the DependentsSuccessfulCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessfulCommitStatus(value *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.DependentsSuccessfulCommitStatus = value
+	return b
+}
+
+// WithDependentsQualifiedCommitStatus sets the DependentsQualifiedCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DependentsQualifiedCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsQualifiedCommitStatus(value *DependentsQualifiedCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.DependentsQualifiedCommitStatus = value
 	return b
 }
 

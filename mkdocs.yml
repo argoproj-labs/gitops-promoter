@@ -57,6 +57,7 @@ nav:
       - Built-In Gates:
           - ArgoCDCommitStatus: gating-promotions/built-in-gates/argocd-commit-status.md
           - DependentsSuccessfulCommitStatus: gating-promotions/built-in-gates/dependents-successful-commit-status.md
+          - DependentsQualifiedCommitStatus: gating-promotions/built-in-gates/dependents-qualified-commit-status.md
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
           - ScheduledCommitStatus: gating-promotions/built-in-gates/scheduled-commit-status.md
@@ -83,6 +84,7 @@ nav:
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
       - Rolling Back an Environment: advanced-usage/rolling-back.md
+      - Holding Back Environments: advanced-usage/holding-back-environments.md
       - Dynamic Pull Request Labels: advanced-usage/pull-request-labels.md
   - CRD Specs: crd-specs.md
   - Contributing:

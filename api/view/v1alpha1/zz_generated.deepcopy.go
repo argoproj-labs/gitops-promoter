@@ -101,6 +101,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.DependentsQualifiedCommitStatuses != nil {
+		in, out := &in.DependentsQualifiedCommitStatuses, &out.DependentsQualifiedCommitStatuses
+		*out = make([]apiv1alpha1.DependentsQualifiedCommitStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.ScheduledCommitStatuses != nil {
 		in, out := &in.ScheduledCommitStatuses, &out.ScheduledCommitStatuses
 		*out = make([]apiv1alpha1.ScheduledCommitStatus, len(*in))

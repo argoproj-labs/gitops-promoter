@@ -93,6 +93,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	DependentsSuccessfulCommitStatus DependentsSuccessfulCommitStatusConfiguration `json:"dependentsSuccessfulCommitStatus"`
 
+	// DependentsQualifiedCommitStatus contains the configuration for the DependentsQualifiedCommitStatus controller,
+	// which gates promotions on whether dependent environments have ever run the target dry SHA successfully.
+	// +required
+	DependentsQualifiedCommitStatus DependentsQualifiedCommitStatusConfiguration `json:"dependentsQualifiedCommitStatus"`
+
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -288,6 +293,17 @@ type TimedCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type DependentsSuccessfulCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// DependentsQualifiedCommitStatusConfiguration defines the configuration for the DependentsQualifiedCommitStatus controller.
+//
+// This configuration controls how the DependentsQualifiedCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type DependentsQualifiedCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DependentsQualifiedCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

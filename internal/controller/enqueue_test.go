@@ -127,6 +127,15 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.DependentsSuccessfulCommitStatusList](ctx, c, ps)
 			},
 		),
+		Entry("DependentsQualifiedCommitStatus",
+			&promoterv1alpha1.DependentsQualifiedCommitStatus{
+				Name: gateName, Namespace: ns,
+				Spec: promoterv1alpha1.DependentsQualifiedCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
+			},
+			func(c client.Client) []reconcile.Request {
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.DependentsQualifiedCommitStatusList](ctx, c, ps)
+			},
+		),
 	)
 
 	It("returns nil when no gates match the PromotionStrategy ref", func() {

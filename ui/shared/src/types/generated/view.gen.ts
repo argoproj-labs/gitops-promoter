@@ -545,6 +545,162 @@ export type components = {
             /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
             timezone?: string;
         };
+        /** @description DependentsQualifiedCommitStatus is the Schema for the dependentsqualifiedcommitstatuses API */
+        DependentsQualifiedCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of DependentsQualifiedCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["DependentsQualifiedCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of DependentsQualifiedCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["DependentsQualifiedCommitStatusStatus"];
+        };
+        /** @description DependentsQualifiedCommitStatusEnvironmentStatus defines observed state for one environment branch. */
+        DependentsQualifiedCommitStatusEnvironmentStatus: {
+            /** @description ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses. */
+            activeCommitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description Qualified is the newest dry commit this environment has qualified. Omitted until the environment has qualified a commit. */
+            qualified?: components["schemas"]["DependentsQualifiedWatermark"];
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description Tag is the environment's tag as last read from the dry repository. */
+            tag?: components["schemas"]["DependentsQualifiedTagStatus"];
+            /** @description Upstreams lists this environment's direct upstreams and whether each has qualified the tagged commit. */
+            upstreams?: components["schemas"]["DependentsQualifiedCommitStatusUpstreamStatus"][];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
+        /** @description DependentsQualifiedCommitStatusSpec defines the desired state of DependentsQualifiedCommitStatus. */
+        DependentsQualifiedCommitStatusSpec: {
+            /**
+             * @description DrySource is where the dry commits and the environment tags live.
+             * @default {}
+             */
+            drySource: components["schemas"]["DependentsQualifiedDrySource"];
+            /** @description Environments declares the tag each environment hydrates from. There must be exactly one entry for every environment of the referenced PromotionStrategy, and every entry must name its own tag. */
+            environments: components["schemas"]["DependentsQualifiedEnvironment"][];
+            /**
+             * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and their dependencies (dependsOn) come from the PromotionStrategy.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsQualifiedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description DependentsQualifiedCommitStatusStatus defines the observed state of DependentsQualifiedCommitStatus. */
+        DependentsQualifiedCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Dry is the observed state of the dry branch. */
+            dry?: components["schemas"]["DependentsQualifiedDryStatus"];
+            /** @description Environments reports the tag, qualification, and gate state of each environment. */
+            environments?: components["schemas"]["DependentsQualifiedCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description DependentsQualifiedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit this environment's tag points at. */
+        DependentsQualifiedCommitStatusUpstreamStatus: {
+            /**
+             * @description Branch is the upstream environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Reason explains why the upstream is not satisfied. Omitted when satisfied is true. */
+            reason?: string;
+            /**
+             * @description Satisfied is true when the upstream has qualified the tagged commit or a newer commit that contains it.
+             * @default false
+             */
+            satisfied: boolean;
+        };
+        /** @description DependentsQualifiedDrySource identifies the dry branch whose commits are promoted. */
+        DependentsQualifiedDrySource: {
+            /**
+             * @description Branch is the dry branch. Environments with no upstreams track its HEAD, and only commits reachable from its HEAD are qualified or promoted by this gate. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description GitRepositoryRef is the GitRepository that holds the dry branch and the environment tags. Omit it when that is the PromotionStrategy's own repository, which is the usual case. */
+            gitRepositoryRef?: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+        };
+        /** @description DependentsQualifiedDryStatus is the observed state of the dry branch. */
+        DependentsQualifiedDryStatus: {
+            /** @description Sha is the HEAD of the dry branch when the controller last reconciled. */
+            sha?: string;
+        };
+        /** @description DependentsQualifiedEnvironment declares the tag one environment hydrates from. */
+        DependentsQualifiedEnvironment: {
+            /** @description Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
+            advance?: string;
+            /**
+             * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The controller creates the tag if it does not exist. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            tag: string;
+        };
+        /** @description DependentsQualifiedTagStatus is the observed state of one environment tag. */
+        DependentsQualifiedTagStatus: {
+            /**
+             * @description Name is the tag name.
+             * @default
+             */
+            name: string;
+            /** @description Sha is the dry commit the tag points at. Empty when the tag does not exist. */
+            sha?: string;
+        };
+        /** @description DependentsQualifiedWatermark is the newest dry commit an environment has qualified: a commit that was live in the environment while every active commit status was success. Every commit before it on the dry branch is qualified too. */
+        DependentsQualifiedWatermark: {
+            /**
+             * @description DrySha is the newest qualified dry commit.
+             * @default
+             */
+            drySha: string;
+            /** @description HydratedSha is the commit on the environment's active branch that was live at the time. */
+            hydratedSha?: string;
+            /** @description QualifiedAt is when the controller recorded the qualification. */
+            qualifiedAt: components["schemas"]["Time"];
+        };
         /** @description DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API */
         DependentsSuccessfulCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -1444,6 +1600,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description DependentsQualifiedCommitStatuses are the DependentsQualifiedCommitStatus managers that reference the PromotionStrategy. */
+            dependentsQualifiedCommitStatuses?: components["schemas"]["DependentsQualifiedCommitStatus"][];
             /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
             dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */

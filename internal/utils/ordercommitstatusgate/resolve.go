@@ -45,7 +45,30 @@ func resolve(
 		ref.Kind == promoterv1alpha1.DefaultOrderCommitStatusKind {
 		return resolveDependentsSuccessful(ctx, c, ps, ref)
 	}
+	if ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup &&
+		ref.Kind == promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind {
+		return resolveDependentsQualified(ctx, c, ps, ref)
+	}
 	return resolveUnstructured(ctx, c, mapper, ps, ref)
+}
+
+func resolveDependentsQualified(
+	ctx context.Context,
+	c client.Client,
+	ps *promoterv1alpha1.PromotionStrategy,
+	ref promoterv1alpha1.OrderCommitStatusRef,
+) (string, error) {
+	var gate promoterv1alpha1.DependentsQualifiedCommitStatus
+	getErr := c.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &gate)
+	if getErr != nil {
+		if k8serrors.IsNotFound(getErr) {
+			return "", fmt.Errorf("PromotionStrategy %q references %s/%s %q via orderCommitStatusRef, but it was not found",
+				ps.Name, ref.Group, ref.Kind, ref.Name)
+		}
+		return "", fmt.Errorf("failed to get %s/%s %q for PromotionStrategy %q: %w",
+			ref.Group, ref.Kind, ref.Name, ps.Name, getErr)
+	}
+	return orderingGateKey(ps, ref, gate.Spec.Key, gate.Spec.PromotionStrategyRef.Name)
 }
 
 func resolveDependentsSuccessful(

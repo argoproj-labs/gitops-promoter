@@ -54,12 +54,13 @@ production promotions for a very long time (as covered in
 While these two approaches (single commit and multiple commit) should satisfy most use cases reasonably well, GitOps
 Promoter will likely support additional options in the future.
 
-One promising idea is to use single commits (driftless) to represent each change, but use environment-specific tags to
-advance environments to specific DRY commits instead of always tracking HEAD. While not solving the problem of actually
-advancing the tags (human or automation will still need to intervene), this _would_ allow Promoter to apply its active
-commit status protections, since each change is uniquely identified by a single DRY commit hash.
+One further option is to use single commits (driftless) to represent each change, and have every environment
+hydrate from its own environment tag instead of always tracking HEAD. By default, GitOps Promoter advances each tag
+to the newest commit the upstream environments have run successfully. To control when a higher environment gets a new
+version yourself, set that environment to `advance: Manual` and push its tag. Promoter then leaves the tag to you; on
+the default it keeps advancing the tag, so the environment cannot be held back. Because each change is still a single
+DRY commit, Promoter's active commit status protections keep working.
 
-This mode would require GitOps Promoter to maintain historical data about past commits' success/failure so that gates
-can be applied potentially much later when higher environments' tags are advanced to newer commits. But the storage
-problem should be solvable in a way that is transparent to the user. Keep an eye on the [roadmap](roadmap.md) for
-updates about the progress of this approach.
+See [Holding Back Environments](advanced-usage/holding-back-environments.md), built on the
+[DependentsQualifiedCommitStatus](gating-promotions/built-in-gates/dependents-qualified-commit-status.md) ordering
+gate.

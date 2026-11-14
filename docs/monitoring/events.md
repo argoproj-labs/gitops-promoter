@@ -114,6 +114,19 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
+## DependentsQualifiedCommitStatus
+
+[DependentsQualifiedCommitStatuses](../crd-specs.md#dependentsqualifiedcommitstatus) may produce the following events:
+
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal     | EnvironmentQualified        | An environment qualified a DRY commit, or a restore pulled the environment's newest qualified commit back to an older one. |
+| Normal     | EnvironmentTagMoved         | The controller created or moved an environment tag. The message gives the tag's previous and new commit.                 |
+| Warning    | EnvironmentTagPushFailed    | The controller could not create or move an environment tag, for example because of tag protection or missing permission. |
+| Normal/Warning | CommitStatusPhaseChanged  | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                             |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsQualifiedCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:
