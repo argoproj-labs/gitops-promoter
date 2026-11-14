@@ -114,7 +114,8 @@ type dqEnvironment struct {
 	Status promoterv1alpha1.EnvironmentStatus
 	// Manual is true when a person moves the tag (advance: Manual).
 	Manual bool
-	// Restored is true when the live commit was put there by a RestoreActiveCommit.
+	// Restored is true when the live commit was put there by a RestoreActiveCommit. It is only known to be
+	// right when an older commit than Qualified is live, which is the only time it is used.
 	Restored bool
 }
 
@@ -494,7 +495,9 @@ func dqNoteKey(branch, activePath string) string {
 	return branch + ":" + activePath
 }
 
-// dqRestored reports whether the commit that is live on branch was put there by a RestoreActiveCommit.
+// dqRestored reports whether the commit that is live on branch was put there by one of the given
+// RestoreActiveCommits. A RestoreActiveCommit is deleted once it no longer blocks its environment, so false
+// does not mean the commit is not a restore: see liveCommitIsRestore.
 func dqRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydratedSha string) bool {
 	if activeHydratedSha == "" {
 		return false
@@ -706,23 +709,42 @@ func (r *DependentsQualifiedCommitStatusReconciler) readDryRepository(ctx contex
 	if dqcs.Status.Dry != nil {
 		lastKnownHead = dqcs.Status.Dry.Sha
 	}
-	branch := dqcs.Spec.DrySource.Branch
-	head, err := ops.GetBranchSha(ctx, branch, lastKnownHead)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read dry branch %q: %w", branch, err)
-	}
-
 	names := make([]string, 0, len(dqcs.Spec.Environments))
 	for _, env := range dqcs.Spec.Environments {
 		names = append(names, env.Tag)
 	}
-	// Tags are read from the remote on every reconcile: a person may move one at any time, and not every
-	// SCM tells us when they do.
-	tags, err := ops.FetchTags(ctx, names...)
+	head, tags, err := dqReadDryRefs(ctx, ops, dqcs.Spec.DrySource.Branch, lastKnownHead, names)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read environment tags: %w", err)
+		return nil, err
 	}
 	return &dqDryState{ops: ops, head: head, tags: tags}, nil
+}
+
+// dqDryRefReader reads refs of the dry repository from its remote. *git.EnvironmentOperations implements it.
+type dqDryRefReader interface {
+	GetBranchSha(ctx context.Context, branch, lastKnownSha string) (string, error)
+	FetchTags(ctx context.Context, tags ...string) (map[string]string, error)
+}
+
+// dqReadDryRefs reads the commit each environment tag points at, then the dry branch HEAD.
+//
+// The order matters because the two reads are not one snapshot. A tag that is not reachable from HEAD is
+// treated as left behind by a force-push and reset. Reading the tags first means a tag on the branch is
+// always paired with a HEAD at least as new as the branch was when the tag was read. The other way round, a
+// push that moves the branch and a tag between the reads would pair the new tag with the old HEAD, and the
+// tag would be moved backward.
+func dqReadDryRefs(ctx context.Context, reader dqDryRefReader, branch, lastKnownHead string, tagNames []string) (head string, tags map[string]string, err error) {
+	// Tags are read from the remote on every reconcile: a person may move one at any time, and not every
+	// SCM tells us when they do.
+	tags, err = reader.FetchTags(ctx, tagNames...)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read environment tags: %w", err)
+	}
+	head, err = reader.GetBranchSha(ctx, branch, lastKnownHead)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read dry branch %q: %w", branch, err)
+	}
+	return head, tags, nil
 }
 
 // reconcileEnvironments does the work of one reconcile. It returns how soon to reconcile again when
@@ -776,10 +798,10 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 		}
 		if qualified != nil && qualified != env.Qualified {
 			if err := r.recordQualification(ctx, repos, *env, activePaths[env.Branch], qualified); err != nil {
-				// The note is the durable record, so do not act on a qualification that was not written.
-				// Keep what was qualified before (if it is still on the dry branch) and try again later.
+				// The note is the durable record, so do not act on an advance that was not written: keep
+				// what was qualified before and try again later. A pull-back is acted on regardless.
 				qualifyErrs = append(qualifyErrs, err)
-				qualified, err = dqStillQualified(ctx, graph, dry.head, *env)
+				qualified, err = dqUnrecordedQualification(ctx, graph, dry.head, *env, qualified)
 				if err != nil {
 					return 0, err
 				}
@@ -859,19 +881,36 @@ func dqActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
 	return paths
 }
 
-// dqStillQualified returns the environment's previous watermark if it is still on the dry branch.
-func dqStillQualified(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
-	if env.Qualified == nil {
+// dqUnrecordedQualification returns the watermark to act on when attempted, the environment's new watermark,
+// could not be written to its note. It errs toward holding promotions back.
+//
+// An advance is not acted on: the note is the durable record, so the previous watermark stands (if it is
+// still on the dry branch) until the note is written. A pull-back after a restore is acted on at once:
+// keeping the previous watermark would leave downstream promotions of the commits the restore took back
+// open for as long as the note cannot be written.
+func dqUnrecordedQualification(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, attempted *promoterv1alpha1.DependentsQualifiedWatermark) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
+	previous := env.Qualified
+	if previous == nil {
 		return nil, nil
 	}
-	onBranch, err := graph.Contains(ctx, head, env.Qualified.DrySha)
+	onBranch, err := graph.Contains(ctx, head, previous.DrySha)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check whether %q's qualified commit is on the dry branch: %w", env.Branch, err)
 	}
 	if !onBranch {
 		return nil, nil
 	}
-	return env.Qualified, nil
+	if attempted == nil || attempted.DrySha == previous.DrySha {
+		return previous, nil
+	}
+	pulledBack, err := graph.Contains(ctx, previous.DrySha, attempted.DrySha)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compare %q's new qualified commit with its previous one: %w", env.Branch, err)
+	}
+	if pulledBack {
+		return attempted, nil
+	}
+	return previous, nil
 }
 
 // observeEnvironments gathers what the decisions need for every environment, in PromotionStrategy order.
@@ -934,9 +973,20 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 
 		if previous, ok := previousByBranch[branch]; ok {
 			env.Qualified = previous.Qualified
-		} else if status.Active.Hydrated.Sha != "" {
+		} else {
 			// Nothing in status to start from (a new gate, or status was lost): rebuild from the notes.
+			// This does not wait for the PromotionStrategy to report the environment. The status written at
+			// the end of this reconcile has an entry for it either way, so there is no later chance.
 			env.Qualified, err = r.loadQualification(ctx, repos, branch, activePath)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// A restore only matters when something other than the qualified commit is live, so git is only
+		// asked then.
+		if !env.Restored && env.Qualified != nil && live != "" && live != env.Qualified.DrySha {
+			env.Restored, err = r.liveCommitIsRestore(ctx, repos, branch, status.Active.Hydrated.Sha)
 			if err != nil {
 				return nil, err
 			}
@@ -974,6 +1024,11 @@ func (r *DependentsQualifiedCommitStatusReconciler) withLiveDryShasFromGit(ctx c
 	return planned, nil
 }
 
+// dqIsMissingRemoteRef reports whether a git fetch failed because the ref does not exist on the remote.
+func dqIsMissingRemoteRef(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "couldn't find remote ref")
+}
+
 // liveDryShaFromGit returns the dry SHA recorded in hydrator.metadata at the tip of an environment's active
 // branch, or "" when the branch does not exist or its tip has no metadata.
 func (r *DependentsQualifiedCommitStatusReconciler) liveDryShaFromGit(ctx context.Context, repos *dqRepositories, branch, activePath string) (string, error) {
@@ -983,7 +1038,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) liveDryShaFromGit(ctx contex
 	}
 	tip, err := ops.GetBranchSha(ctx, branch, "")
 	if err != nil {
-		if strings.Contains(err.Error(), "couldn't find remote ref") {
+		if dqIsMissingRemoteRef(err) {
 			// The environment has never been promoted to, so nothing is live in it.
 			return "", nil
 		}
@@ -994,6 +1049,37 @@ func (r *DependentsQualifiedCommitStatusReconciler) liveDryShaFromGit(ctx contex
 		return "", fmt.Errorf("failed to read what is live on active branch %q: %w", branch, err)
 	}
 	return metadata.Sha, nil
+}
+
+// liveCommitIsRestore reports whether the commit that is live on an environment's active branch was written
+// by a RestoreActiveCommit.
+//
+// It reads the Promoter-restored-from marker the restore left on the commit. The RestoreActiveCommit itself
+// is not enough to go by: it is deleted once it no longer blocks the environment, which can be before this
+// gate has seen it (the gate was not running, or its status was lost and rebuilt from the notes).
+func (r *DependentsQualifiedCommitStatusReconciler) liveCommitIsRestore(ctx context.Context, repos *dqRepositories, branch, activeHydratedSha string) (bool, error) {
+	if activeHydratedSha == "" {
+		return false, nil
+	}
+	ops, err := repos.hydrated(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !ops.CommitExists(ctx, activeHydratedSha) {
+		if err := ops.FetchBranch(ctx, branch); err != nil {
+			return false, fmt.Errorf("failed to fetch active branch %q: %w", branch, err)
+		}
+		if !ops.CommitExists(ctx, activeHydratedSha) {
+			// The branch moved on since the PromotionStrategy reported; the next reconcile sees the new state.
+			logf.FromContext(ctx).V(4).Info("Active commit is not on its branch, not checking whether it is a restore", "branch", branch, "sha", activeHydratedSha)
+			return false, nil
+		}
+	}
+	restore, err := ops.CommitIsRestore(ctx, activeHydratedSha)
+	if err != nil {
+		return false, fmt.Errorf("failed to check whether the active commit of %q is a restore: %w", branch, err)
+	}
+	return restore, nil
 }
 
 // sameManifests reports whether the environment's proposed tip has the same content as what is live on its
@@ -1041,13 +1127,17 @@ func (r *DependentsQualifiedCommitStatusReconciler) sameManifests(ctx context.Co
 }
 
 // loadQualification reads the environment's newest qualification from the notes on its active branch. It
-// returns nil when there is none.
+// returns nil when there is none, which includes an active branch that does not exist yet.
 func (r *DependentsQualifiedCommitStatusReconciler) loadQualification(ctx context.Context, repos *dqRepositories, branch, activePath string) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
 	ops, err := repos.hydrated(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err := ops.FetchBranch(ctx, branch); err != nil {
+		if dqIsMissingRemoteRef(err) {
+			// The environment has never been promoted to, so it has qualified nothing.
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to fetch active branch %q: %w", branch, err)
 	}
 	if !repos.notesFetched {

@@ -98,8 +98,9 @@ ancestors, so the watermark is all the gate needs.
   [RestoreActiveCommit](../../advanced-usage/rolling-back.md) and is behind the watermark, the watermark is pulled back
   to it, whatever the active commit statuses say. A restore states that the commits after it should not have been
   trusted, so dependents must not keep taking them. Tags that already moved are not moved back; the gate holds those
-  promotions until the environment qualifies the commit again. A rollback made by hand (a revert pushed to the active
-  branch) is not recognized as a restore.
+  promotions until the environment qualifies the commit again. The restore is recognized from the
+  `Promoter-restored-from` marker on the restore commit, so this does not depend on the RestoreActiveCommit still
+  existing. A rollback made by hand (a revert pushed to the active branch) is not recognized as a restore.
 - **Dropped after a force-push.** A watermark that is no longer reachable from the DRY branch HEAD is discarded.
 - **No-ops.** A note-only hydration changes the live DRY SHA without changing the hydrated commit or resetting any
   active commit status, so a successful environment qualifies the new commit on the reconcile that observes the note.
@@ -117,9 +118,11 @@ look statuses up later. It evaluates them **while the commit is live** and persi
   `<branch>:<activePath>` when the environment has an `activePath`), so environments that share an active branch do
   not overwrite each other. An entry records the DRY SHA, when it qualified, and a snapshot of each active commit
   status key and phase that made up the verdict. It is written once per qualification, and the controller does not
-  act on a qualification until the note is pushed. When `status` has no entry for an environment (a new or recreated
-  gate), the controller rebuilds the watermark by walking the active branch first-parent, up to 200 commits, and
-  taking the newest entry for that environment.
+  act on a newly qualified commit until the note is pushed. A restore is the exception: the watermark is pulled back
+  even when the note cannot be written, so that a failed push never leaves dependents free to take a commit the
+  restore took back. When `status` has no entry for an environment (a new or recreated gate), the controller rebuilds
+  the watermark by walking the active branch first-parent, up to 200 commits, and taking the newest entry for that
+  environment.
 
 When a tag later points at an old commit `X`, the gate does not need a record for `X` itself. It asks whether `X` is the
 upstream's watermark or an ancestor of it, which is one ancestry check against the DRY repository. Commits the

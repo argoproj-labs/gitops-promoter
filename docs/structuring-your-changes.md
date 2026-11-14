@@ -55,10 +55,11 @@ While these two approaches (single commit and multiple commit) should satisfy mo
 Promoter will likely support additional options in the future.
 
 One further option is to use single commits (driftless) to represent each change, and have every environment
-hydrate from its own environment tag instead of always tracking HEAD. GitOps Promoter advances each tag to the newest
-commit the upstream environments have run successfully, or you advance a tag yourself to control when a higher
-environment gets a new version. Because each change is still a single DRY commit, Promoter's active commit status
-protections keep working.
+hydrate from its own environment tag instead of always tracking HEAD. By default, GitOps Promoter advances each tag
+to the newest commit the upstream environments have run successfully. To control when a higher environment gets a new
+version yourself, set that environment to `advance: Manual` and push its tag. Promoter then leaves the tag to you; on
+the default it keeps advancing the tag, so the environment cannot be held back. Because each change is still a single
+DRY commit, Promoter's active commit status protections keep working.
 
 See [Holding Back Environments](advanced-usage/holding-back-environments.md), built on the
 [DependentsQualifiedCommitStatus](gating-promotions/built-in-gates/dependents-qualified-commit-status.md) ordering

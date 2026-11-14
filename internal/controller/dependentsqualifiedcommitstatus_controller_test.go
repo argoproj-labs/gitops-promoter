@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"os"
 	"slices"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -135,6 +137,37 @@ func (dqFailingGraph) Contains(context.Context, string, string) (bool, error) {
 
 func (dqFailingGraph) MergeBase(context.Context, ...string) (string, error) {
 	return "", errors.New("graph unavailable")
+}
+
+// dqDryRefs is one moment of a DRY repository: its branch HEAD and where each environment tag points.
+type dqDryRefs struct {
+	head string
+	tags map[string]string
+}
+
+// dqMovingDryRepo is a DRY repository that receives a push while the gate is reading it: the first read sees
+// before, every later read sees after. It implements dqDryRefReader.
+type dqMovingDryRepo struct {
+	err    error
+	before dqDryRefs
+	after  dqDryRefs
+	reads  int
+}
+
+func (r *dqMovingDryRepo) now() dqDryRefs {
+	r.reads++
+	if r.reads == 1 {
+		return r.before
+	}
+	return r.after
+}
+
+func (r *dqMovingDryRepo) GetBranchSha(context.Context, string, string) (string, error) {
+	return r.now().head, r.err
+}
+
+func (r *dqMovingDryRepo) FetchTags(context.Context, ...string) (map[string]string, error) {
+	return r.now().tags, r.err
 }
 
 // dqPhases builds active commit status phases keyed check-0, check-1, ...
@@ -451,6 +484,76 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			env.Qualified = dqWatermark("d")
 			_, err := dqQualify(ctx, dqFailingGraph{}, "f", env, now)
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
+		})
+	})
+
+	Describe("dqUnrecordedQualification: what stands when a qualification could not be written to its note", func() {
+		It("keeps the previous watermark when an advance could not be recorded", func() {
+			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
+			env.Qualified = dqWatermark("d")
+			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("f"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(qualified).To(Equal(dqWatermark("d")))
+		})
+
+		It("qualifies nothing when a first qualification could not be recorded", func() {
+			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
+			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("f"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(qualified).To(BeNil())
+		})
+
+		It("takes a restore's pull-back anyway, so that the gate does not stay open on a revoked commit", func() {
+			env := dqSettled(dqTest, dqTagTest, "e", "c", pending)
+			env.Qualified = dqWatermark("e")
+			env.Restored = true
+			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("c"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(qualified).To(Equal(dqWatermark("c")), "d and e were taken back by the restore, recorded or not")
+		})
+
+		It("drops a previous watermark that is no longer on the DRY branch", func() {
+			env := dqSettled(dqDev, dqTagDev, "q", "q", success)
+			env.Qualified = dqWatermark("e")
+			qualified, err := dqUnrecordedQualification(ctx, graph, "q", env, dqWatermark("q"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(qualified).To(BeNil())
+		})
+
+		It("returns ancestry errors", func() {
+			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
+			env.Qualified = dqWatermark("d")
+			_, err := dqUnrecordedQualification(ctx, dqFailingGraph{}, "f", env, dqWatermark("f"))
+			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
+		})
+	})
+
+	Describe("dqReadDryRefs: reading the DRY branch HEAD and the environment tags", func() {
+		It("returns the HEAD and the commit each tag points at", func() {
+			refs := dqDryRefs{head: "f", tags: map[string]string{dqTagDev: "f", dqTagTest: "d", dqTagProd: ""}}
+			head, tags, err := dqReadDryRefs(ctx, &dqMovingDryRepo{before: refs, after: refs}, "main", "", []string{dqTagDev, dqTagTest, dqTagProd})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(head).To(Equal("f"))
+			Expect(tags).To(Equal(refs.tags))
+		})
+
+		It("never reads a tag that is ahead of the HEAD it read, when both move during the reads", func() {
+			// Someone pushes f and moves the tag to it between the gate's two reads. A tag that looks like
+			// it is not on the branch gets reset, so the gate must not pair the new tag with the old HEAD.
+			repo := &dqMovingDryRepo{
+				before: dqDryRefs{head: "e", tags: map[string]string{dqTagDev: "e"}},
+				after:  dqDryRefs{head: "f", tags: map[string]string{dqTagDev: "f"}},
+			}
+			head, tags, err := dqReadDryRefs(ctx, repo, "main", "e", []string{dqTagDev})
+			Expect(err).NotTo(HaveOccurred())
+			onBranch, err := graph.Contains(ctx, head, tags[dqTagDev])
+			Expect(err).NotTo(HaveOccurred())
+			Expect(onBranch).To(BeTrue(), "read HEAD %s and tag at %s", head, tags[dqTagDev])
+		})
+
+		It("returns read errors", func() {
+			_, _, err := dqReadDryRefs(ctx, &dqMovingDryRepo{err: errors.New("remote unavailable")}, "main", "", []string{dqTagDev})
+			Expect(err).To(MatchError(ContainSubstring("remote unavailable")))
 		})
 	})
 
@@ -1619,6 +1722,162 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 				g.Expect(activeDrySha(g, testBranchProduction)).To(Equal(second))
 				production := environmentStatus(g, testBranchProduction)
 				g.Expect(production.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should take a qualification back after a restore whose RestoreActiveCommit no longer exists", func() {
+			neverHydrated()
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			By("Promoting the first commit to development")
+			first := headSha()
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			var firstHydrated string
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchDevelopment)).To(Equal(first))
+				firstHydrated = activeHydratedSha(g, testBranchDevelopment)
+				qualified := environmentStatus(g, testBranchDevelopment).Qualified
+				g.Expect(qualified).NotTo(BeNil())
+				g.Expect(qualified.DrySha).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Promoting a second commit to development, which qualifies it for staging")
+			second, err := makeDryCommit(ctx, gitPath, "second release")
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchDevelopment)).To(Equal(second))
+				g.Expect(environmentStatus(g, testBranchDevelopment).Qualified.DrySha).To(Equal(second))
+				g.Expect(tagSha(g, tagStaging)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Restoring development to the first commit, as a RestoreActiveCommit that is already deleted left it")
+			// What a restore that no longer blocks leaves in git: a commit on the active branch with the
+			// restored commit's tree and a Promoter-restored-from trailer, and a history note saying the
+			// environment was unblocked. No RestoreActiveCommit exists for the gate to see, and the
+			// ChangeTransferPolicy does not create one for an unblocked restore.
+			_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+			Expect(err).NotTo(HaveOccurred())
+			out, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+			Expect(err).NotTo(HaveOccurred())
+			secondHydrated := strings.TrimSpace(out)
+			out, err = runGitCmd(ctx, gitPath, "commit-tree", firstHydrated+"^{tree}", "-p", secondHydrated,
+				"-m", "Revert "+testBranchDevelopment+" to "+firstHydrated[:7], "-m", constants.TrailerRestoredFrom+": "+firstHydrated)
+			Expect(err).NotTo(HaveOccurred())
+			restoreSha := strings.TrimSpace(out)
+			historyNote, err := json.Marshal(map[string][]string{
+				constants.TrailerRestoredFrom:       {firstHydrated},
+				constants.TrailerRestoreUnblockedAt: {"2026-10-01T12:00:00Z"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				// The ChangeTransferPolicy writes to the same notes ref, so start from what is there.
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+refs/notes/*:refs/notes/*")
+				g.Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", string(historyNote), restoreSha)
+				g.Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			_, err = runGitCmd(ctx, gitPath, "push", "origin", restoreSha+":refs/heads/"+testBranchDevelopment)
+			Expect(err).NotTo(HaveOccurred())
+			sendWebhookForPush(ctx, secondHydrated, testBranchDevelopment)
+
+			By("Taking back development's qualification of the second commit")
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchDevelopment)).To(Equal(first))
+				g.Expect(environmentStatus(g, testBranchDevelopment).Qualified.DrySha).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			var racs promoterv1alpha1.RestoreActiveCommitList
+			Expect(k8sClient.List(ctx, &racs, client.InNamespace(promotionStrategy.Namespace))).To(Succeed())
+			for _, rac := range racs.Items {
+				Expect(rac.Spec.PromotionStrategyRef.Name).NotTo(Equal(promotionStrategy.Name), "the restore was recognized from git, not from a RestoreActiveCommit")
+			}
+
+			By("Holding staging, whose tag already points at the second commit")
+			hydrate(testBranchStagingNext, tagStaging)
+			Eventually(func(g Gomega) {
+				staging := environmentStatus(g, testBranchStaging)
+				g.Expect(staging.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(staging.Description).To(Equal(
+					`Waiting for "environment/development" to qualify dry ` + second[:7] + ` (newest qualified: ` + first[:7] + `)`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchStaging)).To(BeEmpty())
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("should recover what an environment qualified from its notes when the PromotionStrategy has reported nothing yet", func() {
+			By("Finding the commit that is live in development")
+			// The test repository starts with its first DRY commit hydrated to every environment.
+			_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+			Expect(err).NotTo(HaveOccurred())
+			out, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+dryBranch+"~1")
+			Expect(err).NotTo(HaveOccurred())
+			live := strings.TrimSpace(out)
+			out, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+testBranchDevelopment)
+			Expect(err).NotTo(HaveOccurred())
+			developmentTip := strings.TrimSpace(out)
+
+			By("Recording, as an earlier gate would have, that development qualified it")
+			qualifiedAt := metav1.NewTime(time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+			note, err := json.Marshal(git.QualifiedNote{Environments: map[string]git.QualifiedNoteEntry{
+				testBranchDevelopment: {QualifiedAt: qualifiedAt, DrySha: live},
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterQualifiedNotesRef, "add", "-f", "-m", string(note), developmentTip)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterQualifiedNotesRef)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Requiring a commit status on development that nothing reports, so that it cannot qualify the commit again")
+			promotionStrategy.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "dq-health"}}
+
+			By("Creating the gate first, so that it reconciles the new PromotionStrategy before anything is reported")
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionFalse))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Crediting development with what the note says")
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchDevelopment)).To(Equal(live))
+				qualified := environmentStatus(g, testBranchDevelopment).Qualified
+				g.Expect(qualified).NotTo(BeNil(), "development has qualified nothing")
+				g.Expect(qualified.DrySha).To(Equal(live))
+				g.Expect(qualified.HydratedSha).To(Equal(developmentTip))
+				g.Expect(qualified.QualifiedAt.Time).To(BeTemporally("==", qualifiedAt.Time))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should manage the tags of a PromotionStrategy with an environment whose active branch does not exist yet", func() {
+			neverHydrated()
+
+			By("Deleting production's branches, as before the hydrator has written anything for it")
+			_, err := runGitCmd(ctx, gitPath, "push", "origin", "--delete", testBranchProduction, testBranchProductionNext)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			By("Creating every tag at the DRY branch HEAD, the hydrator needs them to write the branches")
+			head := headSha()
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(head))
+				g.Expect(tagSha(g, tagStaging)).To(Equal(head))
+				g.Expect(tagSha(g, tagProduction)).To(Equal(head))
+				g.Expect(environmentStatus(g, testBranchProduction).Qualified).To(BeNil())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
