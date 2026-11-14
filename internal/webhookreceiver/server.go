@@ -239,17 +239,23 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lookup, lookupErr := wr.tryLookupAndEnqueue(ctx, beforeSha, ref, "webhook")
-	switch {
-	case lookup.found():
+	switch lookup.outcome(lookupErr) {
+	case deliveryEnqueued:
 		ctpFound = lookup.ctp
-	case lookup.retryable:
+	case deliveryRetrying:
 		reqLogger.Info("nothing matched webhook delivery; scheduling miss retry")
 		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
-	default:
+	case deliveryIgnored:
+		// A tag nothing here reads. Repositories push many of those, and the controller's own tag moves
+		// arrive here too, so this is not worth a line at default verbosity.
+		reqLogger.V(4).Info("nothing reads the pushed ref", "ref", ref)
+	case deliveryFailed:
 		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
 		// problems operators should see at default verbosity.
 		reqLogger.Error(lookupErr, "giving up on webhook delivery")
+	default:
+		// No other outcome exists.
 	}
 
 	responseCode = http.StatusNoContent
@@ -297,9 +303,10 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		// Retryable misses (no match yet, transient list failure) return (false, nil) to keep
-		// backing off until the outer timeout; terminal outcomes return an error to stop.
+		// backing off until the outer timeout; terminal outcomes return an error to stop. A miss that
+		// no later attempt could turn into a match stops too: there is nothing left to wait for.
 		lookup, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
-		return lookup.found(), err
+		return lookup.outcome(err) != deliveryRetrying, err
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
@@ -361,6 +368,34 @@ type lookupResult struct {
 // found reports whether anything was enqueued.
 func (l lookupResult) found() bool {
 	return l.ctp || l.gates
+}
+
+// deliveryOutcome is what a lookup made of a webhook delivery.
+type deliveryOutcome int
+
+const (
+	// deliveryEnqueued means something that reads the pushed ref was enqueued.
+	deliveryEnqueued deliveryOutcome = iota
+	// deliveryRetrying means nothing was enqueued, and a later attempt may find something.
+	deliveryRetrying
+	// deliveryIgnored means nothing here reads the pushed ref, and no later attempt would find otherwise.
+	deliveryIgnored
+	// deliveryFailed means the lookup ended in an error that a later attempt would run into again.
+	deliveryFailed
+)
+
+// outcome classifies the lookup, given the error that came with it.
+func (l lookupResult) outcome(err error) deliveryOutcome {
+	switch {
+	case err != nil:
+		return deliveryFailed
+	case l.found():
+		return deliveryEnqueued
+	case l.retryable:
+		return deliveryRetrying
+	default:
+		return deliveryIgnored
+	}
 }
 
 // tryLookupAndEnqueue looks up, once, what reads the pushed ref, and enqueues it: the

@@ -579,6 +579,39 @@ var _ = Describe("WebhookReceiver pushes to a dry branch or an environment tag",
 		Expect(ctps.count()).To(Equal(0))
 	})
 
+	It("takes a tag push that nothing reads as none of its business, and not as a delivery it gave up on", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		wr := newReceiver(newFakeClient(newGate("gate", testShaB, testShaB)), ctps, gates)
+
+		result, err := wr.tryLookupAndEnqueue(context.Background(), testShaA, "refs/tags/v1.2.3", "test")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.outcome(err)).To(Equal(deliveryIgnored))
+
+		By("Still giving up, and saying so, when a lookup cannot tell which ChangeTransferPolicy was pushed")
+		ambiguous := newCTP("ctp-one")
+		twin := newCTP("ctp-two")
+		wr = newReceiver(newFakeClient(ambiguous, twin), ctps, gates)
+		result, err = wr.tryLookupAndEnqueue(context.Background(), testShaA, dryRef, "test")
+		Expect(err).To(HaveOccurred())
+		Expect(result.outcome(err)).To(Equal(deliveryFailed))
+	})
+
+	It("stops retrying a tag push once a lookup that works finds nothing that reads it", func() {
+		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
+		// The lookup of gates fails once, which is worth a retry. The retry finds that nothing reads the tag.
+		flaky := &flakyListClient{Client: newFakeClient(newGate("gate", testShaB, testShaB)), failuresLeft: 1}
+		wr := newReceiver(flaky, ctps, gates)
+		wr.retryTimeout = 30 * time.Second
+
+		rec := postGitHubPushForRef(wr, testShaA, "refs/tags/v1.2.3")
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Eventually(func() float64 {
+			return testutil.ToFloat64(metrics.WebhookMissRetryPending)
+		}, 2*time.Second, 10*time.Millisecond).Should(Equal(0.0), "the retry must not wait out its timeout")
+		Expect(gates.count()).To(Equal(0))
+		Expect(ctps.count()).To(Equal(0))
+	})
+
 	It("retries a branch push that nothing reads yet, and enqueues the gate once its status shows the commit", func() {
 		ctps, gates := &enqueueRecorder{}, &enqueueRecorder{}
 		cl := newFakeClient()
