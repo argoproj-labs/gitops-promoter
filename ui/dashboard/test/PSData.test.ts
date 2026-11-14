@@ -405,6 +405,36 @@ describe('enrichFromCRD - branch/kind/manager', () => {
     expect(check?.manager).toBe(dependentsCommitStatus);
   });
 
+  it('matches a ValidatedCommitStatus by spec.key and status.environments[].branch', () => {
+    const validatedCommitStatus = {
+      kind: 'ValidatedCommitStatus',
+      spec: {
+        key: 'dependents-successful',
+        promotionStrategyRef: { name: 'my-strategy' },
+        dryBranch: 'main',
+      },
+      status: {
+        environments: [
+          {
+            branch: 'environments/qal',
+            phase: 'pending',
+            tag: { name: 'environments/qal-tag', sha: 'a'.repeat(40), source: 'Automatic' },
+          },
+        ],
+      },
+    };
+    const managers: CommitStatusManagerBundle = {
+      validatedCommitStatuses: [validatedCommitStatus],
+    };
+
+    const mergedEnv = mergeEnvManagers(environmentWithChecks, managers);
+    const [env] = enrichEnvironments([mergedEnv], 0);
+    const check = env.proposedChecks.find((c) => c.name === 'dependents-successful');
+
+    expect(check?.kind).toBe('ValidatedCommitStatus');
+    expect(check?.manager).toBe(validatedCommitStatus);
+  });
+
   it('leaves kind/manager undefined when no manager matches the check key', () => {
     const managers: CommitStatusManagerBundle = {
       timedCommitStatuses: [

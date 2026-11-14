@@ -114,6 +114,32 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
+## ValidatedCommitStatus
+
+[ValidatedCommitStatuses](../crd-specs.md#validatedcommitstatus) may produce the following events:
+
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal     | EnvironmentTagMoved         | The controller moved, or created, an environment's tag. The message names the tag, the dry SHAs it moved between, and what moved it (`Manual`, `Automatic` or `Seeded`). |
+| Normal     | EnvironmentTagMovedByHand   | An environment's tag was moved, created or deleted outside the controller. The tag is left where it was put.           |
+| Warning    | EnvironmentTagPushFailed    | A validated move of an environment's tag could not be pushed, for example because a tag protection rule refuses it. The move is kept in `status.environments[].pending` and retried. Also the reason of the Ready condition while any tag cannot be moved. |
+| Warning    | ValidationNotRecorded       | An automatic validation could not be written to `refs/notes/promoter.validations`. It is written again on the next reconcile. |
+| Warning    | ValidationIgnored           | A validation names a commit that the repository does not have, or does not serve. It is skipped.                       |
+| Warning    | EnvironmentTagsOwnedByAnotherGate | Another ValidatedCommitStatus already moves the environment tags of the same PromotionStrategy. This one does nothing. |
+| Normal/Warning | CommitStatusPhaseChanged | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                           |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this ValidatedCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
+
+## CommitValidation
+
+[CommitValidations](../crd-specs.md#commitvalidation) may produce the following events:
+
+| Event Type | Event Reason                  | Description                                                                                                            |
+|------------|-------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| Normal     | CommitValidationRecorded      | The validation of `spec.sha` was written to the repository. `status.request.phase` is `Recorded`.                    |
+| Warning    | CommitValidationRejected      | `spec.sha` does not exist in the repository, so nothing was written. `status.request.phase` is `Rejected`.           |
+| Warning    | ValidatedCommitStatusNotFound | The PromotionStrategy has no [ValidatedCommitStatus](../crd-specs.md#validatedcommitstatus) to apply the validation. The request is kept and recorded once there is one. |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:

@@ -710,7 +710,13 @@ func (run *validatedRun) clear() {
 		}
 		memories := make([][]promoterv1alpha1.ValidatedCommitStatusSuccessfulSha, 0, len(env.upstreams))
 		for _, upstream := range env.upstreams {
-			memories = append(memories, run.byBranch[upstream].next.SuccessfulShas)
+			// The dependency graph was validated, so every upstream is an environment. Should one not be,
+			// its empty memory means that nothing is cleared.
+			var succeeded []promoterv1alpha1.ValidatedCommitStatusSuccessfulSha
+			if upstreamEnv, known := run.byBranch[upstream]; known {
+				succeeded = upstreamEnv.next.SuccessfulShas
+			}
+			memories = append(memories, succeeded)
 		}
 		env.cleared = validations.UpstreamCleared(memories...)
 	}
@@ -818,26 +824,31 @@ func (run *validatedRun) collectUnapplied(ctx context.Context) error {
 	for _, env := range run.envs {
 		// Resume after the newest validation of the commit the tag is on. With none, resume from the
 		// head of the notes: validations of other commits are older than whatever put the tag there.
-		match := -1
-		for i, validation := range recent {
-			if env.remote.Commit != "" && validation.Line.Target == env.tagName && validation.Sha == env.remote.Commit {
-				match = i
+		matched := false
+		source := promoterv1alpha1.ValidatedTagSourceManual
+		var later []validations.Validation
+		for _, validation := range recent {
+			if validation.Line.Target != env.tagName {
+				continue
 			}
+			if env.remote.Commit != "" && validation.Sha == env.remote.Commit {
+				// A newer validation of the tag's commit: whatever came before it has been applied.
+				matched, later = true, nil
+				source = promoterv1alpha1.ValidatedTagSourceManual
+				if validation.Line.Automatic() {
+					source = promoterv1alpha1.ValidatedTagSourceAutomatic
+				}
+				continue
+			}
+			later = append(later, validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
 		}
-		if match < 0 {
+		if !matched {
 			continue
 		}
 		if env.next.Tag.Source == "" {
-			env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceManual
-			if recent[match].Line.Automatic() {
-				env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceAutomatic
-			}
+			env.next.Tag.Source = source
 		}
-		for _, validation := range recent[match+1:] {
-			if validation.Line.Target == env.tagName {
-				env.unapplied = append(env.unapplied, validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
-			}
-		}
+		env.unapplied = append(env.unapplied, later...)
 	}
 	return nil
 }

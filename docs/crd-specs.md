@@ -101,7 +101,7 @@ Shared embed for gate CR `status.environments[]` entries (not part of `CommitSta
 | `url` | `url` | SCM details link when configured |
 | `reportedSha` | `sha` | Hydrated SHA the child CommitStatus is attached to |
 
-DependentsSuccessfulCommitStatus is the first built-in gate to populate the full embed. See
+DependentsSuccessfulCommitStatus and ValidatedCommitStatus populate the full embed. See
 [Commit Status Controller Best Practices](contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
 ### GitRepository
@@ -165,6 +165,9 @@ environment: automatically once every environment it depends on has succeeded on
 and the child CommitStatus mirror fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
 [`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus).
 
+See [Validated Commit Status Controller](gating-promotions/built-in-gates/validated-commit-status.md) for how tags
+move, how to point hydrators at them, and how to migrate an existing PromotionStrategy.
+
 ```yaml
 {!internal/controller/testdata/ValidatedCommitStatus.yaml!}
 ```
@@ -174,7 +177,8 @@ and the child CommitStatus mirror fields (`phase`, `description`, `url`, `report
 A CommitValidation submits manual validations for one environment of a PromotionStrategy that is ordered by a
 [ValidatedCommitStatus](#validatedcommitstatus), and shows that environment's validation history. Setting `spec.sha`
 records that the DRY commit may deploy to the environment, as a git note under `refs/notes/promoter.validations`. Create
-one per environment and grant `update` on it by name to the people who may approve that environment.
+one per environment and grant `update` on it by name to the people who may approve that environment. See
+[Validating a commit](gating-promotions/built-in-gates/validated-commit-status.md#validating-a-commit).
 
 ```yaml
 {!internal/controller/testdata/CommitValidation.yaml!}
@@ -275,6 +279,21 @@ The `DependentsSuccessfulCommitStatus` CRD may also have the following condition
 
 * `CommitStatusesNotReady`
 
+#### `ValidatedCommitStatus`
+
+The `ValidatedCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+* `EnvironmentTagPushFailed`
+* `ValidationNotRecorded`
+* `EnvironmentTagsOwnedByAnotherGate`
+
+#### `CommitValidation`
+
+The `CommitValidation` CRD may also have the following condition reasons:
+
+* `ValidatedCommitStatusNotFound`
+
 #### `ChangeTransferPolicy`
 
 The `ChangeTransferPolicy` CRD may also have the following condition reasons:
@@ -287,8 +306,8 @@ The `PromotionStrategy` CRD may also have the following condition reasons:
 
 * `ChangeTransferPolicyNotReady`
 
-Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus`, or a gate `key` not listed in the
-effective `proposedCommitStatuses` for an environment branch) surfaces as `ReconciliationError`.
+Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus` or `ValidatedCommitStatus`, or a gate
+`key` not listed in the effective `proposedCommitStatuses` for an environment branch) surfaces as `ReconciliationError`.
 
 ## Finalizers
 
