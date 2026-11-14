@@ -60,10 +60,12 @@ const (
 	// loop against a tag the SCM refuses to move.
 	validatedRetryInterval = time.Minute
 
-	// validatedNudgeInterval is the spacing between nudges of the ChangeTransferPolicy of an environment
-	// whose hydrator has not caught up with its tag. SCMs send no webhook when a hydrator pushes a git
-	// note, so without a nudge a hydration that changed nothing would wait for the next requeue.
-	validatedNudgeInterval = 15 * time.Second
+	// validatedPollInterval is how often the controller looks again at the two things nothing tells it
+	// about. One is a hydrator catching up with a tag: SCMs send no webhook when a hydrator pushes a git
+	// note, so the environment's ChangeTransferPolicy is nudged at this spacing, and without the nudge a
+	// hydration that changed nothing would wait for the next requeue. The other is an environment that
+	// advances WhenIdle becoming idle.
+	validatedPollInterval = 15 * time.Second
 
 	// validatedNudgeWindow is how long after a tag moved the nudging goes on. A hydrator that has not
 	// caught up by then is slow, broken, or not reading the tag; the usual requeue takes over.
@@ -111,9 +113,26 @@ type ValidatedCommitStatusReconciler struct {
 	lastNudges map[client.ObjectKey]time.Time
 	nudgeMutex sync.Mutex
 
-	// nudgeInterval is the spacing between nudges. The zero value means validatedNudgeInterval; tests
-	// shorten it.
-	nudgeInterval time.Duration
+	// pollInterval and retryInterval stand in for validatedPollInterval and validatedRetryInterval when
+	// they are not zero. Tests shorten them.
+	pollInterval  time.Duration
+	retryInterval time.Duration
+}
+
+// intervalOr returns override when it is set, and otherwise fallback.
+func intervalOr(override, fallback time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	return fallback
+}
+
+// sooner returns the shorter of two waits, where zero means not waiting at all.
+func sooner(a, b time.Duration) time.Duration {
+	if a == 0 || (b != 0 && b < a) {
+		return b
+	}
+	return a
 }
 
 // GetEnqueueFunc returns a function that enqueues ValidatedCommitStatus reconcile requests.
@@ -127,6 +146,8 @@ func (r *ValidatedCommitStatusReconciler) GetEnqueueFunc() ValidatedCommitStatus
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=validatedcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
@@ -385,6 +406,11 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	utils.InheritNotReadyConditionFromObjects(vcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	retryAfter := run.nudge(ctx)
+	if run.waitsForIdle() {
+		// Nothing announces an environment becoming idle: its pull request is deleted after the last
+		// change to the PromotionStrategy's status that would bring the controller back.
+		retryAfter = sooner(retryAfter, intervalOr(r.pollInterval, validatedPollInterval))
+	}
 	if len(run.problems) > 0 {
 		meta.SetStatusCondition(vcs.GetConditions(), metav1.Condition{
 			Type:               string(promoterConditions.Ready),
@@ -393,9 +419,16 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 			Message:            utils.TruncateString(strings.Join(run.problems, "; "), validatedMessageLimit),
 			ObservedGeneration: vcs.Generation,
 		})
-		retryAfter = validatedRetryInterval
+		retryAfter = sooner(retryAfter, intervalOr(r.retryInterval, validatedRetryInterval))
 	}
 	return retryAfter, nil
+}
+
+// waitsForIdle reports whether an automatic validation is waiting for its environment to be idle.
+func (run *validatedRun) waitsForIdle() bool {
+	return slices.ContainsFunc(run.envs, func(env *validatedEnvironment) bool {
+		return env.next.Held != nil && env.next.Held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy
+	})
 }
 
 // newRun resolves the environments of the PromotionStrategy and brings the gate's clone up to date
@@ -851,6 +884,9 @@ func (run *validatedRun) movedByController(ctx context.Context, env *validatedEn
 	if in.Tag == "" {
 		in.Tag = env.seed
 	}
+	// Had the controller moved the tag, the environment would have been idle then, whatever it is now
+	// that it has a new commit to promote.
+	in.Idle = true
 	own, err := run.replay(ctx, in)
 	if err != nil || own.Tag != env.remote.Commit {
 		return false
@@ -871,6 +907,13 @@ func (run *validatedRun) movedByController(ctx context.Context, env *validatedEn
 func (run *validatedRun) planInput(ctx context.Context, env *validatedEnvironment) (validations.Input, error) {
 	in := validations.Input{Tag: env.start(), RootCandidate: env.rootCandidate}
 
+	if env.advance == promoterv1alpha1.AdvanceWhenIdle {
+		idle, err := run.idle(ctx, env)
+		if err != nil {
+			return validations.Input{}, err
+		}
+		in.WhenIdle, in.Idle = true, idle
+	}
 	if env.held != nil {
 		found, err := run.ensureCommit(ctx, env.held.Sha)
 		if err != nil {
@@ -902,6 +945,46 @@ func (run *validatedRun) planInput(ctx context.Context, env *validatedEnvironmen
 		in.Validations = append(in.Validations, validation)
 	}
 	return in, nil
+}
+
+// idle reports whether an environment has finished whatever its tag last asked of it: its hydrator has
+// processed the tag's commit, nothing is proposed, no promotion pull request is open, and no active
+// commit status is pending. A failed commit status counts as idle, so that a validated fix can roll
+// forward.
+//
+// It reads the ChangeTransferPolicy and its PullRequest rather than the PromotionStrategy's copy of
+// them. The copy trails by a reconcile, and the pull request exists before the ChangeTransferPolicy
+// reports it.
+func (run *validatedRun) idle(ctx context.Context, env *validatedEnvironment) (bool, error) {
+	if env.remote.Commit == "" {
+		// The tag does not exist, so nothing has been asked of the environment.
+		return true, nil
+	}
+
+	var ctp promoterv1alpha1.ChangeTransferPolicy
+	key := client.ObjectKey{Namespace: run.ps.Namespace, Name: utils.ChangeTransferPolicyNameForEnvironment(run.ps.Name, env.branch)}
+	if err := run.r.Get(ctx, key, &ctp); err != nil {
+		if k8serrors.IsNotFound(err) {
+			// Nothing can be said about an environment that is not set up yet.
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", key.Name, err)
+	}
+	current := promoterv1alpha1.EnvironmentStatus{Active: ctp.Status.Active, Proposed: ctp.Status.Proposed}
+	if getEffectiveHydratedDrySha(current) != env.remote.Commit || current.Proposed.Dry.Sha != current.Active.Dry.Sha {
+		return false, nil
+	}
+	for _, status := range current.Active.CommitStatuses {
+		if status.Phase == string(promoterv1alpha1.CommitPhasePending) {
+			return false, nil
+		}
+	}
+
+	var pullRequests promoterv1alpha1.PullRequestList
+	if err := run.r.List(ctx, &pullRequests, ctpPullRequestListOptions(&ctp)); err != nil {
+		return false, fmt.Errorf("failed to list PullRequests of ChangeTransferPolicy %q: %w", key.Name, err)
+	}
+	return len(pullRequests.Items) == 0, nil
 }
 
 // replay applies the tag rules. Ancestry is only asked of commits that are in the clone.
@@ -1002,8 +1085,13 @@ func (run *validatedRun) heldStatus(env *validatedEnvironment) *promoterv1alpha1
 		return nil
 	}
 	held := &promoterv1alpha1.ValidatedCommitStatusHeld{Sha: env.held.Sha, Reason: env.held.Reason}
-	if env.held.Reason == promoterv1alpha1.ValidatedHeldReasonPinned {
+	switch env.held.Reason {
+	case promoterv1alpha1.ValidatedHeldReasonPinned:
 		held.Message = "Waiting for the dry branch to contain " + utils.TruncateString(env.desired, shortShaLength)
+	case promoterv1alpha1.ValidatedHeldReasonBusy:
+		held.Message = "Waiting for the environment to finish promoting " + utils.TruncateString(env.desired, shortShaLength)
+	default:
+		// No other reason exists; a new one would get no message until it is given one here.
 	}
 	return held
 }
@@ -1188,10 +1276,7 @@ func (run *validatedRun) nudge(ctx context.Context) time.Duration {
 	if run.r.EnqueueCTP == nil || referencedValidatedCommitStatus(run.ps) != run.vcs.Name {
 		return 0
 	}
-	interval := run.r.nudgeInterval
-	if interval <= 0 {
-		interval = validatedNudgeInterval
-	}
+	interval := intervalOr(run.r.pollInterval, validatedPollInterval)
 
 	var wait time.Duration
 	for _, env := range run.envs {

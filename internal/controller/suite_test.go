@@ -358,9 +358,11 @@ var _ = SynchronizedBeforeSuite(func() {
 		Recorder:    k8sManager.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-		// Shortened from the 15s production default so that specs waiting for a hydrator note to be
-		// picked up, which no webhook announces, do not each wait that long.
-		nudgeInterval: 2 * time.Second,
+		// Shortened from the production defaults (15s and 1m) so that specs waiting for something no
+		// event announces do not each wait that long: a hydrator note being picked up, an environment
+		// becoming idle, a tag push being retried.
+		pollInterval:  2 * time.Second,
+		retryInterval: 2 * time.Second,
 	}
 	err = validatedCommitStatusReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -949,11 +951,17 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 // When the suite targets scmserver, the server already delivers real provider-shaped push
 // webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	sendWebhookForRef(ctx, sha, "refs/heads/"+branch)
+}
+
+// sendWebhookForRef is sendWebhookForPush for any ref, such as a tag. sha is what the ref pointed at
+// before the push.
+func sendWebhookForRef(ctx context.Context, sha, ref string) {
 	if scmTarget.sendsOwnWebhooks() {
 		return
 	}
 	// Build GitHub-style webhook payload
-	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
+	payload := buildGitHubWebhookPayload(sha, ref)
 
 	// Send the webhook request
 	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)

@@ -58,6 +58,11 @@ type Input struct {
 	// Validations are the validations for this tag that have not been applied yet, in the order they
 	// were written.
 	Validations []Validation
+	// WhenIdle is true when an automatic validation may only move the tag while the environment is idle.
+	WhenIdle bool
+	// Idle is whether the environment is idle: it has finished whatever its tag last asked of it. Only
+	// read with WhenIdle.
+	Idle bool
 }
 
 // Result is where an environment's tag should point.
@@ -73,26 +78,39 @@ type Result struct {
 // Plan decides where an environment's tag should point.
 //
 // Validations are replayed in the order they were written and only the end result is returned, so the
-// commits in between are skipped. An automatic validation moves the tag only to a commit that descends
-// from the commit the tag is on. A commit the tag has already passed is ignored. A commit on a different
-// line of history is held as Pinned, and stays held until a newer validation replaces it: which commit
-// contains which never changes, so it can never apply later.
+// commits in between are skipped. Manual and automatic validations follow different rules:
+//
+//   - A manual validation moves the tag to its commit, wherever that commit is: ahead of the tag, behind
+//     it, or on another line of history. It applies whether or not the environment is idle, and whatever
+//     automatic validation was waiting before it is dropped.
+//   - An automatic validation moves the tag only to a commit that descends from the commit the tag is on. A
+//     commit the tag has already passed is ignored. A commit on another line of history is held as Pinned,
+//     and stays held until a newer validation replaces it: which commit contains which never changes, so it
+//     can never apply later.
+//   - With WhenIdle, an automatic validation that could move the tag is held as Busy while the environment
+//     is not idle, and is looked at again the next time. After a manual validation moved the tag, the
+//     environment is not idle for the rest of the replay: it has something new to do.
 func Plan(ctx context.Context, graph Ancestry, in Input) (Result, error) {
-	p := planner{graph: graph, tag: in.Tag, held: in.Held}
+	p := planner{graph: graph, tag: in.Tag, busy: in.WhenIdle && !in.Idle, whenIdle: in.WhenIdle}
 
-	// What was left over from the previous decision comes first: it is older than anything new.
+	// What was left over from the previous decision comes first, oldest first: the move that was decided
+	// on and could not be pushed, then the automatic validation that was waiting behind it. The waiting
+	// one is looked at afresh, because the environment may have become idle, or the move it waited behind
+	// may be a different one now.
+	var leftover []Validation
 	if in.Pending != nil {
-		if err := p.automatic(ctx, in.Pending.Sha); err != nil {
-			return Result{}, err
-		}
+		leftover = append(leftover, Validation{Sha: in.Pending.Sha, Automatic: in.Pending.Source != promoterv1alpha1.ValidatedTagSourceManual})
+	}
+	if in.Held != nil {
+		leftover = append(leftover, Validation{Sha: in.Held.Sha, Automatic: true})
 	}
 	if in.RootCandidate != "" {
-		if err := p.automatic(ctx, in.RootCandidate); err != nil {
-			return Result{}, err
-		}
+		leftover = append(leftover, Validation{Sha: in.RootCandidate, Automatic: true})
 	}
-	for _, validation := range in.Validations {
+
+	for _, validation := range slices.Concat(leftover, in.Validations) {
 		if !validation.Automatic {
+			p.manual(validation.Sha)
 			continue
 		}
 		if err := p.automatic(ctx, validation.Sha); err != nil {
@@ -113,6 +131,23 @@ type planner struct {
 	held   *Held
 	tag    string
 	source promoterv1alpha1.ValidatedTagSource
+	// whenIdle is true when automatic validations wait for the environment to be idle.
+	whenIdle bool
+	// busy is true when the environment is not idle.
+	busy bool
+}
+
+// manual applies a manual validation of sha. A person asked for this commit, so the tag goes there, and
+// an automatic validation that was waiting for the tag's old position has nothing left to wait for.
+func (p *planner) manual(sha string) {
+	p.held = nil
+	if sha == p.tag {
+		return
+	}
+	p.tag = sha
+	p.source = promoterv1alpha1.ValidatedTagSourceManual
+	// The environment now has this commit to hydrate and promote.
+	p.busy = p.whenIdle
 }
 
 // automatic applies an automatic validation of sha. It replaces whatever automatic validation was
@@ -130,6 +165,10 @@ func (p *planner) automatic(ctx context.Context, sha string) error {
 		if !ahead {
 			return p.hold(ctx, sha)
 		}
+	}
+	if p.busy {
+		p.held = &Held{Sha: sha, Reason: promoterv1alpha1.ValidatedHeldReasonBusy}
+		return nil
 	}
 	p.tag = sha
 	p.source = promoterv1alpha1.ValidatedTagSourceAutomatic

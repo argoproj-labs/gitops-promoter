@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -261,9 +262,9 @@ func (p *validatedPipeline) tag(branch string) string {
 }
 
 // commitDry pushes a new commit to the dry branch and returns its SHA.
-func (p *validatedPipeline) commitDry(message string) string {
+func (p *validatedPipeline) commitDry() string {
 	GinkgoHelper()
-	sha, err := makeDryCommit(p.ctx, p.gitPath, message)
+	sha, err := makeDryCommit(p.ctx, p.gitPath, "another change")
 	Expect(err).NotTo(HaveOccurred())
 	return sha
 }
@@ -276,6 +277,90 @@ func (p *validatedPipeline) hydrate(branch string) string {
 	Expect(drySha).NotTo(BeEmpty(), "environment %s has no tag to hydrate from", branch)
 	Expect(hydrateEnvironment(p.ctx, p.gitPath, branch+"-next", drySha, "hydrate "+branch+" from its tag")).To(Succeed())
 	return drySha
+}
+
+// validateByHand validates a dry commit for an environment the way a person without a CommitValidation
+// does: by pushing a line to the validation note of the commit. Only the target is written, as the
+// documentation asks for. No webhook announces a note, so the gate is enqueued, standing in for its poll.
+func (p *validatedPipeline) validateByHand(branch, drySha, reason string) {
+	GinkgoHelper()
+	line := `{"target":"` + validations.TagName(branch, "") + `","reason":"` + reason + `"}`
+	// The controller writes to the same ref, so a push can lose the race and has to start over.
+	Eventually(func() error {
+		refspec := "+" + git.PromoterValidationsNotesRef + ":" + git.PromoterValidationsNotesRef
+		if _, err := runGitCmd(p.ctx, p.gitPath, "fetch", "origin", refspec); err != nil && !strings.Contains(err.Error(), "couldn't find remote ref") {
+			return err
+		}
+		if _, err := runGitCmd(p.ctx, p.gitPath, "notes", "--ref="+git.PromoterValidationsNotesRef, "append", "-m", line, drySha); err != nil {
+			return err
+		}
+		_, err := runGitCmd(p.ctx, p.gitPath, "push", "origin", git.PromoterValidationsNotesRef)
+		return err
+	}, constants.EventuallyTimeout, time.Second).Should(Succeed())
+	enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
+}
+
+// moveTagByHand points an environment's tag at a dry commit the way a person with push access does.
+func (p *validatedPipeline) moveTagByHand(branch, drySha string) {
+	GinkgoHelper()
+	ref := "refs/tags/" + validations.TagName(branch, "")
+	before := p.remoteRef(ref)
+	p.git("push", "--force", "origin", drySha+":"+ref)
+	sendWebhookForRef(p.ctx, before, ref)
+}
+
+// commitHotfix pushes a commit to a branch of that name that starts at the given dry commit, and returns
+// the hotfix commit. The dry branch is checked out again afterwards.
+func (p *validatedPipeline) commitHotfix(branch, from string) string {
+	GinkgoHelper()
+	p.git("fetch", "origin", p.dryBranch)
+	p.git("checkout", "-B", branch, from)
+	Expect(os.WriteFile(p.gitPath+"/hotfix.yaml", []byte("fixed: "+time.Now().Format(time.RFC3339Nano)), 0o644)).To(Succeed())
+	p.git("add", "hotfix.yaml")
+	p.git("commit", "-m", "hotfix")
+	p.git("push", "origin", branch)
+	sha := strings.TrimSpace(p.git("rev-parse", "HEAD"))
+	p.git("checkout", p.dryBranch)
+	return sha
+}
+
+// mergeIntoDry merges a branch into the dry branch with a merge commit, pushes it, and returns the merge.
+func (p *validatedPipeline) mergeIntoDry(branch string) string {
+	GinkgoHelper()
+	before := p.dryHead()
+	p.git("checkout", p.dryBranch)
+	p.git("pull", "origin", p.dryBranch)
+	p.git("merge", "--no-ff", "-m", "merge "+branch, branch)
+	p.git("push", "origin", p.dryBranch)
+	sendWebhookForPush(p.ctx, before, p.dryBranch)
+	return strings.TrimSpace(p.git("rev-parse", "HEAD"))
+}
+
+// setAutoMerge changes whether an environment's promotion pull request merges by itself.
+func (p *validatedPipeline) setAutoMerge(branch string, autoMerge bool) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var ps promoterv1alpha1.PromotionStrategy
+		g.Expect(k8sClient.Get(p.ctx, client.ObjectKeyFromObject(p.promotionStrategy), &ps)).To(Succeed())
+		for i := range ps.Spec.Environments {
+			if ps.Spec.Environments[i].Branch == branch {
+				ps.Spec.Environments[i].AutoMerge = &autoMerge
+			}
+		}
+		g.Expect(k8sClient.Update(p.ctx, &ps)).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
+}
+
+// expectReady waits for the gate to be Ready.
+func (p *validatedPipeline) expectReady() {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var gate promoterv1alpha1.ValidatedCommitStatus
+		g.Expect(k8sClient.Get(p.ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+		ready := meta.FindStatusCondition(gate.Status.Conditions, string(promoterConditions.Ready))
+		g.Expect(ready).NotTo(BeNil())
+		g.Expect(ready.Status).To(Equal(metav1.ConditionTrue), ready.Message)
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 // validationsOn returns the validation lines written on a dry commit.
@@ -475,7 +560,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Pushing a new dry commit: only the root environment's tag follows it")
-			second := p.commitDry("second change")
+			second := p.commitDry()
 			p.expectTag(testBranchDevelopment, second)
 			p.promote(testBranchDevelopment)
 
@@ -566,7 +651,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			))
 
 			By("Doing the same for the next dry commit, whichever environment gets there first")
-			second := p.commitDry("second change")
+			second := p.commitDry()
 			p.expectTag(testBranchDevelopment, second)
 			p.expectTag(testBranchStaging, second)
 			p.promote(testBranchStaging)
@@ -716,6 +801,334 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 				g.Expect(ready).NotTo(BeNil())
 				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue), ready.Message)
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+})
+
+var _ = Describe("ValidatedCommitStatus Controller: validations made by people", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	Context("When an environment is validated manually", func() {
+		It("reports what is ready for it, and moves its tag only when a person validates a commit", func() {
+			p := newValidatedPipeline(ctx, "validated-manual")
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchProduction, Validation: promoterv1alpha1.ValidationManual},
+			}
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+
+			By("Promoting through the environments before it")
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, first)
+			p.promote(testBranchStaging)
+
+			By("Reporting the commit as ready for production without moving production's tag")
+			Eventually(func(g Gomega) {
+				cleared := p.environmentStatus(g, testBranchProduction).UpstreamCleared
+				g.Expect(cleared).NotTo(BeNil())
+				g.Expect(cleared.Sha).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func() string {
+				return p.tag(testBranchProduction)
+			}, 5*time.Second, 500*time.Millisecond).Should(Equal(live))
+			Expect(p.validationsOn(first)).To(ConsistOf(HaveField("Target", "environment/staging-tag")),
+				"the controller validates nothing for an environment a person validates for")
+
+			By("Validating the commit for production by pushing a git note")
+			p.validateByHand(testBranchProduction, first, "CHG-1234 approved")
+			p.expectTag(testBranchProduction, first)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)
+			p.promote(testBranchProduction)
+
+			By("Validating an older commit, which moves the tag back and rolls production back with it")
+			p.validateByHand(testBranchProduction, live, "roll back")
+			p.expectTag(testBranchProduction, live)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)
+			p.promote(testBranchProduction)
+			p.expectReady()
+		})
+	})
+
+	Context("When a hotfix is validated for an environment", func() {
+		It("pins the environment to it until the dry branch contains the hotfix", func() {
+			p := newValidatedPipeline(ctx, "validated-hotfix")
+			p.create()
+			first := p.dryHead()
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, first)
+			p.promote(testBranchStaging)
+
+			By("Validating a commit that is not on the dry branch for staging")
+			hotfix := p.commitHotfix("hotfix", first)
+			p.validateByHand(testBranchStaging, hotfix, "hotfix")
+			p.expectTag(testBranchStaging, hotfix)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceManual)
+			p.promote(testBranchStaging)
+
+			By("Holding the next commit from the dry branch, which does not contain the hotfix")
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.promote(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				held := p.environmentStatus(g, testBranchStaging).Held
+				g.Expect(held).NotTo(BeNil())
+				g.Expect(held.Sha).To(Equal(second))
+				g.Expect(held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonPinned))
+				g.Expect(held.Message).To(Equal("Waiting for the dry branch to contain " + short(hotfix)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(p.tag(testBranchStaging)).To(Equal(hotfix))
+
+			By("Letting the hotfix move on to production like any commit, since it descends from what production runs")
+			p.expectTag(testBranchProduction, hotfix)
+
+			By("Releasing the pin when the hotfix is merged into the dry branch")
+			merge := p.mergeIntoDry("hotfix")
+			p.expectTag(testBranchDevelopment, merge)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, merge)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceAutomatic)
+			Eventually(func(g Gomega) {
+				g.Expect(p.environmentStatus(g, testBranchStaging).Held).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When a tag is moved by hand", func() {
+		It("leaves the tag where it was put until a newer validation arrives", func() {
+			p := newValidatedPipeline(ctx, "validated-by-hand")
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, first)
+			p.promote(testBranchStaging)
+
+			By("Pushing staging's tag back to an older commit")
+			p.moveTagByHand(testBranchStaging, live)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceExternal)
+			Consistently(func(g Gomega) {
+				g.Expect(p.tag(testBranchStaging)).To(Equal(live), "the controller must not put the tag back")
+				status := p.environmentStatus(g, testBranchStaging)
+				g.Expect(status.Tag.Sha).To(Equal(live))
+				g.Expect(status.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Promoting what the tag now points at: pushing a tag is a deploy")
+			p.promote(testBranchStaging)
+
+			By("Moving forward again with the next automatic validation")
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, second)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceAutomatic)
+		})
+	})
+
+	Context("When an environment advances only when idle", func() {
+		It("holds an automatic validation while a promotion is open, and applies it when the promotion is done", func() {
+			p := newValidatedPipeline(ctx, "validated-when-idle")
+			// Staging's promotions wait for a person to merge them.
+			p.promotionStrategy.Spec.Environments[1].AutoMerge = new(false)
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchStaging, Advance: promoterv1alpha1.AdvanceWhenIdle},
+			}
+			p.create()
+			first := p.dryHead()
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+
+			By("Moving staging's tag while staging has nothing in flight")
+			p.expectTag(testBranchStaging, first)
+			p.hydrate(testBranchStaging)
+			Eventually(func(g Gomega) {
+				observed := p.observed(g, testBranchStaging)
+				g.Expect(observed.PullRequest).NotTo(BeNil())
+				g.Expect(observed.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Holding the next commit while staging's promotion is still open")
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.promote(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				held := p.environmentStatus(g, testBranchStaging).Held
+				g.Expect(held).NotTo(BeNil())
+				g.Expect(held.Sha).To(Equal(second))
+				g.Expect(held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonBusy))
+				g.Expect(held.Message).To(Equal("Waiting for the environment to finish promoting " + short(first)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func() string {
+				return p.tag(testBranchStaging)
+			}, 5*time.Second, 500*time.Millisecond).Should(Equal(first))
+			p.expectGate(testBranchStaging, promoterv1alpha1.CommitPhaseSuccess, "Proposed commit matches environment/staging-tag")
+
+			By("Applying it once the promotion has merged")
+			p.setAutoMerge(testBranchStaging, true)
+			p.expectLive(testBranchStaging, first)
+			p.expectTag(testBranchStaging, second)
+			Eventually(func(g Gomega) {
+				g.Expect(p.environmentStatus(g, testBranchStaging).Held).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When the repository refuses a tag push", func() {
+		It("keeps the move pending, says why, and makes it once the push goes through", func() {
+			if !scmTarget.isFake() {
+				Skip("refusing a tag push takes a server-side hook, which only the in-process git server lets a spec install")
+			}
+			p := newValidatedPipeline(ctx, "validated-pending")
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			p.expectTag(testBranchDevelopment, first)
+			p.expectTag(testBranchStaging, live)
+
+			By("Protecting staging's tag on the server")
+			owner, name := scmTarget.repoOwnerName(p.gitRepo)
+			hooks := filepath.Join(gitStoragePath, owner, name, "hooks")
+			Expect(hooks).To(BeADirectory())
+			hook := filepath.Join(hooks, "update")
+			script := "#!/bin/sh\nif [ \"$1\" = \"refs/tags/environment/staging-tag\" ]; then echo 'this tag is protected' >&2; exit 1; fi\n"
+			Expect(os.WriteFile(hook, []byte(script), 0o755)).To(Succeed())
+
+			By("Validating a commit for staging, whose tag cannot be moved")
+			p.promote(testBranchDevelopment)
+			Eventually(func(g Gomega) {
+				status := p.environmentStatus(g, testBranchStaging)
+				g.Expect(status.Pending).NotTo(BeNil())
+				g.Expect(status.Pending.Sha).To(Equal(first))
+				g.Expect(status.Pending.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+				g.Expect(status.Pending.Message).To(ContainSubstring("hook declined"))
+				g.Expect(status.Tag.Sha).To(Equal(live))
+				g.Expect(status.UpstreamCleared).NotTo(BeNil())
+				g.Expect(status.UpstreamCleared.Sha).To(Equal(first), "the validation itself was recorded")
+
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				ready := meta.FindStatusCondition(gate.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Reason).To(Equal(string(promoterConditions.EnvironmentTagPushFailed)))
+				g.Expect(ready.Message).To(ContainSubstring(`failed to move tag "environment/staging-tag" to ` + short(first)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(p.tag(testBranchStaging)).To(Equal(live))
+
+			By("Lifting the protection: the controller tries again without a new validation")
+			Expect(os.Remove(hook)).To(Succeed())
+			p.expectTag(testBranchStaging, first)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceAutomatic)
+			Eventually(func(g Gomega) {
+				g.Expect(p.environmentStatus(g, testBranchStaging).Pending).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			p.expectReady()
+		})
+	})
+
+	Context("When a validation names a commit the repository does not have", func() {
+		It("ignores the validation and carries on with the next", func() {
+			p := newValidatedPipeline(ctx, "validated-unknown-commit")
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchStaging, Validation: promoterv1alpha1.ValidationManual},
+			}
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			p.expectTag(testBranchStaging, live)
+
+			By("Validating a commit that was never pushed")
+			p.git("checkout", "-B", "never-pushed", first)
+			p.git("commit", "--allow-empty", "-m", "only on someone's laptop")
+			unknown := strings.TrimSpace(p.git("rev-parse", "HEAD"))
+			p.git("checkout", p.dryBranch)
+			p.validateByHand(testBranchStaging, unknown, "oops")
+
+			By("Reading past it")
+			Eventually(func(g Gomega) {
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				g.Expect(gate.Status.ValidationsCursor).To(Equal(p.remoteRef(git.PromoterValidationsNotesRef)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(p.tag(testBranchStaging)).To(Equal(live))
+			p.expectReady()
+
+			By("Applying the validation that follows it")
+			p.validateByHand(testBranchStaging, first, "the right one")
+			p.expectTag(testBranchStaging, first)
+		})
+	})
+
+	Context("When the gate is deleted and created again", func() {
+		It("takes the tags as it finds them and resumes after the validations they reflect", func() {
+			p := newValidatedPipeline(ctx, "validated-recreated")
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchProduction, Validation: promoterv1alpha1.ValidationManual},
+			}
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			p.expectTag(testBranchDevelopment, first)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, first)
+			p.promote(testBranchStaging)
+
+			By("Validating two commits for production, the older one last")
+			p.validateByHand(testBranchProduction, first, "go")
+			p.expectTag(testBranchProduction, first)
+			p.validateByHand(testBranchProduction, live, "back")
+			p.expectTag(testBranchProduction, live)
+
+			By("Deleting the gate, and with it everything it knew")
+			Expect(k8sClient.Delete(ctx, p.gate)).To(Succeed())
+			// A reconcile that is under way applies its status by name when it ends. Creating the gate again
+			// before that would hand the old status to the new object, and this would not be a fresh start.
+			Consistently(func() bool {
+				return errors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &promoterv1alpha1.ValidatedCommitStatus{}))
+			}, 3*time.Second, 500*time.Millisecond).Should(BeTrue())
+			recreated := &promoterv1alpha1.ValidatedCommitStatus{
+				Name:      p.gate.Name,
+				Namespace: p.gate.Namespace,
+				Spec:      p.gate.Spec,
+			}
+			Expect(k8sClient.Create(ctx, recreated)).To(Succeed())
+			p.gate = recreated
+
+			By("Leaving every tag where it is: the validation of the newer commit is not applied a second time")
+			Eventually(func(g Gomega) {
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				g.Expect(gate.Status.DryBranch).NotTo(BeNil())
+				g.Expect(gate.Status.ValidationsCursor).To(Equal(p.remoteRef(git.PromoterValidationsNotesRef)))
+
+				g.Expect(p.environmentStatus(g, testBranchProduction).Tag.Sha).To(Equal(live))
+				g.Expect(p.environmentStatus(g, testBranchProduction).Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual),
+					"the validation that matches the tag says what moved it")
+				g.Expect(p.environmentStatus(g, testBranchStaging).Tag.Sha).To(Equal(first))
+				g.Expect(p.environmentStatus(g, testBranchStaging).Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+				g.Expect(p.environmentStatus(g, testBranchDevelopment).Tag.Source).To(BeEmpty(),
+					"nothing in git says what moved the tag of an environment that follows the dry branch")
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(p.tag(testBranchDevelopment)).To(Equal(first))
+				g.Expect(p.tag(testBranchStaging)).To(Equal(first))
+				g.Expect(p.tag(testBranchProduction)).To(Equal(live))
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Carrying on from there")
+			second := p.commitDry()
+			p.expectTag(testBranchDevelopment, second)
+			p.promote(testBranchDevelopment)
+			p.expectTag(testBranchStaging, second)
+			Expect(p.tag(testBranchProduction)).To(Equal(live))
 		})
 	})
 })
