@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -1230,6 +1231,92 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 
 		ps.Spec.OrderCommitStatusRef.Group = "ordering.example.com"
 		Expect(referencedValidatedCommitStatus(ps)).To(BeEmpty(), "a kind of the same name in another group is someone else's")
+	})
+
+	It("names an environment's tag after the environment's own activePath, or else the strategy's", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{}
+		ps.Spec.ActivePath = "apps/all"
+		ps.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: testBranchDevelopment},
+			{Branch: testBranchStaging, ActivePath: "apps/staging-only"},
+		}
+		Expect(environmentActivePaths(ps)).To(Equal(map[string]string{
+			testBranchDevelopment: "apps/all",
+			testBranchStaging:     "apps/staging-only",
+		}))
+
+		ps.Spec.ActivePath = ""
+		paths := environmentActivePaths(ps)
+		Expect(paths).To(HaveKeyWithValue(testBranchDevelopment, ""), "an environment with no activePath is still an environment")
+		Expect(paths).NotTo(HaveKey(testBranchProduction))
+	})
+
+	Describe("which ValidatedCommitStatus moves the tags of a PromotionStrategy", func() {
+		const namespace = "test-ns"
+		created := time.Date(2026, 11, 13, 15, 0, 0, 0, time.UTC)
+
+		gate := func(name, strategy string, age time.Duration) *promoterv1alpha1.ValidatedCommitStatus {
+			return &promoterv1alpha1.ValidatedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, CreationTimestamp: metav1.NewTime(created.Add(-age))},
+				Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategy},
+					Key:                  promoterv1alpha1.ValidatedCommitStatusKey,
+					DryBranch:            "main",
+				},
+			}
+		}
+		strategy := func(ref promoterv1alpha1.OrderCommitStatusRef) *promoterv1alpha1.PromotionStrategy {
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			ps.Name, ps.Namespace = "demo", namespace
+			ps.Spec.OrderCommitStatusRef = ref
+			return ps
+		}
+		owner := func(ps *promoterv1alpha1.PromotionStrategy, gates ...client.Object) string {
+			GinkgoHelper()
+			builder := fake.NewClientBuilder().WithScheme(utils.GetScheme())
+			for _, kind := range GateCommitStatusKinds() {
+				builder = builder.WithIndex(kind, PromotionStrategyRefField, PromotionStrategyRefIndexValues)
+			}
+			found, err := validatedCommitStatusFor(context.Background(), builder.WithObjects(gates...).Build(), ps)
+			Expect(err).NotTo(HaveOccurred())
+			if found == nil {
+				return ""
+			}
+			return found.Name
+		}
+		validatedRef := func(name string) promoterv1alpha1.OrderCommitStatusRef {
+			return promoterv1alpha1.OrderCommitStatusRef{Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind, Name: name}
+		}
+
+		It("is none when no gate references the strategy", func() {
+			Expect(owner(strategy(validatedRef("demo")))).To(BeEmpty())
+			Expect(owner(strategy(validatedRef("demo")), gate("elsewhere", "another-strategy", time.Hour))).To(BeEmpty())
+		})
+
+		It("is the one the strategy references, however young", func() {
+			Expect(owner(strategy(validatedRef("young")),
+				gate("old", "demo", 48*time.Hour),
+				gate("young", "demo", time.Minute),
+			)).To(Equal("young"))
+		})
+
+		It("is the oldest while the strategy references another kind of gate, or a gate that is not there", func() {
+			gates := []client.Object{
+				gate("young", "demo", time.Minute),
+				gate("old", "demo", 48*time.Hour),
+				gate("older-but-elsewhere", "another-strategy", 96*time.Hour),
+			}
+			Expect(owner(strategy(promoterv1alpha1.OrderCommitStatusRef{Name: "young"}), gates...)).To(Equal("old"),
+				"the default kind is DependentsSuccessfulCommitStatus, so the name is not a ValidatedCommitStatus's")
+			Expect(owner(strategy(validatedRef("missing")), gates...)).To(Equal("old"))
+		})
+
+		It("goes by name between gates of the same age", func() {
+			Expect(owner(strategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"}),
+				gate("b", "demo", time.Hour),
+				gate("a", "demo", time.Hour),
+			)).To(Equal("a"))
+		})
 	})
 
 	It("retries a failure soon the first time only", func() {
