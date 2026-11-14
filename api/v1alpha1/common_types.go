@@ -163,7 +163,7 @@ type OrderCommitStatusRef struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Group string `json:"group"`
 	// Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
-	// ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+	// ordering gate. The built-in ordering gates are DependentsSuccessfulCommitStatus and ValidatedCommitStatus.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=DependentsSuccessfulCommitStatus
 	// +kubebuilder:validation:XValidation:rule=`self.endsWith('CommitStatus')`,message="kind must name a CommitStatus gate CR"

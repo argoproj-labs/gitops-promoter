@@ -1,0 +1,40 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: CommitValidation
+metadata:
+  name: example-prod
+spec:
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  # The environment this resource validates commits for. Immutable, like promotionStrategyRef.
+  branch: environment/prod
+  # Optional. The dry SHA to validate. It cannot change until status.request reports it as handled.
+  sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+  # Optional. Copied into the validation. Can only be set or changed together with sha.
+  reason: CHG-1234 approved
+status:
+  observedGeneration: 7
+  # Outcome for the SHA currently in spec.
+  request:
+    sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+    # Recorded | Rejected
+    phase: Recorded
+    handledAt: "2026-11-13T15:02:11Z"
+  # Newest first, rebuilt from the git notes, capped at 20.
+  history:
+    - sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+      # Submitted through this resource.
+      source: Resource
+      validatedBy: CommitValidation/example-prod
+      reason: CHG-1234 approved
+      validatedAt: "2026-11-13T15:02:11Z"
+    - sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
+      # Written by the ordering controller once the upstream environments succeeded.
+      source: Automatic
+      validatedBy: environment/staging successful
+      validatedAt: "2026-11-12T09:40:03Z"
+    - sha: 77c3e09b1d3f4a5c8e0b2d4f6a8c1e3b5d7f9a24
+      # Pushed directly as a git note.
+      source: Git
+      validatedBy: jane@example.com
+      reason: hotfix
+      validatedAt: "2026-11-10T22:15:48Z"

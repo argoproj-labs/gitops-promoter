@@ -3,9 +3,10 @@
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
 this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
 promotion steps. Promotion ordering requires `spec.orderCommitStatusRef`; the controller injects that gate's `spec.key`
-onto every `ChangeTransferPolicy`. The built-in gate is
-[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus); that gate's custom graphs use
-`spec.environments[].dependsOn` on the PromotionStrategy.
+onto every `ChangeTransferPolicy`. The built-in ordering gates are
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus) and
+[ValidatedCommitStatus](#validatedcommitstatus); both read custom graphs from `spec.environments[].dependsOn` on the
+PromotionStrategy.
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -148,6 +149,35 @@ fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
 
 ```yaml
 {!internal/controller/testdata/DependentsSuccessfulCommitStatus.yaml!}
+```
+
+### ValidatedCommitStatus
+
+A ValidatedCommitStatus is an ordering gate for promotions in which every environment's hydrator reads its own git
+tag instead of the DRY branch. The tag is `<environment branch>-tag`, or `<environment branch>-tag/<activePath>` when
+the environment has an `activePath`. The controller moves a tag only to a DRY commit that was validated for that
+environment: automatically once every environment it depends on has succeeded on the commit, or by a person through a
+[CommitValidation](#commitvalidation) or a pushed git note. Attach the gate with
+`PromotionStrategy.spec.orderCommitStatusRef`; the PromotionStrategy controller injects `spec.key` onto every
+`ChangeTransferPolicy`. The environment graph comes from `PromotionStrategy.spec.environments[].dependsOn`.
+
+`status.environments[]` reports each environment's tag, what its upstreams have cleared, any validation that is waiting,
+and the child CommitStatus mirror fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
+[`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus).
+
+```yaml
+{!internal/controller/testdata/ValidatedCommitStatus.yaml!}
+```
+
+### CommitValidation
+
+A CommitValidation submits manual validations for one environment of a PromotionStrategy that is ordered by a
+[ValidatedCommitStatus](#validatedcommitstatus), and shows that environment's validation history. Setting `spec.sha`
+records that the DRY commit may deploy to the environment, as a git note under `refs/notes/promoter.validations`. Create
+one per environment and grant `update` on it by name to the people who may approve that environment.
+
+```yaml
+{!internal/controller/testdata/CommitValidation.yaml!}
 ```
 
 ### ArgoCDCommitStatus

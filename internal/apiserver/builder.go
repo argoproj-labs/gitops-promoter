@@ -159,6 +159,26 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ScheduledCommitStatuses = nilIfEmpty(scheduledCSList.Items)
 
+	validatedCSList := &promoterv1alpha1.ValidatedCommitStatusList{}
+	if err := reader.List(ctx, validatedCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list ValidatedCommitStatuses: %w", err)
+	}
+	bundle.ValidatedCommitStatuses = nilIfEmpty(validatedCSList.Items)
+
+	// CommitValidations name the PromotionStrategy directly. They are not commit-status gates, so they
+	// have no PromotionStrategyRef field index here.
+	cvList := &promoterv1alpha1.CommitValidationList{}
+	if err := reader.List(ctx, cvList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list CommitValidations: %w", err)
+	}
+	var commitValidations []promoterv1alpha1.CommitValidation
+	for i := range cvList.Items {
+		if cvList.Items[i].Spec.PromotionStrategyRef.Name == name {
+			commitValidations = append(commitValidations, cvList.Items[i])
+		}
+	}
+	bundle.CommitValidations = nilIfEmpty(commitValidations)
+
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
 	if err := attachGitConfig(ctx, reader, namespace, ps, bundle, clusterScmProviderEnabled); err != nil {

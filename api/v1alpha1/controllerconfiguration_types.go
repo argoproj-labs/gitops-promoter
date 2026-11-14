@@ -93,6 +93,17 @@ type ControllerConfigurationSpec struct {
 	// +required
 	DependentsSuccessfulCommitStatus DependentsSuccessfulCommitStatusConfiguration `json:"dependentsSuccessfulCommitStatus"`
 
+	// ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior. The requeue duration is also
+	// how often the controller looks for validations pushed directly as git notes.
+	// +required
+	ValidatedCommitStatus ValidatedCommitStatusConfiguration `json:"validatedCommitStatus"`
+
+	// CommitValidation contains the configuration for the CommitValidation controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	CommitValidation CommitValidationConfiguration `json:"commitValidation"`
+
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -288,6 +299,28 @@ type TimedCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type DependentsSuccessfulCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// ValidatedCommitStatusConfiguration defines the configuration for the ValidatedCommitStatus controller.
+//
+// This configuration controls how the ValidatedCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ValidatedCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ValidatedCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// CommitValidationConfiguration defines the configuration for the CommitValidation controller.
+//
+// This configuration controls how the CommitValidation controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type CommitValidationConfiguration struct {
+	// WorkQueue contains the work queue configuration for the CommitValidation controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

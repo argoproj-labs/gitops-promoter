@@ -1,0 +1,79 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ValidatedCommitStatus
+metadata:
+  name: example-validated
+spec:
+  # Must differ from the key of any other ordering gate that still exists for the PromotionStrategy.
+  key: validated
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  # The branch dry commits are pushed to. Root environments follow its head.
+  dryBranch: main
+  # Optional. Environments not listed use validation Automatic and advance Immediately.
+  environments:
+    - branch: environment/staging
+      advance: WhenIdle
+    - branch: environment/prod
+      validation: Manual
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+  # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
+  publishTo:
+    - scm
+status:
+  observedGeneration: 3
+  dryBranch:
+    # Observed head of spec.dryBranch.
+    sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
+  # Last commit of refs/notes/promoter.validations already applied.
+  validationsCursor: 9a3f11c05d7e4b2a8c6f0e1d3b5a7c9e2f4d6b80
+  environments:
+    - branch: environment/dev
+      tag:
+        name: environment/dev-tag
+        sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
+        source: Automatic
+        movedAt: "2026-11-13T15:31:02Z"
+      # For an environment with no upstreams this is the head of the dry branch.
+      upstreamCleared:
+        sha: d41c07a9e2b54c0f8a6d3b1e7f9c2a4d6e8b0c13
+      successfulShas:
+        - sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
+          time: "2026-11-13T14:58:10Z"
+    # Staging after a hotfix was validated by hand: pinned, with a newer automatic validation waiting.
+    - branch: environment/staging
+      phase: success
+      description: Proposed commit matches environment/staging-tag
+      url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fstaging
+      reportedSha: 77aa01f3c5e74b9d8a2c4e6f0b1d3a5c7e9f2b46
+      tag:
+        name: environment/staging-tag
+        sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+        # Manual | Automatic | Seeded | External. External means the tag was moved by hand.
+        source: Manual
+        movedAt: "2026-11-13T15:02:30Z"
+      # Newest SHA every upstream has succeeded on.
+      upstreamCleared:
+        sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
+      # Only while an automatic validation is waiting.
+      held:
+        sha: 9be01d4c7a2f4e6b8d0c1a3e5f7b9d2c4e6a8b0f
+        # Pinned | Busy
+        reason: Pinned
+        message: Waiting for the dry branch to contain 4f2a9c6
+      # Dry SHAs this environment succeeded on, newest first, capped at 10.
+      successfulShas:
+        - sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+          time: "2026-11-13T15:20:41Z"
+    # Prod is Manual: the controller writes nothing for it and reports what is ready to validate.
+    - branch: environment/prod
+      tag:
+        name: environment/prod-tag
+        sha: 77c3e09b1d3f4a5c8e0b2d4f6a8c1e3b5d7f9a24
+        source: Manual
+        movedAt: "2026-11-10T22:16:05Z"
+      upstreamCleared:
+        sha: 4f2a9c6e8b0d4a2c9e1f3b5d7a9c0e2f4b6d8a13
+      successfulShas:
+        - sha: 77c3e09b1d3f4a5c8e0b2d4f6a8c1e3b5d7f9a24
+          time: "2026-11-10T22:40:19Z"

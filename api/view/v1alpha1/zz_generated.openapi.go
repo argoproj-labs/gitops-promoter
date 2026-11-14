@@ -78,6 +78,13 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSelector(ref),
 		apiv1alpha1.CommitStatusSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref),
 		apiv1alpha1.CommitStatusStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusStatus(ref),
+		apiv1alpha1.CommitValidation{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidation(ref),
+		apiv1alpha1.CommitValidationConfiguration{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationConfiguration(ref),
+		apiv1alpha1.CommitValidationHistoryEntry{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationHistoryEntry(ref),
+		apiv1alpha1.CommitValidationList{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationList(ref),
+		apiv1alpha1.CommitValidationRequestStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationRequestStatus(ref),
+		apiv1alpha1.CommitValidationSpec{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationSpec(ref),
+		apiv1alpha1.CommitValidationStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationStatus(ref),
 		apiv1alpha1.ControllerConfiguration{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(ref),
 		apiv1alpha1.ControllerConfigurationList{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationList(ref),
 		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
@@ -178,6 +185,19 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.TimedCommitStatusStatus{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(ref),
 		apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref),
 		apiv1alpha1.URLConfig{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref),
+		apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusConfiguration{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusConfiguration(ref),
+		apiv1alpha1.ValidatedCommitStatusDryBranchStatus{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusDryBranchStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusEnvironment{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironment(ref),
+		apiv1alpha1.ValidatedCommitStatusEnvironmentStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld(ref),
+		apiv1alpha1.ValidatedCommitStatusList{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusList(ref),
+		apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPending(ref),
+		apiv1alpha1.ValidatedCommitStatusSpec{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec(ref),
+		apiv1alpha1.ValidatedCommitStatusStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusSuccessfulSha{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSuccessfulSha(ref),
+		apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusUpstreamCleared(ref),
 		apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
 		apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusConfiguration(ref),
 		apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName():              schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnvironmentStatus(ref),
@@ -2415,6 +2435,344 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusStatus(ref co
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidation(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidation is the Schema for the commitvalidations API. It submits manual validations for one environment of a PromotionStrategy and shows that environment's validation history.\n\nThe work queue coalesces events, so a second change to spec.sha before the first was handled would be lost. The rules below make the API server reject it instead.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of CommitValidation",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.CommitValidationSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of CommitValidation",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.CommitValidationStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.CommitValidationSpec{}.OpenAPIModelName(), apiv1alpha1.CommitValidationStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationConfiguration defines the configuration for the CommitValidation controller.\n\nThis configuration controls how the CommitValidation controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the CommitValidation controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationHistoryEntry(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationHistoryEntry is one validation of the environment, read back from the repository.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"validatedAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedAt is when the validation was made.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the validated dry commit.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"source": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Source says how the validation was made: through a CommitValidation (Resource), by the ordering controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"validatedBy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedBy names who or what validated the commit. For a pushed note without one, it is the author of the notes commit.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is the reason given with the validation, if any.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"validatedAt", "sha", "source"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationList contains a list of CommitValidation",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CommitValidation{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"metadata", "items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.CommitValidation{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationRequestStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationRequestStatus is the outcome for the SHA currently in spec.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"handledAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "HandledAt is when the controller recorded or rejected the request.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the spec.sha this outcome is for.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase is Recorded when the validation was written to the repository, and Rejected when it was not.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message explains a rejection.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"handledAt", "sha", "phase"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationSpec defines the desired state of CommitValidation. promotionStrategyRef and branch are immutable: a CommitValidation stands for one environment of one strategy, which is what lets RBAC by resource name decide who may validate that environment. sha and reason together are one request.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"promotionStrategyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategyRef selects the PromotionStrategy that owns the environment.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch on that PromotionStrategy that this resource validates commits for. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit to validate for the environment. It may be any commit in the repository, on or off the dry branch. Omit it to use the resource only to view the environment's validation history. It cannot change until status.request reports the current value as handled.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is copied into the validation, for example a change ticket. It belongs to sha and can only be set or changed together with it.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "branch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CommitValidationStatus defines the observed state of CommitValidation.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"request": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Request is the outcome for the SHA currently in spec. Omitted while spec.sha is not set or has not been handled yet.",
+							Ref:         ref(apiv1alpha1.CommitValidationRequestStatus{}.OpenAPIModelName()),
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest available observations of an object's state",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"history": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "History lists the environment's validations, newest first, capped at 20. It is rebuilt from the git notes under refs/notes/promoter.validations, which are the record.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CommitValidationHistoryEntry{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.CommitValidationHistoryEntry{}.OpenAPIModelName(), apiv1alpha1.CommitValidationRequestStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -2594,6 +2952,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"validatedCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller, including WorkQueue settings that control reconciliation behavior. The requeue duration is also how often the controller looks for validations pushed directly as git notes.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
+					"commitValidation": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitValidation contains the configuration for the CommitValidation controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.CommitValidationConfiguration{}.OpenAPIModelName()),
+						},
+					},
 					"scheduledCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
@@ -2630,11 +3002,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 						},
 					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus", "restoreActiveCommit"},
+				Required: []string{"promotionStrategy", "changeTransferPolicyHistory", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "validatedCommitStatus", "commitValidation", "scheduledCommitStatus", "restoreActiveCommit"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistoryConfiguration{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProviderConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitValidationConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.MetricsConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -4671,7 +5043,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref 
 					},
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.",
+							Description: "Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. The built-in ordering gates are DependentsSuccessfulCommitStatus and ValidatedCommitStatus.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -7037,6 +7409,620 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref common.Refe
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatus is the Schema for the validatedcommitstatuses API",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of ValidatedCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of ValidatedCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ValidatedCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusConfiguration defines the configuration for the ValidatedCommitStatus controller.\n\nThis configuration controls how the ValidatedCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the ValidatedCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusDryBranchStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusDryBranchStatus is the observed state of the dry branch.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the head of spec.dryBranch when the controller last reconciled.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironment(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusEnvironment sets how one environment is validated and advanced.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"validation": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Validation says who validates dry commits for this environment. Automatic (the default): the controller, once every environment this one depends on has succeeded on the commit. Manual: a person or CI, through a CommitValidation or a pushed git note.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"advance": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Advance says when an automatic validation may move this environment's tag. Immediately (the default), or WhenIdle to wait until the environment has finished what it is promoting. Manual validations always apply immediately.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironmentStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase mirrors child CommitStatus.spec.phase.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description mirrors child CommitStatus.spec.description.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Url mirrors child CommitStatus.spec.url.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reportedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"tag": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Tag is the environment's tag as last read from the repository.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName()),
+						},
+					},
+					"upstreamCleared": {
+						SchemaProps: spec.SchemaProps{
+							Description: "UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on. For an environment with no upstreams it is the head of the dry branch. It tells an approver what is ready to validate for a Manual environment.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()),
+						},
+					},
+					"held": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Held is set only while an automatic validation is waiting to be applied.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName()),
+						},
+					},
+					"pending": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Pending is set only while a validated tag move could not be pushed. The controller retries it.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName()),
+						},
+					},
+					"successfulShas": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "SuccessfulShas lists the dry commits this environment succeeded on, newest first, capped at 10. An environment succeeds on a commit when the commit is live in it, or changed nothing for it, and every active commit status passes.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ValidatedCommitStatusSuccessfulSha{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusSuccessfulSha{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusHeld is an automatic validation that has not been applied yet.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the validated dry commit that is waiting.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is Pinned when the commit does not descend from the commit the tag is on, and Busy when the environment advances WhenIdle and is not idle.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message says what the validation is waiting for.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha", "reason"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusList contains a list of ValidatedCommitStatus",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"metadata", "items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPending(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusPending is a validated tag move that could not be pushed yet.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit the tag should point at.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"source": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Source is the kind of validation that asked for the move.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is the error from the last attempt to push the tag.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha", "source"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"promotionStrategyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and their dependencies (dependsOn) come from the PromotionStrategy.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"dryBranch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DryBranch is the branch dry commits are pushed to, in the PromotionStrategy's repository. A root environment with validation Automatic follows its head. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments overrides how individual environments are validated and advanced. An environment of the PromotionStrategy that is not listed uses validation Automatic and advance Immediately. Every branch listed must be an environment of the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ValidatedCommitStatusEnvironment{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .Tag, .ValidatedCommitStatus, and .PromotionStrategy.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
+					"publishTo": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - \"scm\": the CommitStatus controller posts them to the SCM provider The default is [\"scm\"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "key", "dryBranch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusEnvironment{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusStatus defines the observed state of ValidatedCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"dryBranch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DryBranch is the observed state of spec.dryBranch.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusDryBranchStatus{}.OpenAPIModelName()),
+						},
+					},
+					"validationsCursor": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidationsCursor is the last commit of refs/notes/promoter.validations whose validations the controller has applied. Omitted while that ref does not exist.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest available observations of an object's state",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments reports the tag, validation, and gate state of each environment.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ValidatedCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ValidatedCommitStatusDryBranchStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSuccessfulSha(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusSuccessfulSha is a dry commit an environment succeeded on.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"time": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Time is when the controller first saw the environment successful on the commit.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"sha", "time"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusTagStatus is the observed state of one environment's tag.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the tag's name: <environment branch>-tag, or <environment branch>-tag/<activePath> when the environment has an activePath.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit the tag points at. Omitted while the tag does not exist.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"source": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Source says what last moved the tag. External means it was moved by hand.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"movedAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MovedAt is when the controller moved the tag, or noticed that it had been moved.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusUpstreamCleared(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusUpstreamCleared is the newest dry commit cleared for an environment.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha"},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -7844,6 +8830,32 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
+					"validatedCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedCommitStatuses are the ValidatedCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"commitValidations": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitValidations are the CommitValidations whose spec.promotionStrategyRef names this PromotionStrategy. Each one submits manual validations for one environment and shows its history.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CommitValidation{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 					"gitRepository": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.",
@@ -7867,7 +8879,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyHistory{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.CommitValidation{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.RestoreActiveCommit{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 

@@ -107,6 +107,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.CommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitStatusStatus"):
 		return &apiv1alpha1.CommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidation"):
+		return &apiv1alpha1.CommitValidationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationConfiguration"):
+		return &apiv1alpha1.CommitValidationConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationHistoryEntry"):
+		return &apiv1alpha1.CommitValidationHistoryEntryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationRequestStatus"):
+		return &apiv1alpha1.CommitValidationRequestStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationSpec"):
+		return &apiv1alpha1.CommitValidationSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationStatus"):
+		return &apiv1alpha1.CommitValidationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfiguration"):
 		return &apiv1alpha1.ControllerConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfigurationSpec"):
@@ -283,6 +295,30 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):
 		return &apiv1alpha1.URLConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatus"):
+		return &apiv1alpha1.ValidatedCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusConfiguration"):
+		return &apiv1alpha1.ValidatedCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusDryBranchStatus"):
+		return &apiv1alpha1.ValidatedCommitStatusDryBranchStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusEnvironment"):
+		return &apiv1alpha1.ValidatedCommitStatusEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.ValidatedCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusHeld"):
+		return &apiv1alpha1.ValidatedCommitStatusHeldApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusPending"):
+		return &apiv1alpha1.ValidatedCommitStatusPendingApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusSpec"):
+		return &apiv1alpha1.ValidatedCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusStatus"):
+		return &apiv1alpha1.ValidatedCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusSuccessfulSha"):
+		return &apiv1alpha1.ValidatedCommitStatusSuccessfulShaApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusTagStatus"):
+		return &apiv1alpha1.ValidatedCommitStatusTagStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusUpstreamCleared"):
+		return &apiv1alpha1.ValidatedCommitStatusUpstreamClearedApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusConfiguration"):

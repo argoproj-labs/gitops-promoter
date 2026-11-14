@@ -501,6 +501,101 @@ export type components = {
             /** @description Sha is the commit SHA that the status is set on. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             sha?: string;
         };
+        /**
+         * @description CommitValidation is the Schema for the commitvalidations API. It submits manual validations for one environment of a PromotionStrategy and shows that environment's validation history.
+         *
+         *     The work queue coalesces events, so a second change to spec.sha before the first was handled would be lost. The rules below make the API server reject it instead.
+         */
+        CommitValidation: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of CommitValidation
+             * @default {}
+             */
+            spec: components["schemas"]["CommitValidationSpec"];
+            /**
+             * @description status defines the observed state of CommitValidation
+             * @default {}
+             */
+            status?: components["schemas"]["CommitValidationStatus"];
+        };
+        /** @description CommitValidationHistoryEntry is one validation of the environment, read back from the repository. */
+        CommitValidationHistoryEntry: {
+            /** @description Reason is the reason given with the validation, if any. */
+            reason?: string;
+            /**
+             * @description Sha is the validated dry commit.
+             * @default
+             */
+            sha: string;
+            /**
+             * @description Source says how the validation was made: through a CommitValidation (Resource), by the ordering controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).
+             * @default
+             */
+            source: string;
+            /** @description ValidatedAt is when the validation was made. */
+            validatedAt: components["schemas"]["Time"];
+            /** @description ValidatedBy names who or what validated the commit. For a pushed note without one, it is the author of the notes commit. */
+            validatedBy?: string;
+        };
+        /** @description CommitValidationRequestStatus is the outcome for the SHA currently in spec. */
+        CommitValidationRequestStatus: {
+            /** @description HandledAt is when the controller recorded or rejected the request. */
+            handledAt: components["schemas"]["Time"];
+            /** @description Message explains a rejection. */
+            message?: string;
+            /**
+             * @description Phase is Recorded when the validation was written to the repository, and Rejected when it was not.
+             * @default
+             */
+            phase: string;
+            /**
+             * @description Sha is the spec.sha this outcome is for.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description CommitValidationSpec defines the desired state of CommitValidation. promotionStrategyRef and branch are immutable: a CommitValidation stands for one environment of one strategy, which is what lets RBAC by resource name decide who may validate that environment. sha and reason together are one request. */
+        CommitValidationSpec: {
+            /**
+             * @description Branch is the environment branch on that PromotionStrategy that this resource validates commits for. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description PromotionStrategyRef selects the PromotionStrategy that owns the environment.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description Reason is copied into the validation, for example a change ticket. It belongs to sha and can only be set or changed together with it. */
+            reason?: string;
+            /** @description Sha is the dry commit to validate for the environment. It may be any commit in the repository, on or off the dry branch. Omit it to use the resource only to view the environment's validation history. It cannot change until status.request reports the current value as handled. */
+            sha?: string;
+        };
+        /** @description CommitValidationStatus defines the observed state of CommitValidation. */
+        CommitValidationStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description History lists the environment's validations, newest first, capped at 20. It is rebuilt from the git notes under refs/notes/promoter.validations, which are the record. */
+            history?: components["schemas"]["CommitValidationHistoryEntry"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+            /** @description Request is the outcome for the SHA currently in spec. Omitted while spec.sha is not set or has not been handled yet. */
+            request?: components["schemas"]["CommitValidationRequestStatus"];
+        };
         /** @description Condition contains details for one aspect of the current state of this API Resource. */
         Condition: {
             /** @description lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable. */
@@ -1363,7 +1458,7 @@ export type components = {
              */
             group: string;
             /**
-             * @description Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+             * @description Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. The built-in ordering gates are DependentsSuccessfulCommitStatus and ValidatedCommitStatus.
              * @default
              */
             kind: string;
@@ -1444,6 +1539,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description CommitValidations are the CommitValidations whose spec.promotionStrategyRef names this PromotionStrategy. Each one submits manual validations for one environment and shows its history. */
+            commitValidations?: components["schemas"]["CommitValidation"][];
             /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
             dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */
@@ -1469,6 +1566,8 @@ export type components = {
             scmProvider?: components["schemas"]["ScmProvider"];
             /** @description TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy. */
             timedCommitStatuses?: components["schemas"]["TimedCommitStatus"][];
+            /** @description ValidatedCommitStatuses are the ValidatedCommitStatus managers that reference the PromotionStrategy. */
+            validatedCommitStatuses?: components["schemas"]["ValidatedCommitStatus"][];
             /** @description WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy. */
             webRequestCommitStatuses?: components["schemas"]["WebRequestCommitStatus"][];
         };
@@ -2069,6 +2168,181 @@ export type components = {
              *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.
              */
             template?: string;
+        };
+        /** @description ValidatedCommitStatus is the Schema for the validatedcommitstatuses API */
+        ValidatedCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of ValidatedCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["ValidatedCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of ValidatedCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["ValidatedCommitStatusStatus"];
+        };
+        /** @description ValidatedCommitStatusDryBranchStatus is the observed state of the dry branch. */
+        ValidatedCommitStatusDryBranchStatus: {
+            /**
+             * @description Sha is the head of spec.dryBranch when the controller last reconciled.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description ValidatedCommitStatusEnvironment sets how one environment is validated and advanced. */
+        ValidatedCommitStatusEnvironment: {
+            /** @description Advance says when an automatic validation may move this environment's tag. Immediately (the default), or WhenIdle to wait until the environment has finished what it is promoting. Manual validations always apply immediately. */
+            advance?: string;
+            /**
+             * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description Validation says who validates dry commits for this environment. Automatic (the default): the controller, once every environment this one depends on has succeeded on the commit. Manual: a person or CI, through a CommitValidation or a pushed git note. */
+            validation?: string;
+        };
+        /** @description ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch. */
+        ValidatedCommitStatusEnvironmentStatus: {
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description Held is set only while an automatic validation is waiting to be applied. */
+            held?: components["schemas"]["ValidatedCommitStatusHeld"];
+            /** @description Pending is set only while a validated tag move could not be pushed. The controller retries it. */
+            pending?: components["schemas"]["ValidatedCommitStatusPending"];
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description SuccessfulShas lists the dry commits this environment succeeded on, newest first, capped at 10. An environment succeeds on a commit when the commit is live in it, or changed nothing for it, and every active commit status passes. */
+            successfulShas?: components["schemas"]["ValidatedCommitStatusSuccessfulSha"][];
+            /** @description Tag is the environment's tag as last read from the repository. */
+            tag?: components["schemas"]["ValidatedCommitStatusTagStatus"];
+            /** @description UpstreamCleared is the newest dry commit every environment this one depends on has succeeded on. For an environment with no upstreams it is the head of the dry branch. It tells an approver what is ready to validate for a Manual environment. */
+            upstreamCleared?: components["schemas"]["ValidatedCommitStatusUpstreamCleared"];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
+        /** @description ValidatedCommitStatusHeld is an automatic validation that has not been applied yet. */
+        ValidatedCommitStatusHeld: {
+            /** @description Message says what the validation is waiting for. */
+            message?: string;
+            /**
+             * @description Reason is Pinned when the commit does not descend from the commit the tag is on, and Busy when the environment advances WhenIdle and is not idle.
+             * @default
+             */
+            reason: string;
+            /**
+             * @description Sha is the validated dry commit that is waiting.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description ValidatedCommitStatusPending is a validated tag move that could not be pushed yet. */
+        ValidatedCommitStatusPending: {
+            /** @description Message is the error from the last attempt to push the tag. */
+            message?: string;
+            /**
+             * @description Sha is the dry commit the tag should point at.
+             * @default
+             */
+            sha: string;
+            /**
+             * @description Source is the kind of validation that asked for the move.
+             * @default
+             */
+            source: string;
+        };
+        /** @description ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus. */
+        ValidatedCommitStatusSpec: {
+            /**
+             * @description DryBranch is the branch dry commits are pushed to, in the PromotionStrategy's repository. A root environment with validation Automatic follows its head. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            dryBranch: string;
+            /** @description Environments overrides how individual environments are validated and advanced. An environment of the PromotionStrategy that is not listed uses validation Automatic and advance Immediately. Every branch listed must be an environment of the PromotionStrategy. */
+            environments?: components["schemas"]["ValidatedCommitStatusEnvironment"][];
+            /**
+             * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and their dependencies (dependsOn) come from the PromotionStrategy.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .Tag, .ValidatedCommitStatus, and .PromotionStrategy.
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description ValidatedCommitStatusStatus defines the observed state of ValidatedCommitStatus. */
+        ValidatedCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description DryBranch is the observed state of spec.dryBranch. */
+            dryBranch?: components["schemas"]["ValidatedCommitStatusDryBranchStatus"];
+            /** @description Environments reports the tag, validation, and gate state of each environment. */
+            environments?: components["schemas"]["ValidatedCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+            /** @description ValidationsCursor is the last commit of refs/notes/promoter.validations whose validations the controller has applied. Omitted while that ref does not exist. */
+            validationsCursor?: string;
+        };
+        /** @description ValidatedCommitStatusSuccessfulSha is a dry commit an environment succeeded on. */
+        ValidatedCommitStatusSuccessfulSha: {
+            /**
+             * @description Sha is the dry commit.
+             * @default
+             */
+            sha: string;
+            /** @description Time is when the controller first saw the environment successful on the commit. */
+            time: components["schemas"]["Time"];
+        };
+        /** @description ValidatedCommitStatusTagStatus is the observed state of one environment's tag. */
+        ValidatedCommitStatusTagStatus: {
+            /** @description MovedAt is when the controller moved the tag, or noticed that it had been moved. */
+            movedAt?: components["schemas"]["Time"];
+            /**
+             * @description Name is the tag's name: <environment branch>-tag, or <environment branch>-tag/<activePath> when the environment has an activePath.
+             * @default
+             */
+            name: string;
+            /** @description Sha is the dry commit the tag points at. Omitted while the tag does not exist. */
+            sha?: string;
+            /** @description Source says what last moved the tag. External means it was moved by hand. */
+            source?: string;
+        };
+        /** @description ValidatedCommitStatusUpstreamCleared is the newest dry commit cleared for an environment. */
+        ValidatedCommitStatusUpstreamCleared: {
+            /**
+             * @description Sha is the dry commit.
+             * @default
+             */
+            sha: string;
         };
         /** @description WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API */
         WebRequestCommitStatus: {
