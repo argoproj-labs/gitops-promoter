@@ -20,6 +20,12 @@ Your hydrator must fulfill these requirements:
 
 Monitor the configured DRY branch for new commits. When a new commit arrives, trigger hydration for each environment.
 
+If the PromotionStrategy is ordered by a
+[ValidatedCommitStatus](../gating-promotions/built-in-gates/validated-commit-status.md), each environment is hydrated
+from its own git tag instead: `<active-branch>-tag`, or `<active-branch>-tag/<activePath>` with `activePath`. Hydrate
+an environment when its tag is pushed, from the commit the tag points at, and record that commit as the DRY SHA. Do
+not hydrate an environment whose tag does not exist yet. The rest of the contract is the same.
+
 ### 2. Push to Proposed Branches
 
 For each environment, push the hydrated content to the corresponding proposed branch. The proposed branch name must be

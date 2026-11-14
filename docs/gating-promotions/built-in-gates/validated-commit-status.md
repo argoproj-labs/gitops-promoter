@@ -1,0 +1,531 @@
+# Validated Commit Status Controller
+
+The Validated Commit Status controller orders promotions with one git tag per environment. Each environment's hydrator
+reads its own tag instead of the dry branch, and the controller moves a tag only to a dry commit that was **validated**
+for that environment: automatically, once the environments it depends on have succeeded on the commit, or by a person.
+
+It is an alternative to the default ordering gate,
+[DependentsSuccessfulCommitStatus](dependents-successful-commit-status.md). With that gate every environment hydrates
+the head of the dry branch, so a new dry commit replaces the pending promotion of every later environment with a commit
+that has not cleared the earlier ones yet. With this gate a later environment keeps the commit that was validated for
+it until a newer one has cleared the earlier environments. See
+[How does GitOps Promoter handle concurrent releases?](../../faqs.md#how-does-gitops-promoter-handle-concurrent-releases)
+
+Use it when you want any of the following:
+
+- A later environment's pending promotion should not be reset by commits that are still on their way to it.
+- A person, or CI, should approve a commit for an environment **before** anything is hydrated for it.
+- A hotfix should go to one environment without going through the ones before it.
+
+> [!IMPORTANT]
+> With this gate, pushing an environment's tag, or a validation note, is a deploy. Anyone who can push to the dry
+> repository can do both. See [What to know before you use it](#what-to-know-before-you-use-it).
+
+## How it works
+
+| Piece | What it is |
+| --- | --- |
+| Environment tag | A lightweight tag in the dry repository: `<environment branch>-tag`, for example `environment/prod-tag`. The environment's hydrator reads it. |
+| Validation | A record that a dry commit may deploy to an environment. It is one line in a git note on the dry commit, under `refs/notes/promoter.validations`. Git is the record. |
+| Ordering commit status | On each environment's proposed commit, `success` when the commit was hydrated from the environment's tag, `pending` otherwise. |
+
+A commit enters an environment only when that environment's tag moves, and a tag moves only when a validation is
+applied. In a pipeline of `dev`, `staging` and `prod` where `prod` is validated by a person:
+
+1. A commit is pushed to the dry branch. `dev` has no upstream environments, so its tag follows the head of the dry
+   branch. The `dev` hydrator hydrates the commit and the promotion merges.
+2. `dev` succeeds on the commit: it is live and every active commit status passes. The controller validates the commit
+   for `staging` and moves the `staging` tag. The `staging` hydrator hydrates it and the promotion merges.
+3. `staging` succeeds on the commit. `prod` is validated by a person, so the controller reports the commit as ready
+   and moves nothing. When someone validates it, the `prod` tag moves and `prod` is hydrated and promoted.
+
+A new dry commit pushed while step 2 or 3 is under way moves the `dev` tag only.
+
+## Example configuration
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: demo
+spec:
+  gitRepositoryRef:
+    name: demo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: ValidatedCommitStatus
+    name: demo
+  environments:
+    - branch: environment/dev
+    - branch: environment/staging
+    - branch: environment/prod
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ValidatedCommitStatus
+metadata:
+  name: demo
+spec:
+  key: validated
+  promotionStrategyRef:
+    name: demo
+  dryBranch: main
+  # Optional. Environments that are not listed use validation Automatic and advance Immediately.
+  environments:
+    - branch: environment/staging
+      advance: WhenIdle
+    - branch: environment/prod
+      validation: Manual
+```
+
+The PromotionStrategy controller injects `spec.key` onto every `ChangeTransferPolicy`; you do not declare the key in
+`proposedCommitStatuses`. The dependency graph comes from the PromotionStrategy, as it does for
+[DependentsSuccessfulCommitStatus](dependents-successful-commit-status.md#custom-dependency-graph): a linear chain in
+list order, or `spec.environments[].dependsOn` when any environment sets it.
+
+Use one `ValidatedCommitStatus` per PromotionStrategy. If several reference the same strategy, the one named in
+`orderCommitStatusRef` moves the tags, or else the oldest, and the others report `Ready=False`.
+
+### Pointing the hydrators at the tags
+
+Each environment's hydrator must read that environment's tag. A hydrator that still reads the dry branch produces
+proposals that never match the tag, and nothing merges.
+
+The tag name is fixed. It is `<environment branch>-tag`, or `<environment branch>-tag/<activePath>` when the
+PromotionStrategy or the environment sets `activePath`. It follows the proposed branch, which is
+`<environment branch>-next` or `<environment branch>-next/<activePath>`.
+
+For Argo CD's source hydrator, set the dry source's revision to the tag:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/example/app
+      path: deploy/prod
+      targetRevision: environment/prod-tag   # was: main
+    syncSource:
+      targetBranch: environment/prod
+      path: deploy/prod
+    hydrateTo:
+      targetBranch: environment/prod-next
+```
+
+A [custom hydrator](../../advanced-usage/custom-hydrator.md) hydrates the commit the tag points at, and runs when the
+tag is pushed.
+
+### `spec.dryBranch`
+
+The branch dry commits are pushed to. An environment with no upstream environments and `validation: Automatic` follows
+its head.
+
+### `spec.environments[].validation`
+
+Who validates dry commits for the environment.
+
+- **`Automatic`** (default): the controller. For an environment with upstream environments, once every one of them has
+  [succeeded](#when-the-controller-validates) on the commit. For an environment with none, every new head of the dry
+  branch counts as validated.
+- **`Manual`**: a person or CI, with a [CommitValidation](#with-a-commitvalidation) or a
+  [pushed git note](#by-pushing-a-git-note). The controller writes nothing for the environment and reports what is
+  ready in `status.environments[].upstreamCleared`. Automatic validations are not applied to the environment.
+
+A manual validation is also accepted for an `Automatic` environment. That is how a hotfix is sent to one.
+
+The setting can be changed while the gate is in use:
+
+- **From `Automatic` to `Manual`**, the environment takes nothing the controller had validated for it and not applied
+  yet. A commit that was waiting (`held`) is dropped, not applied. A move that a person's validation is part of, and
+  that could not be pushed yet (`pending` with `source: Manual`), is still made.
+- **From `Manual` to `Automatic`**, the controller validates the commit that is ready for the environment right away. It
+  does not wait for a newer one.
+
+### `spec.environments[].advance`
+
+When an automatic validation may move the environment's tag.
+
+- **`Immediately`** (default): as soon as it applies.
+- **`WhenIdle`**: only while the environment is idle, so that a promotion that is under way is not replaced. An
+  environment is idle when its hydrator has processed the commit its tag points at, nothing is proposed, no promotion
+  pull request is open, and no active commit status is pending. A failed commit status counts as idle, so that a fix
+  can roll forward.
+
+Manual validations always apply immediately, which is why `validation: Manual` with `advance: WhenIdle` is rejected.
+
+### Keep the status out of the SCM (`publishTo`)
+
+Set **`spec.publishTo: []`** to keep the generated CommitStatus in Kubernetes only. The default, `[scm]`, posts it to
+the SCM. Omitting the field uses the default. See
+[Where a status is published](../index.md#where-a-status-is-published-publishto).
+
+### Commit Status URL Template
+
+`spec.url.template` sets the details URL on each environment's `CommitStatus`. It works as it does for
+[DependentsSuccessfulCommitStatus](dependents-successful-commit-status.md#commit-status-url-template), with these
+variables:
+
+- `.Environment`: the environment branch the URL is rendered for
+- `.Tag`: the name of that environment's tag
+- `.ValidatedCommitStatus`: the whole [ValidatedCommitStatus](../../crd-specs.md#validatedcommitstatus)
+- `.PromotionStrategy`: the referenced [PromotionStrategy](../../crd-specs.md#promotionstrategy)
+
+The rendered URL must use `http` or `https`.
+
+## Validating a commit
+
+### With a CommitValidation
+
+A [CommitValidation](../../crd-specs.md#commitvalidation) submits validations for one environment of one
+PromotionStrategy. Create one per environment that people approve:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: CommitValidation
+metadata:
+  name: demo-prod
+spec:
+  promotionStrategyRef:
+    name: demo
+  branch: environment/prod       # the environment; cannot be changed
+  sha: 4f2a9c0d1e5b7a6c8f9e0d1c2b3a4f5e6d7c8b9a   # the dry commit to validate
+  reason: CHG-1234 approved      # optional; copied into the validation
+```
+
+To validate a commit, set `spec.sha`:
+
+```bash
+kubectl patch commitvalidation demo-prod --type merge \
+  -p '{"spec":{"sha":"4f2a9c0d1e5b7a6c8f9e0d1c2b3a4f5e6d7c8b9a","reason":"CHG-1234 approved"}}'
+```
+
+The controller writes the validation to git and reports the outcome in `status.request`. The tag moves right away.
+
+```yaml
+status:
+  request:
+    sha: 4f2a9c0d1e5b7a6c8f9e0d1c2b3a4f5e6d7c8b9a
+    phase: Recorded              # Recorded | Rejected
+    handledAt: "2026-11-13T15:02:11Z"
+  history:                       # the environment's validations, newest first, capped at 20
+    - sha: 4f2a9c0d1e5b7a6c8f9e0d1c2b3a4f5e6d7c8b9a
+      source: Resource           # submitted through a CommitValidation
+      validatedBy: CommitValidation/demo-prod
+      reason: CHG-1234 approved
+      validatedAt: "2026-11-13T15:02:11Z"
+    - sha: 9be01d7c3e0a5f4b6d8c2e1f0a9b8c7d6e5f4a3b
+      source: Automatic          # the controller, once upstream environments succeeded
+      validatedBy: environment/staging successful
+      validatedAt: "2026-11-12T09:40:03Z"
+    - sha: 77c3e0a5f4b6d8c2e1f0a9b8c7d6e5f4a3b29be0
+      source: Git                # a note pushed directly
+      validatedBy: jane@example.com
+      reason: hotfix
+      validatedAt: "2026-11-10T22:15:48Z"
+    - sha: 5d0e7b1c9a3f4e2d8c6b0a1f3e5d7c9b2a4f6e80
+      source: External           # not a validation: the tag was moved to this commit by hand
+      validatedBy: ValidatedCommitStatus/demo
+      reason: Tag moved by hand
+      validatedAt: "2026-11-09T08:30:12Z"
+```
+
+- **`Rejected`** has one cause: the commit does not exist in the repository. A commit that is not on the dry branch is
+  accepted.
+- **One request at a time.** `spec.sha` cannot be changed until `status.request` reports the current SHA as handled,
+  so a second request cannot overwrite one that has not been written yet. The API server rejects the change; try again.
+- **`sha` and `reason` are one request.** `reason` cannot be changed on its own.
+- **To validate the same commit again**, clear `spec.sha`, wait for `status.request` to be cleared, and set it again.
+- **`sha` is optional.** Without it the resource only shows the environment's history.
+- **If the validation cannot be written**, the controller keeps trying and `spec.sha` stays locked. Deleting the
+  resource and creating it again is the way out, and loses nothing: the history is read from git.
+- **The PromotionStrategy needs a `ValidatedCommitStatus`.** Until it has one, the request is kept, the resource is
+  `Ready=False` with reason `ValidatedCommitStatusNotFound`, and the validation is recorded when one is created.
+
+**Who may validate.** Grant `update` (or `patch`) on the one `CommitValidation` by name:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: validate-demo-prod
+rules:
+  - apiGroups: ["promoter.argoproj.io"]
+    resources: ["commitvalidations"]
+    resourceNames: ["demo-prod"]
+    verbs: ["get", "update", "patch"]
+```
+
+`validatedBy` is the name of the resource. Who changed it is in the Kubernetes audit log.
+
+### By pushing a git note
+
+A validation is one JSON line in the note of the dry commit, under `refs/notes/promoter.validations`. Only `target`,
+the name of the environment's tag, is required:
+
+```bash
+git fetch origin refs/notes/promoter.validations:refs/notes/promoter.validations
+git notes --ref=promoter.validations append -m '{"target":"environment/prod-tag","reason":"hotfix"}' <dry-sha>
+git push origin refs/notes/promoter.validations
+```
+
+Skip the `fetch` if the ref does not exist yet. Use `append`, not `add`, so that other validations of the same commit
+are kept. The commit must have been pushed: a validation of a commit the repository does not have is ignored, with a
+`ValidationIgnored` event on the `ValidatedCommitStatus`.
+
+| Field | Meaning |
+| --- | --- |
+| `target` | The environment's tag name, for example `environment/prod-tag`. Required. |
+| `reason` | Free text. |
+| `by` | Who validated. Defaults to the author of the notes commit. |
+| `at` | When, as an RFC 3339 time. Defaults to the date of the notes commit. |
+| `source` | Written by the controllers. Leave it out: a line without one is a manual validation. A line with `source: External` is not a validation. It is the controller's record of a [tag moved by hand](#tags-moved-by-hand), and never moves a tag. |
+
+SCMs send no webhook when a note is pushed, so the controller sees it the next time it reconciles, at the latest after
+`validatedCommitStatus.workQueue.requeueDuration` in the
+[ControllerConfiguration](../../crd-specs.md#controllerconfiguration). A `CommitValidation` is applied at once.
+
+## How a tag moves
+
+Validations are applied in the order they were written, which is the order of the commits of the notes ref, not the
+order of their clocks. Only the end result is pushed, so the commits in between are skipped.
+
+- A **manual** validation moves the tag to its commit at once, wherever the commit is: ahead of the tag, behind it, or
+  off the dry branch.
+- An **automatic** validation moves the tag only to a commit that descends from the commit the tag is on.
+- An automatic validation of the commit the tag is on, or of a commit the tag has already passed, is ignored. It changes
+  nothing.
+- With `advance: WhenIdle`, an automatic validation also waits until the environment is idle.
+
+At most one automatic validation waits for an environment, and status shows it as `held`. A newer automatic validation
+that can move the tag takes its place, unless the commit that is waiting already contains the newer one's commit: an
+automatic validation of an older commit takes nothing back. A manual validation, or a move of the tag by hand, drops
+what is waiting. To drop it without moving the tag, validate by hand the commit the tag is on.
+
+### When the controller validates
+
+The controller validates a commit for an environment once every environment it depends on has **succeeded** on that
+commit. An environment has succeeded on a commit when the commit is live in it, or was hydrated for it and changed
+nothing, and every active commit status passes.
+
+Environments that fan in need not succeed at the same moment. The controller remembers the last ten commits each
+environment succeeded on (`status.environments[].successfulShas`), the commit that is live in it always among them,
+and validates the newest one they have in common. It has to be the same commit: two upstream environments that never
+run the same commit leave the environment that depends on them waiting.
+
+An environment that goes back to a commit it has succeeded on before validates nothing new for the environments after
+it. Nor does one that is taken back to a commit it had not run: the controller does not validate a commit that the one
+it last validated for an environment already contains.
+
+A validation is not taken back. If an upstream environment starts failing, or is rolled back, the tags of later
+environments stay where they are, and a commit that is waiting for a later environment still moves its tag once it can.
+
+### Hotfixes and the pin
+
+To send a commit to one environment, validate it for that environment by hand. It can be a commit on a hotfix branch
+that the dry branch does not contain. The tag moves there, and the environment is **pinned**: automatic validations of
+commits that do not contain the hotfix are held, and status shows why.
+
+```yaml
+status:
+  environments:
+    - branch: environment/staging
+      tag:
+        name: environment/staging-tag
+        sha: 4f2a9c0d1e5b7a6c8f9e0d1c2b3a4f5e6d7c8b9a
+        source: Manual
+      held:
+        sha: 9be01d7c3e0a5f4b6d8c2e1f0a9b8c7d6e5f4a3b
+        reason: Pinned
+        message: Waiting for the dry branch to contain 4f2a9c0
+```
+
+The pin is released by either of:
+
+- **Merging the hotfix into the dry branch** with a merge commit. The next commit validated for the environment then
+  contains the hotfix and moves the tag.
+- **A manual validation** of any commit.
+
+A squash merge or a cherry-pick creates a new commit that does not contain the hotfix commit, so it does not release
+the pin. Validate the resulting commit by hand.
+
+A hotfix validated for one environment moves on to the next like any commit, as long as it descends from the commit the
+next environment's tag is on.
+
+### Tags moved by hand
+
+You can also push a tag yourself:
+
+```bash
+git push --force origin <dry-sha>:refs/tags/environment/prod-tag
+```
+
+The controller does not restrict this and does not put the tag back. It records `tag.source: External`, and the tag
+stays there until a newer validation arrives. Validations written before the move are not applied again. On an
+`Automatic` environment a tag that was pushed backward moves forward again with the next automatic validation; to keep
+an environment on an older commit, use [RestoreActiveCommit](../../advanced-usage/rolling-back.md).
+
+The controller moves tags with a leased push, so it never overwrites a move it has not seen.
+
+**The move is recorded in git.** When the controller sees a tag that was moved by hand, it appends a line with
+`source: External` to the note of the commit the tag was moved to. The line validates nothing and never moves a tag. It
+shows in the [history](#with-a-commitvalidation) of the environment, with the `ValidatedCommitStatus` that saw the move
+as `validatedBy`: git does not say who pushes a tag.
+
+### When the gate's status is lost
+
+A `ValidatedCommitStatus` that is deleted and created again, or restored without its status, takes up from what is in
+git:
+
+- **Each tag resumes after the newest line of the commit it is on.** That line is the validation that moved the tag
+  there, or the record that it was moved there by hand. Validations written after it are applied. Nothing written
+  before it is applied again, so a rollback is not undone.
+- **What the controller last validated on its own is read from the notes.** It validates a commit for an environment
+  again only when a newer one is cleared. A tag that a person put where it is, by hand or with a validation, stays
+  there until then, as it does while status is there. For an environment that follows the dry branch that means until
+  the next new head.
+- **A tag the controller moved itself catches up** with whatever was validated meanwhile.
+
+> [!WARNING]
+> What the controller never saw is not in git. A tag that is moved by hand while no `ValidatedCommitStatus` exists, or
+> whose record could not be written before the status was lost, resumes after the newest validation of its commit, and
+> a validation written after that one is applied, also when it is older than the move. Validate the commit you moved
+> the tag to, with a [CommitValidation](#with-a-commitvalidation) or a [note](#by-pushing-a-git-note), to put the
+> record there yourself.
+>
+> A validation that arrived together with a move by hand and was still waiting when the status was lost is not applied
+> either. Validate that commit again.
+
+### Rolling back
+
+[RestoreActiveCommit](../../advanced-usage/rolling-back.md) works as it does with any ordering gate, and is still the
+way to get an earlier version back at once and keep the bad commit out.
+
+Validating an older commit by hand also takes an environment back: the tag moves, the hydrator hydrates the older
+commit, and it is promoted like any other. It is slower than a restore, and it does not hold on an `Automatic`
+environment, whose tag moves forward again with the next automatic validation. It does hold on a `Manual` one.
+
+## Status
+
+```yaml
+status:
+  dryBranch:
+    sha: d41c07...               # head of spec.dryBranch when the controller last looked
+  validationsCursor: 9a3f11...   # last commit of the notes ref whose validations were applied
+  environments:
+    - branch: environment/staging
+      phase: success             # the ordering commit status on the proposed commit
+      description: Proposed commit matches environment/staging-tag
+      reportedSha: 77aa01...
+      tag:
+        name: environment/staging-tag
+        sha: 4f2a9c...
+        source: Manual           # Manual | Automatic | Seeded | External
+        movedAt: "2026-11-13T15:02:30Z"
+      upstreamCleared:           # newest commit every upstream environment has succeeded on
+        sha: 9be01d...
+      automaticValidation:       # newest commit the controller validated for the environment on its own
+        sha: 9be01d...
+      held:                      # only while an automatic validation is waiting
+        sha: 9be01d...
+        reason: Pinned           # Pinned | Busy
+        message: Waiting for the dry branch to contain 4f2a9c0
+      successfulShas:            # dry commits this environment succeeded on, newest first, capped at 10
+        - sha: 4f2a9c...
+          time: "2026-11-13T15:20:41Z"
+```
+
+| Field | Meaning |
+| --- | --- |
+| `tag.source` | What last moved the tag. `Seeded`: the controller created it. `External`: it was moved by hand. |
+| `upstreamCleared` | What is ready to validate for a `Manual` environment. For an environment with no upstream environments it is the head of the dry branch. |
+| `automaticValidation` | The newest commit the controller validated for the environment on its own. It validates again once `upstreamCleared` is a commit that one does not contain. Not set for a `Manual` environment. |
+| `held` | An automatic validation that has not been applied. `Pinned`: its commit does not contain the commit the tag is on. `Busy`: the environment advances `WhenIdle` and is not idle. |
+| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. `pending.source` is `Manual` when a manual validation is part of the move, which is then made wherever the commit is. It is `Seeded` for a tag that does not exist yet and could not be created. |
+
+The gate is `Ready=False` with reason `EnvironmentTagPushFailed` while a tag cannot be moved or created, for example
+because a tag protection rule refuses the controller's identity.
+
+## Setup and migration
+
+On a new PromotionStrategy, create the `ValidatedCommitStatus`, reference it from `orderCommitStatusRef`, and point the
+hydrators at the tags.
+
+To move a PromotionStrategy that uses `DependentsSuccessfulCommitStatus`:
+
+1. **Create the `ValidatedCommitStatus`**, with a `spec.key` that differs from the old gate's. Leave
+   `orderCommitStatusRef` alone. The controller creates each environment's tag at the dry commit that is live in the
+   environment, so the tags start out describing what is deployed. Where nothing is live, the tag of an environment
+   that follows the dry branch is created at its head, and the others are created by their first validation.
+2. **Point each hydrator at its tag.**
+3. **Switch `orderCommitStatusRef`** to the `ValidatedCommitStatus` and delete the `DependentsSuccessfulCommitStatus`.
+
+Do steps 2 and 3 together. Between them the old gate holds later environments at `pending`, which is safe but stalls
+promotion.
+
+> [!WARNING]
+> The controller moves tags from the moment the `ValidatedCommitStatus` exists, whether or not the PromotionStrategy
+> references it yet. Meanwhile the old gate keeps promoting. Before step 2, compare each tag with what is live in its
+> environment:
+>
+> ```bash
+> git ls-remote origin 'refs/tags/environment/*-tag'
+> kubectl get promotionstrategy demo -o jsonpath='{range .status.environments[*]}{.branch}{"\t"}{.active.dry.sha}{"\n"}{end}'
+> ```
+>
+> A tag that is behind what is live rolls its environment back as soon as the hydrator reads it. Expect the tags of
+> `Manual` and `WhenIdle` environments to be behind: nobody validates for a `Manual` environment before the switch, and
+> a `WhenIdle` environment is hardly ever idle while its hydrator does not read its tag. Validate the live commit for
+> such an environment to bring its tag up to date, then switch.
+
+Also note:
+
+- **Give the two gates different keys** while both exist. A `ChangeTransferPolicy` that finds two commit statuses with
+  one key on a commit stops promoting.
+- **The new gate reports on proposals from step 1 on.** It reports `pending` on a proposal hydrated from the dry
+  branch that does not match the tag. Nothing reads that status until step 3, but it is posted to the SCM. Set
+  `publishTo: []` until then if that is unwanted.
+- **A `Manual` environment with nothing live has no tag** until its first validation. Its hydrator has nothing to read
+  and its `ChangeTransferPolicy`, and so the PromotionStrategy, are not Ready until then.
+
+To back out, point the hydrators at the dry branch again and switch `orderCommitStatusRef` back. The tags and the notes
+can stay; nothing else reads them.
+
+## Troubleshooting
+
+| What you see | What it means |
+| --- | --- |
+| The gate is `pending` with `Waiting for hydrator to process <tag> at <sha> (currently <sha>)` | The proposed commit was hydrated from another dry commit than the tag points at. Normal for a moment after a tag moves. If it stays, the environment's hydrator is not reading the tag. |
+| The gate is `pending` with `Waiting for a validation: <tag> does not exist yet` | Nothing was live in the environment when the gate was created, and no commit has been validated for it. |
+| `held.reason: Pinned` | The environment is on a commit the dry branch does not contain. See [Hotfixes and the pin](#hotfixes-and-the-pin). |
+| `held.reason: Busy` | The environment advances `WhenIdle` and has a promotion under way. |
+| `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. `status.environments[].pending.message` has git's answer. |
+| `Ready=False`, reason `ValidationNotRecorded` | The controller could not push to `refs/notes/promoter.validations`: an automatic validation, or the record of a tag moved by hand. It tries again. |
+| `Ready=False`, reason `EnvironmentTagsOwnedByAnotherGate` | Another `ValidatedCommitStatus` references the same PromotionStrategy and moves its tags. |
+| `tag.source: External` that you did not expect | Someone, or something, pushed the tag. The controller's own moves are `Manual`, `Automatic` or `Seeded`. |
+
+The controller also emits [events](../../monitoring/events.md#validatedcommitstatus) when it moves a tag, finds one
+moved by hand, or cannot push one.
+
+## What to know before you use it
+
+- **Pushing a tag or a note is a deploy.** Push access to the dry repository becomes the right to deploy to every
+  environment. Branch and tag protection rules do not cover notes refs, so a validation note cannot be protected. RBAC
+  on `CommitValidation` limits the Kubernetes path only.
+- **The controller's identity must be allowed to move the tags.** If the repository protects tags, exempt
+  `environment/*-tag` (or your equivalent) for the identity in the `ScmProvider`. It also pushes to
+  `refs/notes/promoter.validations`: its automatic validations, and the record of every tag moved by hand.
+- **Nothing is rendered for an approver to look at.** A `Manual` environment is not hydrated until a commit is
+  validated for it, so the approver sees the dry change and the results of the earlier environments, not the manifests
+  for this one. The promotion pull request appears after validation.
+- **An approval does not depend on the earlier environments.** A manual validation is enough on its own.
+  `upstreamCleared` shows whether they had succeeded.
+- **Environments can run different commits for longer.** A later environment may be promoting a commit that the
+  earlier ones have already moved past.
+- **The validation notes are never pruned.** They grow by a line per validation. If you rewrite the ref, to prune it
+  for example, the controller no longer finds the commit it had applied the notes up to
+  (`status.validationsCursor`). It then resumes each tag after the newest validation of the commit the tag is on. A
+  tag that status records as moved by hand takes only the validations written from then on.
+- **Commits off the dry branch on some git servers.** The controller fetches a validated commit by its SHA. Hosted
+  SCMs serve any commit that way. A self-hosted server that only serves commits a ref points at will not find a commit
+  that is neither on the dry branch nor the tip of a branch or tag; the validation is then ignored, or rejected by a
+  `CommitValidation`.

@@ -55,3 +55,41 @@ var _ = Describe("test rendering a template", func() {
 		})
 	}
 })
+
+var _ = Describe("RenderURLTemplate", func() {
+	data := map[string]string{"Environment": "environment/prod", "Host": "promoter.example.com"}
+
+	It("renders an https URL", func() {
+		rendered, err := utils.RenderURLTemplate("https://{{ .Host }}/?env={{ urlQueryEscape .Environment }}", data)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rendered).To(Equal("https://promoter.example.com/?env=environment%2Fprod"))
+	})
+
+	It("renders an http URL", func() {
+		rendered, err := utils.RenderURLTemplate("http://{{ .Host }}/", data)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rendered).To(Equal("http://promoter.example.com/"))
+	})
+
+	It("passes options to the template", func() {
+		_, err := utils.RenderURLTemplate("https://{{ .Missing }}/", data, "missingkey=error")
+		Expect(err).To(MatchError(ContainSubstring("failed to render URL template")))
+	})
+
+	It("rejects a template that does not parse", func() {
+		_, err := utils.RenderURLTemplate("https://{{ .Host", data)
+		Expect(err).To(MatchError(ContainSubstring("failed to render URL template")))
+	})
+
+	It("rejects anything that is not an http or https URL", func() {
+		for _, template := range []string{"javascript:alert(1)", "ftp://{{ .Host }}/", "{{ .Host }}/path", ""} {
+			_, err := utils.RenderURLTemplate(template, data)
+			Expect(err).To(MatchError(ContainSubstring("URL scheme is not http or https")), template)
+		}
+	})
+
+	It("rejects a URL that cannot be parsed", func() {
+		_, err := utils.RenderURLTemplate("https://{{ .Host }}/%zz", data)
+		Expect(err).To(MatchError(ContainSubstring("failed to parse URL")))
+	})
+})

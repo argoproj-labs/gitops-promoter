@@ -130,4 +130,42 @@ const (
 	WebRequestFailedReason = "WebRequestFailed"
 	// WebRequestFailedMessage is the message for a failed web request.
 	WebRequestFailedMessage = "HTTP request for commit status %q failed: %v"
+
+	// EnvironmentTagMovedReason indicates that a ValidatedCommitStatus moved, or created, an environment's tag.
+	EnvironmentTagMovedReason = "EnvironmentTagMoved"
+	// EnvironmentTagMovedMessage is the message for a moved environment tag.
+	// Args: tag name, the dry SHA it pointed at, the dry SHA it points at now, what moved it
+	// (Manual, Automatic or Seeded).
+	EnvironmentTagMovedMessage = "Moved tag %s from %s to %s (%s)"
+
+	// EnvironmentTagMovedByHandReason indicates that an environment's tag was moved, created or deleted
+	// outside the controller.
+	EnvironmentTagMovedByHandReason = "EnvironmentTagMovedByHand"
+	// EnvironmentTagMovedByHandMessage is the message for an environment tag moved outside the controller.
+	// Args: tag name, the dry SHA it pointed at, the dry SHA it points at now.
+	EnvironmentTagMovedByHandMessage = "Tag %s was moved outside the controller from %s to %s"
+
+	// EnvironmentTagPushFailedReason indicates that a validated move of an environment's tag could not be pushed.
+	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"
+	// EnvironmentTagPushFailedMessage is the message for an environment tag that could not be moved.
+	// Args: tag name, the dry SHA it should point at, the error.
+	EnvironmentTagPushFailedMessage = "Failed to move tag %s to %s: %v"
+
+	// ValidationIgnoredReason indicates that a validation names a commit the repository does not have.
+	ValidationIgnoredReason = "ValidationIgnored"
+	// ValidationIgnoredMessage is the message for an ignored validation.
+	// Args: the validated SHA, tag name.
+	ValidationIgnoredMessage = "Ignored a validation of %s for tag %s: the commit is not in the repository"
+
+	// CommitValidationRecordedReason indicates that a CommitValidation wrote the requested validation to git.
+	CommitValidationRecordedReason = "CommitValidationRecorded"
+	// CommitValidationRecordedMessage is the message for a recorded validation.
+	// Args: the validated SHA, environment branch.
+	CommitValidationRecordedMessage = "Recorded the validation of %s for environment branch %s"
+
+	// CommitValidationRejectedReason indicates that a CommitValidation asked for a commit the repository does not have.
+	CommitValidationRejectedReason = "CommitValidationRejected"
+	// CommitValidationRejectedMessage is the message for a rejected validation.
+	// Args: the SHA that was asked for, environment branch.
+	CommitValidationRejectedMessage = "Rejected the validation of %s for environment branch %s: the commit does not exist in the repository"
 )

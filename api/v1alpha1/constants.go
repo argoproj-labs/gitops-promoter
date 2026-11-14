@@ -30,6 +30,14 @@ const TimedCommitStatusDefaultKey = "timer"
 // dependent environments are promoted and successful.
 const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
+// ValidatedCommitStatusKey is the commit status key the documentation and samples use for a
+// ValidatedCommitStatus. The key has no default; while a ValidatedCommitStatus and a
+// DependentsSuccessfulCommitStatus order the same PromotionStrategy, their keys must differ.
+const ValidatedCommitStatusKey = "validated"
+
+// ValidatedOrderCommitStatusKind is the orderCommitStatusRef kind for the tag-driven ordering gate.
+const ValidatedOrderCommitStatusKind = "ValidatedCommitStatus"
+
 // DefaultOrderCommitStatusGroup is the default API group for PromotionStrategy.spec.orderCommitStatusRef.
 const DefaultOrderCommitStatusGroup = "promoter.argoproj.io"
 

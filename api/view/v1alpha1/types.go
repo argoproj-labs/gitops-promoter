@@ -77,6 +77,13 @@ type PromotionStrategyDetails struct {
 	// ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.
 	ScheduledCommitStatuses []promoterv1alpha1.ScheduledCommitStatus `json:"scheduledCommitStatuses,omitempty"`
 
+	// ValidatedCommitStatuses are the ValidatedCommitStatus managers that reference the PromotionStrategy.
+	ValidatedCommitStatuses []promoterv1alpha1.ValidatedCommitStatus `json:"validatedCommitStatuses,omitempty"`
+
+	// CommitValidations are the CommitValidations whose spec.promotionStrategyRef names this
+	// PromotionStrategy. Each one submits manual validations for one environment and shows its history.
+	CommitValidations []promoterv1alpha1.CommitValidation `json:"commitValidations,omitempty"`
+
 	// GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.
 	GitRepository *promoterv1alpha1.GitRepository `json:"gitRepository,omitempty"`
 

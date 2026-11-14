@@ -2,6 +2,64 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.50 — ControllerConfiguration needs `validatedCommitStatus` and `commitValidation`
+
+> [!IMPORTANT]
+> If you maintain your own `ControllerConfiguration`, add the two blocks below **before** upgrading. They are required
+> whether or not you use the new kinds, as the block of every other controller is. Without them the controller
+> rejects the configuration at startup.
+
+0.50 adds two kinds, [ValidatedCommitStatus](crd-specs.md#validatedcommitstatus) and
+[CommitValidation](crd-specs.md#commitvalidation), and a controller for each. Each controller reads its work queue
+settings from the ControllerConfiguration:
+
+```yaml
+spec:
+  validatedCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+  commitValidation:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+```
+
+An install that uses the shipped ControllerConfiguration gets both with the upgrade.
+
+Nothing else changes for existing PromotionStrategies. `DependentsSuccessfulCommitStatus` stays the default ordering
+gate. `ValidatedCommitStatus` is an alternative you opt in to per PromotionStrategy: see
+[Validated Commit Status Controller](gating-promotions/built-in-gates/validated-commit-status.md), and its
+[Setup and migration](gating-promotions/built-in-gates/validated-commit-status.md#setup-and-migration) section before
+switching a PromotionStrategy that is already promoting.
+
+Also in this release:
+
+- The controller's ClusterRole gains `validatedcommitstatuses` and `commitvalidations`. If you manage RBAC yourself,
+  copy the rules from the release manifests.
+- The webhook receiver now also reconciles a `ValidatedCommitStatus` when its dry branch or one of its environment
+  tags is pushed. If your SCM webhook only sends branch pushes, add tag pushes to pick up tags moved by hand without
+  waiting for the next poll.
+- The webhook receiver read every Bitbucket Cloud push as a branch push. A tag push is now read as a tag push.
+
 ## 0.49 — Controller-only install bundles are removed
 
 > [!IMPORTANT]

@@ -24,6 +24,8 @@ rules:
       - webrequestcommitstatuses
       - scheduledcommitstatuses
       - dependentssuccessfulcommitstatuses
+      - validatedcommitstatuses
+      - commitvalidations
       - gitrepositories
       - scmproviders
       - clusterscmproviders

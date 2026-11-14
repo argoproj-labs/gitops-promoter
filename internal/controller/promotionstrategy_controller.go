@@ -123,6 +123,7 @@ type PromotionStrategyReconciler struct {
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=validatedcommitstatuses,verbs=get
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/finalizers,verbs=update
@@ -214,7 +215,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
 	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
+	r.nudgeOutOfSyncCTPs(ctx, &ps, ctps)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -450,6 +451,24 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
+}
+
+// nudgeOutOfSyncCTPs nudges the CTPs whose hydrator output the controller may not have seen yet (see
+// enqueueOutOfSyncCTPs), unless a ValidatedCommitStatus orders the strategy.
+//
+// enqueueOutOfSyncCTPs takes environments on different dry SHAs to mean that a hydrator has not caught
+// up. With a ValidatedCommitStatus each environment's hydrator reads its own tag, so different dry SHAs
+// are the normal state and would be nudged without end. That gate knows which commit each environment
+// is waiting to be hydrated from, and does the nudging itself. Any retry chain armed before the
+// strategy switched to it is stopped here.
+func (r *PromotionStrategyReconciler) nudgeOutOfSyncCTPs(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+	if referencedValidatedCommitStatus(ps) == "" {
+		r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
+		return
+	}
+	for _, ctp := range ctps {
+		r.markConverged(client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name})
+	}
 }
 
 // enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA

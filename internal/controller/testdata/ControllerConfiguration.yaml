@@ -138,6 +138,27 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # ValidatedCommitStatus controller moves each environment's tag to commits validated for it.
+  # requeueDuration is also how often it looks for validations pushed directly as git notes.
+  validatedCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # CommitValidation controller records manual validations as git notes
+  commitValidation:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

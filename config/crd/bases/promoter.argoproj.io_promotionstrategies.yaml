@@ -220,7 +220,7 @@ spec:
                     default: DependentsSuccessfulCommitStatus
                     description: |-
                       Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
-                      ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+                      ordering gate. The built-in ordering gates are DependentsSuccessfulCommitStatus and ValidatedCommitStatus.
                     type: string
                     x-kubernetes-validations:
                     - message: kind must name a CommitStatus gate CR
