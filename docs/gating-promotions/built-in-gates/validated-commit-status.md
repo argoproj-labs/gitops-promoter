@@ -385,7 +385,7 @@ status:
 | `tag.source` | What last moved the tag. `Seeded`: the controller created it. `External`: it was moved by hand. |
 | `upstreamCleared` | What is ready to validate for a `Manual` environment. For an environment with no upstream environments it is the head of the dry branch. |
 | `held` | An automatic validation that has not been applied. `Pinned`: its commit does not contain the commit the tag is on. `Busy`: the environment advances `WhenIdle` and is not idle. |
-| `pending` | A tag move that could not be pushed, with the error. The controller tries again every minute. |
+| `pending` | A tag move that could not be pushed, with the error. The controller tries again a minute later, and after that every time it reconciles. |
 
 The gate is `Ready=False` with reason `EnvironmentTagPushFailed` while a tag cannot be moved, for example because a tag
 protection rule refuses the controller's identity.

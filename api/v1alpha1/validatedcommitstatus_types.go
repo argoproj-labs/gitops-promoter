@@ -55,7 +55,9 @@ const (
 	ValidatedTagSourceManual ValidatedTagSource = "Manual"
 	// ValidatedTagSourceAutomatic means an automatic validation moved the tag.
 	ValidatedTagSourceAutomatic ValidatedTagSource = "Automatic"
-	// ValidatedTagSourceSeeded means the controller created the tag at what was live in the environment.
+	// ValidatedTagSourceSeeded means the controller created the tag where the environment already was: at
+	// the dry commit that was live in it, or, with nothing live, at the head of the dry branch for an
+	// environment that follows it.
 	ValidatedTagSourceSeeded ValidatedTagSource = "Seeded"
 	// ValidatedTagSourceExternal means the tag was moved by hand, outside the controller.
 	ValidatedTagSourceExternal ValidatedTagSource = "External"

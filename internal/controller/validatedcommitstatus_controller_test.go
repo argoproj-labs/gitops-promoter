@@ -1023,8 +1023,10 @@ var _ = Describe("ValidatedCommitStatus Controller: validations made by people",
 			}, constants.EventuallyTimeout).Should(Succeed())
 			Expect(p.tag(testBranchStaging)).To(Equal(live))
 
-			By("Lifting the protection: the controller tries again without a new validation")
+			By("Lifting the protection: the next reconcile makes the move, without a new validation")
 			Expect(os.Remove(hook)).To(Succeed())
+			// A failure that repeats is left to the usual requeue, which a spec cannot wait for.
+			enqueueValidatedCommitStatus(p.gate.Namespace, p.gate.Name)
 			p.expectTag(testBranchStaging, first)
 			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceAutomatic)
 			Eventually(func(g Gomega) {
@@ -1228,6 +1230,19 @@ var _ = Describe("ValidatedCommitStatus rules", func() {
 
 		ps.Spec.OrderCommitStatusRef.Group = "ordering.example.com"
 		Expect(referencedValidatedCommitStatus(ps)).To(BeEmpty(), "a kind of the same name in another group is someone else's")
+	})
+
+	It("retries a failure soon the first time only", func() {
+		pushFailed := string(promoterConditions.EnvironmentTagPushFailed)
+		condition := func(status metav1.ConditionStatus, reason string) *metav1.Condition {
+			return &metav1.Condition{Type: string(promoterConditions.Ready), Status: status, Reason: reason}
+		}
+
+		Expect(failedBefore(nil, pushFailed)).To(BeFalse(), "a gate that was never reconciled")
+		Expect(failedBefore(condition(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess)), pushFailed)).To(BeFalse())
+		Expect(failedBefore(condition(metav1.ConditionFalse, string(promoterConditions.ReconciliationError)), pushFailed)).To(BeFalse(),
+			"not Ready for another reason")
+		Expect(failedBefore(condition(metav1.ConditionFalse, pushFailed), pushFailed)).To(BeTrue())
 	})
 
 	It("spaces the nudges of one ChangeTransferPolicy, and not those of another", func() {

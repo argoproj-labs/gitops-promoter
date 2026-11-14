@@ -533,6 +533,19 @@ var _ = Describe("Environment tags", func() {
 		})
 	})
 
+	Describe("MoveTag input", func() {
+		It("only takes full object IDs, for the commit and for the lease", func() {
+			ops := dry.newOps("default/gate")
+			_, err := ops.SyncDryRefs(ctx, dry.branch, []string{tagDev})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ops.MoveTag(ctx, tagDev, "HEAD", "")).To(MatchError(ContainSubstring("not a full git object ID")))
+			Expect(ops.MoveTag(ctx, tagDev, "--delete", "")).To(MatchError(ContainSubstring("not a full git object ID")))
+			Expect(ops.MoveTag(ctx, tagDev, first, "refs/heads/"+dry.branch)).To(MatchError(ContainSubstring("not a full git object ID")))
+			Expect(dry.remoteRef("refs/tags/"+tagDev)).To(BeEmpty(), "nothing was pushed")
+		})
+	})
+
 	Describe("IsFullObjectID", func() {
 		It("accepts complete lowercase SHA-1 and SHA-256 IDs only", func() {
 			Expect(git.IsFullObjectID(first)).To(BeTrue())

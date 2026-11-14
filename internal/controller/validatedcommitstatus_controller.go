@@ -55,16 +55,16 @@ import (
 )
 
 const (
-	// validatedRetryInterval is how soon the controller comes back to a tag it could not push, or a
-	// validation it could not record. It is shorter than the usual requeue, and longer than a tight
-	// loop against a tag the SCM refuses to move.
+	// validatedRetryInterval is how soon the controller comes back the first time it could not push a
+	// tag or record a validation, in case the failure was a passing one. A failure that repeats is left
+	// to the usual requeue: a tag the repository refuses to move will not move a minute later either.
 	validatedRetryInterval = time.Minute
 
 	// validatedPollInterval is how often the controller looks again at the two things nothing tells it
 	// about. One is a hydrator catching up with a tag: SCMs send no webhook when a hydrator pushes a git
 	// note, so the environment's ChangeTransferPolicy is nudged at this spacing, and without the nudge a
-	// hydration that changed nothing would wait for the next requeue. The other is an environment that
-	// advances WhenIdle becoming idle.
+	// hydration that changed nothing would wait for the next requeue. The other is the last step of an
+	// environment that advances WhenIdle becoming idle: its merged pull request being cleaned up.
 	validatedPollInterval = 15 * time.Second
 
 	// validatedNudgeWindow is how long after a tag moved the nudging goes on. A hydrator that has not
@@ -215,7 +215,7 @@ func (r *ValidatedCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{RequeueAfter: requeueDuration}, nil
 	}
 
-	retryAfter, err := r.reconcileEnvironments(ctx, &vcs, &ps)
+	retryAfter, err := r.reconcileEnvironments(ctx, &vcs, &ps, previousReady)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -327,6 +327,9 @@ type validatedEnvironment struct {
 	previous promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus
 	// next is the environment's status after this reconcile.
 	next promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus
+
+	// settling is true when the environment advances WhenIdle and is one step from idle: see idleness.
+	settling bool
 }
 
 // automaticRoot reports whether the environment follows the dry branch.
@@ -398,7 +401,7 @@ func (run *validatedRun) Contains(ctx context.Context, descendant, ancestor stri
 // reconcileEnvironments reads the dry branch, the environment tags and the validation notes, moves the
 // tags that validations ask to be moved, and reports the gate on every environment's proposed commit. It
 // returns how soon the gate should be reconciled again, zero for the usual requeue.
-func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (time.Duration, error) {
+func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, previousReady *metav1.Condition) (time.Duration, error) {
 	run, err := r.newRun(ctx, vcs, ps)
 	if err != nil {
 		return 0, err
@@ -433,28 +436,39 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	utils.InheritNotReadyConditionFromObjects(vcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	retryAfter := run.nudge(ctx)
-	if run.waitsForIdle() {
-		// Nothing announces an environment becoming idle: its pull request is deleted after the last
-		// change to the PromotionStrategy's status that would bring the controller back.
+	if run.waitsForCleanup() {
 		retryAfter = sooner(retryAfter, intervalOr(r.pollInterval, validatedPollInterval))
 	}
 	if len(run.problems) > 0 {
+		reason := string(run.notReadyReason)
 		meta.SetStatusCondition(vcs.GetConditions(), metav1.Condition{
 			Type:               string(promoterConditions.Ready),
 			Status:             metav1.ConditionFalse,
-			Reason:             string(run.notReadyReason),
+			Reason:             reason,
 			Message:            utils.TruncateString(strings.Join(run.problems, "; "), validatedMessageLimit),
 			ObservedGeneration: vcs.Generation,
 		})
-		retryAfter = sooner(retryAfter, intervalOr(r.retryInterval, validatedRetryInterval))
+		if !failedBefore(previousReady, reason) {
+			retryAfter = sooner(retryAfter, intervalOr(r.retryInterval, validatedRetryInterval))
+		}
 	}
 	return retryAfter, nil
 }
 
-// waitsForIdle reports whether an automatic validation is waiting for its environment to be idle.
-func (run *validatedRun) waitsForIdle() bool {
+// failedBefore reports whether the gate was already not Ready for this reason when the reconcile began.
+// A first failure is worth a quick retry. One that repeats is not: whatever refuses the push will still
+// refuse it, and the usual requeue comes back to it in any case.
+func failedBefore(previousReady *metav1.Condition, reason string) bool {
+	return previousReady != nil && previousReady.Status == metav1.ConditionFalse && previousReady.Reason == reason
+}
+
+// waitsForCleanup reports whether an automatic validation is waiting for an environment that has
+// finished its promotion in every respect but one: its merged pull request still exists. Every earlier
+// step towards idle changes the PromotionStrategy's status, which brings the controller back. The
+// deletion of the pull request changes nothing there, so it is the one step that has to be polled for.
+func (run *validatedRun) waitsForCleanup() bool {
 	return slices.ContainsFunc(run.envs, func(env *validatedEnvironment) bool {
-		return env.next.Held != nil && env.next.Held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy
+		return env.settling && env.next.Held != nil && env.next.Held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy
 	})
 }
 
@@ -940,11 +954,12 @@ func (run *validatedRun) planInput(ctx context.Context, env *validatedEnvironmen
 	in := validations.Input{Tag: env.start(), RootCandidate: env.rootCandidate}
 
 	if env.advance == promoterv1alpha1.AdvanceWhenIdle {
-		idle, err := run.idle(ctx, env)
+		state, err := run.idleness(ctx, env)
 		if err != nil {
 			return validations.Input{}, err
 		}
-		in.WhenIdle, in.Idle = true, idle
+		in.WhenIdle, in.Idle = true, state == environmentIdle
+		env.settling = state == environmentSettling
 	}
 	if env.held != nil {
 		found, err := run.ensureCommit(ctx, env.held.Sha)
@@ -979,18 +994,31 @@ func (run *validatedRun) planInput(ctx context.Context, env *validatedEnvironmen
 	return in, nil
 }
 
-// idle reports whether an environment has finished whatever its tag last asked of it: its hydrator has
-// processed the tag's commit, nothing is proposed, no promotion pull request is open, and no active
-// commit status is pending. A failed commit status counts as idle, so that a validated fix can roll
-// forward.
+// idleState says how far an environment is from having finished whatever its tag last asked of it.
+type idleState int
+
+const (
+	// environmentBusy means the environment is promoting something, or has not started on the commit its
+	// tag points at.
+	environmentBusy idleState = iota
+	// environmentSettling means the promotion has merged and nothing is pending, but its pull request
+	// still exists. The ChangeTransferPolicy deletes it once it has recorded the merge.
+	environmentSettling
+	// environmentIdle means the environment has nothing left to do.
+	environmentIdle
+)
+
+// idleness reports whether an environment is idle: its hydrator has processed the tag's commit, nothing
+// is proposed, no active commit status is pending, and no promotion pull request exists. A failed commit
+// status counts as idle, so that a validated fix can roll forward.
 //
 // It reads the ChangeTransferPolicy and its PullRequest rather than the PromotionStrategy's copy of
 // them. The copy trails by a reconcile, and the pull request exists before the ChangeTransferPolicy
 // reports it.
-func (run *validatedRun) idle(ctx context.Context, env *validatedEnvironment) (bool, error) {
+func (run *validatedRun) idleness(ctx context.Context, env *validatedEnvironment) (idleState, error) {
 	if env.remote.Commit == "" {
 		// The tag does not exist, so nothing has been asked of the environment.
-		return true, nil
+		return environmentIdle, nil
 	}
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
@@ -998,25 +1026,28 @@ func (run *validatedRun) idle(ctx context.Context, env *validatedEnvironment) (b
 	if err := run.r.Get(ctx, key, &ctp); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Nothing can be said about an environment that is not set up yet.
-			return false, nil
+			return environmentBusy, nil
 		}
-		return false, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", key.Name, err)
+		return environmentBusy, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", key.Name, err)
 	}
 	current := promoterv1alpha1.EnvironmentStatus{Active: ctp.Status.Active, Proposed: ctp.Status.Proposed}
 	if getEffectiveHydratedDrySha(current) != env.remote.Commit || current.Proposed.Dry.Sha != current.Active.Dry.Sha {
-		return false, nil
+		return environmentBusy, nil
 	}
 	for _, status := range current.Active.CommitStatuses {
 		if status.Phase == string(promoterv1alpha1.CommitPhasePending) {
-			return false, nil
+			return environmentBusy, nil
 		}
 	}
 
 	var pullRequests promoterv1alpha1.PullRequestList
 	if err := run.r.List(ctx, &pullRequests, ctpPullRequestListOptions(&ctp)); err != nil {
-		return false, fmt.Errorf("failed to list PullRequests of ChangeTransferPolicy %q: %w", key.Name, err)
+		return environmentBusy, fmt.Errorf("failed to list PullRequests of ChangeTransferPolicy %q: %w", key.Name, err)
 	}
-	return len(pullRequests.Items) == 0, nil
+	if len(pullRequests.Items) > 0 {
+		return environmentSettling, nil
+	}
+	return environmentIdle, nil
 }
 
 // replay applies the tag rules. Ancestry is only asked of commits that are in the clone.

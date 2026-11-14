@@ -273,6 +273,13 @@ func (g *EnvironmentOperations) MoveTag(ctx context.Context, tag, sha, expectedR
 	if gitPath == "" {
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
+	// Both values end up in a refspec. Only object IDs are let through, whatever a caller was handed.
+	if !fullObjectID.MatchString(sha) {
+		return fmt.Errorf("refusing to point tag %q at %q: not a full git object ID", tag, sha)
+	}
+	if expectedRaw != "" && !fullObjectID.MatchString(expectedRaw) {
+		return fmt.Errorf("refusing to move tag %q from %q: not a full git object ID", tag, expectedRaw)
+	}
 	ref := tagRef(tag)
 
 	start := time.Now()
