@@ -41,6 +41,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
+  - commitvalidations
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
@@ -59,6 +60,7 @@ rules:
   - changetransferpolicies/finalizers
   - changetransferpolicyhistories/finalizers
   - clusterscmproviders/finalizers
+  - commitvalidations/finalizers
   - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
@@ -79,6 +81,7 @@ rules:
   - changetransferpolicyhistories/status
   - clusterscmproviders/status
   - commitstatuses/status
+  - commitvalidations/status
   - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status

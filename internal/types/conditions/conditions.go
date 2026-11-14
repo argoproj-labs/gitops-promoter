@@ -57,3 +57,10 @@ const (
 	// the environment tags of the same PromotionStrategy.
 	EnvironmentTagsOwnedByAnotherGate CommonReason = "EnvironmentTagsOwnedByAnotherGate"
 )
+
+// Reasons that apply to CommitValidation.
+const (
+	// ValidatedCommitStatusNotFound is the reason when a validation is requested for a PromotionStrategy
+	// that has no ValidatedCommitStatus to apply it.
+	ValidatedCommitStatusNotFound CommonReason = "ValidatedCommitStatusNotFound"
+)

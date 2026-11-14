@@ -77,6 +77,27 @@ func (g *EnvironmentOperations) syncValidationNotes(ctx context.Context, remoteT
 	}
 }
 
+// SyncValidationNotes brings the local PromoterValidationsNotesRef up to date with the remote and returns
+// its tip, "" when the remote has no such ref. It asks the remote where the ref is and fetches only when
+// it moved, so a caller that reads validations on every reconcile pays one round trip when nothing changed.
+//
+// Read-only with respect to the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) SyncValidationNotes(ctx context.Context) (string, error) {
+	if g.ClonePath() == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	remote, err := lsRemoteRefs(ctx, g.gap, g.gitRepo, PromoterValidationsNotesRef)
+	if err != nil {
+		return "", fmt.Errorf("failed to list the validation notes: %w", err)
+	}
+	g.forgetLocalRef(PromoterValidationsNotesRef)
+	local, err := g.localRefShas(ctx, PromoterValidationsNotesRef)
+	if err != nil {
+		return "", err
+	}
+	return g.syncValidationNotes(ctx, remote[PromoterValidationsNotesRef], local[PromoterValidationsNotesRef])
+}
+
 // FetchValidationNotes makes the local PromoterValidationsNotesRef equal to the remote one, discarding
 // anything local, and returns its tip ("" when the remote has no such ref). The notes are fetched whole,
 // blobs included, because their contents are read.

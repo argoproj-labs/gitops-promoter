@@ -72,6 +72,7 @@ var _ = Describe("When ControllerConfiguration.spec.instanceID drifts from boots
 		Entry("WebRequestCommitStatus", setupInstanceIDDriftWebRequestCommitStatus),
 		Entry("ArgoCDCommitStatus", setupInstanceIDDriftArgoCDCommitStatus),
 		Entry("ValidatedCommitStatus", setupInstanceIDDriftValidatedCommitStatus),
+		Entry("CommitValidation", setupInstanceIDDriftCommitValidation),
 	)
 })
 
@@ -285,6 +286,20 @@ func setupInstanceIDDriftValidatedCommitStatus(ctx context.Context) (utils.Promo
 	}
 	Expect(k8sClient.Create(ctx, vcs)).To(Succeed())
 	return vcs, key, func() { deleteIgnoringNotFound(ctx, vcs) }
+}
+
+func setupInstanceIDDriftCommitValidation(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {
+	name := instanceIDDriftResourceName("CommitValidation")
+	key := types.NamespacedName{Name: name, Namespace: "default"}
+	cv := &promoterv1alpha1.CommitValidation{
+		Name: name, Namespace: "default",
+		Spec: promoterv1alpha1.CommitValidationSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
+			Branch:               testBranchDevelopment,
+		},
+	}
+	Expect(k8sClient.Create(ctx, cv)).To(Succeed())
+	return cv, key, func() { deleteIgnoringNotFound(ctx, cv) }
 }
 
 func setupInstanceIDDriftScheduledCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {

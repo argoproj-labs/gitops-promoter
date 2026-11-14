@@ -511,6 +511,15 @@ func runController(
 	if err := validatedCommitStatusReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ValidatedCommitStatus controller: %w", err))
 	}
+	if err := (&controller.CommitValidationReconciler{
+		Client:                       localManager.GetClient(),
+		Scheme:                       localManager.GetScheme(),
+		Recorder:                     localManager.GetEventRecorder("CommitValidation"),
+		SettingsMgr:                  settingsMgr,
+		EnqueueValidatedCommitStatus: validatedCommitStatusReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create CommitValidation controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

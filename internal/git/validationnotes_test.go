@@ -411,6 +411,47 @@ var _ = Describe("Validation notes", func() {
 		Expect(events).To(BeEmpty())
 	})
 
+	It("syncs the notes on their own, following them as they are written and deleted", func() {
+		reader := dry.newOps("default/commit-validation")
+		Expect(reader.SyncValidationNotes(ctx)).To(BeEmpty(), "nothing was validated yet")
+
+		By("A validation written by someone else")
+		dry.validateByHand(first, `{"target":"`+tagProd+`"}`)
+		tip, err := reader.SyncValidationNotes(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tip).To(Equal(dry.remoteRef(git.PromoterValidationsNotesRef)))
+		events, ok, err := reader.ListValidations(ctx, "", 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(summarize(events)).To(Equal([]string{tagProd + " Git " + first}))
+
+		By("Nothing new: the tip stays, and what was read is still there")
+		Expect(reader.SyncValidationNotes(ctx)).To(Equal(tip))
+
+		By("Another validation")
+		dry.validateByHand(second, `{"target":"`+tagStaging+`"}`)
+		next, err := reader.SyncValidationNotes(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next).NotTo(Equal(tip))
+		events, _, err = reader.ListValidations(ctx, tip, 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(summarize(events)).To(Equal([]string{tagStaging + " Git " + second}))
+
+		By("The notes being deleted on the remote")
+		mustGit(dry.workDir, "push", "origin", ":"+git.PromoterValidationsNotesRef)
+		Expect(reader.SyncValidationNotes(ctx)).To(BeEmpty())
+		events, ok, err = reader.ListValidations(ctx, "", 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(events).To(BeEmpty())
+	})
+
+	It("needs a clone to sync the notes into", func() {
+		ops := git.NewEnvironmentOperations(dry.repo, &fakeGitProvider{tempDirPath: dry.remoteDir}, "default/never-cloned")
+		_, err := ops.SyncValidationNotes(ctx)
+		Expect(err).To(MatchError(ContainSubstring("no repo path found")))
+	})
+
 	Describe("AddedLines", func() {
 		It("returns the lines the update added, in order", func() {
 			// Blank lines carry nothing, so where one lands in the result does not matter.

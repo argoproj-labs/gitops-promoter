@@ -235,27 +235,54 @@ func referencedValidatedCommitStatus(ps *promoterv1alpha1.PromotionStrategy) str
 	return ref.Name
 }
 
-// tagOwner returns the name of the one ValidatedCommitStatus that moves the environment tags of ps: the
-// one the strategy references as its ordering gate, or else the oldest that references the strategy.
-func (r *ValidatedCommitStatusReconciler) tagOwner(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
+// validatedCommitStatusFor returns the one ValidatedCommitStatus that moves the environment tags of ps:
+// the one the strategy references as its ordering gate, or else the oldest that references the strategy.
+// It returns nil when no ValidatedCommitStatus references the strategy.
+func validatedCommitStatusFor(ctx context.Context, c client.Client, ps *promoterv1alpha1.PromotionStrategy) (*promoterv1alpha1.ValidatedCommitStatus, error) {
 	var gates promoterv1alpha1.ValidatedCommitStatusList
-	if err := r.List(ctx, &gates, client.InNamespace(ps.Namespace), client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
-		return "", fmt.Errorf("failed to list ValidatedCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	if err := c.List(ctx, &gates, client.InNamespace(ps.Namespace), client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
+		return nil, fmt.Errorf("failed to list ValidatedCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
 	}
 
 	referenced := referencedValidatedCommitStatus(ps)
-	oldest := vcs
+	var oldest *promoterv1alpha1.ValidatedCommitStatus
 	for i := range gates.Items {
 		gate := &gates.Items[i]
 		if gate.Name == referenced {
-			return gate.Name, nil
+			return gate, nil
 		}
-		if gate.CreationTimestamp.Before(&oldest.CreationTimestamp) ||
+		if oldest == nil || gate.CreationTimestamp.Before(&oldest.CreationTimestamp) ||
 			(gate.CreationTimestamp.Equal(&oldest.CreationTimestamp) && gate.Name < oldest.Name) {
 			oldest = gate
 		}
 	}
-	return oldest.Name, nil
+	return oldest, nil
+}
+
+// tagOwner returns the name of the one ValidatedCommitStatus that moves the environment tags of ps.
+func (r *ValidatedCommitStatusReconciler) tagOwner(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
+	owner, err := validatedCommitStatusFor(ctx, r.Client, ps)
+	if err != nil {
+		return "", err
+	}
+	if owner == nil {
+		// The list is read from a cache that has not caught up with this gate yet.
+		return vcs.Name, nil
+	}
+	return owner.Name, nil
+}
+
+// environmentActivePaths returns the activePath of every environment of the PromotionStrategy, by
+// branch: the environment's own, or else the strategy's. An environment with neither maps to "".
+func environmentActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
+	activePaths := make(map[string]string, len(ps.Spec.Environments))
+	for _, environment := range ps.Spec.Environments {
+		activePaths[environment.Branch] = ps.Spec.ActivePath
+		if environment.ActivePath != "" {
+			activePaths[environment.Branch] = environment.ActivePath
+		}
+	}
+	return activePaths
 }
 
 // validatedEnvironment carries one environment through a reconcile.
@@ -491,13 +518,7 @@ func (run *validatedRun) resolveEnvironments() error {
 		return fmt.Errorf("invalid dependency graph: %w", err)
 	}
 
-	activePaths := make(map[string]string, len(run.ps.Spec.Environments))
-	for _, environment := range run.ps.Spec.Environments {
-		activePaths[environment.Branch] = run.ps.Spec.ActivePath
-		if environment.ActivePath != "" {
-			activePaths[environment.Branch] = environment.ActivePath
-		}
-	}
+	activePaths := environmentActivePaths(run.ps)
 	policies := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironment, len(run.vcs.Spec.Environments))
 	for _, policy := range run.vcs.Spec.Environments {
 		if _, known := activePaths[policy.Branch]; !known {

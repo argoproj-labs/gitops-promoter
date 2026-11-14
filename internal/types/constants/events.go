@@ -156,4 +156,16 @@ const (
 	// ValidationIgnoredMessage is the message for an ignored validation.
 	// Args: the validated SHA, tag name.
 	ValidationIgnoredMessage = "Ignored a validation of %s for tag %s: the commit is not in the repository"
+
+	// CommitValidationRecordedReason indicates that a CommitValidation wrote the requested validation to git.
+	CommitValidationRecordedReason = "CommitValidationRecorded"
+	// CommitValidationRecordedMessage is the message for a recorded validation.
+	// Args: the validated SHA, environment branch.
+	CommitValidationRecordedMessage = "Recorded the validation of %s for environment branch %s"
+
+	// CommitValidationRejectedReason indicates that a CommitValidation asked for a commit the repository does not have.
+	CommitValidationRejectedReason = "CommitValidationRejected"
+	// CommitValidationRejectedMessage is the message for a rejected validation.
+	// Args: the SHA that was asked for, environment branch.
+	CommitValidationRejectedMessage = "Rejected the validation of %s for environment branch %s: the commit does not exist in the repository"
 )
