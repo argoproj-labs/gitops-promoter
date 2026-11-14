@@ -191,15 +191,17 @@ spec:
                   History lists the environment's validations, newest first, capped at 20. It is rebuilt from the
                   git notes under refs/notes/promoter.validations, which are the record.
                 items:
-                  description: CommitValidationHistoryEntry is one validation of the
-                    environment, read back from the repository.
+                  description: |-
+                    CommitValidationHistoryEntry is one validation of the environment, read back from the repository, or
+                    the record of one move of its tag by hand.
                   properties:
                     reason:
                       description: Reason is the reason given with the validation,
                         if any.
                       type: string
                     sha:
-                      description: Sha is the validated dry commit.
+                      description: Sha is the validated dry commit. For a tag moved
+                        by hand, the commit it was moved to.
                       maxLength: 64
                       pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
@@ -207,19 +209,23 @@ spec:
                       description: |-
                         Source says how the validation was made: through a CommitValidation (Resource), by the ordering
                         controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).
+                        External marks an entry that is no validation: the environment's tag was moved by hand.
                       enum:
                       - Resource
                       - Automatic
                       - Git
+                      - External
                       type: string
                     validatedAt:
-                      description: ValidatedAt is when the validation was made.
+                      description: ValidatedAt is when the validation was made. For
+                        a tag moved by hand, when the controller saw it.
                       format: date-time
                       type: string
                     validatedBy:
                       description: |-
                         ValidatedBy names who or what validated the commit. For a pushed note without one, it is the
-                        author of the notes commit.
+                        author of the notes commit. For a tag moved by hand it is the ValidatedCommitStatus that saw the
+                        move: git does not say who pushes a tag.
                       type: string
                   required:
                   - sha

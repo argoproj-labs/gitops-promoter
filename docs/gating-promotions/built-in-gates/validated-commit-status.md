@@ -222,6 +222,11 @@ status:
       validatedBy: jane@example.com
       reason: hotfix
       validatedAt: "2026-11-10T22:15:48Z"
+    - sha: 5d0e7b1c9a3f4e2d8c6b0a1f3e5d7c9b2a4f6e80
+      source: External           # not a validation: the tag was moved to this commit by hand
+      validatedBy: ValidatedCommitStatus/demo
+      reason: Tag moved by hand
+      validatedAt: "2026-11-09T08:30:12Z"
 ```
 
 - **`Rejected`** has one cause: the commit does not exist in the repository. A commit that is not on the dry branch is
@@ -273,7 +278,7 @@ are kept. The commit must have been pushed: a validation of a commit the reposit
 | `reason` | Free text. |
 | `by` | Who validated. Defaults to the author of the notes commit. |
 | `at` | When, as an RFC 3339 time. Defaults to the date of the notes commit. |
-| `source` | Written by the controllers. Leave it out: a line without one is a manual validation. |
+| `source` | Written by the controllers. Leave it out: a line without one is a manual validation. A line with `source: External` is not a validation. It is the controller's record of a [tag moved by hand](#tags-moved-by-hand), and never moves a tag. |
 
 SCMs send no webhook when a note is pushed, so the controller sees it the next time it reconciles, at the latest after
 `validatedCommitStatus.workQueue.requeueDuration` in the
@@ -361,15 +366,34 @@ an environment on an older commit, use [RestoreActiveCommit](../../advanced-usag
 
 The controller moves tags with a leased push, so it never overwrites a move it has not seen.
 
+**The move is recorded in git.** When the controller sees a tag that was moved by hand, it appends a line with
+`source: External` to the note of the commit the tag was moved to. The line validates nothing and never moves a tag. It
+shows in the [history](#with-a-commitvalidation) of the environment, with the `ValidatedCommitStatus` that saw the move
+as `validatedBy`: git does not say who pushes a tag.
+
+### When the gate's status is lost
+
+A `ValidatedCommitStatus` that is deleted and created again, or restored without its status, takes up from what is in
+git:
+
+- **Each tag resumes after the newest line of the commit it is on.** That line is the validation that moved the tag
+  there, or the record that it was moved there by hand. Validations written after it are applied. Nothing written
+  before it is applied again, so a rollback is not undone.
+- **What the controller last validated on its own is read from the notes.** It validates a commit for an environment
+  again only when a newer one is cleared. A tag that a person put where it is, by hand or with a validation, stays
+  there until then, as it does while status is there. For an environment that follows the dry branch that means until
+  the next new head.
+- **A tag the controller moved itself catches up** with whatever was validated meanwhile.
+
 > [!WARNING]
-> Only the status of the `ValidatedCommitStatus` records that a tag was moved by hand. Git does not. If that status is
-> lost, because the `ValidatedCommitStatus` is deleted and created again or is restored without its status, the
-> controller resumes each tag after the newest validation of the commit the tag is on. A validation written after that
-> one is then applied, also when it is older than your move.
+> What the controller never saw is not in git. A tag that is moved by hand while no `ValidatedCommitStatus` exists, or
+> whose record could not be written before the status was lost, resumes after the newest validation of its commit, and
+> a validation written after that one is applied, also when it is older than the move. Validate the commit you moved
+> the tag to, with a [CommitValidation](#with-a-commitvalidation) or a [note](#by-pushing-a-git-note), to put the
+> record there yourself.
 >
-> To rule that out, record the move in git as well: validate the commit you moved the tag to, with a
-> [CommitValidation](#with-a-commitvalidation) or a [note](#by-pushing-a-git-note). The newest validation then matches
-> the tag, and nothing older is applied.
+> A validation that arrived together with a move by hand and was still waiting when the status was lost is not applied
+> either. Validate that commit again.
 
 ### Rolling back
 
@@ -475,7 +499,7 @@ can stay; nothing else reads them.
 | `held.reason: Pinned` | The environment is on a commit the dry branch does not contain. See [Hotfixes and the pin](#hotfixes-and-the-pin). |
 | `held.reason: Busy` | The environment advances `WhenIdle` and has a promotion under way. |
 | `Ready=False`, reason `EnvironmentTagPushFailed` | The repository refused a tag push. `status.environments[].pending.message` has git's answer. |
-| `Ready=False`, reason `ValidationNotRecorded` | The controller could not push to `refs/notes/promoter.validations`. |
+| `Ready=False`, reason `ValidationNotRecorded` | The controller could not push to `refs/notes/promoter.validations`: an automatic validation, or the record of a tag moved by hand. It tries again. |
 | `Ready=False`, reason `EnvironmentTagsOwnedByAnotherGate` | Another `ValidatedCommitStatus` references the same PromotionStrategy and moves its tags. |
 | `tag.source: External` that you did not expect | Someone, or something, pushed the tag. The controller's own moves are `Manual`, `Automatic` or `Seeded`. |
 
@@ -488,7 +512,8 @@ moved by hand, or cannot push one.
   environment. Branch and tag protection rules do not cover notes refs, so a validation note cannot be protected. RBAC
   on `CommitValidation` limits the Kubernetes path only.
 - **The controller's identity must be allowed to move the tags.** If the repository protects tags, exempt
-  `environment/*-tag` (or your equivalent) for the identity in the `ScmProvider`.
+  `environment/*-tag` (or your equivalent) for the identity in the `ScmProvider`. It also pushes to
+  `refs/notes/promoter.validations`: its automatic validations, and the record of every tag moved by hand.
 - **Nothing is rendered for an approver to look at.** A `Manual` environment is not hydrated until a commit is
   validated for it, so the approver sees the dry change and the results of the earlier environments, not the manifests
   for this one. The promotion pull request appears after validation.

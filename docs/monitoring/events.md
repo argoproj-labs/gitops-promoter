@@ -121,9 +121,9 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Event Type | Event Reason                | Description                                                                                                              |
 |------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Normal     | EnvironmentTagMoved         | The controller moved, or created, an environment's tag. The message names the tag, the dry SHAs it moved between, and what moved it (`Manual`, `Automatic` or `Seeded`). |
-| Normal     | EnvironmentTagMovedByHand   | An environment's tag was moved, created or deleted outside the controller. The tag is left where it was put.           |
+| Normal     | EnvironmentTagMovedByHand   | An environment's tag was moved, created or deleted outside the controller. The tag is left where it was put, and a move is recorded in `refs/notes/promoter.validations`. |
 | Warning    | EnvironmentTagPushFailed    | A validated move of an environment's tag could not be pushed, for example because a tag protection rule refuses it. The move is kept in `status.environments[].pending` and retried. Also the reason of the Ready condition while any tag cannot be moved. |
-| Warning    | ValidationNotRecorded       | An automatic validation could not be written to `refs/notes/promoter.validations`. It is written again on the next reconcile. |
+| Warning    | ValidationNotRecorded       | An automatic validation, or the record of a tag moved by hand, could not be written to `refs/notes/promoter.validations`. It is written again on the next reconcile. |
 | Warning    | ValidationIgnored           | A validation names a commit that the repository does not have, or does not serve. It is skipped.                       |
 | Warning    | EnvironmentTagsOwnedByAnotherGate | Another ValidatedCommitStatus already moves the environment tags of the same PromotionStrategy. This one does nothing. |
 | Normal/Warning | CommitStatusPhaseChanged | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                           |

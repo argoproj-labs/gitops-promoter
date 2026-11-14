@@ -303,6 +303,9 @@ func environmentActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]s
 type validatedEnvironment struct {
 	// held is the automatic validation that is waiting, after this reconcile.
 	held *validations.Held
+	// recorded holds the moves of this tag by hand that the notes written since the cursor have a
+	// record of: the commit the tag was moved to, and when the move was seen.
+	recorded map[string]time.Time
 
 	branch     string
 	activePath string
@@ -420,6 +423,8 @@ type validatedRun struct {
 
 	// firstRun is true when the controller has no status for this gate: it is new, or its status was lost.
 	firstRun bool
+	// noted is true when this reconcile wrote the record of a tag moved by hand.
+	noted bool
 }
 
 // Contains implements validations.Ancestry on the gate's clone.
@@ -457,6 +462,7 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	// From here on status is written whatever happens. A tag this reconcile moved and did not record
 	// would look like a tag someone moved by hand to the next one.
 	run.move(ctx)
+	run.noteHandMoves(ctx)
 	commitStatuses, gateErr := run.gate(ctx)
 	run.record()
 
@@ -469,7 +475,9 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	utils.InheritNotReadyConditionFromObjects(vcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	retryAfter := run.nudge(ctx)
-	if run.waitsForCleanup() {
+	if run.waitsForCleanup() || run.noted {
+		// A record that was just written is read back on the next reconcile, which moves the cursor past
+		// it. Whatever shows an environment's history follows the cursor.
 		retryAfter = sooner(retryAfter, intervalOr(r.pollInterval, validatedPollInterval))
 	}
 	if len(run.problems) > 0 {
@@ -940,37 +948,117 @@ func (run *validatedRun) collectUnapplied(ctx context.Context) error {
 			// would undo their move. So none is applied: this tag resumes from the head of the notes.
 			continue
 		}
-		// Resume after the newest validation of the commit the tag is on. With none, resume from the
-		// head of the notes: validations of other commits are older than whatever put the tag there.
-		matched := false
-		source := promoterv1alpha1.ValidatedTagSourceManual
-		var later []validations.Validation
-		for _, validation := range recent {
-			if validation.Line.Target != env.tagName {
-				continue
-			}
-			if env.remote.Commit != "" && validation.Sha == env.remote.Commit {
-				// A newer validation of the tag's commit: whatever came before it has been applied.
-				matched, later = true, nil
-				source = promoterv1alpha1.ValidatedTagSourceManual
-				if validation.Line.Automatic() {
-					source = promoterv1alpha1.ValidatedTagSourceAutomatic
-				}
-				continue
-			}
-			later = append(later, validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
-		}
-		if !matched {
+		point := resumeAfter(recent, env.tagName, env.remote.Commit)
+		run.rebuildAutomaticValidation(env, point)
+		if point.matched == nil {
 			continue
 		}
 		if env.next.Tag.Source == "" {
-			env.next.Tag.Source = source
+			env.next.Tag.Source = point.source()
+			if !point.matched.Line.Validates() {
+				// The record says when the move was seen. Taking that over also tells noteHandMoves
+				// that this move is in the notes already.
+				at := metav1.NewTime(point.matched.At())
+				env.next.Tag.MovedAt = &at
+			}
 		}
-		for _, validation := range later {
+		for _, validation := range point.later {
 			env.queue(validation)
 		}
 	}
 	return nil
+}
+
+// resumePoint is where the validations of one tag are taken up again when the controller has no record
+// of how far it had applied them.
+type resumePoint struct {
+	// matched is the newest line of the commit the tag is on: the validation that moved the tag there,
+	// or the record that it was moved there by hand. Nil when the notes have no line of that commit for
+	// the tag.
+	matched *git.ValidationEvent
+	// lastAutomatic is the commit of the newest automatic validation of the tag, "" when there is none.
+	lastAutomatic string
+	// later are the validations written after matched. They have not been applied.
+	later []validations.Validation
+}
+
+// source says what moved the tag to where it is, going by the matched line.
+func (p resumePoint) source() promoterv1alpha1.ValidatedTagSource {
+	switch {
+	case !p.matched.Line.Validates():
+		return promoterv1alpha1.ValidatedTagSourceExternal
+	case p.matched.Line.Automatic():
+		return promoterv1alpha1.ValidatedTagSourceAutomatic
+	default:
+		return promoterv1alpha1.ValidatedTagSourceManual
+	}
+}
+
+// byPerson reports whether a person put the tag where it is: with a manual validation, or by hand.
+func (p resumePoint) byPerson() bool {
+	return p.matched != nil && !p.matched.Line.Automatic()
+}
+
+// resumeAfter finds where to take up the validations of the tag that is on the given commit, in the
+// lines of the notes, which are in the order they were written.
+//
+// The tag resumes after the newest line of its commit. Whatever was written before that line has been
+// applied, or was passed over when the tag was moved by hand, and is not applied again. With no line of
+// its commit the tag resumes from the head of the notes: validations of other commits are older than
+// whatever put the tag there.
+func resumeAfter(lines []git.ValidationEvent, tagName, commit string) resumePoint {
+	var point resumePoint
+	for i := range lines {
+		line := &lines[i]
+		if line.Line.Target != tagName {
+			continue
+		}
+		if line.Line.Automatic() {
+			point.lastAutomatic = line.Sha
+		}
+		if commit != "" && line.Sha == commit {
+			point.matched, point.later = line, nil
+			continue
+		}
+		// The record of a move by hand to another commit moves nothing, now or ever.
+		if line.Line.Validates() {
+			point.later = append(point.later, validations.Validation{Sha: line.Sha, Automatic: line.Line.Automatic()})
+		}
+	}
+	if point.matched == nil {
+		point.later = nil
+	}
+	return point
+}
+
+// rebuildAutomaticValidation takes from the notes which commit the controller last validated for an
+// environment on its own, when status no longer says. Without it the controller would validate the
+// cleared commit again the moment it is back, and move the tag forward: over a tag a person had moved
+// back, although nothing new was cleared.
+//
+// For an environment with upstreams that is the newest automatic validation of its tag. Where the notes
+// have none to go by and a person put the tag where it is, the cleared commit counts as validated. For
+// an environment that follows the dry branch, which leaves no validations in the notes, that is the head:
+// the tag stays where it was put, and moves on with the next new head. A tag the controller moved itself
+// is left to catch up.
+func (run *validatedRun) rebuildAutomaticValidation(env *validatedEnvironment, point resumePoint) {
+	if !run.firstRun || env.validation != promoterv1alpha1.ValidationAutomatic {
+		return
+	}
+	sha := ""
+	switch {
+	case len(env.upstreams) > 0 && point.lastAutomatic != "":
+		sha = point.lastAutomatic
+	case point.byPerson():
+		sha = env.cleared
+	default:
+		// Nothing in the notes says what the controller last validated.
+	}
+	if !git.IsFullObjectID(sha) {
+		return
+	}
+	env.previous.AutomaticValidation = &promoterv1alpha1.ValidatedCommitStatusAutomaticValidation{Sha: sha}
+	env.next.AutomaticValidation = env.previous.AutomaticValidation.DeepCopy()
 }
 
 // keptByHand reports whether the controller has it on record that the tag was moved by hand to where it
@@ -982,13 +1070,22 @@ func (run *validatedRun) keptByHand(env *validatedEnvironment) bool {
 }
 
 // distribute hands each validation to the environment whose tag it names. Validations for tags that
-// are not this gate's are someone else's.
+// are not this gate's are someone else's. The record of a tag moved by hand is no validation: it is kept
+// aside, for a move that is seen a second time.
 func (run *validatedRun) distribute(written []git.ValidationEvent) {
 	for _, validation := range written {
 		for _, env := range run.envs {
-			if validation.Line.Target == env.tagName {
-				env.queue(validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
+			if validation.Line.Target != env.tagName {
+				continue
 			}
+			if !validation.Line.Validates() {
+				if env.recorded == nil {
+					env.recorded = map[string]time.Time{}
+				}
+				env.recorded[validation.Sha] = validation.At()
+				continue
+			}
+			env.queue(validations.Validation{Sha: validation.Sha, Automatic: validation.Line.Automatic()})
 		}
 	}
 }
@@ -1021,6 +1118,12 @@ func (run *validatedRun) planEnvironment(ctx context.Context, env *validatedEnvi
 		if env.remote.Commit != "" {
 			env.next.Tag.Source = promoterv1alpha1.ValidatedTagSourceExternal
 			env.next.Tag.MovedAt = &run.now
+			if seen, again := env.recorded[env.remote.Commit]; again {
+				// The reconcile that first saw this move recorded it in git and did not get to write
+				// status. Taking over when it saw the move keeps the one record from becoming two.
+				at := metav1.NewTime(seen)
+				env.next.Tag.MovedAt = &at
+			}
 		}
 		env.next.Pending = nil
 		in.Held, in.Pending = nil, nil
@@ -1315,6 +1418,73 @@ func (run *validatedRun) keepPending(env *validatedEnvironment, source promoterv
 		Source:  source,
 		Message: utils.TruncateString(err.Error(), validatedMessageLimit),
 	}
+}
+
+// handMoveReason is what the record of a tag moved by hand gives as its reason.
+const handMoveReason = "Tag moved by hand"
+
+// noteHandMoves records in git every move of a tag by hand that status knows of and the notes do not.
+//
+// That a tag was moved by hand is otherwise known to status alone. A gate that loses its status would
+// resume the tag after the newest validation of its commit, and apply validations that are older than
+// the move. With the record in the notes, that newest line is the record.
+//
+// The record is worked out from status on every reconcile and looked up in the notes as they were last
+// fetched. So a record that could not be written is written the next time, one that was written is not
+// written again, and one that a rewrite of the notes dropped comes back.
+//
+// The cursor stays where it is: other writers may have pushed lines since the notes were read, and those
+// have not been applied. The next reconcile lists the record with them, and passes over it.
+func (run *validatedRun) noteHandMoves(ctx context.Context) {
+	var entries []git.ValidationEntry
+	for _, env := range run.envs {
+		entry, moved := run.handMoveRecord(env)
+		if !moved {
+			continue
+		}
+		recorded, err := run.ops.ValidationRecorded(ctx, entry.Sha, entry.Line.ID)
+		if err != nil {
+			// Not knowing is no reason to write the record a second time. The next reconcile asks again.
+			logf.FromContext(ctx).Error(err, "Failed to look up the record of a tag moved by hand", "tag", env.tagName)
+			continue
+		}
+		if !recorded {
+			entries = append(entries, entry)
+		}
+	}
+	if len(entries) == 0 {
+		return
+	}
+	if _, err := run.ops.AppendValidations(ctx, entries); err != nil {
+		if len(run.problems) == 0 {
+			run.notReadyReason = promoterConditions.ValidationNotRecorded
+		}
+		run.problems = append(run.problems, fmt.Sprintf("failed to record tags moved by hand: %v", err))
+		return
+	}
+	run.noted = true
+}
+
+// handMoveRecord returns the line that records that an environment's tag was moved by hand, when status
+// says it was. Its ID is made of the tag and the time the move was seen, to the second as status keeps
+// it, so that every reconcile arrives at the same ID for the same move, and at another for a later move
+// to the same commit.
+func (run *validatedRun) handMoveRecord(env *validatedEnvironment) (git.ValidationEntry, bool) {
+	tag := env.next.Tag
+	if tag == nil || tag.Source != promoterv1alpha1.ValidatedTagSourceExternal || tag.Sha == "" || tag.MovedAt == nil {
+		return git.ValidationEntry{}, false
+	}
+	return git.ValidationEntry{
+		Sha: tag.Sha,
+		Line: validations.Line{
+			Target: env.tagName,
+			Source: validations.SourceExternal,
+			By:     reflect.TypeFor[promoterv1alpha1.ValidatedCommitStatus]().Name() + "/" + run.vcs.Name,
+			Reason: handMoveReason,
+			At:     tag.MovedAt.Time,
+			ID:     env.tagName + "@" + tag.MovedAt.UTC().Format(time.RFC3339),
+		},
+	}, true
 }
 
 // heldStatus describes the automatic validation that is waiting for an environment, if any.

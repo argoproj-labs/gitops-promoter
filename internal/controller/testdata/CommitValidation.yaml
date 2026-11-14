@@ -38,3 +38,10 @@ status:
       validatedBy: jane@example.com
       reason: hotfix
       validatedAt: "2026-11-10T22:15:48Z"
+    - sha: 5d0e7b1c9a3f4e2d8c6b0a1f3e5d7c9b2a4f6e80
+      # Not a validation: the environment's tag was moved to this commit by hand. validatedBy is the
+      # ValidatedCommitStatus that saw the move, because git does not say who pushes a tag.
+      source: External
+      validatedBy: ValidatedCommitStatus/example-validated
+      reason: Tag moved by hand
+      validatedAt: "2026-11-09T08:30:12Z"

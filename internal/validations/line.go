@@ -3,6 +3,9 @@
 //
 // A validation is a record that a dry commit may deploy to an environment. The git package reads and
 // writes validations; the ValidatedCommitStatus and CommitValidation controllers decide what they mean.
+//
+// The notes hold one other kind of line: the record that a tag was found on a commit someone moved it to
+// by hand. It validates nothing. It is there so that what happened to a tag can be told from git alone.
 package validations
 
 import (
@@ -24,6 +27,9 @@ const (
 	// SourceGit marks a validation pushed directly as a git note. A line that names no source, or one
 	// this package does not know, is read as SourceGit.
 	SourceGit = "Git"
+	// SourceExternal marks a line that is not a validation: the ValidatedCommitStatus controller's record
+	// that it found the tag on this commit, moved there by hand.
+	SourceExternal = "External"
 )
 
 // tagSuffix is appended to an environment branch to name its tag, as "-next" names its proposed branch.
@@ -49,7 +55,7 @@ type Line struct {
 	// Target is the name of the environment tag the commit is validated for. A tag name is unique to
 	// one PromotionStrategy, where an environment branch may be shared by many.
 	Target string
-	// Source is SourceResource, SourceAutomatic or SourceGit.
+	// Source is SourceResource, SourceAutomatic, SourceGit or SourceExternal.
 	Source string
 	// By names who or what validated the commit. Empty when the line does not say; the author of the
 	// notes commit is used then.
@@ -75,6 +81,13 @@ type wireLine struct {
 // other validation is manual and moves the tag wherever it says.
 func (l Line) Automatic() bool {
 	return l.Source == SourceAutomatic
+}
+
+// Validates reports whether the line validates its commit for the tag. The record of a tag moved by hand
+// does not: it says where the tag was found, and never moves a tag. It is written after the move it
+// records, and so after validations that have been applied since. Applied in turn, it would undo them.
+func (l Line) Validates() bool {
+	return l.Source != SourceExternal
 }
 
 // Marshal returns the line as it is written to a note: one JSON object with no newline.
@@ -111,7 +124,7 @@ func ParseLine(text string) (Line, bool) {
 	}
 
 	line := Line{Target: wire.Target, Source: SourceGit, By: wire.By, Reason: wire.Reason, ID: wire.ID}
-	if wire.Source == SourceResource || wire.Source == SourceAutomatic {
+	if wire.Source == SourceResource || wire.Source == SourceAutomatic || wire.Source == SourceExternal {
 		line.Source = wire.Source
 	}
 	// An unreadable time is dropped rather than making the validation invalid.

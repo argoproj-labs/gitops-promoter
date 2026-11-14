@@ -51,7 +51,8 @@ const (
 const (
 	// EnvironmentTagPushFailed is the reason when a validated move of an environment tag could not be pushed.
 	EnvironmentTagPushFailed CommonReason = "EnvironmentTagPushFailed"
-	// ValidationNotRecorded is the reason when an automatic validation could not be written to git.
+	// ValidationNotRecorded is the reason when an automatic validation, or the record of a tag moved by
+	// hand, could not be written to git.
 	ValidationNotRecorded CommonReason = "ValidationNotRecorded"
 	// EnvironmentTagsOwnedByAnotherGate is the reason when another ValidatedCommitStatus already moves
 	// the environment tags of the same PromotionStrategy.

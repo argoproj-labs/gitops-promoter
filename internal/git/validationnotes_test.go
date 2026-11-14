@@ -210,6 +210,23 @@ var _ = Describe("Validation notes", func() {
 		Expect(events).To(HaveLen(2))
 	})
 
+	It("tells whether a line was written before, without asking the remote", func() {
+		ops := dry.newOps("default/validation")
+		line := validations.Line{Target: tagProd, Source: validations.SourceExternal, By: "ValidatedCommitStatus/demo", ID: tagProd + "@2026-11-13T15:02:11Z"}
+
+		Expect(ops.ValidationRecorded(ctx, second, line.ID)).To(BeFalse(), "there are no notes at all yet")
+		_, err := ops.AppendValidations(ctx, []git.ValidationEntry{{Sha: second, Line: line}})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(ops.ValidationRecorded(ctx, second, line.ID)).To(BeTrue())
+		Expect(ops.ValidationRecorded(ctx, second, tagProd+"@2026-11-13T15:02:12Z")).To(BeFalse(), "another move to the same commit")
+		Expect(ops.ValidationRecorded(ctx, first, line.ID)).To(BeFalse(), "the line is on another commit")
+		Expect(ops.ValidationRecorded(ctx, second, "")).To(BeFalse(), "a line with no ID cannot be told from another")
+
+		By("A clone that has not fetched the notes knowing nothing of it")
+		Expect(dry.newOps("default/another").ValidationRecorded(ctx, second, line.ID)).To(BeFalse())
+	})
+
 	It("validates a commit that is not in the clone", func() {
 		mustGit(dry.workDir, "checkout", "-b", "hotfix", first)
 		hotfix := dry.commit("hotfix")

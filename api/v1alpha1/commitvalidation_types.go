@@ -33,8 +33,9 @@ const (
 	CommitValidationRejected CommitValidationPhase = "Rejected"
 )
 
-// CommitValidationSource says how a validation was made.
-// +kubebuilder:validation:Enum=Resource;Automatic;Git
+// CommitValidationSource says how a validation was made. External is not a validation: it is the record
+// of a tag that was moved by hand.
+// +kubebuilder:validation:Enum=Resource;Automatic;Git;External
 type CommitValidationSource string
 
 const (
@@ -45,6 +46,9 @@ const (
 	CommitValidationSourceAutomatic CommitValidationSource = "Automatic"
 	// CommitValidationSourceGit is a validation pushed directly as a git note.
 	CommitValidationSourceGit CommitValidationSource = "Git"
+	// CommitValidationSourceExternal is the ValidatedCommitStatus controller's record that it found the
+	// environment's tag on the commit, moved there by hand. Nobody validated the commit.
+	CommitValidationSourceExternal CommitValidationSource = "External"
 )
 
 // CommitValidationSpec defines the desired state of CommitValidation. promotionStrategyRef and branch are
@@ -106,13 +110,14 @@ type CommitValidationRequestStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
-// CommitValidationHistoryEntry is one validation of the environment, read back from the repository.
+// CommitValidationHistoryEntry is one validation of the environment, read back from the repository, or
+// the record of one move of its tag by hand.
 type CommitValidationHistoryEntry struct {
-	// ValidatedAt is when the validation was made.
+	// ValidatedAt is when the validation was made. For a tag moved by hand, when the controller saw it.
 	// +required
 	ValidatedAt metav1.Time `json:"validatedAt"`
 
-	// Sha is the validated dry commit.
+	// Sha is the validated dry commit. For a tag moved by hand, the commit it was moved to.
 	// +required
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
@@ -120,11 +125,13 @@ type CommitValidationHistoryEntry struct {
 
 	// Source says how the validation was made: through a CommitValidation (Resource), by the ordering
 	// controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).
+	// External marks an entry that is no validation: the environment's tag was moved by hand.
 	// +required
 	Source CommitValidationSource `json:"source"`
 
 	// ValidatedBy names who or what validated the commit. For a pushed note without one, it is the
-	// author of the notes commit.
+	// author of the notes commit. For a tag moved by hand it is the ValidatedCommitStatus that saw the
+	// move: git does not say who pushes a tag.
 	// +optional
 	ValidatedBy string `json:"validatedBy,omitempty"`
 

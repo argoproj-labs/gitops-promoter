@@ -237,17 +237,30 @@ func (g *EnvironmentOperations) AppendValidations(ctx context.Context, entries [
 	return "", lastErr
 }
 
-// validationRecorded reports whether the entry's ID is already on its commit's note.
+// validationRecorded reports whether the entry was written before: its commit's note has a line with the
+// entry's ID. An entry with no ID is never taken as written.
 func (g *EnvironmentOperations) validationRecorded(ctx context.Context, entry ValidationEntry) (bool, error) {
-	if entry.Line.ID == "" {
+	return g.ValidationRecorded(ctx, entry.Sha, entry.Line.ID)
+}
+
+// ValidationRecorded reports whether the note on a commit has a line with the given ID. It reads the
+// notes as they were last fetched, so a writer that wrote the line before can find out without asking the
+// remote. It is false for an empty ID.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) ValidationRecorded(ctx context.Context, sha, id string) (bool, error) {
+	if id == "" {
 		return false, nil
 	}
-	note, err := g.validationNote(ctx, entry.Sha)
+	if g.ClonePath() == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	note, err := g.validationNote(ctx, sha)
 	if err != nil {
 		return false, err
 	}
 	for _, line := range validations.ParseNote(note) {
-		if line.ID == entry.Line.ID {
+		if line.ID == id {
 			return true, nil
 		}
 	}

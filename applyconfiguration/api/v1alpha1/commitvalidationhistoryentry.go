@@ -25,17 +25,20 @@ import (
 // CommitValidationHistoryEntryApplyConfiguration represents a declarative configuration of the CommitValidationHistoryEntry type for use
 // with apply.
 //
-// CommitValidationHistoryEntry is one validation of the environment, read back from the repository.
+// CommitValidationHistoryEntry is one validation of the environment, read back from the repository, or
+// the record of one move of its tag by hand.
 type CommitValidationHistoryEntryApplyConfiguration struct {
-	// ValidatedAt is when the validation was made.
+	// ValidatedAt is when the validation was made. For a tag moved by hand, when the controller saw it.
 	ValidatedAt *v1.Time `json:"validatedAt,omitempty"`
-	// Sha is the validated dry commit.
+	// Sha is the validated dry commit. For a tag moved by hand, the commit it was moved to.
 	Sha *string `json:"sha,omitempty"`
 	// Source says how the validation was made: through a CommitValidation (Resource), by the ordering
 	// controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).
+	// External marks an entry that is no validation: the environment's tag was moved by hand.
 	Source *apiv1alpha1.CommitValidationSource `json:"source,omitempty"`
 	// ValidatedBy names who or what validated the commit. For a pushed note without one, it is the
-	// author of the notes commit.
+	// author of the notes commit. For a tag moved by hand it is the ValidatedCommitStatus that saw the
+	// move: git does not say who pushes a tag.
 	ValidatedBy *string `json:"validatedBy,omitempty"`
 	// Reason is the reason given with the validation, if any.
 	Reason *string `json:"reason,omitempty"`

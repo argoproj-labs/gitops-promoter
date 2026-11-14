@@ -407,6 +407,20 @@ var _ = Describe("CommitValidation Controller", func() {
 				g.Expect(current.Status.History[1].Sha).To(Equal(live))
 			}, constants.EventuallyTimeout).Should(Succeed())
 			Expect(p.tag(testBranchStaging)).To(Equal(first))
+
+			By("Showing a move of the tag by hand too, as what it is: not a validation")
+			p.moveTagByHand(testBranchStaging, live)
+			Eventually(func(g Gomega) {
+				var current promoterv1alpha1.CommitValidation
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(staging), &current)).To(Succeed())
+				g.Expect(current.Status.History).To(HaveLen(3))
+				newest := current.Status.History[0]
+				g.Expect(newest.Sha).To(Equal(live))
+				g.Expect(newest.Source).To(Equal(promoterv1alpha1.CommitValidationSourceExternal))
+				g.Expect(newest.ValidatedBy).To(Equal("ValidatedCommitStatus/" + p.gate.Name))
+				g.Expect(newest.Reason).To(Equal("Tag moved by hand"))
+				g.Expect(current.Status.History[1].Sha).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 

@@ -125,6 +125,36 @@ var _ = Describe("Line", func() {
 			Expect(automatic.Automatic()).To(BeTrue())
 			Expect(resource.Automatic()).To(BeFalse())
 		})
+
+		It("reads the record of a tag moved by hand as a line that validates nothing", func() {
+			line := validations.Line{
+				Target: "environment/prod-tag",
+				Source: validations.SourceExternal,
+				By:     "ValidatedCommitStatus/demo",
+				Reason: "Tag moved by hand",
+				At:     at,
+				ID:     "environment/prod-tag@2026-11-13T15:02:11Z",
+			}
+			text, err := line.Marshal()
+			Expect(err).NotTo(HaveOccurred())
+			parsed, ok := validations.ParseLine(text)
+			Expect(ok).To(BeTrue())
+			Expect(parsed).To(Equal(line))
+			Expect(parsed.Validates()).To(BeFalse())
+			Expect(parsed.Automatic()).To(BeFalse())
+		})
+
+		DescribeTable("takes every other line for a validation",
+			func(text string) {
+				parsed, ok := validations.ParseLine(text)
+				Expect(ok).To(BeTrue())
+				Expect(parsed.Validates()).To(BeTrue())
+			},
+			Entry("one a person wrote", `{"target":"t"}`),
+			Entry("one from a CommitValidation", `{"target":"t","source":"Resource"}`),
+			Entry("an automatic one", `{"target":"t","source":"Automatic"}`),
+			Entry("one with a source this package does not know", `{"target":"t","source":"Jenkins"}`),
+		)
 	})
 
 	Describe("ParseNote", func() {

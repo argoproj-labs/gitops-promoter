@@ -2514,18 +2514,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationHistoryEn
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "CommitValidationHistoryEntry is one validation of the environment, read back from the repository.",
+				Description: "CommitValidationHistoryEntry is one validation of the environment, read back from the repository, or the record of one move of its tag by hand.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"validatedAt": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ValidatedAt is when the validation was made.",
+							Description: "ValidatedAt is when the validation was made. For a tag moved by hand, when the controller saw it.",
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
 						},
 					},
 					"sha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Sha is the validated dry commit.",
+							Description: "Sha is the validated dry commit. For a tag moved by hand, the commit it was moved to.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2533,7 +2533,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationHistoryEn
 					},
 					"source": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Source says how the validation was made: through a CommitValidation (Resource), by the ordering controller once upstream environments succeeded (Automatic), or as a pushed git note (Git).",
+							Description: "Source says how the validation was made: through a CommitValidation (Resource), by the ordering controller once upstream environments succeeded (Automatic), or as a pushed git note (Git). External marks an entry that is no validation: the environment's tag was moved by hand.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2541,7 +2541,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitValidationHistoryEn
 					},
 					"validatedBy": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ValidatedBy names who or what validated the commit. For a pushed note without one, it is the author of the notes commit.",
+							Description: "ValidatedBy names who or what validated the commit. For a pushed note without one, it is the author of the notes commit. For a tag moved by hand it is the ValidatedCommitStatus that saw the move: git does not say who pushes a tag.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
