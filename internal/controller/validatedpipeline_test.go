@@ -171,10 +171,17 @@ func (p *validatedPipeline) hydrate(branch string) string {
 
 // validateByHand validates a dry commit for an environment the way a person without a CommitValidation
 // does: by pushing a line to the validation note of the commit. Only the target is written, as the
-// documentation asks for. No webhook announces a note, so the gate is enqueued, standing in for its poll.
+// documentation asks for.
 func (p *validatedPipeline) validateByHand(branch, drySha, reason string) {
 	GinkgoHelper()
-	line := `{"target":"` + validations.TagName(branch, "") + `","reason":"` + reason + `"}`
+	p.pushValidationLine(drySha, `{"target":"`+validations.TagName(branch, "")+`","reason":"`+reason+`"}`)
+}
+
+// pushValidationLine appends a line to the validation note of a dry commit and pushes the notes, the way
+// anyone with push access to the repository can. No webhook announces a note, so the gate is enqueued,
+// standing in for its poll.
+func (p *validatedPipeline) pushValidationLine(drySha, line string) {
+	GinkgoHelper()
 	// The controller writes to the same ref, so a push can lose the race and has to start over.
 	Eventually(func() error {
 		refspec := "+" + git.PromoterValidationsNotesRef + ":" + git.PromoterValidationsNotesRef

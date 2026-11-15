@@ -1699,6 +1699,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: title
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PushedValidationsPolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RateLimiter
   map:
     fields:
@@ -2233,6 +2235,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - key
+    - name: appliedRequest
+      type:
+        scalar: string
     - name: branch
       type:
         scalar: string
@@ -2321,6 +2326,10 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
       default:
       - scm
+    - name: pushedValidations
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PushedValidationsPolicy
+      default: Accept
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig

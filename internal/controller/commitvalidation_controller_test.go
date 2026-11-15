@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -405,6 +407,7 @@ var _ = Describe("CommitValidation Controller", func() {
 
 			By("Showing a move of the tag by hand, as what it is: not a validation")
 			p.moveTagByHand(testBranchStaging, live)
+			p.expectTagSource(testBranchStaging, promoterv1alpha1.ValidatedTagSourceExternal)
 			Eventually(func(g Gomega) {
 				var current promoterv1alpha1.CommitValidation
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(staging), &current)).To(Succeed())
@@ -513,6 +516,82 @@ var _ = Describe("CommitValidation Controller", func() {
 
 			By("Recording the request when a ValidatedCommitStatus is created")
 			Expect(k8sClient.Create(ctx, p.gate)).To(Succeed())
+			expectRequest(ctx, production, first, promoterv1alpha1.CommitValidationRecorded)
+			p.expectTag(testBranchProduction, first)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)
+		})
+	})
+
+	Context("When the gate ignores validations that were pushed to the notes", func() {
+		It("applies what a CommitValidation asks for, and no line that anyone else wrote", func() {
+			p := newValidatedPipeline(ctx, "commit-validation-only")
+			p.gate.Spec.PushedValidations = promoterv1alpha1.PushedValidationsIgnore
+			p.gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: testBranchProduction, Validation: promoterv1alpha1.ValidationManual},
+			}
+			p.create()
+			first := p.dryHead()
+			live := p.dryParent(first)
+			tag := validations.TagName(testBranchProduction, "")
+			p.expectTag(testBranchProduction, live)
+
+			cursor := func(g Gomega) string {
+				var gate promoterv1alpha1.ValidatedCommitStatus
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p.gate), &gate)).To(Succeed())
+				return gate.Status.ValidationsCursor
+			}
+			// passedOver waits for the gate to have read the notes up to their tip, and expects the tag where it was.
+			passedOver := func(expected string) {
+				GinkgoHelper()
+				Eventually(func(g Gomega) {
+					g.Expect(cursor(g)).To(Equal(p.remoteRef(git.PromoterValidationsNotesRef)))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				Consistently(func() string {
+					return p.tag(testBranchProduction)
+				}, 3*time.Second, 500*time.Millisecond).Should(Equal(expected))
+			}
+
+			By("Passing over a validation pushed as a note")
+			p.validateByHand(testBranchProduction, first, "pushed by hand")
+			passedOver(live)
+
+			By("Applying the request of a CommitValidation")
+			production := commitValidationFor(p, testBranchProduction, first, "CHG-1234 approved")
+			expectRequest(ctx, production, first, promoterv1alpha1.CommitValidationRecorded)
+			p.expectTag(testBranchProduction, first)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)
+
+			var request validations.Line
+			for _, line := range p.validationsOn(first) {
+				if line.Source == validations.SourceResource {
+					request = line
+				}
+			}
+			Expect(request.ID).NotTo(BeEmpty())
+			Eventually(func(g Gomega) {
+				g.Expect(p.environmentStatus(g, testBranchProduction).AppliedRequest).To(Equal(request.ID))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Passing over a line that copies the request's id onto another commit")
+			forged := `{"target":"` + tag + `","source":"Resource","by":"CommitValidation/` + production.Name + `","id":"` + request.ID + `"}`
+			p.pushValidationLine(live, forged)
+			passedOver(first)
+
+			By("Passing over the request's own line when it is pushed again, after the tag has moved on")
+			p.moveTagByHand(testBranchProduction, live)
+			p.expectTag(testBranchProduction, live)
+			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceExternal)
+			p.pushValidationLine(first, forged)
+			passedOver(live)
+
+			By("Applying the next request of the CommitValidation")
+			requestSha(ctx, production, "", "")
+			Eventually(func(g Gomega) {
+				var current promoterv1alpha1.CommitValidation
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(production), &current)).To(Succeed())
+				g.Expect(current.Status.Request).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			requestSha(ctx, production, first, "CHG-1240 approved")
 			expectRequest(ctx, production, first, promoterv1alpha1.CommitValidationRecorded)
 			p.expectTag(testBranchProduction, first)
 			p.expectTagSource(testBranchProduction, promoterv1alpha1.ValidatedTagSourceManual)

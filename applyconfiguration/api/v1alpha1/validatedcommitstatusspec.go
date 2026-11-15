@@ -39,6 +39,13 @@ type ValidatedCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every
 	// branch listed must be an environment of the PromotionStrategy.
 	Environments []ValidatedCommitStatusEnvironmentApplyConfiguration `json:"environments,omitempty"`
+	// PushedValidations says what to do with validations that were pushed to the validation notes of the
+	// dry repository directly. Accept (the default) applies them: pushing a note is then a way to deploy,
+	// open to whoever can push to the repository, and notes cannot be protected by branch or tag rules.
+	// Ignore applies a validation only when it is the current request of a CommitValidation: the line
+	// carries the request's id, and its commit and environment are what the resource asks for. A line that
+	// was pushed by hand, or copied from an earlier request, is passed over.
+	PushedValidations *apiv1alpha1.PushedValidationsPolicy `json:"pushedValidations,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
 	// .ValidatedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
@@ -90,6 +97,14 @@ func (b *ValidatedCommitStatusSpecApplyConfiguration) WithEnvironments(values ..
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithPushedValidations sets the PushedValidations field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PushedValidations field is set to the value of the last call.
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithPushedValidations(value apiv1alpha1.PushedValidationsPolicy) *ValidatedCommitStatusSpecApplyConfiguration {
+	b.PushedValidations = &value
 	return b
 }
 

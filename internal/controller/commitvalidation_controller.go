@@ -233,7 +233,7 @@ func (r *CommitValidationReconciler) handleRequest(ctx context.Context, cv *prom
 			By:     reflect.TypeFor[promoterv1alpha1.CommitValidation]().Name() + "/" + cv.Name,
 			Reason: cv.Spec.Reason,
 			At:     now.Time,
-			ID:     fmt.Sprintf("%s/%d", cv.UID, cv.Generation),
+			ID:     commitValidationRequestID(cv),
 		},
 	}})
 	if err != nil {

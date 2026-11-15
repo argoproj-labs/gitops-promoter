@@ -7609,6 +7609,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName()),
 						},
 					},
+					"appliedRequest": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AppliedRequest is the id of the newest validation the controller took from the notes for this environment that carried one: a CommitValidation writes <its UID>/<its generation>. A line with the same id is not applied a second time, so a request cannot be replayed by pushing its line again.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"pending": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Pending is set only while a validation asked for a move of the tag that could not be pushed. The controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of the tag by hand, takes its place.",
@@ -7868,6 +7875,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec
 									},
 								},
 							},
+						},
+					},
+					"pushedValidations": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PushedValidations says what to do with validations that were pushed to the validation notes of the dry repository directly. Accept (the default) applies them: pushing a note is then a way to deploy, open to whoever can push to the repository, and notes cannot be protected by branch or tag rules. Ignore applies a validation only when it is the current request of a CommitValidation: the line carries the request's id, and its commit and environment are what the resource asks for. A line that was pushed by hand, or copied from an earlier request, is passed over.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"url": {

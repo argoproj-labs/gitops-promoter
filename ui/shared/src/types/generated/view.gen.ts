@@ -2224,6 +2224,8 @@ export type components = {
         ValidatedCommitStatusEnvironmentStatus: {
             /** @description ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses. */
             activeCommitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
+            /** @description AppliedRequest is the id of the newest validation the controller took from the notes for this environment that carried one: a CommitValidation writes <its UID>/<its generation>. A line with the same id is not applied a second time, so a request cannot be replayed by pushing its line again. */
+            appliedRequest?: string;
             /**
              * @description Branch is the environment branch name.
              * @default
@@ -2298,6 +2300,8 @@ export type components = {
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
             publishTo?: string[];
+            /** @description PushedValidations says what to do with validations that were pushed to the validation notes of the dry repository directly. Accept (the default) applies them: pushing a note is then a way to deploy, open to whoever can push to the repository, and notes cannot be protected by branch or tag rules. Ignore applies a validation only when it is the current request of a CommitValidation: the line carries the request's id, and its commit and environment are what the resource asks for. A line that was pushed by hand, or copied from an earlier request, is passed over. */
+            pushedValidations?: string;
             /**
              * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .ValidatedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
              * @default {}

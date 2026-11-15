@@ -1967,6 +1967,45 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			Entry("an automatic validation, which this controller never writes", validations.SourceAutomatic, false),
 		)
 
+		Describe("vcsRefusedValidation: which validations the gate takes with pushedValidations: Ignore", func() {
+			const id = "8a7b1c9e-0000-4000-8000-000000000001/3"
+			requests := map[string]vcsRequest{id: {Sha: "c", Tag: tag}}
+			// written returns a line as a CommitValidation writes it for the request above.
+			written := func() *git.ValidationEvent {
+				event := line(1, "c", validations.SourceResource)
+				event.Line.ID = id
+				return &event
+			}
+
+			It("takes every validation when pushed validations are accepted", func() {
+				pushed := line(1, "c", validations.SourceGit)
+				Expect(vcsRefusedValidation(false, &pushed, nil)).To(BeEmpty())
+			})
+
+			It("takes the line a CommitValidation wrote for what it asks for at the moment", func() {
+				Expect(vcsRefusedValidation(true, written(), requests)).To(BeEmpty())
+			})
+
+			DescribeTable("takes no other line",
+				func(change func(*git.ValidationEvent)) {
+					event := written()
+					change(event)
+					Expect(vcsRefusedValidation(true, event, requests)).To(ContainSubstring("spec.pushedValidations"))
+				},
+				Entry("a line pushed by hand", func(e *git.ValidationEvent) { e.Line.Source, e.Line.ID = validations.SourceGit, "" }),
+				Entry("a line pushed by hand that carries the request's id", func(e *git.ValidationEvent) { e.Line.Source = validations.SourceGit }),
+				Entry("a line that says a CommitValidation wrote it, with no id", func(e *git.ValidationEvent) { e.Line.ID = "" }),
+				Entry("the request's id on another commit", func(e *git.ValidationEvent) { e.Sha = "d" }),
+				Entry("the request's id for another tag", func(e *git.ValidationEvent) { e.Line.Target = vcsTagTest }),
+				Entry("the id of an earlier request of the same resource", func(e *git.ValidationEvent) {
+					e.Line.ID = "8a7b1c9e-0000-4000-8000-000000000001/2"
+				}),
+				Entry("the id of a resource that is gone", func(e *git.ValidationEvent) {
+					e.Line.ID = "8a7b1c9e-0000-4000-8000-000000000002/1"
+				}),
+			)
+		})
+
 		Describe("vcsResumeAfter: where a gate that lost its place takes the notes up again", func() {
 			shas := func(lines []git.ValidationEvent) []string {
 				out := make([]string, 0, len(lines))
@@ -2298,6 +2337,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
 			Expect(gate.Spec.Environments[0].Validation).To(Equal(promoterv1alpha1.ValidationAutomatic))
+			Expect(gate.Spec.PushedValidations).To(Equal(promoterv1alpha1.PushedValidationsAccept))
 
 			bare := newGate("vcs-no-environments", "main")
 			bare.Spec.Environments = nil

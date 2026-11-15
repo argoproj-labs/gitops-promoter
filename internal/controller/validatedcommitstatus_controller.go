@@ -166,6 +166,8 @@ type vcsValidation struct {
 	Sha string
 	// By names who or what validated it.
 	By string
+	// ID identifies the request that made the validation, "" when the line carries none.
+	ID string
 	// Pending is true for a validation that was applied before and whose move of the tag could not be
 	// pushed. A push of the tag by hand since then takes its place.
 	Pending bool
@@ -1079,6 +1081,7 @@ func (r *ValidatedCommitStatusReconciler) GetEnqueueFunc() func(namespace, name 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitvalidations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
@@ -1403,7 +1406,7 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	}
 
 	// Validate. What people asked for since the notes were last applied.
-	if err := r.collectValidations(ctx, vcs, dry, envs, firstRun); err != nil {
+	if err := r.collectValidations(ctx, vcs, ps, dry, envs, firstRun); err != nil {
 		return 0, err
 	}
 	if err := r.observeIdleness(ctx, ps, envs); err != nil {
@@ -1998,6 +2001,11 @@ func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []v
 				Message:     utils.TruncateString(result.Err.Error(), 1024),
 			}
 		}
+		entry.AppliedRequest = previous[env.Branch].AppliedRequest
+		if env.Validation != nil && env.Validation.ID != "" {
+			// The validation is taken: it moved the tag, or waits as pending. Its line is not taken again.
+			entry.AppliedRequest = env.Validation.ID
+		}
 		env.TagSource, env.TagValidatedBy = entry.Tag.Source, entry.Tag.ValidatedBy
 		entries = append(entries, entry)
 	}
@@ -2068,48 +2076,36 @@ func vcsBusy(current promoterv1alpha1.EnvironmentStatus, tagSha string) bool {
 func (r *ValidatedCommitStatusReconciler) collectValidations(
 	ctx context.Context,
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
 	dry *vcsDryState,
 	envs []vcsEnvironment,
 	firstRun bool,
 ) error {
-	logger := logf.FromContext(ctx)
-
-	var lines []git.ValidationEvent
-	resume := firstRun
-	if !firstRun {
-		listed, found, err := dry.ops.ListValidations(ctx, vcs.Status.ValidationsCursor, 0)
+	// With pushedValidations: Ignore a line counts only as the current request of a CommitValidation.
+	ignorePushed := vcs.Spec.PushedValidations == promoterv1alpha1.PushedValidationsIgnore
+	var requests map[string]vcsRequest
+	if ignorePushed {
+		var err error
+		requests, err = r.currentRequests(ctx, vcs, ps, envs)
 		if err != nil {
-			return fmt.Errorf("failed to list validations: %w", err)
-		}
-		if found {
-			lines = listed
-		} else {
-			logger.Info("The validation notes no longer contain the commit the controller had applied them up to; resuming from the environment tags",
-				"validationsCursor", vcs.Status.ValidationsCursor)
-			resume = true
+			return err
 		}
 	}
-	if resume {
-		recent, _, err := dry.ops.ListValidations(ctx, "", vcsLostCursorWalk)
-		if err != nil {
-			return fmt.Errorf("failed to list validations: %w", err)
-		}
-		for i := range envs {
-			env := &envs[i]
-			if vcsResumesFromHead(*env) {
-				continue
-			}
-			matched, later := vcsResumeAfter(recent, env.Tag, env.TagSha)
-			if matched == nil {
-				continue
-			}
-			if env.Recorded == nil {
-				env.Noted = vcsNoted(matched)
-			}
-			lines = append(lines, later...)
-		}
+	refused := func(line *git.ValidationEvent) string {
+		return vcsRefusedValidation(ignorePushed, line, requests)
 	}
 
+	lines, err := vcsUnappliedLines(ctx, vcs, dry.ops, envs, firstRun, refused)
+	if err != nil {
+		return err
+	}
+
+	applied := make(map[string]string, len(vcs.Status.Environments))
+	pending := make(map[string]*promoterv1alpha1.ValidatedCommitStatusPending, len(vcs.Status.Environments))
+	for _, entry := range vcs.Status.Environments {
+		applied[entry.Branch] = entry.AppliedRequest
+		pending[entry.Branch] = entry.Pending
+	}
 	byTag := make(map[string]*vcsEnvironment, len(envs))
 	for i := range envs {
 		byTag[envs[i].Tag] = &envs[i]
@@ -2120,50 +2116,177 @@ func (r *ValidatedCommitStatusReconciler) collectValidations(
 		if !read {
 			continue
 		}
-		if !line.Line.Validates() {
-			if env.HandMoves == nil {
-				env.HandMoves = map[string]metav1.Time{}
-			}
-			env.HandMoves[line.Sha] = metav1.NewTime(line.At())
-			continue
-		}
-		if !vcsManualValidation(line.Line) {
-			continue
-		}
-		ignored, err := vcsUnusableValidation(ctx, dry.ops, dry.head, line.Sha)
-		if err != nil {
+		if err := r.takeLine(ctx, vcs, dry, env, line, applied[env.Branch], refused); err != nil {
 			return err
 		}
-		if ignored != "" {
-			logger.Info("Ignored a validation", "tag", env.Tag, "sha", line.Sha, "reason", ignored)
-			r.Recorder.Eventf(vcs, nil, "Warning", constants.ValidationIgnoredReason, "ApplyingValidations",
-				constants.ValidationIgnoredMessage, line.Sha, env.Tag, ignored)
-			continue
-		}
-		// The lines are in the order they were written, and the newest validation is the one that counts.
-		env.Validation = &vcsValidation{Sha: line.Sha, By: line.By()}
 	}
 
 	// A move that could not be pushed is tried again, unless a newer validation asks for another.
-	previous := make(map[string]*promoterv1alpha1.ValidatedCommitStatusPending, len(vcs.Status.Environments))
-	for _, entry := range vcs.Status.Environments {
-		previous[entry.Branch] = entry.Pending
-	}
 	for i := range envs {
 		env := &envs[i]
-		pending := previous[env.Branch]
-		if env.Validation != nil || pending == nil {
+		waiting := pending[env.Branch]
+		if env.Validation != nil || waiting == nil {
 			continue
 		}
-		ignored, err := vcsUnusableValidation(ctx, dry.ops, dry.head, pending.Sha)
+		ignored, err := vcsUnusableValidation(ctx, dry.ops, dry.head, waiting.Sha)
 		if err != nil {
 			return err
 		}
 		if ignored == "" {
-			env.Validation = &vcsValidation{Sha: pending.Sha, By: pending.ValidatedBy, Pending: true}
+			env.Validation = &vcsValidation{Sha: waiting.Sha, By: waiting.ValidatedBy, Pending: true}
 		}
 	}
 	return nil
+}
+
+// vcsUnappliedLines returns the lines of the validation notes that the gate has not applied, in the order
+// they were written: those after status.validationsCursor. A gate with no status, or whose cursor is no
+// longer in the notes, takes its place from where each tag is (see vcsResumeAfter), and notes on the
+// environment what the notes say put the tag there. refused says why a validation is not taken, "" when
+// it is.
+func vcsUnappliedLines(
+	ctx context.Context,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
+	ops *git.EnvironmentOperations,
+	envs []vcsEnvironment,
+	firstRun bool,
+	refused func(*git.ValidationEvent) string,
+) ([]git.ValidationEvent, error) {
+	if !firstRun {
+		lines, found, err := ops.ListValidations(ctx, vcs.Status.ValidationsCursor, 0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list validations: %w", err)
+		}
+		if found {
+			return lines, nil
+		}
+		logf.FromContext(ctx).Info("The validation notes no longer contain the commit the controller had applied them up to; resuming from the environment tags",
+			"validationsCursor", vcs.Status.ValidationsCursor)
+	}
+
+	recent, _, err := ops.ListValidations(ctx, "", vcsLostCursorWalk)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list validations: %w", err)
+	}
+	var lines []git.ValidationEvent
+	for i := range envs {
+		env := &envs[i]
+		if vcsResumesFromHead(*env) {
+			continue
+		}
+		matched, later := vcsResumeAfter(recent, env.Tag, env.TagSha)
+		if matched == nil {
+			continue
+		}
+		if env.Recorded == nil {
+			env.Noted = vcsNoted(matched)
+			if matched.Line.Validates() && refused(matched) != "" {
+				// The line may have put the tag here, and cannot be told from one that was pushed by hand.
+				// The tag is then verified like one that was.
+				env.Noted.Source, env.Noted.By = promoterv1alpha1.ValidatedTagSourceExternal, ""
+			}
+		}
+		lines = append(lines, later...)
+	}
+	return lines, nil
+}
+
+// takeLine takes one line of the validation notes for the environment whose tag it names: a validation
+// becomes the one to apply, and the record of a hand move is remembered. applied is the id of the request
+// that was last taken for the environment.
+func (r *ValidatedCommitStatusReconciler) takeLine(
+	ctx context.Context,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
+	dry *vcsDryState,
+	env *vcsEnvironment,
+	line *git.ValidationEvent,
+	applied string,
+	refused func(*git.ValidationEvent) string,
+) error {
+	if !line.Line.Validates() {
+		if env.HandMoves == nil {
+			env.HandMoves = map[string]metav1.Time{}
+		}
+		env.HandMoves[line.Sha] = metav1.NewTime(line.At())
+		return nil
+	}
+	if !vcsManualValidation(line.Line) {
+		return nil
+	}
+	if line.Line.ID != "" && line.Line.ID == applied {
+		// The request was taken before. Its line, pushed again, does not apply it again.
+		return nil
+	}
+	ignored := refused(line)
+	if ignored == "" {
+		var err error
+		ignored, err = vcsUnusableValidation(ctx, dry.ops, dry.head, line.Sha)
+		if err != nil {
+			return err
+		}
+	}
+	if ignored != "" {
+		logf.FromContext(ctx).Info("Ignored a validation", "tag", env.Tag, "sha", line.Sha, "reason", ignored)
+		r.Recorder.Eventf(vcs, nil, "Warning", constants.ValidationIgnoredReason, "ApplyingValidations",
+			constants.ValidationIgnoredMessage, line.Sha, env.Tag, ignored)
+		return nil
+	}
+	// The lines are in the order they were written, and the newest validation is the one that counts.
+	env.Validation = &vcsValidation{Sha: line.Sha, By: line.By(), ID: line.Line.ID}
+	return nil
+}
+
+// vcsRequest is what a CommitValidation asks for at the moment: a dry commit for the environment that reads
+// a tag.
+type vcsRequest struct {
+	Sha string
+	Tag string
+}
+
+// commitValidationRequestID identifies what a CommitValidation asks for at the moment. The CommitValidation
+// controller writes it into the line it records, and the gate finds the request by it. A change of the
+// request changes the generation, and so the id.
+func commitValidationRequestID(cv *promoterv1alpha1.CommitValidation) string {
+	return fmt.Sprintf("%s/%d", cv.UID, cv.Generation)
+}
+
+// currentRequests returns what the CommitValidations of the PromotionStrategy ask for at the moment, by
+// request id.
+func (r *ValidatedCommitStatusReconciler) currentRequests(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, envs []vcsEnvironment) (map[string]vcsRequest, error) {
+	var commitValidations promoterv1alpha1.CommitValidationList
+	if err := r.List(ctx, &commitValidations, client.InNamespace(vcs.Namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list CommitValidations: %w", err)
+	}
+	tags := make(map[string]string, len(envs))
+	for _, env := range envs {
+		tags[env.Branch] = env.Tag
+	}
+	requests := make(map[string]vcsRequest, len(commitValidations.Items))
+	for i := range commitValidations.Items {
+		cv := &commitValidations.Items[i]
+		tag, isEnvironment := tags[cv.Spec.Branch]
+		if cv.Spec.PromotionStrategyRef.Name != ps.Name || cv.Spec.Sha == "" || !isEnvironment {
+			continue
+		}
+		requests[commitValidationRequestID(cv)] = vcsRequest{Sha: cv.Spec.Sha, Tag: tag}
+	}
+	return requests, nil
+}
+
+// vcsRefusedValidation says why the gate does not take a person's validation from the notes, "" when it
+// takes it. With ignorePushed, it takes a line only as the current request of a CommitValidation: the line
+// says a CommitValidation wrote it, carries the id of what one asks for at the moment, and is for the commit
+// and the tag that request is for. Anyone who can push a note can write the first two. They cannot make a
+// CommitValidation ask for the commit.
+func vcsRefusedValidation(ignorePushed bool, line *git.ValidationEvent, requests map[string]vcsRequest) string {
+	if !ignorePushed {
+		return ""
+	}
+	request, current := requests[line.Line.ID]
+	if line.Line.Source == validations.SourceResource && line.Line.ID != "" && current && request.Sha == line.Sha && request.Tag == line.Line.Target {
+		return ""
+	}
+	return "validations pushed to the notes are ignored (spec.pushedValidations), and this is not what a CommitValidation asks for at the moment"
 }
 
 // vcsUnusableValidation says why a validation of the given commit cannot be applied, "" when it can. head is

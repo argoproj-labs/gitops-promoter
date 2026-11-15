@@ -38,6 +38,20 @@ const (
 	ValidationManual ValidationPolicy = "Manual"
 )
 
+// PushedValidationsPolicy says what the controller does with validations that were pushed to the validation
+// notes directly, without a CommitValidation.
+// +kubebuilder:validation:Enum=Accept;Ignore
+type PushedValidationsPolicy string
+
+const (
+	// PushedValidationsAccept applies every validation in the notes. Whoever can push to the dry repository
+	// can validate any commit for any environment.
+	PushedValidationsAccept PushedValidationsPolicy = "Accept"
+	// PushedValidationsIgnore applies a validation only when it is the current request of a
+	// CommitValidation. Who may validate is then decided by RBAC on CommitValidations.
+	PushedValidationsIgnore PushedValidationsPolicy = "Ignore"
+)
+
 // AdvancePolicy says when the controller may move the tag of an environment it validates for.
 // +kubebuilder:validation:Enum=Immediately;WhenIdle
 type AdvancePolicy string
@@ -109,6 +123,16 @@ type ValidatedCommitStatusSpec struct {
 	// +listMapKey=branch
 	// +kubebuilder:validation:MaxItems=500
 	Environments []ValidatedCommitStatusEnvironment `json:"environments,omitempty"`
+
+	// PushedValidations says what to do with validations that were pushed to the validation notes of the
+	// dry repository directly. Accept (the default) applies them: pushing a note is then a way to deploy,
+	// open to whoever can push to the repository, and notes cannot be protected by branch or tag rules.
+	// Ignore applies a validation only when it is the current request of a CommitValidation: the line
+	// carries the request's id, and its commit and environment are what the resource asks for. A line that
+	// was pushed by hand, or copied from an earlier request, is passed over.
+	// +optional
+	// +kubebuilder:default=Accept
+	PushedValidations PushedValidationsPolicy `json:"pushedValidations,omitempty"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
@@ -341,6 +365,13 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// Held is set only while the controller has a commit to move the tag to and cannot move it there.
 	// +optional
 	Held *ValidatedCommitStatusHeld `json:"held,omitempty"`
+
+	// AppliedRequest is the id of the newest validation the controller took from the notes for this
+	// environment that carried one: a CommitValidation writes <its UID>/<its generation>. A line with the
+	// same id is not applied a second time, so a request cannot be replayed by pushing its line again.
+	// +optional
+	// +kubebuilder:validation:MaxLength=256
+	AppliedRequest string `json:"appliedRequest,omitempty"`
 
 	// Pending is set only while a validation asked for a move of the tag that could not be pushed. The
 	// controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of

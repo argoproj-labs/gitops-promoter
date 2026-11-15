@@ -9773,6 +9773,19 @@ spec:
                   type: string
                 type: array
                 x-kubernetes-list-type: set
+              pushedValidations:
+                default: Accept
+                description: |-
+                  PushedValidations says what to do with validations that were pushed to the validation notes of the
+                  dry repository directly. Accept (the default) applies them: pushing a note is then a way to deploy,
+                  open to whoever can push to the repository, and notes cannot be protected by branch or tag rules.
+                  Ignore applies a validation only when it is the current request of a CommitValidation: the line
+                  carries the request's id, and its commit and environment are what the resource asks for. A line that
+                  was pushed by hand, or copied from an earlier request, is passed over.
+                enum:
+                - Accept
+                - Ignore
+                type: string
               url:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
@@ -9932,6 +9945,13 @@ spec:
                       x-kubernetes-list-map-keys:
                       - key
                       x-kubernetes-list-type: map
+                    appliedRequest:
+                      description: |-
+                        AppliedRequest is the id of the newest validation the controller took from the notes for this
+                        environment that carried one: a CommitValidation writes <its UID>/<its generation>. A line with the
+                        same id is not applied a second time, so a request cannot be replayed by pushing its line again.
+                      maxLength: 256
+                      type: string
                     branch:
                       description: Branch is the environment branch name.
                       minLength: 1

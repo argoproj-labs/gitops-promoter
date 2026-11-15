@@ -38,6 +38,10 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	UpstreamCleared *ValidatedCommitStatusUpstreamClearedApplyConfiguration `json:"upstreamCleared,omitempty"`
 	// Held is set only while the controller has a commit to move the tag to and cannot move it there.
 	Held *ValidatedCommitStatusHeldApplyConfiguration `json:"held,omitempty"`
+	// AppliedRequest is the id of the newest validation the controller took from the notes for this
+	// environment that carried one: a CommitValidation writes <its UID>/<its generation>. A line with the
+	// same id is not applied a second time, so a request cannot be replayed by pushing its line again.
+	AppliedRequest *string `json:"appliedRequest,omitempty"`
 	// Pending is set only while a validation asked for a move of the tag that could not be pushed. The
 	// controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of
 	// the tag by hand, takes its place.
@@ -89,6 +93,14 @@ func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreamC
 // If called multiple times, the Held field is set to the value of the last call.
 func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithHeld(value *ValidatedCommitStatusHeldApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Held = value
+	return b
+}
+
+// WithAppliedRequest sets the AppliedRequest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AppliedRequest field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithAppliedRequest(value string) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.AppliedRequest = &value
 	return b
 }
 
