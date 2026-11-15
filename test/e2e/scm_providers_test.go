@@ -275,6 +275,17 @@ func scmProviderSpecs() {
 			newFlow(p).promoteThroughProtection(ctx, p, name(p))
 		})
 	}, NodeTimeout(12*time.Minute))
+
+	// The spec plays the hydrator that reads each environment's tag, so it hydrates an environment only from the
+	// commit its tag is on. With requeues off, the tags move on the server's push webhooks for the dry branch and
+	// the tags, and on the controllers' watches.
+	It("promotes through per-environment tags, and past the earlier one on a CommitValidation", func(ctx SpecContext) {
+		name := func(p scmserver.Provider) string { return string(p) + "-tags" }
+		cleanupPromotions("promotionstrategy,validatedcommitstatus,commitvalidation", name)
+		forEachProvider(ctx, func(ctx context.Context, p scmserver.Provider) {
+			newFlow(p).promoteThroughTags(ctx, p, name(p))
+		})
+	}, NodeTimeout(12*time.Minute))
 }
 
 // configureRequeue sets every controller's work queue requeue interval to interval on the deployed
@@ -291,7 +302,9 @@ func configureRequeue(ctx context.Context, interval time.Duration) {
 		`{"bucket":{"qps":10,"bucket":100}},` +
 		`{"fastSlow":{"fastDelay":"1s","slowDelay":"` + retry + `","maxFastAttempts":3}}]}}},` +
 		`"commitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
-		`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}}}}`
+		`"dependentsSuccessfulCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"validatedCommitStatus":{"workQueue":{"requeueDuration":"` + d + `"}},` +
+		`"commitValidation":{"workQueue":{"requeueDuration":"` + d + `"}}}}`
 	run(ctx, "", "kubectl", "patch", "controllerconfiguration", "promoter-controller-configuration",
 		"-n", namespace, "--type=merge", "-p", requeue)
 }
@@ -566,6 +579,158 @@ func (f promotionFlow) promoteThroughGate(ctx context.Context, p scmserver.Provi
 		}
 	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
 	GinkgoWriter.Printf("promoted dry commit %s through %s past the %s gate\n", secondDry, p, gateKey)
+}
+
+// validatedKey is the key the tag-driven ordering gate reports its commit status under in promoteThroughTags.
+const validatedKey = "validated"
+
+// promoteThroughTags promotes through one provider of the test SCM server with a ValidatedCommitStatus as the
+// ordering gate. It plays the hydrator that reads each environment's tag: it hydrates an environment from the commit
+// its tag is on, and from nothing else. It checks that the deployed controller
+//
+//   - creates development's tag at the head of the dry branch and moves it when the branch moves, pushing the tag
+//     to the provider's repository each time;
+//   - creates staging's tag only once development has qualified a commit, and at that commit;
+//   - leaves staging's tag where it is while development has qualified nothing newer;
+//   - moves staging's tag to a commit that a CommitValidation validates, and passes the gate on that commit although
+//     development has not qualified it.
+//
+// name names the promotion's resources.
+func (f promotionFlow) promoteThroughTags(ctx context.Context, p scmserver.Provider, name string) {
+	GinkgoHelper()
+	repo := f.newRepo(ctx, p, "tag-driven-promotion")
+	seedEnvironments(ctx, f.admin, repo, []string{development, staging})
+	info, err := f.admin.Repo(ctx, repo.ID)
+	Expect(err).NotTo(HaveOccurred())
+	seeded := info.Branches[repo.DefaultBranch]
+	Expect(seeded).NotTo(BeEmpty())
+	f.apply(ctx, promotionManifestsOrderedBy(p, name, repo, f.domain, f.githubKey, true, "", orderingGate{
+		kind: "ValidatedCommitStatus",
+		spec: "  key: " + validatedKey + "\n  drySource:\n    branch: " + repo.DefaultBranch + "\n",
+	}))
+
+	By("creating development's tag at the head of the dry branch")
+	f.expectTag(ctx, repo, name, development, seeded)
+
+	By("moving development's tag when the dry branch moves")
+	first := commitDry(ctx, f.admin, repo)
+	f.expectTag(ctx, repo, name, development, first)
+
+	By("promoting the commit development's tag is on")
+	hydrateTo(ctx, f.admin, repo, development, first)
+	f.expectActive(ctx, name, map[string]string{development: first})
+
+	By("reporting the ordering gate as a commit status on the provider")
+	statuses, err := f.admin.CommitStatuses(ctx, repo.ID, "")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(statuses).To(ContainElement(HaveField("Context", validatedKey)))
+
+	By("creating staging's tag at the commit development qualified")
+	f.expectTag(ctx, repo, name, staging, first)
+
+	By("promoting the commit staging's tag is on")
+	hydrateTo(ctx, f.admin, repo, staging, first)
+	f.expectActive(ctx, name, map[string]string{development: first, staging: first})
+
+	By("moving development's tag, and not staging's, when the dry branch moves again")
+	second := commitDry(ctx, f.admin, repo)
+	f.expectTag(ctx, repo, name, development, second)
+	// One reconcile decides about every tag, so the status that has development's tag on the second commit holds
+	// what the controller decided for staging with the same commits in view.
+	held := f.gateEnvironment(ctx, Default, name, staging)
+	Expect(held.Tag).NotTo(BeNil())
+	Expect(held.Tag.Sha).To(Equal(first), "staging's tag waits for development to qualify the second commit")
+	Expect(held.UpstreamCleared).NotTo(BeNil())
+	Expect(held.UpstreamCleared.Sha).To(Equal(first))
+
+	By("validating the second commit for staging with a CommitValidation")
+	f.apply(ctx, fmt.Sprintf(`apiVersion: promoter.argoproj.io/v1alpha1
+kind: CommitValidation
+metadata:
+  name: %[1]s
+spec:
+  promotionStrategyRef:
+    name: %[1]s
+  branch: %[2]s
+  sha: %[3]s
+  reason: e2e
+`, name, staging, second))
+	Eventually(func(g Gomega) {
+		var validations v1alpha1.CommitValidationList
+		g.Expect(f.list(ctx, "commitvalidations", &validations)).To(Succeed())
+		g.Expect(validations.Items).To(ContainElement(SatisfyAll(
+			HaveField("Name", name),
+			HaveField("Status.Request", SatisfyAll(
+				Not(BeNil()),
+				HaveField("Sha", second),
+				HaveField("Phase", v1alpha1.CommitValidationRecorded),
+			)),
+		)), "the CommitValidation has not recorded the validation of %s yet", second)
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+
+	By("moving staging's tag to the validated commit")
+	validated := f.expectTag(ctx, repo, name, staging, second)
+	Expect(validated.Source).To(Equal(v1alpha1.ValidatedTagSourceManual))
+	Expect(validated.ValidatedBy).To(Equal("CommitValidation/" + name))
+
+	By("promoting the validated commit to staging although development has not qualified it")
+	hydrateTo(ctx, f.admin, repo, staging, second)
+	f.expectActive(ctx, name, map[string]string{development: first, staging: second})
+	earlier := f.gateEnvironment(ctx, Default, name, development)
+	Expect(earlier.Qualified).NotTo(BeNil())
+	Expect(earlier.Qualified.DrySha).To(Equal(first), "development has qualified nothing newer than the first commit")
+	GinkgoWriter.Printf("promoted dry commit %s to staging of %s past development, which is on %s\n", second, p, first)
+}
+
+// gateEnvironment returns what the tag-driven gate called name reports for the environment env.
+func (f promotionFlow) gateEnvironment(ctx context.Context, g Gomega, name, env string,
+) v1alpha1.ValidatedCommitStatusEnvironmentStatus {
+	GinkgoHelper()
+	var gates v1alpha1.ValidatedCommitStatusList
+	g.Expect(f.list(ctx, "validatedcommitstatuses", &gates)).To(Succeed())
+	var reported []v1alpha1.ValidatedCommitStatusEnvironmentStatus
+	for _, gate := range gates.Items {
+		if gate.Name != name {
+			continue
+		}
+		for _, status := range gate.Status.Environments {
+			if status.Branch == env {
+				reported = append(reported, status)
+			}
+		}
+	}
+	g.Expect(reported).To(HaveLen(1), "what ValidatedCommitStatus %s reports for %s", name, env)
+	if len(reported) != 1 {
+		return v1alpha1.ValidatedCommitStatusEnvironmentStatus{}
+	}
+	return reported[0]
+}
+
+// expectTag waits until the tag-driven gate called name reports env's tag on dry commit sha, and the server has
+// delivered the push of the tag to that commit to the promoter's webhook receiver. The delivery shows that the
+// controller pushed the tag to the provider's repository, and not only that it says so. It returns the tag as the
+// gate reports it.
+func (f promotionFlow) expectTag(ctx context.Context, repo scmserver.RepoInfo, name, env, sha string,
+) v1alpha1.ValidatedCommitStatusTagStatus {
+	GinkgoHelper()
+	var tag v1alpha1.ValidatedCommitStatusTagStatus
+	Eventually(func(g Gomega) {
+		status := f.gateEnvironment(ctx, g, name, env)
+		g.Expect(status.Tag).NotTo(BeNil(), "%s has no tag yet", env)
+		g.Expect(status.Tag.Sha).To(Equal(sha), "tag of %s", env)
+		tag = *status.Tag
+		deliveries, err := f.admin.WebhookDeliveries(ctx)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(deliveries).To(ContainElement(SatisfyAll(
+			HaveField("Repo", repo.FullName),
+			HaveField("Ref", "refs/tags/"+tag.Name),
+			HaveField("After", sha),
+			HaveField("Dropped", false),
+			HaveField("Error", ""),
+			HaveField("StatusCode", http.StatusNoContent),
+		)), "no webhook delivered for the push of tag %s to %s", tag.Name, sha)
+	}).WithContext(ctx).WithTimeout(promotionTimeout).WithPolling(2 * time.Second).Should(Succeed())
+	return tag
 }
 
 // developmentTip returns the commit at the tip of development's proposed branch.
@@ -938,7 +1103,8 @@ func printSCMDiagnostics(ctx context.Context, admin *scmserver.AdminClient) {
 		{"logs", "-n", namespace, "deployment/promoter-controller-manager", "-c", "manager", "--previous", "--tail=100"},
 		{"logs", "-n", scmServerNamespace, "deployment/scm-server", "--tail=200"},
 		{
-			"get", "scmproviders,gitrepositories,promotionstrategies,changetransferpolicies,pullrequests,commitstatuses",
+			"get", "scmproviders,gitrepositories,promotionstrategies,changetransferpolicies,pullrequests,commitstatuses," +
+				"validatedcommitstatuses,commitvalidations",
 			"-n", scmE2ENamespace, "-o", "yaml",
 		},
 		{"get", "events", "-n", scmE2ENamespace, "--sort-by=.lastTimestamp"},
@@ -1020,39 +1186,67 @@ func seedEnvironments(ctx context.Context, admin *scmserver.AdminClient, repo sc
 // hydrator would, and returns the dry SHA.
 func hydrate(ctx context.Context, admin *scmserver.AdminClient, repo scmserver.RepoInfo, environments []string) string {
 	GinkgoHelper()
+	drySHA := commitDry(ctx, admin, repo)
+	for _, env := range environments {
+		hydrateTo(ctx, admin, repo, env, drySHA)
+	}
+	return drySHA
+}
+
+// commitDry writes a new dry commit to the default branch of repo and returns its SHA.
+func commitDry(ctx context.Context, admin *scmserver.AdminClient, repo scmserver.RepoInfo) string {
+	GinkgoHelper()
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
 	dry, err := admin.Commit(ctx, repo.ID, scmserver.CommitRequest{
 		Branch: repo.DefaultBranch, Files: map[string]string{"manifests-fake.yaml": fmt.Sprintf(`{"time": %q}`, stamp)},
 		Message: "change the application", AuthorName: "developer", AuthorEmail: "developer@example.com",
 	})
 	Expect(err).NotTo(HaveOccurred())
+	return dry.SHA
+}
+
+// hydrateTo writes the hydrated manifests of dry commit drySHA to the proposed branch of env, as the hydrator does.
+func hydrateTo(ctx context.Context, admin *scmserver.AdminClient, repo scmserver.RepoInfo, env, drySHA string) {
+	GinkgoHelper()
 	metadata, err := json.MarshalIndent(v1alpha1.HydratorMetadata{
-		DrySha:  dry.SHA,
+		DrySha:  drySHA,
 		Author:  "developer <developer@example.com>",
 		Date:    metav1.Now(),
 		Subject: "change the application",
 	}, "", "\t")
 	Expect(err).NotTo(HaveOccurred())
-	for _, env := range environments {
-		_, err := admin.Commit(ctx, repo.ID, scmserver.CommitRequest{
-			Branch: env + "-next",
-			Files: map[string]string{
-				"hydrator.metadata":   string(metadata),
-				"manifests-fake.yaml": fmt.Sprintf(`{"time": %q, "environment": %q}`, stamp, env),
-			},
-			Message: "hydrate " + dry.SHA + " to " + env, AuthorName: "hydrator", AuthorEmail: "hydrator@example.com",
-		})
-		Expect(err).NotTo(HaveOccurred())
-	}
-	return dry.SHA
+	_, err = admin.Commit(ctx, repo.ID, scmserver.CommitRequest{
+		Branch: env + "-next",
+		Files: map[string]string{
+			"hydrator.metadata":   string(metadata),
+			"manifests-fake.yaml": fmt.Sprintf(`{"dry": %q, "environment": %q}`, drySHA, env),
+		},
+		Message: "hydrate " + drySHA + " to " + env, AuthorName: "hydrator", AuthorEmail: "hydrator@example.com",
+	})
+	Expect(err).NotTo(HaveOccurred())
 }
 
 // promotionManifests returns the Secret, ScmProvider, GitRepository, PromotionStrategy and ordering gate that point
 // the controller at the provider's listener on the test SCM server at domain. Every object is called name. autoMerge
 // sets whether the controller merges the pull requests itself, and a non-empty developmentGate is the key of a proposed
-// commit status that gates promotion into development.
+// commit status that gates promotion into development. The ordering gate is a DependentsSuccessfulCommitStatus.
 func promotionManifests(p scmserver.Provider, name string, repo scmserver.RepoInfo, domain string, githubKey []byte,
 	autoMerge bool, developmentGate string,
+) string {
+	return promotionManifestsOrderedBy(p, name, repo, domain, githubKey, autoMerge, developmentGate,
+		orderingGate{kind: "DependentsSuccessfulCommitStatus", spec: "  key: dependents-successful\n"})
+}
+
+// orderingGate is the ordering gate of an e2e PromotionStrategy: its kind, and its spec without the
+// promotionStrategyRef, as indented YAML.
+type orderingGate struct {
+	kind string
+	spec string
+}
+
+// promotionManifestsOrderedBy is promotionManifests with gate as the ordering gate.
+func promotionManifestsOrderedBy(p scmserver.Provider, name string, repo scmserver.RepoInfo, domain string,
+	githubKey []byte, autoMerge bool, developmentGate string, gate orderingGate,
 ) string {
 	developmentStatuses := ""
 	if developmentGate != "" {
@@ -1120,7 +1314,7 @@ spec:
     name: %[1]s
   orderCommitStatusRef:
     group: promoter.argoproj.io
-    kind: DependentsSuccessfulCommitStatus
+    kind: %[7]s
     name: %[1]s
   environments:
     - branch: environment/development
@@ -1129,14 +1323,13 @@ spec:
       autoMerge: %[5]t
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsSuccessfulCommitStatus
+kind: %[7]s
 metadata:
   name: %[1]s
 spec:
-  key: dependents-successful
   promotionStrategyRef:
     name: %[1]s
-`, name, secretData, providerSpec, repoSpec, autoMerge, developmentStatuses)
+%[8]s`, name, secretData, providerSpec, repoSpec, autoMerge, developmentStatuses, gate.kind, gate.spec)
 }
 
 func indent(s, prefix string) string {
