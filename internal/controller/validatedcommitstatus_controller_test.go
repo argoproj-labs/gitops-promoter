@@ -139,37 +139,6 @@ func (vcsFailingGraph) MergeBase(context.Context, ...string) (string, error) {
 	return "", errors.New("graph unavailable")
 }
 
-// vcsDryRefs is one moment of a DRY repository: its branch HEAD and where each environment tag points.
-type vcsDryRefs struct {
-	head string
-	tags map[string]string
-}
-
-// vcsMovingDryRepo is a DRY repository that receives a push while the gate is reading it: the first read sees
-// before, every later read sees after. It implements vcsDryRefReader.
-type vcsMovingDryRepo struct {
-	err    error
-	before vcsDryRefs
-	after  vcsDryRefs
-	reads  int
-}
-
-func (r *vcsMovingDryRepo) now() vcsDryRefs {
-	r.reads++
-	if r.reads == 1 {
-		return r.before
-	}
-	return r.after
-}
-
-func (r *vcsMovingDryRepo) GetBranchSha(context.Context, string, string) (string, error) {
-	return r.now().head, r.err
-}
-
-func (r *vcsMovingDryRepo) FetchTags(context.Context, ...string) (map[string]string, error) {
-	return r.now().tags, r.err
-}
-
 // vcsPhases builds active commit status phases keyed check-0, check-1, ...
 func vcsPhases(phases ...promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
 	out := make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(phases))
@@ -525,35 +494,6 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			env.Qualified = vcsWatermark("d")
 			_, err := vcsUnrecordedQualification(ctx, vcsFailingGraph{}, "f", env, vcsWatermark("f"))
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
-		})
-	})
-
-	Describe("vcsReadDryRefs: reading the DRY branch HEAD and the environment tags", func() {
-		It("returns the HEAD and the commit each tag points at", func() {
-			refs := vcsDryRefs{head: "f", tags: map[string]string{vcsTagDev: "f", vcsTagTest: "d", vcsTagProd: ""}}
-			head, tags, err := vcsReadDryRefs(ctx, &vcsMovingDryRepo{before: refs, after: refs}, "main", "", []string{vcsTagDev, vcsTagTest, vcsTagProd})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(head).To(Equal("f"))
-			Expect(tags).To(Equal(refs.tags))
-		})
-
-		It("never reads a tag that is ahead of the HEAD it read, when both move during the reads", func() {
-			// Someone pushes f and moves the tag to it between the gate's two reads. A tag that looks like
-			// it is not on the branch gets reset, so the gate must not pair the new tag with the old HEAD.
-			repo := &vcsMovingDryRepo{
-				before: vcsDryRefs{head: "e", tags: map[string]string{vcsTagDev: "e"}},
-				after:  vcsDryRefs{head: "f", tags: map[string]string{vcsTagDev: "f"}},
-			}
-			head, tags, err := vcsReadDryRefs(ctx, repo, "main", "e", []string{vcsTagDev})
-			Expect(err).NotTo(HaveOccurred())
-			onBranch, err := graph.Contains(ctx, head, tags[vcsTagDev])
-			Expect(err).NotTo(HaveOccurred())
-			Expect(onBranch).To(BeTrue(), "read HEAD %s and tag at %s", head, tags[vcsTagDev])
-		})
-
-		It("returns read errors", func() {
-			_, _, err := vcsReadDryRefs(ctx, &vcsMovingDryRepo{err: errors.New("remote unavailable")}, "main", "", []string{vcsTagDev})
-			Expect(err).To(MatchError(ContainSubstring("remote unavailable")))
 		})
 	})
 

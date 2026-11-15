@@ -113,11 +113,6 @@ type EnvironmentOperations struct {
 	// EnvironmentOperations instance, which callers construct per reconcile.
 	historyNotes map[string]string
 
-	// tagRefs records the raw remote value of each tag ref read by FetchTags (the tag object for an
-	// annotated tag, "" for a tag that does not exist). PushTag uses it as the lease, so a tag that
-	// changed on the remote after FetchTags is never overwritten.
-	tagRefs map[string]string
-
 	identity string
 }
 
@@ -175,7 +170,6 @@ func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOpera
 		remoteRefs:   make(map[string]string),
 		localRefs:    make(map[string]string),
 		historyNotes: make(map[string]string),
-		tagRefs:      make(map[string]string),
 	}
 }
 
@@ -2163,165 +2157,6 @@ func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitS
 		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
 	}
 	return nil
-}
-
-func tagRef(tag string) string {
-	return "refs/tags/" + tag
-}
-
-// FetchTags reads the given tags from origin and returns the commit each one points at, with "" for a tag
-// that does not exist on the remote. Annotated tags are peeled to their commit. The tags are force-updated in
-// the clone (and deleted locally when missing remotely), so a tag someone moved, including backward, is seen
-// at its new position and its commit is available locally.
-//
-// The remote is asked every time: tags move without any signal a cache could be invalidated by.
-//
-// Read-only with respect to the clone's index/worktree/HEAD.
-func (g *EnvironmentOperations) FetchTags(ctx context.Context, tags ...string) (map[string]string, error) {
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-	if len(tags) == 0 {
-		return map[string]string{}, nil
-	}
-
-	refs := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		refs = append(refs, tagRef(tag))
-		delete(g.tagRefs, tagRef(tag))
-	}
-
-	start := time.Now()
-	// An annotated tag's commit is advertised as a separate "<ref>^{}" entry, which the bare ref pattern does
-	// not match, so ask for both.
-	args := make([]string, 0, 2+2*len(refs))
-	args = append(args, "ls-remote", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
-	for _, ref := range refs {
-		args = append(args, ref, ref+"^{}")
-	}
-	stdout, stderr, err := runCmd(ctx, g.gap, "", args...)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list tags %v: %w (stderr: %s)", tags, err, stderr)
-	}
-
-	// raw is what the ref holds (a tag object for an annotated tag); peeled is the commit behind it.
-	raw := make(map[string]string, len(refs))
-	peeled := make(map[string]string, len(refs))
-	for _, ref := range refs {
-		raw[ref] = ""
-	}
-	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
-		sha, ref, found := strings.Cut(line, "\t")
-		if !found {
-			continue
-		}
-		// ls-remote patterns match on the ref name's tail, so keep exact matches only.
-		if base, isPeeled := strings.CutSuffix(ref, "^{}"); isPeeled {
-			if _, requested := raw[base]; requested {
-				peeled[base] = sha
-			}
-		} else if _, requested := raw[ref]; requested {
-			raw[ref] = sha
-		}
-	}
-
-	local, err := g.localRefShas(ctx, refs...)
-	if err != nil {
-		return nil, err
-	}
-	var fetch []string
-	for _, ref := range refs {
-		switch {
-		case raw[ref] == "" && local[ref] != "":
-			_, stderr, err := g.runCmd(ctx, gitPath, "update-ref", "-d", ref)
-			g.forgetLocalRef(ref)
-			if err != nil {
-				return nil, fmt.Errorf("failed to delete local tag ref %q: %w (stderr: %s)", ref, err, stderr)
-			}
-		case raw[ref] != "" && local[ref] != raw[ref]:
-			fetch = append(fetch, "+"+ref+":"+ref)
-		default:
-			// The local ref already matches the remote.
-		}
-	}
-	if len(fetch) > 0 {
-		start = time.Now()
-		fetchArgs := append([]string{"fetch", "--no-tags", "origin"}, fetch...)
-		_, stderr, err := g.runCmd(ctx, gitPath, fetchArgs...)
-		for _, ref := range refs {
-			g.forgetLocalRef(ref)
-		}
-		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch tags %v: %w (stderr: %s)", tags, err, stderr)
-		}
-	}
-
-	result := make(map[string]string, len(tags))
-	for _, tag := range tags {
-		ref := tagRef(tag)
-		g.tagRefs[ref] = raw[ref]
-		if commit, ok := peeled[ref]; ok {
-			result[tag] = commit
-		} else {
-			result[tag] = raw[ref]
-		}
-	}
-	return result, nil
-}
-
-// PushTag points tag at sha on origin, creating it when it does not exist. The push carries a lease on the
-// value FetchTags last read, so a tag that someone created, moved, or deleted since then is left alone and
-// the push fails. The tag is pushed alone: GitHub sends no push event when more than three tags are pushed
-// at once.
-//
-// FetchTags must have run for the tag on this instance. After a failed push it must run again.
-func (g *EnvironmentOperations) PushTag(ctx context.Context, tag, sha string) error {
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-	ref := tagRef(tag)
-	expected, fetched := g.tagRefs[ref]
-	if !fetched {
-		return fmt.Errorf("tag %q has not been read from the remote; call FetchTags before PushTag", tag)
-	}
-
-	start := time.Now()
-	// An empty expected value makes the lease "the ref must not exist".
-	_, stderr, err := g.runCmd(ctx, gitPath, "push", "--force-with-lease="+ref+":"+expected, "origin", sha+":"+ref)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
-	g.forgetLocalRef(ref)
-	if err != nil {
-		delete(g.tagRefs, ref)
-		return fmt.Errorf("failed to push tag %q to %s: %w (stderr: %s)", tag, sha, err, strings.TrimSpace(stderr))
-	}
-	g.tagRefs[ref] = sha
-	if _, stderr, err := g.runCmd(ctx, gitPath, "update-ref", ref, sha); err != nil {
-		return fmt.Errorf("pushed tag %q but failed to update it locally: %w (stderr: %s)", tag, err, stderr)
-	}
-	return nil
-}
-
-// CommitIsAncestorOrSame reports whether descendant contains ancestor: the two are the same commit, or
-// ancestor is reachable from descendant. An empty SHA, or a commit that is not in the clone, is contained
-// in nothing and contains nothing; that is not an error, because a commit that was rewritten away by a
-// force-push is exactly such a commit.
-//
-// Read-only.
-func (g *EnvironmentOperations) CommitIsAncestorOrSame(ctx context.Context, ancestor, descendant string) (bool, error) {
-	if ancestor == "" || descendant == "" {
-		return false, nil
-	}
-	if !g.CommitExists(ctx, ancestor) || !g.CommitExists(ctx, descendant) {
-		return false, nil
-	}
-	if ancestor == descendant {
-		return true, nil
-	}
-	return g.CommitIsAncestor(ctx, ancestor, descendant)
 }
 
 // MergeBase returns the newest commit that every one of the given commits contains, or "" when they have

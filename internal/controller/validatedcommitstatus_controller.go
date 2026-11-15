@@ -106,6 +106,9 @@ type vcsEnvironment struct {
 	// Tag is the name of the environment's tag; TagSha is the dry commit it points at, "" when it does not exist.
 	Tag    string
 	TagSha string
+	// TagRaw is what the tag ref held when it was read: the commit, or the tag object of an annotated tag.
+	// A push of the tag is leased on it, so a tag someone moved since is never overwritten.
+	TagRaw string
 	// LiveDrySha is the dry commit whose manifests the environment is running (see vcsLiveDrySha).
 	LiveDrySha string
 	// DependsOn lists the environment's direct upstreams. Empty for a root.
@@ -673,8 +676,15 @@ type vcsGitGraph struct {
 	ops *git.EnvironmentOperations
 }
 
+// Contains reports whether descendant is ancestor or has ancestor in its history. A commit the clone does
+// not have is contained in nothing and contains nothing; that is not an error, because a commit that was
+// rewritten away by a force-push is exactly such a commit. Every commit the gate asks about for a good
+// reason is in the clone: the dry branch and the tags are fetched before anything is decided.
 func (g vcsGitGraph) Contains(ctx context.Context, descendant, ancestor string) (bool, error) {
-	contains, err := g.ops.CommitIsAncestorOrSame(ctx, ancestor, descendant)
+	if !g.ops.HasCommit(ctx, descendant) || !g.ops.HasCommit(ctx, ancestor) {
+		return false, nil
+	}
+	contains, err := g.ops.ContainsCommit(ctx, descendant, ancestor)
 	if err != nil {
 		return false, fmt.Errorf("failed to check whether %s contains %s: %w", descendant, ancestor, err)
 	}
@@ -692,59 +702,29 @@ func (g vcsGitGraph) MergeBase(ctx context.Context, shas ...string) (string, err
 // vcsDryState is what the gate read from the dry repository.
 type vcsDryState struct {
 	ops *git.EnvironmentOperations
-	// tags maps each environment tag to the commit it points at, "" when the tag does not exist.
-	tags map[string]string
+	// tags maps each environment tag to where it is, a zero state when the tag does not exist.
+	tags map[string]git.TagState
 	// head is the HEAD of the dry branch.
 	head string
 }
 
-// readDryRepository reads the dry branch HEAD and every environment tag from the remote.
+// readDryRepository reads the dry branch HEAD and every environment tag from the remote. Tags are read on
+// every reconcile: a person may move one at any time, and not every SCM tells us when they do.
 func (r *ValidatedCommitStatusReconciler) readDryRepository(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, repos *vcsRepositories) (*vcsDryState, error) {
 	ops, err := repos.dry(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the dry repository: %w", err)
 	}
 
-	lastKnownHead := ""
-	if vcs.Status.Dry != nil {
-		lastKnownHead = vcs.Status.Dry.Sha
-	}
 	names := make([]string, 0, len(vcs.Spec.Environments))
 	for _, env := range vcs.Spec.Environments {
 		names = append(names, env.Tag)
 	}
-	head, tags, err := vcsReadDryRefs(ctx, ops, vcs.Spec.DrySource.Branch, lastKnownHead, names)
+	refs, err := ops.SyncDryRefs(ctx, vcs.Spec.DrySource.Branch, names)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read dry branch %q and the environment tags: %w", vcs.Spec.DrySource.Branch, err)
 	}
-	return &vcsDryState{ops: ops, head: head, tags: tags}, nil
-}
-
-// vcsDryRefReader reads refs of the dry repository from its remote. *git.EnvironmentOperations implements it.
-type vcsDryRefReader interface {
-	GetBranchSha(ctx context.Context, branch, lastKnownSha string) (string, error)
-	FetchTags(ctx context.Context, tags ...string) (map[string]string, error)
-}
-
-// vcsReadDryRefs reads the commit each environment tag points at, then the dry branch HEAD.
-//
-// The order matters because the two reads are not one snapshot. A tag that is not reachable from HEAD is
-// treated as left behind by a force-push and reset. Reading the tags first means a tag on the branch is
-// always paired with a HEAD at least as new as the branch was when the tag was read. The other way round, a
-// push that moves the branch and a tag between the reads would pair the new tag with the old HEAD, and the
-// tag would be moved backward.
-func vcsReadDryRefs(ctx context.Context, reader vcsDryRefReader, branch, lastKnownHead string, tagNames []string) (head string, tags map[string]string, err error) {
-	// Tags are read from the remote on every reconcile: a person may move one at any time, and not every
-	// SCM tells us when they do.
-	tags, err = reader.FetchTags(ctx, tagNames...)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read environment tags: %w", err)
-	}
-	head, err = reader.GetBranchSha(ctx, branch, lastKnownHead)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read dry branch %q: %w", branch, err)
-	}
-	return head, tags, nil
+	return &vcsDryState{ops: ops, head: refs.Head, tags: refs.Tags}, nil
 }
 
 // reconcileEnvironments does the work of one reconcile. It returns how soon to reconcile again when
@@ -956,7 +936,8 @@ func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 		env := vcsEnvironment{
 			Branch:    branch,
 			Tag:       spec.Tag,
-			TagSha:    dry.tags[spec.Tag],
+			TagSha:    dry.tags[spec.Tag].Commit,
+			TagRaw:    dry.tags[spec.Tag].Raw,
 			Manual:    spec.Advance == promoterv1alpha1.TagAdvanceManual,
 			DependsOn: dependencies.dependsOn[branch],
 			Status:    status,
@@ -1209,14 +1190,16 @@ func (r *ValidatedCommitStatusReconciler) pushTags(
 	for _, move := range moves {
 		// Tags are pushed one at a time: GitHub sends no push event when more than three tags are pushed
 		// at once, and one rejected tag must not hold back the others.
-		if err := ops.PushTag(ctx, move.Tag, move.To); err != nil {
+		env := &envs[indexByBranch[move.Branch]]
+		if err := ops.MoveTag(ctx, move.Tag, move.To, env.TagRaw); err != nil {
 			logger.Error(err, "Failed to push environment tag", "branch", move.Branch, "tag", move.Tag, "to", move.To)
 			r.Recorder.Eventf(vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
 				constants.EnvironmentTagPushFailedMessage, move.Tag, move.Branch, err)
 			errs = append(errs, err)
 			continue
 		}
-		envs[indexByBranch[move.Branch]].TagSha = move.To
+		// The controller pushes lightweight tags, so the ref now holds the commit itself.
+		env.TagSha, env.TagRaw = move.To, move.To
 
 		from := move.From
 		if from == "" {
