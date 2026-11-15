@@ -17,27 +17,27 @@ limitations under the License.
 
 package v1alpha1
 
-// DependentsQualifiedTagStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedTagStatus type for use
+// ValidatedCommitStatusTagStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusTagStatus type for use
 // with apply.
 //
-// DependentsQualifiedTagStatus is the observed state of one environment tag.
-type DependentsQualifiedTagStatusApplyConfiguration struct {
+// ValidatedCommitStatusTagStatus is the observed state of one environment tag.
+type ValidatedCommitStatusTagStatusApplyConfiguration struct {
 	// Name is the tag name.
 	Name *string `json:"name,omitempty"`
 	// Sha is the dry commit the tag points at. Empty when the tag does not exist.
 	Sha *string `json:"sha,omitempty"`
 }
 
-// DependentsQualifiedTagStatusApplyConfiguration constructs a declarative configuration of the DependentsQualifiedTagStatus type for use with
+// ValidatedCommitStatusTagStatusApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusTagStatus type for use with
 // apply.
-func DependentsQualifiedTagStatus() *DependentsQualifiedTagStatusApplyConfiguration {
-	return &DependentsQualifiedTagStatusApplyConfiguration{}
+func ValidatedCommitStatusTagStatus() *ValidatedCommitStatusTagStatusApplyConfiguration {
+	return &ValidatedCommitStatusTagStatusApplyConfiguration{}
 }
 
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *DependentsQualifiedTagStatusApplyConfiguration) WithName(value string) *DependentsQualifiedTagStatusApplyConfiguration {
+func (b *ValidatedCommitStatusTagStatusApplyConfiguration) WithName(value string) *ValidatedCommitStatusTagStatusApplyConfiguration {
 	b.Name = &value
 	return b
 }
@@ -45,7 +45,7 @@ func (b *DependentsQualifiedTagStatusApplyConfiguration) WithName(value string) 
 // WithSha sets the Sha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Sha field is set to the value of the last call.
-func (b *DependentsQualifiedTagStatusApplyConfiguration) WithSha(value string) *DependentsQualifiedTagStatusApplyConfiguration {
+func (b *ValidatedCommitStatusTagStatusApplyConfiguration) WithSha(value string) *ValidatedCommitStatusTagStatusApplyConfiguration {
 	b.Sha = &value
 	return b
 }

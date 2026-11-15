@@ -17,11 +17,11 @@ limitations under the License.
 
 package v1alpha1
 
-// DependentsQualifiedDrySourceApplyConfiguration represents a declarative configuration of the DependentsQualifiedDrySource type for use
+// ValidatedCommitStatusDrySourceApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusDrySource type for use
 // with apply.
 //
-// DependentsQualifiedDrySource identifies the dry branch whose commits are promoted.
-type DependentsQualifiedDrySourceApplyConfiguration struct {
+// ValidatedCommitStatusDrySource identifies the dry branch whose commits are promoted.
+type ValidatedCommitStatusDrySourceApplyConfiguration struct {
 	// Branch is the dry branch. Environments with no upstreams track its HEAD, and only commits reachable
 	// from its HEAD are qualified or promoted by this gate.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -31,16 +31,16 @@ type DependentsQualifiedDrySourceApplyConfiguration struct {
 	GitRepositoryRef *ObjectReferenceApplyConfiguration `json:"gitRepositoryRef,omitempty"`
 }
 
-// DependentsQualifiedDrySourceApplyConfiguration constructs a declarative configuration of the DependentsQualifiedDrySource type for use with
+// ValidatedCommitStatusDrySourceApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusDrySource type for use with
 // apply.
-func DependentsQualifiedDrySource() *DependentsQualifiedDrySourceApplyConfiguration {
-	return &DependentsQualifiedDrySourceApplyConfiguration{}
+func ValidatedCommitStatusDrySource() *ValidatedCommitStatusDrySourceApplyConfiguration {
+	return &ValidatedCommitStatusDrySourceApplyConfiguration{}
 }
 
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *DependentsQualifiedDrySourceApplyConfiguration) WithBranch(value string) *DependentsQualifiedDrySourceApplyConfiguration {
+func (b *ValidatedCommitStatusDrySourceApplyConfiguration) WithBranch(value string) *ValidatedCommitStatusDrySourceApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -48,7 +48,7 @@ func (b *DependentsQualifiedDrySourceApplyConfiguration) WithBranch(value string
 // WithGitRepositoryRef sets the GitRepositoryRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GitRepositoryRef field is set to the value of the last call.
-func (b *DependentsQualifiedDrySourceApplyConfiguration) WithGitRepositoryRef(value *ObjectReferenceApplyConfiguration) *DependentsQualifiedDrySourceApplyConfiguration {
+func (b *ValidatedCommitStatusDrySourceApplyConfiguration) WithGitRepositoryRef(value *ObjectReferenceApplyConfiguration) *ValidatedCommitStatusDrySourceApplyConfiguration {
 	b.GitRepositoryRef = value
 	return b
 }

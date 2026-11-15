@@ -21,21 +21,21 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DependentsQualifiedCommitStatusStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatusStatus type for use
+// ValidatedCommitStatusStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusStatus type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatusStatus defines the observed state of DependentsQualifiedCommitStatus.
-type DependentsQualifiedCommitStatusStatusApplyConfiguration struct {
+// ValidatedCommitStatusStatus defines the observed state of ValidatedCommitStatus.
+type ValidatedCommitStatusStatusApplyConfiguration struct {
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
 	// reconcile attempt by this install's controller, including when Ready=False; omitted
 	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
 	// Dry is the observed state of the dry branch.
-	Dry *DependentsQualifiedDryStatusApplyConfiguration `json:"dry,omitempty"`
+	Dry *ValidatedCommitStatusDryStatusApplyConfiguration `json:"dry,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// Environments reports the tag, qualification, and gate state of each environment.
-	Environments []DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	Environments []ValidatedCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -43,16 +43,16 @@ type DependentsQualifiedCommitStatusStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusStatusApplyConfiguration constructs a declarative configuration of the DependentsQualifiedCommitStatusStatus type for use with
+// ValidatedCommitStatusStatusApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusStatus type for use with
 // apply.
-func DependentsQualifiedCommitStatusStatus() *DependentsQualifiedCommitStatusStatusApplyConfiguration {
-	return &DependentsQualifiedCommitStatusStatusApplyConfiguration{}
+func ValidatedCommitStatusStatus() *ValidatedCommitStatusStatusApplyConfiguration {
+	return &ValidatedCommitStatusStatusApplyConfiguration{}
 }
 
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *DependentsQualifiedCommitStatusStatusApplyConfiguration {
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *ValidatedCommitStatusStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }
@@ -60,7 +60,7 @@ func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithInstanceID
 // WithDry sets the Dry field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Dry field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithDry(value *DependentsQualifiedDryStatusApplyConfiguration) *DependentsQualifiedCommitStatusStatusApplyConfiguration {
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithDry(value *ValidatedCommitStatusDryStatusApplyConfiguration) *ValidatedCommitStatusStatusApplyConfiguration {
 	b.Dry = value
 	return b
 }
@@ -68,7 +68,7 @@ func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithDry(value 
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *DependentsQualifiedCommitStatusStatusApplyConfiguration {
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ValidatedCommitStatusStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -81,7 +81,7 @@ func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithConditions
 // WithEnvironments adds the given value to the Environments field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Environments field.
-func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithEnvironments(values ...*DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) *DependentsQualifiedCommitStatusStatusApplyConfiguration {
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithEnvironments(values ...*ValidatedCommitStatusEnvironmentStatusApplyConfiguration) *ValidatedCommitStatusStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithEnvironments")
@@ -94,7 +94,7 @@ func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithEnvironmen
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *DependentsQualifiedCommitStatusStatusApplyConfiguration {
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *ValidatedCommitStatusStatusApplyConfiguration {
 	b.ObservedGeneration = &value
 	return b
 }

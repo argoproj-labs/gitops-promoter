@@ -70,9 +70,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
-	// DependentsQualifiedCommitStatus contains the configuration for the DependentsQualifiedCommitStatus controller,
+	// ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller,
 	// which gates promotions on whether dependent environments have ever run the target dry SHA successfully.
-	DependentsQualifiedCommitStatus *DependentsQualifiedCommitStatusConfigurationApplyConfiguration `json:"dependentsQualifiedCommitStatus,omitempty"`
+	ValidatedCommitStatus *ValidatedCommitStatusConfigurationApplyConfiguration `json:"validatedCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -182,11 +182,11 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessful
 	return b
 }
 
-// WithDependentsQualifiedCommitStatus sets the DependentsQualifiedCommitStatus field in the declarative configuration to the given value
+// WithValidatedCommitStatus sets the ValidatedCommitStatus field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the DependentsQualifiedCommitStatus field is set to the value of the last call.
-func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsQualifiedCommitStatus(value *DependentsQualifiedCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
-	b.DependentsQualifiedCommitStatus = value
+// If called multiple times, the ValidatedCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithValidatedCommitStatus(value *ValidatedCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.ValidatedCommitStatus = value
 	return b
 }
 

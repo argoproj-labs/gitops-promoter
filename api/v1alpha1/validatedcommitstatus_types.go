@@ -21,10 +21,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// DependentsQualifiedObservedDryShaField is the field index over the dry SHAs a
-// DependentsQualifiedCommitStatus last observed (see ObservedDryShas). The webhook receiver uses it to find
+// ValidatedCommitStatusObservedDryShaField is the field index over the dry SHAs a
+// ValidatedCommitStatus last observed (see ObservedDryShas). The webhook receiver uses it to find
 // the gates to wake when the dry branch or an environment tag is pushed.
-const DependentsQualifiedObservedDryShaField = ".status.observedDryShas"
+const ValidatedCommitStatusObservedDryShaField = ".status.observedDryShas"
 
 // TagAdvanceMode says who moves an environment's tag.
 // +kubebuilder:validation:Enum=Auto;Manual
@@ -39,8 +39,8 @@ const (
 	TagAdvanceManual TagAdvanceMode = "Manual"
 )
 
-// DependentsQualifiedCommitStatusSpec defines the desired state of DependentsQualifiedCommitStatus.
-type DependentsQualifiedCommitStatusSpec struct {
+// ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.
+type ValidatedCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and
 	// their dependencies (dependsOn) come from the PromotionStrategy.
 	// +required
@@ -57,7 +57,7 @@ type DependentsQualifiedCommitStatusSpec struct {
 
 	// DrySource is where the dry commits and the environment tags live.
 	// +required
-	DrySource DependentsQualifiedDrySource `json:"drySource"`
+	DrySource ValidatedCommitStatusDrySource `json:"drySource"`
 
 	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
 	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
@@ -67,11 +67,11 @@ type DependentsQualifiedCommitStatusSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=50
 	// +kubebuilder:validation:XValidation:rule="self.all(e, self.exists_one(o, o.tag == e.tag))",message="each environment must have its own tag"
-	Environments []DependentsQualifiedEnvironment `json:"environments"`
+	Environments []ValidatedCommitStatusEnvironment `json:"environments"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
-	// .DependentsQualifiedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
+	// .ValidatedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
 
@@ -86,8 +86,8 @@ type DependentsQualifiedCommitStatusSpec struct {
 	PublishTo *[]CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
-// DependentsQualifiedDrySource identifies the dry branch whose commits are promoted.
-type DependentsQualifiedDrySource struct {
+// ValidatedCommitStatusDrySource identifies the dry branch whose commits are promoted.
+type ValidatedCommitStatusDrySource struct {
 	// Branch is the dry branch. Environments with no upstreams track its HEAD, and only commits reachable
 	// from its HEAD are qualified or promoted by this gate.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -105,8 +105,8 @@ type DependentsQualifiedDrySource struct {
 	GitRepositoryRef *ObjectReference `json:"gitRepositoryRef,omitempty"`
 }
 
-// DependentsQualifiedEnvironment declares the tag one environment hydrates from.
-type DependentsQualifiedEnvironment struct {
+// ValidatedCommitStatusEnvironment declares the tag one environment hydrates from.
+type ValidatedCommitStatusEnvironment struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -136,8 +136,8 @@ type DependentsQualifiedEnvironment struct {
 	Advance TagAdvanceMode `json:"advance,omitempty"`
 }
 
-// DependentsQualifiedDryStatus is the observed state of the dry branch.
-type DependentsQualifiedDryStatus struct {
+// ValidatedCommitStatusDryStatus is the observed state of the dry branch.
+type ValidatedCommitStatusDryStatus struct {
 	// Sha is the HEAD of the dry branch when the controller last reconciled.
 	// +optional
 	// +kubebuilder:validation:MaxLength=64
@@ -145,8 +145,8 @@ type DependentsQualifiedDryStatus struct {
 	Sha string `json:"sha,omitempty"`
 }
 
-// DependentsQualifiedTagStatus is the observed state of one environment tag.
-type DependentsQualifiedTagStatus struct {
+// ValidatedCommitStatusTagStatus is the observed state of one environment tag.
+type ValidatedCommitStatusTagStatus struct {
 	// Name is the tag name.
 	// +required
 	// +kubebuilder:validation:MinLength=1
@@ -159,10 +159,10 @@ type DependentsQualifiedTagStatus struct {
 	Sha string `json:"sha,omitempty"`
 }
 
-// DependentsQualifiedWatermark is the newest dry commit an environment has qualified: a commit that was live
+// ValidatedCommitStatusWatermark is the newest dry commit an environment has qualified: a commit that was live
 // in the environment while every active commit status was success. Every commit before it on the dry branch
 // is qualified too.
-type DependentsQualifiedWatermark struct {
+type ValidatedCommitStatusWatermark struct {
 	// QualifiedAt is when the controller recorded the qualification.
 	// +required
 	QualifiedAt metav1.Time `json:"qualifiedAt"`
@@ -180,9 +180,9 @@ type DependentsQualifiedWatermark struct {
 	HydratedSha string `json:"hydratedSha,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
+// ValidatedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
 // this environment's tag points at.
-type DependentsQualifiedCommitStatusUpstreamStatus struct {
+type ValidatedCommitStatusUpstreamStatus struct {
 	// Branch is the upstream environment branch name.
 	// +required
 	// +kubebuilder:validation:MinLength=1
@@ -197,16 +197,16 @@ type DependentsQualifiedCommitStatusUpstreamStatus struct {
 	Satisfied bool `json:"satisfied"`
 }
 
-// DependentsQualifiedCommitStatusEnvironmentStatus defines observed state for one environment branch.
-type DependentsQualifiedCommitStatusEnvironmentStatus struct {
+// ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch.
+type ValidatedCommitStatusEnvironmentStatus struct {
 	// Tag is the environment's tag as last read from the dry repository.
 	// +optional
-	Tag *DependentsQualifiedTagStatus `json:"tag,omitempty"`
+	Tag *ValidatedCommitStatusTagStatus `json:"tag,omitempty"`
 
 	// Qualified is the newest dry commit this environment has qualified. Omitted until the environment has
 	// qualified a commit.
 	// +optional
-	Qualified *DependentsQualifiedWatermark `json:"qualified,omitempty"`
+	Qualified *ValidatedCommitStatusWatermark `json:"qualified,omitempty"`
 
 	// Branch is the environment branch name.
 	// +required
@@ -228,11 +228,11 @@ type DependentsQualifiedCommitStatusEnvironmentStatus struct {
 	// Upstreams lists this environment's direct upstreams and whether each has qualified the tagged commit.
 	// +optional
 	// +listType=atomic
-	Upstreams []DependentsQualifiedCommitStatusUpstreamStatus `json:"upstreams,omitempty"`
+	Upstreams []ValidatedCommitStatusUpstreamStatus `json:"upstreams,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusStatus defines the observed state of DependentsQualifiedCommitStatus.
-type DependentsQualifiedCommitStatusStatus struct {
+// ValidatedCommitStatusStatus defines the observed state of ValidatedCommitStatus.
+type ValidatedCommitStatusStatus struct {
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
 	// reconcile attempt by this install's controller, including when Ready=False; omitted
 	// when the resource has no instance-id label (default install).
@@ -244,7 +244,7 @@ type DependentsQualifiedCommitStatusStatus struct {
 
 	// Dry is the observed state of the dry branch.
 	// +optional
-	Dry *DependentsQualifiedDryStatus `json:"dry,omitempty"`
+	Dry *ValidatedCommitStatusDryStatus `json:"dry,omitempty"`
 
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map
@@ -257,7 +257,7 @@ type DependentsQualifiedCommitStatusStatus struct {
 	// +kubebuilder:validation:MaxItems=500
 	// +listType=map
 	// +listMapKey=branch
-	Environments []DependentsQualifiedCommitStatusEnvironmentStatus `json:"environments,omitempty"`
+	Environments []ValidatedCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
@@ -268,54 +268,54 @@ type DependentsQualifiedCommitStatusStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
-// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentsqualifiedcommitstatus",description="CRD reference (examples and behavior)"
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#validatedcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// DependentsQualifiedCommitStatus is the Schema for the dependentsqualifiedcommitstatuses API
-type DependentsQualifiedCommitStatus struct {
+// ValidatedCommitStatus is the Schema for the validatedcommitstatuses API
+type ValidatedCommitStatus struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of DependentsQualifiedCommitStatus
+	// spec defines the desired state of ValidatedCommitStatus
 	// +required
-	Spec DependentsQualifiedCommitStatusSpec `json:"spec"`
+	Spec ValidatedCommitStatusSpec `json:"spec"`
 
-	// status defines the observed state of DependentsQualifiedCommitStatus
+	// status defines the observed state of ValidatedCommitStatus
 	// +optional
-	Status DependentsQualifiedCommitStatusStatus `json:"status,omitzero"`
+	Status ValidatedCommitStatusStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
 
-// DependentsQualifiedCommitStatusList contains a list of DependentsQualifiedCommitStatus
-type DependentsQualifiedCommitStatusList struct {
+// ValidatedCommitStatusList contains a list of ValidatedCommitStatus
+type ValidatedCommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
-	Items           []DependentsQualifiedCommitStatus `json:"items"`
+	Items           []ValidatedCommitStatus `json:"items"`
 }
 
-// GetConditions returns the conditions of the DependentsQualifiedCommitStatus.
-func (d *DependentsQualifiedCommitStatus) GetConditions() *[]metav1.Condition {
+// GetConditions returns the conditions of the ValidatedCommitStatus.
+func (d *ValidatedCommitStatus) GetConditions() *[]metav1.Condition {
 	return &d.Status.Conditions
 }
 
 // SetObservedGeneration records the object generation that produced the current status.
-func (d *DependentsQualifiedCommitStatus) SetObservedGeneration(generation int64) {
+func (d *ValidatedCommitStatus) SetObservedGeneration(generation int64) {
 	d.Status.ObservedGeneration = generation
 }
 
 // SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
-func (d *DependentsQualifiedCommitStatus) SetStatusInstanceID(v *string) {
+func (d *ValidatedCommitStatus) SetStatusInstanceID(v *string) {
 	d.Status.InstanceID = v
 }
 
 // ObservedDryShas returns the dry SHAs this gate last observed: the dry branch HEAD and every environment
 // tag. A push webhook's "before" SHA is one of them when the push moved a ref this gate reads.
-func (d *DependentsQualifiedCommitStatus) ObservedDryShas() []string {
+func (d *ValidatedCommitStatus) ObservedDryShas() []string {
 	var shas []string
 	if d.Status.Dry != nil && d.Status.Dry.Sha != "" {
 		shas = append(shas, d.Status.Dry.Sha)
@@ -330,7 +330,7 @@ func (d *DependentsQualifiedCommitStatus) ObservedDryShas() []string {
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &DependentsQualifiedCommitStatus{}, &DependentsQualifiedCommitStatusList{})
+		s.AddKnownTypes(SchemeGroupVersion, &ValidatedCommitStatus{}, &ValidatedCommitStatusList{})
 		return nil
 	})
 }

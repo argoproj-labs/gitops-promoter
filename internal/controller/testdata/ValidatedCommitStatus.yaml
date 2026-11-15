@@ -1,9 +1,9 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsQualifiedCommitStatus
+kind: ValidatedCommitStatus
 metadata:
   name: example-promotion-strategy
 spec:
-  key: dependents-qualified
+  key: validated
   promotionStrategyRef:
     name: example-promotion-strategy
   drySource:

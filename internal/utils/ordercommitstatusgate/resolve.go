@@ -46,19 +46,19 @@ func resolve(
 		return resolveDependentsSuccessful(ctx, c, ps, ref)
 	}
 	if ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup &&
-		ref.Kind == promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind {
-		return resolveDependentsQualified(ctx, c, ps, ref)
+		ref.Kind == promoterv1alpha1.ValidatedOrderCommitStatusKind {
+		return resolveValidated(ctx, c, ps, ref)
 	}
 	return resolveUnstructured(ctx, c, mapper, ps, ref)
 }
 
-func resolveDependentsQualified(
+func resolveValidated(
 	ctx context.Context,
 	c client.Client,
 	ps *promoterv1alpha1.PromotionStrategy,
 	ref promoterv1alpha1.OrderCommitStatusRef,
 ) (string, error) {
-	var gate promoterv1alpha1.DependentsQualifiedCommitStatus
+	var gate promoterv1alpha1.ValidatedCommitStatus
 	getErr := c.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &gate)
 	if getErr != nil {
 		if k8serrors.IsNotFound(getErr) {

@@ -47,7 +47,7 @@ const (
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
 
-// Reasons that apply to DependentsQualifiedCommitStatus.
+// Reasons that apply to ValidatedCommitStatus.
 const (
 	// DryRepositoryUnavailable is the reason when the dry branch or the environment tags could not be read.
 	DryRepositoryUnavailable CommonReason = "DryRepositoryUnavailable"

@@ -102,15 +102,15 @@ var _ = Describe("Resolve", func() {
 		Expect(err).To(MatchError(ContainSubstring("promotionStrategyRef.name is \"other\"")))
 	})
 
-	Context("for a DependentsQualifiedCommitStatus", func() {
+	Context("for a ValidatedCommitStatus", func() {
 		qualifiedRef := promoterv1alpha1.OrderCommitStatusRef{
-			Kind: promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind,
+			Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind,
 			Name: "demo",
 		}
-		qualifiedGate := func(key, promotionStrategy string) *promoterv1alpha1.DependentsQualifiedCommitStatus {
-			return &promoterv1alpha1.DependentsQualifiedCommitStatus{
+		qualifiedGate := func(key, promotionStrategy string) *promoterv1alpha1.ValidatedCommitStatus {
+			return &promoterv1alpha1.ValidatedCommitStatus{
 				Name: "demo", Namespace: "default",
-				Spec: promoterv1alpha1.DependentsQualifiedCommitStatusSpec{
+				Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: promotionStrategy},
 					Key:                  key,
 				},
@@ -118,11 +118,11 @@ var _ = Describe("Resolve", func() {
 		}
 
 		It("resolves the gate's key via a typed Get", func() {
-			gate := qualifiedGate(promoterv1alpha1.DependentsQualifiedCommitStatusKey, "demo")
+			gate := qualifiedGate(promoterv1alpha1.ValidatedCommitStatusKey, "demo")
 			c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
 			key, err := Resolve(context.Background(), c, nil, testPromotionStrategy(qualifiedRef))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(key).To(Equal(promoterv1alpha1.DependentsQualifiedCommitStatusKey))
+			Expect(key).To(Equal(promoterv1alpha1.ValidatedCommitStatusKey))
 		})
 
 		It("does not accept a DependentsSuccessfulCommitStatus of the same name", func() {
@@ -136,7 +136,7 @@ var _ = Describe("Resolve", func() {
 			c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(other).Build()
 			_, err := Resolve(context.Background(), c, nil, testPromotionStrategy(qualifiedRef))
 			Expect(err).To(MatchError(ContainSubstring("was not found")))
-			Expect(err).To(MatchError(ContainSubstring(promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind)))
+			Expect(err).To(MatchError(ContainSubstring(promoterv1alpha1.ValidatedOrderCommitStatusKind)))
 		})
 
 		It("rejects a gate with an empty spec.key", func() {
@@ -146,7 +146,7 @@ var _ = Describe("Resolve", func() {
 		})
 
 		It("rejects a gate whose promotionStrategyRef does not match", func() {
-			gate := qualifiedGate(promoterv1alpha1.DependentsQualifiedCommitStatusKey, "other")
+			gate := qualifiedGate(promoterv1alpha1.ValidatedCommitStatusKey, "other")
 			c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
 			_, err := Resolve(context.Background(), c, nil, testPromotionStrategy(qualifiedRef))
 			Expect(err).To(MatchError(ContainSubstring("promotionStrategyRef.name is \"other\"")))

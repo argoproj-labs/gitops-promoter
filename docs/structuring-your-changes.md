@@ -62,5 +62,5 @@ the default it keeps advancing the tag, so the environment cannot be held back. 
 DRY commit, Promoter's active commit status protections keep working.
 
 See [Holding Back Environments](advanced-usage/holding-back-environments.md), built on the
-[DependentsQualifiedCommitStatus](gating-promotions/built-in-gates/dependents-qualified-commit-status.md) ordering
+[ValidatedCommitStatus](gating-promotions/built-in-gates/validated-commit-status.md) ordering
 gate.

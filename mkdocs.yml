@@ -57,7 +57,7 @@ nav:
       - Built-In Gates:
           - ArgoCDCommitStatus: gating-promotions/built-in-gates/argocd-commit-status.md
           - DependentsSuccessfulCommitStatus: gating-promotions/built-in-gates/dependents-successful-commit-status.md
-          - DependentsQualifiedCommitStatus: gating-promotions/built-in-gates/dependents-qualified-commit-status.md
+          - ValidatedCommitStatus: gating-promotions/built-in-gates/validated-commit-status.md
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
           - ScheduledCommitStatus: gating-promotions/built-in-gates/scheduled-commit-status.md

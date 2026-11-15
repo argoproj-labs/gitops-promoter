@@ -40,31 +40,31 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-//go:embed testdata/DependentsQualifiedCommitStatus.yaml
-var testDependentsQualifiedCommitStatusYAML string
+//go:embed testdata/ValidatedCommitStatus.yaml
+var testValidatedCommitStatusYAML string
 
 // Environment branches and tags used by the decision specs.
 const (
-	dqDev     = "environment/dev"
-	dqTest    = "environment/test"
-	dqProd    = "environment/prod"
-	dqTagDev  = "env/dev"
-	dqTagTest = "env/test"
-	dqTagProd = "env/prod"
+	vcsDev     = "environment/dev"
+	vcsTest    = "environment/test"
+	vcsProd    = "environment/prod"
+	vcsTagDev  = "env/dev"
+	vcsTagTest = "env/test"
+	vcsTagProd = "env/prod"
 )
 
-// dqTestGraph is an in-memory DRY commit graph (commit → parents) implementing dqCommitGraph.
-type dqTestGraph map[string][]string
+// vcsTestGraph is an in-memory DRY commit graph (commit → parents) implementing vcsCommitGraph.
+type vcsTestGraph map[string][]string
 
-// dqMainGraph is the history most specs run against:
+// vcsMainGraph is the history most specs run against:
 //
 //	a ─ b ─ c ─ d ─ e ─ f      DRY branch "main", HEAD = f
 //	        └── x              a feature-branch commit that is not on main
 //	    └── p ─ q              the DRY branch after a force-push that replaced c..f, HEAD = q
 //	    ├── l ─┐
 //	    └── r ─┴ m             two sides of a merge, HEAD = m
-func dqMainGraph() dqTestGraph {
-	return dqTestGraph{
+func vcsMainGraph() vcsTestGraph {
+	return vcsTestGraph{
 		"a": nil,
 		"b": {"a"},
 		"c": {"b"},
@@ -80,7 +80,7 @@ func dqMainGraph() dqTestGraph {
 	}
 }
 
-func (g dqTestGraph) ancestors(sha string) map[string]struct{} {
+func (g vcsTestGraph) ancestors(sha string) map[string]struct{} {
 	seen := map[string]struct{}{}
 	stack := []string{sha}
 	for len(stack) > 0 {
@@ -95,7 +95,7 @@ func (g dqTestGraph) ancestors(sha string) map[string]struct{} {
 	return seen
 }
 
-func (g dqTestGraph) Contains(_ context.Context, descendant, ancestor string) (bool, error) {
+func (g vcsTestGraph) Contains(_ context.Context, descendant, ancestor string) (bool, error) {
 	if _, ok := g[descendant]; !ok {
 		return false, nil
 	}
@@ -106,7 +106,7 @@ func (g dqTestGraph) Contains(_ context.Context, descendant, ancestor string) (b
 	return ok, nil
 }
 
-func (g dqTestGraph) MergeBase(_ context.Context, shas ...string) (string, error) {
+func (g vcsTestGraph) MergeBase(_ context.Context, shas ...string) (string, error) {
 	if len(shas) == 0 {
 		return "", nil
 	}
@@ -128,33 +128,33 @@ func (g dqTestGraph) MergeBase(_ context.Context, shas ...string) (string, error
 	return "", nil
 }
 
-// dqFailingGraph fails every ancestry question, for error-propagation specs.
-type dqFailingGraph struct{}
+// vcsFailingGraph fails every ancestry question, for error-propagation specs.
+type vcsFailingGraph struct{}
 
-func (dqFailingGraph) Contains(context.Context, string, string) (bool, error) {
+func (vcsFailingGraph) Contains(context.Context, string, string) (bool, error) {
 	return false, errors.New("graph unavailable")
 }
 
-func (dqFailingGraph) MergeBase(context.Context, ...string) (string, error) {
+func (vcsFailingGraph) MergeBase(context.Context, ...string) (string, error) {
 	return "", errors.New("graph unavailable")
 }
 
-// dqDryRefs is one moment of a DRY repository: its branch HEAD and where each environment tag points.
-type dqDryRefs struct {
+// vcsDryRefs is one moment of a DRY repository: its branch HEAD and where each environment tag points.
+type vcsDryRefs struct {
 	head string
 	tags map[string]string
 }
 
-// dqMovingDryRepo is a DRY repository that receives a push while the gate is reading it: the first read sees
-// before, every later read sees after. It implements dqDryRefReader.
-type dqMovingDryRepo struct {
+// vcsMovingDryRepo is a DRY repository that receives a push while the gate is reading it: the first read sees
+// before, every later read sees after. It implements vcsDryRefReader.
+type vcsMovingDryRepo struct {
 	err    error
-	before dqDryRefs
-	after  dqDryRefs
+	before vcsDryRefs
+	after  vcsDryRefs
 	reads  int
 }
 
-func (r *dqMovingDryRepo) now() dqDryRefs {
+func (r *vcsMovingDryRepo) now() vcsDryRefs {
 	r.reads++
 	if r.reads == 1 {
 		return r.before
@@ -162,16 +162,16 @@ func (r *dqMovingDryRepo) now() dqDryRefs {
 	return r.after
 }
 
-func (r *dqMovingDryRepo) GetBranchSha(context.Context, string, string) (string, error) {
+func (r *vcsMovingDryRepo) GetBranchSha(context.Context, string, string) (string, error) {
 	return r.now().head, r.err
 }
 
-func (r *dqMovingDryRepo) FetchTags(context.Context, ...string) (map[string]string, error) {
+func (r *vcsMovingDryRepo) FetchTags(context.Context, ...string) (map[string]string, error) {
 	return r.now().tags, r.err
 }
 
-// dqPhases builds active commit status phases keyed check-0, check-1, ...
-func dqPhases(phases ...promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
+// vcsPhases builds active commit status phases keyed check-0, check-1, ...
+func vcsPhases(phases ...promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
 	out := make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(phases))
 	for i, phase := range phases {
 		out = append(out, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -182,68 +182,68 @@ func dqPhases(phases ...promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.C
 	return out
 }
 
-// dqStatus builds a PromotionStrategy environment status. Hydrated SHAs are synthetic: "<branch>@<dry>" for
+// vcsStatus builds a PromotionStrategy environment status. Hydrated SHAs are synthetic: "<branch>@<dry>" for
 // the active tip and "<branch>-next@<dry>" for the proposed tip.
-func dqStatus(branch, activeDry, proposedDry string, phases ...promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.EnvironmentStatus {
+func vcsStatus(branch, activeDry, proposedDry string, phases ...promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.EnvironmentStatus {
 	status := promoterv1alpha1.EnvironmentStatus{Branch: branch}
 	status.Active.Dry.Sha = activeDry
 	status.Active.Hydrated.Sha = branch + "@" + activeDry
-	status.Active.CommitStatuses = dqPhases(phases...)
+	status.Active.CommitStatuses = vcsPhases(phases...)
 	status.Proposed.Dry.Sha = proposedDry
 	status.Proposed.Hydrated.Sha = branch + "-next@" + proposedDry
 	return status
 }
 
-// dqWithNote sets the hydrator note DRY SHA on the proposed tip (a no-op hydration report).
-func dqWithNote(status promoterv1alpha1.EnvironmentStatus, noteDry string) promoterv1alpha1.EnvironmentStatus {
+// vcsWithNote sets the hydrator note DRY SHA on the proposed tip (a no-op hydration report).
+func vcsWithNote(status promoterv1alpha1.EnvironmentStatus, noteDry string) promoterv1alpha1.EnvironmentStatus {
 	status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{DrySha: noteDry}
 	return status
 }
 
-// dqWatermark builds a qualification watermark at the given DRY SHA.
-func dqWatermark(drySha string) *promoterv1alpha1.DependentsQualifiedWatermark {
-	return &promoterv1alpha1.DependentsQualifiedWatermark{
+// vcsWatermark builds a qualification watermark at the given DRY SHA.
+func vcsWatermark(drySha string) *promoterv1alpha1.ValidatedCommitStatusWatermark {
+	return &promoterv1alpha1.ValidatedCommitStatusWatermark{
 		DrySha:      drySha,
 		QualifiedAt: metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
 	}
 }
 
-// dqSettled builds an environment with nothing in flight: live is promoted, hydrated, and every active commit
+// vcsSettled builds an environment with nothing in flight: live is promoted, hydrated, and every active commit
 // status has the given phase. tagSha "" means the tag does not exist.
-func dqSettled(branch, tag, tagSha, live string, phases ...promoterv1alpha1.CommitStatusPhase) dqEnvironment {
-	return dqEnvironment{
+func vcsSettled(branch, tag, tagSha, live string, phases ...promoterv1alpha1.CommitStatusPhase) vcsEnvironment {
+	return vcsEnvironment{
 		Branch:     branch,
 		Tag:        tag,
 		TagSha:     tagSha,
-		Status:     dqStatus(branch, live, live, phases...),
+		Status:     vcsStatus(branch, live, live, phases...),
 		LiveDrySha: live,
 	}
 }
 
-// dqProposing builds an environment whose hydrator has proposed proposedDry while activeDry is live.
-func dqProposing(branch, tag, tagSha, activeDry, proposedDry string, dependsOn ...string) dqEnvironment {
-	return dqEnvironment{
+// vcsProposing builds an environment whose hydrator has proposed proposedDry while activeDry is live.
+func vcsProposing(branch, tag, tagSha, activeDry, proposedDry string, dependsOn ...string) vcsEnvironment {
+	return vcsEnvironment{
 		Branch:     branch,
 		Tag:        tag,
 		TagSha:     tagSha,
 		DependsOn:  dependsOn,
-		Status:     dqStatus(branch, activeDry, proposedDry),
+		Status:     vcsStatus(branch, activeDry, proposedDry),
 		LiveDrySha: activeDry,
 	}
 }
 
-func dqByBranch(envs ...dqEnvironment) map[string]dqEnvironment {
-	out := make(map[string]dqEnvironment, len(envs))
+func vcsByBranch(envs ...vcsEnvironment) map[string]vcsEnvironment {
+	out := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
 		out[env.Branch] = env
 	}
 	return out
 }
 
-var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
+var _ = Describe("ValidatedCommitStatus decisions", func() {
 	var (
 		ctx   context.Context
-		graph dqTestGraph
+		graph vcsTestGraph
 		now   metav1.Time
 	)
 
@@ -255,41 +255,41 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		graph = dqMainGraph()
+		graph = vcsMainGraph()
 		now = metav1.NewTime(time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC))
 	})
 
-	Describe("dqLiveDrySha: which DRY commit an environment is running", func() {
+	Describe("vcsLiveDrySha: which DRY commit an environment is running", func() {
 		neverCalled := func() (bool, error) {
 			Fail("manifests must not be compared when the answer is already known")
 			return false, nil
 		}
 
 		It("is the active DRY SHA while a promotion is pending", func() {
-			live, err := dqLiveDrySha(dqStatus(dqDev, "c", "d"), neverCalled)
+			live, err := vcsLiveDrySha(vcsStatus(vcsDev, "c", "d"), neverCalled)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("c"))
 		})
 
 		It("is the active DRY SHA when the hydrator has reported nothing newer", func() {
-			live, err := dqLiveDrySha(dqStatus(dqDev, "c", "c"), neverCalled)
+			live, err := vcsLiveDrySha(vcsStatus(vcsDev, "c", "c"), neverCalled)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("c"))
 
-			live, err = dqLiveDrySha(dqWithNote(dqStatus(dqDev, "c", "c"), "c"), neverCalled)
+			live, err = vcsLiveDrySha(vcsWithNote(vcsStatus(vcsDev, "c", "c"), "c"), neverCalled)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("c"))
 		})
 
 		It("is empty when nothing has been promoted yet", func() {
-			live, err := dqLiveDrySha(dqStatus(dqDev, "", ""), neverCalled)
+			live, err := vcsLiveDrySha(vcsStatus(vcsDev, "", ""), neverCalled)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(BeEmpty())
 		})
 
 		It("is the hydrator note's DRY SHA after a no-op hydration of identical manifests", func() {
-			status := dqWithNote(dqStatus(dqDev, "c", "c"), "e")
-			live, err := dqLiveDrySha(status, func() (bool, error) { return true, nil })
+			status := vcsWithNote(vcsStatus(vcsDev, "c", "c"), "e")
+			live, err := vcsLiveDrySha(status, func() (bool, error) { return true, nil })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("e"))
 		})
@@ -298,30 +298,30 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			// The same DRY SHA can be hydrated again with different output. No pull request opens for it
 			// (proposed and active name the same DRY SHA), so a later note on that tip must not be credited
 			// to manifests the environment is not running.
-			status := dqWithNote(dqStatus(dqDev, "c", "c"), "e")
-			live, err := dqLiveDrySha(status, func() (bool, error) { return false, nil })
+			status := vcsWithNote(vcsStatus(vcsDev, "c", "c"), "e")
+			live, err := vcsLiveDrySha(status, func() (bool, error) { return false, nil })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("c"))
 		})
 
 		It("ignores a hydrator note while a promotion is pending", func() {
-			status := dqWithNote(dqStatus(dqDev, "c", "d"), "e")
-			live, err := dqLiveDrySha(status, neverCalled)
+			status := vcsWithNote(vcsStatus(vcsDev, "c", "d"), "e")
+			live, err := vcsLiveDrySha(status, neverCalled)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(live).To(Equal("c"))
 		})
 
 		It("returns the manifest comparison error", func() {
-			status := dqWithNote(dqStatus(dqDev, "c", "c"), "e")
-			_, err := dqLiveDrySha(status, func() (bool, error) { return false, errors.New("boom") })
+			status := vcsWithNote(vcsStatus(vcsDev, "c", "c"), "e")
+			_, err := vcsLiveDrySha(status, func() (bool, error) { return false, errors.New("boom") })
 			Expect(err).To(MatchError(ContainSubstring("boom")))
 		})
 	})
 
-	Describe("dqQualify: recording what an environment has run successfully", func() {
+	Describe("vcsQualify: recording what an environment has run successfully", func() {
 		It("qualifies the live commit when every active commit status is success", func() {
-			env := dqSettled(dqDev, dqTagDev, "d", "d", success, success)
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "d", "d", success, success)
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified).NotTo(BeNil())
 			Expect(qualified.DrySha).To(Equal("d"))
@@ -330,7 +330,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 
 		It("qualifies immediately when the environment has no active commit statuses", func() {
-			qualified, err := dqQualify(ctx, graph, "f", dqSettled(dqDev, dqTagDev, "d", "d"), now)
+			qualified, err := vcsQualify(ctx, graph, "f", vcsSettled(vcsDev, vcsTagDev, "d", "d"), now)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified).NotTo(BeNil())
 			Expect(qualified.DrySha).To(Equal("d"))
@@ -338,7 +338,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		DescribeTable("does not qualify while an active commit status is not success",
 			func(phases ...promoterv1alpha1.CommitStatusPhase) {
-				qualified, err := dqQualify(ctx, graph, "f", dqSettled(dqDev, dqTagDev, "d", "d", phases...), now)
+				qualified, err := vcsQualify(ctx, graph, "f", vcsSettled(vcsDev, vcsTagDev, "d", "d", phases...), now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified).To(BeNil())
 			},
@@ -348,92 +348,92 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		)
 
 		It("does not qualify when nothing is live", func() {
-			qualified, err := dqQualify(ctx, graph, "f", dqSettled(dqDev, dqTagDev, "f", ""), now)
+			qualified, err := vcsQualify(ctx, graph, "f", vcsSettled(vcsDev, vcsTagDev, "f", ""), now)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified).To(BeNil())
 		})
 
 		It("advances the watermark when a newer commit is live and successful", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			env.Qualified = dqWatermark("d")
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			env.Qualified = vcsWatermark("d")
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified.DrySha).To(Equal("f"))
 			Expect(qualified.QualifiedAt).To(Equal(now))
 		})
 
 		It("leaves the watermark untouched when the live commit is already the watermark", func() {
-			env := dqSettled(dqDev, dqTagDev, "d", "d", success)
-			env.Qualified = dqWatermark("d")
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "d", "d", success)
+			env.Qualified = vcsWatermark("d")
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("d")), "qualifiedAt records when the commit first qualified")
+			Expect(qualified).To(Equal(vcsWatermark("d")), "qualifiedAt records when the commit first qualified")
 		})
 
 		It("is latched: a qualified commit stays qualified when the environment turns unhealthy", func() {
-			env := dqSettled(dqDev, dqTagDev, "d", "d", failure)
-			env.Qualified = dqWatermark("d")
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "d", "d", failure)
+			env.Qualified = vcsWatermark("d")
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("d")))
+			Expect(qualified).To(Equal(vcsWatermark("d")))
 		})
 
 		It("is latched: the watermark survives a newer commit that is live but not yet successful", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", pending)
-			env.Qualified = dqWatermark("d")
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", pending)
+			env.Qualified = vcsWatermark("d")
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("d")))
+			Expect(qualified).To(Equal(vcsWatermark("d")))
 		})
 
 		It("is forward-only: promoting an older commit does not move the watermark back", func() {
 			// A person moved the environment's tag backward and the older commit was promoted the normal
 			// way. Nothing said the newer commit was bad, so it stays qualified.
-			env := dqSettled(dqProd, dqTagProd, "c", "c", success)
-			env.Qualified = dqWatermark("e")
-			qualified, err := dqQualify(ctx, graph, "f", env, now)
+			env := vcsSettled(vcsProd, vcsTagProd, "c", "c", success)
+			env.Qualified = vcsWatermark("e")
+			qualified, err := vcsQualify(ctx, graph, "f", env, now)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("e")))
+			Expect(qualified).To(Equal(vcsWatermark("e")))
 		})
 
 		Context("commits that are not on the DRY branch", func() {
 			It("does not qualify a live commit that is not reachable from the DRY branch HEAD", func() {
 				// A person pushed a root environment's tag to a feature-branch commit and it was promoted.
-				qualified, err := dqQualify(ctx, graph, "f", dqSettled(dqDev, dqTagDev, "x", "x", success), now)
+				qualified, err := vcsQualify(ctx, graph, "f", vcsSettled(vcsDev, vcsTagDev, "x", "x", success), now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified).To(BeNil())
 			})
 
 			It("keeps an on-branch watermark while an off-branch commit is live", func() {
-				env := dqSettled(dqDev, dqTagDev, "x", "x", success)
-				env.Qualified = dqWatermark("c")
-				qualified, err := dqQualify(ctx, graph, "f", env, now)
+				env := vcsSettled(vcsDev, vcsTagDev, "x", "x", success)
+				env.Qualified = vcsWatermark("c")
+				qualified, err := vcsQualify(ctx, graph, "f", env, now)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(qualified).To(Equal(dqWatermark("c")))
+				Expect(qualified).To(Equal(vcsWatermark("c")))
 			})
 		})
 
 		Context("after the DRY branch is force-pushed", func() {
 			It("drops a watermark that is no longer reachable from HEAD", func() {
-				env := dqSettled(dqDev, dqTagDev, "e", "e", success)
-				env.Qualified = dqWatermark("e")
-				qualified, err := dqQualify(ctx, graph, "q", env, now)
+				env := vcsSettled(vcsDev, vcsTagDev, "e", "e", success)
+				env.Qualified = vcsWatermark("e")
+				qualified, err := vcsQualify(ctx, graph, "q", env, now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified).To(BeNil(), "e was rewritten away and e is still what is live")
 			})
 
 			It("keeps a watermark that survived the rewrite", func() {
-				env := dqSettled(dqDev, dqTagDev, "e", "e", success)
-				env.Qualified = dqWatermark("b")
-				qualified, err := dqQualify(ctx, graph, "q", env, now)
+				env := vcsSettled(vcsDev, vcsTagDev, "e", "e", success)
+				env.Qualified = vcsWatermark("b")
+				qualified, err := vcsQualify(ctx, graph, "q", env, now)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(qualified).To(Equal(dqWatermark("b")))
+				Expect(qualified).To(Equal(vcsWatermark("b")))
 			})
 
 			It("qualifies again once a commit on the new history is live and successful", func() {
-				env := dqSettled(dqDev, dqTagDev, "q", "q", success)
-				env.Qualified = dqWatermark("e")
-				qualified, err := dqQualify(ctx, graph, "q", env, now)
+				env := vcsSettled(vcsDev, vcsTagDev, "q", "q", success)
+				env.Qualified = vcsWatermark("e")
+				qualified, err := vcsQualify(ctx, graph, "q", env, now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified.DrySha).To(Equal("q"))
 			})
@@ -441,10 +441,10 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		Context("after a RestoreActiveCommit", func() {
 			It("pulls the watermark back to the restored commit", func() {
-				env := dqSettled(dqTest, dqTagTest, "e", "c", pending)
-				env.Qualified = dqWatermark("e")
+				env := vcsSettled(vcsTest, vcsTagTest, "e", "c", pending)
+				env.Qualified = vcsWatermark("e")
 				env.Restored = true
-				qualified, err := dqQualify(ctx, graph, "f", env, now)
+				qualified, err := vcsQualify(ctx, graph, "f", env, now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified).NotTo(BeNil())
 				Expect(qualified.DrySha).To(Equal("c"), "the restore says d and e should not have been trusted")
@@ -453,85 +453,85 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			})
 
 			It("does nothing more once the watermark is at the restored commit", func() {
-				env := dqSettled(dqTest, dqTagTest, "e", "c", success)
-				env.Qualified = dqWatermark("c")
+				env := vcsSettled(vcsTest, vcsTagTest, "e", "c", success)
+				env.Qualified = vcsWatermark("c")
 				env.Restored = true
-				qualified, err := dqQualify(ctx, graph, "f", env, now)
+				qualified, err := vcsQualify(ctx, graph, "f", env, now)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(qualified).To(Equal(dqWatermark("c")))
+				Expect(qualified).To(Equal(vcsWatermark("c")))
 			})
 
 			It("does not pull back a watermark the restored commit is ahead of", func() {
-				env := dqSettled(dqTest, dqTagTest, "e", "e", pending)
-				env.Qualified = dqWatermark("c")
+				env := vcsSettled(vcsTest, vcsTagTest, "e", "e", pending)
+				env.Qualified = vcsWatermark("c")
 				env.Restored = true
-				qualified, err := dqQualify(ctx, graph, "f", env, now)
+				qualified, err := vcsQualify(ctx, graph, "f", env, now)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(qualified).To(Equal(dqWatermark("c")))
+				Expect(qualified).To(Equal(vcsWatermark("c")))
 			})
 
 			It("qualifies forward again when the environment is promoted past the restore", func() {
-				env := dqSettled(dqTest, dqTagTest, "f", "f", success)
-				env.Qualified = dqWatermark("c")
-				qualified, err := dqQualify(ctx, graph, "f", env, now)
+				env := vcsSettled(vcsTest, vcsTagTest, "f", "f", success)
+				env.Qualified = vcsWatermark("c")
+				qualified, err := vcsQualify(ctx, graph, "f", env, now)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(qualified.DrySha).To(Equal("f"))
 			})
 		})
 
 		It("returns ancestry errors", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			env.Qualified = dqWatermark("d")
-			_, err := dqQualify(ctx, dqFailingGraph{}, "f", env, now)
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			env.Qualified = vcsWatermark("d")
+			_, err := vcsQualify(ctx, vcsFailingGraph{}, "f", env, now)
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
 		})
 	})
 
-	Describe("dqUnrecordedQualification: what stands when a qualification could not be written to its note", func() {
+	Describe("vcsUnrecordedQualification: what stands when a qualification could not be written to its note", func() {
 		It("keeps the previous watermark when an advance could not be recorded", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			env.Qualified = dqWatermark("d")
-			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("f"))
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			env.Qualified = vcsWatermark("d")
+			qualified, err := vcsUnrecordedQualification(ctx, graph, "f", env, vcsWatermark("f"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("d")))
+			Expect(qualified).To(Equal(vcsWatermark("d")))
 		})
 
 		It("qualifies nothing when a first qualification could not be recorded", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("f"))
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			qualified, err := vcsUnrecordedQualification(ctx, graph, "f", env, vcsWatermark("f"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified).To(BeNil())
 		})
 
 		It("takes a restore's pull-back anyway, so that the gate does not stay open on a revoked commit", func() {
-			env := dqSettled(dqTest, dqTagTest, "e", "c", pending)
-			env.Qualified = dqWatermark("e")
+			env := vcsSettled(vcsTest, vcsTagTest, "e", "c", pending)
+			env.Qualified = vcsWatermark("e")
 			env.Restored = true
-			qualified, err := dqUnrecordedQualification(ctx, graph, "f", env, dqWatermark("c"))
+			qualified, err := vcsUnrecordedQualification(ctx, graph, "f", env, vcsWatermark("c"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(qualified).To(Equal(dqWatermark("c")), "d and e were taken back by the restore, recorded or not")
+			Expect(qualified).To(Equal(vcsWatermark("c")), "d and e were taken back by the restore, recorded or not")
 		})
 
 		It("drops a previous watermark that is no longer on the DRY branch", func() {
-			env := dqSettled(dqDev, dqTagDev, "q", "q", success)
-			env.Qualified = dqWatermark("e")
-			qualified, err := dqUnrecordedQualification(ctx, graph, "q", env, dqWatermark("q"))
+			env := vcsSettled(vcsDev, vcsTagDev, "q", "q", success)
+			env.Qualified = vcsWatermark("e")
+			qualified, err := vcsUnrecordedQualification(ctx, graph, "q", env, vcsWatermark("q"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(qualified).To(BeNil())
 		})
 
 		It("returns ancestry errors", func() {
-			env := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			env.Qualified = dqWatermark("d")
-			_, err := dqUnrecordedQualification(ctx, dqFailingGraph{}, "f", env, dqWatermark("f"))
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			env.Qualified = vcsWatermark("d")
+			_, err := vcsUnrecordedQualification(ctx, vcsFailingGraph{}, "f", env, vcsWatermark("f"))
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
 		})
 	})
 
-	Describe("dqReadDryRefs: reading the DRY branch HEAD and the environment tags", func() {
+	Describe("vcsReadDryRefs: reading the DRY branch HEAD and the environment tags", func() {
 		It("returns the HEAD and the commit each tag points at", func() {
-			refs := dqDryRefs{head: "f", tags: map[string]string{dqTagDev: "f", dqTagTest: "d", dqTagProd: ""}}
-			head, tags, err := dqReadDryRefs(ctx, &dqMovingDryRepo{before: refs, after: refs}, "main", "", []string{dqTagDev, dqTagTest, dqTagProd})
+			refs := vcsDryRefs{head: "f", tags: map[string]string{vcsTagDev: "f", vcsTagTest: "d", vcsTagProd: ""}}
+			head, tags, err := vcsReadDryRefs(ctx, &vcsMovingDryRepo{before: refs, after: refs}, "main", "", []string{vcsTagDev, vcsTagTest, vcsTagProd})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(head).To(Equal("f"))
 			Expect(tags).To(Equal(refs.tags))
@@ -540,136 +540,136 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		It("never reads a tag that is ahead of the HEAD it read, when both move during the reads", func() {
 			// Someone pushes f and moves the tag to it between the gate's two reads. A tag that looks like
 			// it is not on the branch gets reset, so the gate must not pair the new tag with the old HEAD.
-			repo := &dqMovingDryRepo{
-				before: dqDryRefs{head: "e", tags: map[string]string{dqTagDev: "e"}},
-				after:  dqDryRefs{head: "f", tags: map[string]string{dqTagDev: "f"}},
+			repo := &vcsMovingDryRepo{
+				before: vcsDryRefs{head: "e", tags: map[string]string{vcsTagDev: "e"}},
+				after:  vcsDryRefs{head: "f", tags: map[string]string{vcsTagDev: "f"}},
 			}
-			head, tags, err := dqReadDryRefs(ctx, repo, "main", "e", []string{dqTagDev})
+			head, tags, err := vcsReadDryRefs(ctx, repo, "main", "e", []string{vcsTagDev})
 			Expect(err).NotTo(HaveOccurred())
-			onBranch, err := graph.Contains(ctx, head, tags[dqTagDev])
+			onBranch, err := graph.Contains(ctx, head, tags[vcsTagDev])
 			Expect(err).NotTo(HaveOccurred())
-			Expect(onBranch).To(BeTrue(), "read HEAD %s and tag at %s", head, tags[dqTagDev])
+			Expect(onBranch).To(BeTrue(), "read HEAD %s and tag at %s", head, tags[vcsTagDev])
 		})
 
 		It("returns read errors", func() {
-			_, _, err := dqReadDryRefs(ctx, &dqMovingDryRepo{err: errors.New("remote unavailable")}, "main", "", []string{dqTagDev})
+			_, _, err := vcsReadDryRefs(ctx, &vcsMovingDryRepo{err: errors.New("remote unavailable")}, "main", "", []string{vcsTagDev})
 			Expect(err).To(MatchError(ContainSubstring("remote unavailable")))
 		})
 	})
 
-	Describe("dqPlanTags: where each environment tag should point", func() {
+	Describe("vcsPlanTags: where each environment tag should point", func() {
 		// chain returns dev → test → prod with the given tag SHAs; dev is live on devLive.
-		chain := func(devTag, testTag, prodTag string) (dqEnvironment, dqEnvironment, dqEnvironment) {
-			dev := dqSettled(dqDev, dqTagDev, devTag, devTag)
-			test := dqSettled(dqTest, dqTagTest, testTag, testTag)
-			test.DependsOn = []string{dqDev}
-			prod := dqSettled(dqProd, dqTagProd, prodTag, prodTag)
-			prod.DependsOn = []string{dqTest}
+		chain := func(devTag, testTag, prodTag string) (vcsEnvironment, vcsEnvironment, vcsEnvironment) {
+			dev := vcsSettled(vcsDev, vcsTagDev, devTag, devTag)
+			test := vcsSettled(vcsTest, vcsTagTest, testTag, testTag)
+			test.DependsOn = []string{vcsDev}
+			prod := vcsSettled(vcsProd, vcsTagProd, prodTag, prodTag)
+			prod.DependsOn = []string{vcsTest}
 			return dev, test, prod
 		}
 
 		It("moves a root environment's tag to the DRY branch HEAD", func() {
 			dev, test, prod := chain("d", "d", "d")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "d", To: "f"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsDev, Tag: vcsTagDev, From: "d", To: "f"}}))
 		})
 
 		It("moves nothing when every tag is where it should be", func() {
 			dev, test, prod := chain("f", "d", "c")
-			dev.Qualified = dqWatermark("d")
-			test.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			dev.Qualified = vcsWatermark("d")
+			test.Qualified = vcsWatermark("c")
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
 
 		It("moves a dependent's tag to the newest commit its upstream has qualified", func() {
 			dev, test, prod := chain("f", "c", "c")
-			dev.Qualified = dqWatermark("e")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			dev.Qualified = vcsWatermark("e")
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "c", To: "e"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "c", To: "e"}}))
 		})
 
 		It("does not move a dependent's tag while its upstream has qualified nothing", func() {
 			dev, test, prod := chain("f", "c", "c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
 
 		It("looks only at direct upstreams", func() {
 			dev, test, prod := chain("f", "f", "b")
-			dev.Qualified = dqWatermark("f")
-			test.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			dev.Qualified = vcsWatermark("f")
+			test.Qualified = vcsWatermark("c")
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "b", To: "c"}}),
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsProd, Tag: vcsTagProd, From: "b", To: "c"}}),
 				"prod follows test's watermark, not dev's")
 		})
 
 		It("ignores the environment's own state: an open promotion and running checks do not delay its tag", func() {
 			dev, _, _ := chain("f", "", "")
-			dev.Qualified = dqWatermark("e")
-			test := dqProposing(dqTest, dqTagTest, "d", "c", "d", dqDev)
-			test.Status.Active.CommitStatuses = dqPhases(pending)
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+			dev.Qualified = vcsWatermark("e")
+			test := vcsProposing(vcsTest, vcsTagTest, "d", "c", "d", vcsDev)
+			test.Status.Active.CommitStatuses = vcsPhases(pending)
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "e"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "d", To: "e"}}))
 		})
 
 		It("never moves a tag backward", func() {
 			// test's tag is at e; dev was restored and its watermark pulled back to c.
 			dev, test, prod := chain("f", "e", "b")
-			dev.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			dev.Qualified = vcsWatermark("c")
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
 
 		It("plans one move per tag, in environment order", func() {
 			dev, test, prod := chain("c", "b", "a")
-			dev.Qualified = dqWatermark("c")
-			test.Qualified = dqWatermark("b")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			dev.Qualified = vcsWatermark("c")
+			test.Qualified = vcsWatermark("b")
+			moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(moves).To(Equal([]dqTagMove{
-				{Branch: dqDev, Tag: dqTagDev, From: "c", To: "f"},
-				{Branch: dqTest, Tag: dqTagTest, From: "b", To: "c"},
-				{Branch: dqProd, Tag: dqTagProd, From: "a", To: "b"},
+			Expect(moves).To(Equal([]vcsTagMove{
+				{Branch: vcsDev, Tag: vcsTagDev, From: "c", To: "f"},
+				{Branch: vcsTest, Tag: vcsTagTest, From: "b", To: "c"},
+				{Branch: vcsProd, Tag: vcsTagProd, From: "a", To: "b"},
 			}))
 		})
 
 		Context("fan-in", func() {
-			fanIn := func(leftQualified, rightQualified *promoterv1alpha1.DependentsQualifiedWatermark, prodTag string) []dqEnvironment {
-				left := dqSettled("environment/left", "env/left", "f", "f")
+			fanIn := func(leftQualified, rightQualified *promoterv1alpha1.ValidatedCommitStatusWatermark, prodTag string) []vcsEnvironment {
+				left := vcsSettled("environment/left", "env/left", "f", "f")
 				left.Qualified = leftQualified
-				right := dqSettled("environment/right", "env/right", "f", "f")
+				right := vcsSettled("environment/right", "env/right", "f", "f")
 				right.Qualified = rightQualified
-				prod := dqSettled(dqProd, dqTagProd, prodTag, prodTag)
+				prod := vcsSettled(vcsProd, vcsTagProd, prodTag, prodTag)
 				prod.DependsOn = []string{left.Branch, right.Branch}
-				return []dqEnvironment{left, right, prod}
+				return []vcsEnvironment{left, right, prod}
 			}
 
 			It("moves the tag to the newest commit every upstream has qualified", func() {
-				moves, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), dqWatermark("d"), "b"))
+				moves, err := vcsPlanTags(ctx, graph, "f", fanIn(vcsWatermark("f"), vcsWatermark("d"), "b"))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "b", To: "d"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsProd, Tag: vcsTagProd, From: "b", To: "d"}}))
 			})
 
 			It("waits while any upstream has qualified nothing", func() {
-				moves, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), nil, "b"))
+				moves, err := vcsPlanTags(ctx, graph, "f", fanIn(vcsWatermark("f"), nil, "b"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
 
 			It("uses the merge base when the upstream watermarks are on different sides of a merge", func() {
-				envs := fanIn(dqWatermark("l"), dqWatermark("r"), "a")
+				envs := fanIn(vcsWatermark("l"), vcsWatermark("r"), "a")
 				envs[0].TagSha, envs[1].TagSha = "m", "m"
-				moves, err := dqPlanTags(ctx, graph, "m", envs)
+				moves, err := vcsPlanTags(ctx, graph, "m", envs)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "a", To: "b"}}),
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsProd, Tag: vcsTagProd, From: "a", To: "b"}}),
 					"b is the newest commit both l and r contain")
 			})
 		})
@@ -677,10 +677,10 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		Context("advance: Manual", func() {
 			It("never moves the tag", func() {
 				dev, test, prod := chain("f", "f", "b")
-				dev.Qualified = dqWatermark("f")
-				test.Qualified = dqWatermark("f")
+				dev.Qualified = vcsWatermark("f")
+				test.Qualified = vcsWatermark("f")
 				prod.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -688,20 +688,20 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("never moves a root's tag", func() {
 				dev, _, _ := chain("c", "", "")
 				dev.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
 
 			It("creates a missing tag at the live commit and then leaves it alone", func() {
 				dev, test, prod := chain("f", "f", "")
-				dev.Qualified = dqWatermark("f")
-				test.Qualified = dqWatermark("f")
+				dev.Qualified = vcsWatermark("f")
+				test.Qualified = vcsWatermark("f")
 				prod.Manual = true
 				prod.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "", To: "c"}}),
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsProd, Tag: vcsTagProd, From: "", To: "c"}}),
 					"the first hydration from the tag is a no-op; a person decides what comes next")
 			})
 		})
@@ -711,92 +711,92 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				dev, test, prod := chain("f", "", "")
 				test.LiveDrySha = "d"
 				prod.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{
-					{Branch: dqTest, Tag: dqTagTest, From: "", To: "d"},
-					{Branch: dqProd, Tag: dqTagProd, From: "", To: "c"},
+				Expect(moves).To(Equal([]vcsTagMove{
+					{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "d"},
+					{Branch: vcsProd, Tag: vcsTagProd, From: "", To: "c"},
 				}))
 			})
 
 			It("creates the tag at the DRY branch HEAD when nothing is live", func() {
 				dev, test, prod := chain("", "", "")
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{
-					{Branch: dqDev, Tag: dqTagDev, From: "", To: "f"},
-					{Branch: dqTest, Tag: dqTagTest, From: "", To: "f"},
-					{Branch: dqProd, Tag: dqTagProd, From: "", To: "f"},
+				Expect(moves).To(Equal([]vcsTagMove{
+					{Branch: vcsDev, Tag: vcsTagDev, From: "", To: "f"},
+					{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "f"},
+					{Branch: vcsProd, Tag: vcsTagProd, From: "", To: "f"},
 				}), "the gate still holds each promotion until the upstreams qualify HEAD")
 			})
 
 			It("creates the tag at the DRY branch HEAD when the live commit is not on the DRY branch", func() {
 				dev, test, _ := chain("f", "", "")
 				test.LiveDrySha = "x"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "f"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "f"}}))
 			})
 
 			It("creates a root's tag directly at the DRY branch HEAD", func() {
 				dev, _, _ := chain("", "", "")
 				dev.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "", To: "f"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsDev, Tag: vcsTagDev, From: "", To: "f"}}))
 			})
 
 			It("creates a dependent's tag directly at its upstream's watermark when that is ahead of what is live", func() {
 				dev, test, _ := chain("f", "", "")
-				dev.Qualified = dqWatermark("e")
+				dev.Qualified = vcsWatermark("e")
 				test.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "e"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "e"}}))
 			})
 
 			It("does not create a dependent's tag behind what is live", func() {
 				dev, test, _ := chain("f", "", "")
-				dev.Qualified = dqWatermark("c")
+				dev.Qualified = vcsWatermark("c")
 				test.LiveDrySha = "e"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "e"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "e"}}))
 			})
 		})
 
 		Context("after the DRY branch is force-pushed", func() {
 			It("resets a root's tag that is no longer reachable from HEAD", func() {
 				dev, _, _ := chain("e", "", "")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
+				moves, err := vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "e", To: "q"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsDev, Tag: vcsTagDev, From: "e", To: "q"}}))
 			})
 
 			It("leaves a dependent's unreachable tag until an upstream qualifies a commit on the new history", func() {
 				dev, test, _ := chain("q", "d", "")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				moves, err := vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 
-				dev.Qualified = dqWatermark("p")
-				moves, err = dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				dev.Qualified = vcsWatermark("p")
+				moves, err = vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "p"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "d", To: "p"}}))
 			})
 
 			It("resets a dependent's unreachable tag even when the target is not ahead of it", func() {
 				dev, test, _ := chain("q", "e", "")
-				dev.Qualified = dqWatermark("b")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				dev.Qualified = vcsWatermark("b")
+				moves, err := vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "e", To: "b"}}))
+				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "e", To: "b"}}))
 			})
 
 			It("leaves an advance: Manual tag alone", func() {
 				dev, _, _ := chain("e", "", "")
 				dev.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
+				moves, err := vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -804,31 +804,31 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		It("returns ancestry errors", func() {
 			dev, test, prod := chain("d", "d", "d")
-			_, err := dqPlanTags(ctx, dqFailingGraph{}, "f", []dqEnvironment{dev, test, prod})
+			_, err := vcsPlanTags(ctx, vcsFailingGraph{}, "f", []vcsEnvironment{dev, test, prod})
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
 		})
 	})
 
-	Describe("dqEvaluateGate: whether an environment's proposed commit may be promoted", func() {
+	Describe("vcsEvaluateGate: whether an environment's proposed commit may be promoted", func() {
 		It("is pending until the environment's tag exists", func() {
-			dev := dqProposing(dqDev, dqTagDev, "", "c", "d")
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "", "c", "d")
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for tag "env/dev" to be created`))
 		})
 
 		It("is pending until the hydrator has processed the tagged commit", func() {
-			dev := dqProposing(dqDev, dqTagDev, "f", "c", "e")
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "f", "c", "e")
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at f (currently e)`))
 		})
 
 		It("is pending when the hydrator has reported nothing", func() {
-			dev := dqProposing(dqDev, dqTagDev, "f", "c", "")
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "f", "c", "")
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at f (currently none)`))
@@ -837,23 +837,23 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		It("shortens SHAs to seven characters in descriptions", func() {
 			const tagSha = "0123456789abcdef0123456789abcdef01234567"
 			const proposedSha = "fedcba9876543210fedcba9876543210fedcba98"
-			dev := dqProposing(dqDev, dqTagDev, tagSha, "c", proposedSha)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, tagSha, "c", proposedSha)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at 0123456 (currently fedcba9)`))
 		})
 
 		It("prefers the hydrator note over hydrator.metadata for the hydrated DRY SHA", func() {
-			dev := dqProposing(dqDev, dqTagDev, "f", "c", "e")
-			dev.Status = dqWithNote(dev.Status, "f")
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "f", "c", "e")
+			dev.Status = vcsWithNote(dev.Status, "f")
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 		})
 
 		It("succeeds for a root once the proposed commit was hydrated from its tag", func() {
-			dev := dqProposing(dqDev, dqTagDev, "f", "c", "f")
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "f", "c", "f")
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 			Expect(gate.Description).To(Equal(`Tag "env/dev" at f is hydrated`))
@@ -861,142 +861,142 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 
 		It("succeeds for a dependent when its upstream qualified exactly the tagged commit", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			dev.Qualified = dqWatermark("e")
-			test := dqProposing(dqTest, dqTagTest, "e", "c", "e", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			dev.Qualified = vcsWatermark("e")
+			test := vcsProposing(vcsTest, vcsTagTest, "e", "c", "e", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 			Expect(gate.Description).To(Equal(`Tag "env/test" at e is hydrated and qualified upstream`))
-			Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{
-				{Branch: dqDev, Satisfied: true},
+			Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{
+				{Branch: vcsDev, Satisfied: true},
 			}))
 		})
 
 		It("succeeds when the upstream qualified a newer commit that contains the tagged commit", func() {
 			// The upstream never ran d itself. It ran f, which contains d.
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			dev.Qualified = dqWatermark("f")
-			test := dqProposing(dqTest, dqTagTest, "d", "c", "d", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			dev.Qualified = vcsWatermark("f")
+			test := vcsProposing(vcsTest, vcsTagTest, "d", "c", "d", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 		})
 
 		It("stays successful when the upstream turns unhealthy after qualifying", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", failure)
-			dev.Qualified = dqWatermark("f")
-			test := dqProposing(dqTest, dqTagTest, "f", "c", "f", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", failure)
+			dev.Qualified = vcsWatermark("f")
+			test := vcsProposing(vcsTest, vcsTagTest, "f", "c", "f", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 		})
 
 		It("is pending when a person pushed the tag ahead of what the upstream has qualified", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", pending)
-			dev.Qualified = dqWatermark("d")
-			test := dqProposing(dqTest, dqTagTest, "f", "c", "f", dqDev)
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", pending)
+			dev.Qualified = vcsWatermark("d")
+			test := vcsProposing(vcsTest, vcsTagTest, "f", "c", "f", vcsDev)
 			test.Manual = true
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for "environment/dev" to qualify dry f (newest qualified: d)`))
-			Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{
-				{Branch: dqDev, Satisfied: false, Reason: `Waiting for "environment/dev" to qualify dry f (newest qualified: d)`},
+			Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{
+				{Branch: vcsDev, Satisfied: false, Reason: `Waiting for "environment/dev" to qualify dry f (newest qualified: d)`},
 			}))
 		})
 
 		It("is pending when the upstream has qualified nothing", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", pending)
-			test := dqProposing(dqTest, dqTagTest, "f", "c", "f", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", pending)
+			test := vcsProposing(vcsTest, vcsTagTest, "f", "c", "f", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for "environment/dev" to qualify dry f (newest qualified: none)`))
 		})
 
 		It("succeeds for a tag a person moved backward", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", success)
-			dev.Qualified = dqWatermark("f")
-			test := dqProposing(dqTest, dqTagTest, "b", "e", "b", dqDev)
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", success)
+			dev.Qualified = vcsWatermark("f")
+			test := vcsProposing(vcsTest, vcsTagTest, "b", "e", "b", vcsDev)
 			test.Manual = true
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
 		})
 
 		It("goes pending when a RestoreActiveCommit pulled the upstream's watermark back", func() {
 			// test's tag already advanced to e. dev was then restored to c, revoking d and e.
-			dev := dqSettled(dqDev, dqTagDev, "f", "c", success)
-			dev.Qualified = dqWatermark("c")
-			test := dqProposing(dqTest, dqTagTest, "e", "c", "e", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "c", success)
+			dev.Qualified = vcsWatermark("c")
+			test := vcsProposing(vcsTest, vcsTagTest, "e", "c", "e", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for "environment/dev" to qualify dry e (newest qualified: c)`))
 		})
 
 		It("is pending for a tagged commit that is not on the DRY branch", func() {
-			dev := dqProposing(dqDev, dqTagDev, "x", "c", "x")
+			dev := vcsProposing(vcsDev, vcsTagDev, "x", "c", "x")
 			dev.Manual = true
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Tag "env/dev" at x is not on dry branch "main"`))
 		})
 
 		It("is pending for a tagged commit that was rewritten away by a force-push", func() {
-			dev := dqSettled(dqDev, dqTagDev, "q", "q", success)
-			dev.Qualified = dqWatermark("q")
-			test := dqProposing(dqTest, dqTagTest, "e", "c", "e", dqDev)
-			gate, err := dqEvaluateGate(ctx, graph, "q", "main", test, dqByBranch(dev, test))
+			dev := vcsSettled(vcsDev, vcsTagDev, "q", "q", success)
+			dev.Qualified = vcsWatermark("q")
+			test := vcsProposing(vcsTest, vcsTagTest, "e", "c", "e", vcsDev)
+			gate, err := vcsEvaluateGate(ctx, graph, "q", "main", test, vcsByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Tag "env/test" at e is not on dry branch "main"`))
 		})
 
 		It("looks only at direct upstreams", func() {
-			dev := dqSettled(dqDev, dqTagDev, "f", "f", pending)
-			dev.Qualified = dqWatermark("b")
-			test := dqSettled(dqTest, dqTagTest, "e", "e", success)
-			test.DependsOn = []string{dqDev}
-			test.Qualified = dqWatermark("e")
-			prod := dqProposing(dqProd, dqTagProd, "e", "c", "e", dqTest)
-			gate, err := dqEvaluateGate(ctx, graph, "f", "main", prod, dqByBranch(dev, test, prod))
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f", pending)
+			dev.Qualified = vcsWatermark("b")
+			test := vcsSettled(vcsTest, vcsTagTest, "e", "e", success)
+			test.DependsOn = []string{vcsDev}
+			test.Qualified = vcsWatermark("e")
+			prod := vcsProposing(vcsProd, vcsTagProd, "e", "c", "e", vcsTest)
+			gate, err := vcsEvaluateGate(ctx, graph, "f", "main", prod, vcsByBranch(dev, test, prod))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success), "test qualified e; how test got there is test's own gate's business")
 			Expect(gate.Upstreams).To(HaveLen(1))
 		})
 
 		Context("fan-in", func() {
-			var left, right, prod dqEnvironment
+			var left, right, prod vcsEnvironment
 
 			BeforeEach(func() {
-				left = dqSettled("environment/left", "env/left", "f", "f", success)
-				right = dqSettled("environment/right", "env/right", "f", "f", success)
-				prod = dqProposing(dqProd, dqTagProd, "e", "c", "e", left.Branch, right.Branch)
+				left = vcsSettled("environment/left", "env/left", "f", "f", success)
+				right = vcsSettled("environment/right", "env/right", "f", "f", success)
+				prod = vcsProposing(vcsProd, vcsTagProd, "e", "c", "e", left.Branch, right.Branch)
 			})
 
 			It("succeeds when every upstream qualified the tagged commit", func() {
-				left.Qualified = dqWatermark("f")
-				right.Qualified = dqWatermark("e")
-				gate, err := dqEvaluateGate(ctx, graph, "f", "main", prod, dqByBranch(left, right, prod))
+				left.Qualified = vcsWatermark("f")
+				right.Qualified = vcsWatermark("e")
+				gate, err := vcsEvaluateGate(ctx, graph, "f", "main", prod, vcsByBranch(left, right, prod))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(gate.Phase).To(Equal(success))
-				Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{
+				Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{
 					{Branch: left.Branch, Satisfied: true},
 					{Branch: right.Branch, Satisfied: true},
 				}))
 			})
 
 			It("reports every upstream and describes the first one it is waiting for", func() {
-				left.Qualified = dqWatermark("f")
-				right.Qualified = dqWatermark("d")
-				gate, err := dqEvaluateGate(ctx, graph, "f", "main", prod, dqByBranch(left, right, prod))
+				left.Qualified = vcsWatermark("f")
+				right.Qualified = vcsWatermark("d")
+				gate, err := vcsEvaluateGate(ctx, graph, "f", "main", prod, vcsByBranch(left, right, prod))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(gate.Phase).To(Equal(pending))
 				Expect(gate.Description).To(Equal(`Waiting for "environment/right" to qualify dry e (newest qualified: d)`))
-				Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{
+				Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{
 					{Branch: left.Branch, Satisfied: true},
 					{Branch: right.Branch, Satisfied: false, Reason: `Waiting for "environment/right" to qualify dry e (newest qualified: d)`},
 				}))
@@ -1004,59 +1004,59 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 
 		It("returns ancestry errors", func() {
-			dev := dqProposing(dqDev, dqTagDev, "f", "c", "f")
-			_, err := dqEvaluateGate(ctx, dqFailingGraph{}, "f", "main", dev, dqByBranch(dev))
+			dev := vcsProposing(vcsDev, vcsTagDev, "f", "c", "f")
+			_, err := vcsEvaluateGate(ctx, vcsFailingGraph{}, "f", "main", dev, vcsByBranch(dev))
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
 		})
 	})
 
 	Describe("a release moving through dev → test → prod", func() {
 		// step runs one reconcile's worth of decisions and applies the planned tag moves, as the reconciler does.
-		step := func(head string, envs []dqEnvironment) ([]dqEnvironment, []dqTagMove) {
+		step := func(head string, envs []vcsEnvironment) ([]vcsEnvironment, []vcsTagMove) {
 			GinkgoHelper()
 			for i := range envs {
-				qualified, err := dqQualify(ctx, graph, head, envs[i], now)
+				qualified, err := vcsQualify(ctx, graph, head, envs[i], now)
 				Expect(err).NotTo(HaveOccurred())
 				envs[i].Qualified = qualified
 			}
-			moves, err := dqPlanTags(ctx, graph, head, envs)
+			moves, err := vcsPlanTags(ctx, graph, head, envs)
 			Expect(err).NotTo(HaveOccurred())
 			for _, move := range moves {
-				idx := slices.IndexFunc(envs, func(e dqEnvironment) bool { return e.Branch == move.Branch })
+				idx := slices.IndexFunc(envs, func(e vcsEnvironment) bool { return e.Branch == move.Branch })
 				Expect(envs[idx].TagSha).To(Equal(move.From), "the lease value must be the tag the plan was made from")
 				envs[idx].TagSha = move.To
 			}
 			return envs, moves
 		}
 		// promote makes dry live in the environment at index i with the given active commit status phases.
-		promote := func(envs []dqEnvironment, i int, dry string, phases ...promoterv1alpha1.CommitStatusPhase) {
-			envs[i].Status = dqStatus(envs[i].Branch, dry, dry, phases...)
+		promote := func(envs []vcsEnvironment, i int, dry string, phases ...promoterv1alpha1.CommitStatusPhase) {
+			envs[i].Status = vcsStatus(envs[i].Branch, dry, dry, phases...)
 			envs[i].LiveDrySha = dry
 		}
-		gatePhase := func(head string, envs []dqEnvironment, i int, proposedDry string) promoterv1alpha1.CommitStatusPhase {
+		gatePhase := func(head string, envs []vcsEnvironment, i int, proposedDry string) promoterv1alpha1.CommitStatusPhase {
 			GinkgoHelper()
 			env := envs[i]
-			env.Status = dqStatus(env.Branch, env.LiveDrySha, proposedDry)
-			gate, err := dqEvaluateGate(ctx, graph, head, "main", env, dqByBranch(envs...))
+			env.Status = vcsStatus(env.Branch, env.LiveDrySha, proposedDry)
+			gate, err := vcsEvaluateGate(ctx, graph, head, "main", env, vcsByBranch(envs...))
 			Expect(err).NotTo(HaveOccurred())
 			return gate.Phase
 		}
 
 		It("holds higher environments on qualified commits while newer commits land", func() {
-			envs := []dqEnvironment{
-				dqSettled(dqDev, dqTagDev, "", "c", success),
-				dqSettled(dqTest, dqTagTest, "", "c", success),
-				dqSettled(dqProd, dqTagProd, "", "c", success),
+			envs := []vcsEnvironment{
+				vcsSettled(vcsDev, vcsTagDev, "", "c", success),
+				vcsSettled(vcsTest, vcsTagTest, "", "c", success),
+				vcsSettled(vcsProd, vcsTagProd, "", "c", success),
 			}
-			envs[1].DependsOn = []string{dqDev}
-			envs[2].DependsOn = []string{dqTest}
+			envs[1].DependsOn = []string{vcsDev}
+			envs[2].DependsOn = []string{vcsTest}
 
 			By("bootstrapping: every environment qualifies what it runs; dev's tag goes to HEAD (d)")
 			envs, moves := step("d", envs)
-			Expect(moves).To(Equal([]dqTagMove{
-				{Branch: dqDev, Tag: dqTagDev, From: "", To: "d"},
-				{Branch: dqTest, Tag: dqTagTest, From: "", To: "c"},
-				{Branch: dqProd, Tag: dqTagProd, From: "", To: "c"},
+			Expect(moves).To(Equal([]vcsTagMove{
+				{Branch: vcsDev, Tag: vcsTagDev, From: "", To: "d"},
+				{Branch: vcsTest, Tag: vcsTagTest, From: "", To: "c"},
+				{Branch: vcsProd, Tag: vcsTagProd, From: "", To: "c"},
 			}))
 
 			By("dev promotes d and its checks start running: nothing moves downstream")
@@ -1068,17 +1068,17 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			By("dev's checks pass on d: test's tag advances to d")
 			promote(envs, 0, "d", success)
 			envs, moves = step("d", envs)
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "c", To: "d"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "c", To: "d"}}))
 
 			By("e and f land before test finishes d: dev's tag follows HEAD, test keeps its candidate")
 			envs, moves = step("f", envs)
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "d", To: "f"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsDev, Tag: vcsTagDev, From: "d", To: "f"}}))
 			Expect(gatePhase("f", envs, 1, "d")).To(Equal(success), "d is still promotable to test")
 
 			By("test promotes d and passes: prod's tag advances to d even though HEAD is f")
 			promote(envs, 1, "d", success)
 			envs, moves = step("f", envs)
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "c", To: "d"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsProd, Tag: vcsTagProd, From: "c", To: "d"}}))
 			Expect(gatePhase("f", envs, 2, "d")).To(Equal(success))
 
 			By("dev promotes f but its checks fail: prod's candidate is unaffected")
@@ -1090,18 +1090,18 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			By("dev recovers on f: test's tag skips e and goes straight to f")
 			promote(envs, 0, "f", success)
 			envs, moves = step("f", envs)
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "f"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "d", To: "f"}}))
 			Expect(envs[2].TagSha).To(Equal("d"))
 		})
 
 		It("lets a person hold prod back and release a commit the upstream skipped", func() {
-			envs := []dqEnvironment{
-				dqSettled(dqDev, dqTagDev, "f", "f", success),
-				dqSettled(dqTest, dqTagTest, "f", "f", success),
-				dqSettled(dqProd, dqTagProd, "b", "b", success),
+			envs := []vcsEnvironment{
+				vcsSettled(vcsDev, vcsTagDev, "f", "f", success),
+				vcsSettled(vcsTest, vcsTagTest, "f", "f", success),
+				vcsSettled(vcsProd, vcsTagProd, "b", "b", success),
 			}
-			envs[1].DependsOn = []string{dqDev}
-			envs[2].DependsOn = []string{dqTest}
+			envs[1].DependsOn = []string{vcsDev}
+			envs[2].DependsOn = []string{vcsTest}
 			envs[2].Manual = true
 
 			envs, moves := step("f", envs)
@@ -1114,13 +1114,13 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 
 		It("stops a rollback in an upstream from being promoted over downstream", func() {
-			envs := []dqEnvironment{
-				dqSettled(dqDev, dqTagDev, "e", "e", success),
-				dqSettled(dqTest, dqTagTest, "c", "c", success),
+			envs := []vcsEnvironment{
+				vcsSettled(vcsDev, vcsTagDev, "e", "e", success),
+				vcsSettled(vcsTest, vcsTagTest, "c", "c", success),
 			}
-			envs[1].DependsOn = []string{dqDev}
+			envs[1].DependsOn = []string{vcsDev}
 			envs, moves := step("e", envs)
-			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "c", To: "e"}}))
+			Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "c", To: "e"}}))
 			Expect(gatePhase("e", envs, 1, "e")).To(Equal(success))
 
 			By("restoring dev to c before test merged e")
@@ -1139,34 +1139,34 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 	})
 
-	Describe("dqNeedsNudge: when to wake an environment's ChangeTransferPolicy", func() {
+	Describe("vcsNeedsNudge: when to wake an environment's ChangeTransferPolicy", func() {
 		// SCMs send no webhook for a pushed git note, so a no-op hydration of a moved tag is invisible until
 		// the ChangeTransferPolicy reconciles.
 		It("is true while the hydrator has not reported the tagged commit", func() {
-			Expect(dqNeedsNudge(dqProposing(dqDev, dqTagDev, "f", "c", "e"))).To(BeTrue())
-			Expect(dqNeedsNudge(dqSettled(dqDev, dqTagDev, "f", "e"))).To(BeTrue())
+			Expect(vcsNeedsNudge(vcsProposing(vcsDev, vcsTagDev, "f", "c", "e"))).To(BeTrue())
+			Expect(vcsNeedsNudge(vcsSettled(vcsDev, vcsTagDev, "f", "e"))).To(BeTrue())
 		})
 
 		It("is false once the hydrator has reported the tagged commit", func() {
-			Expect(dqNeedsNudge(dqProposing(dqDev, dqTagDev, "f", "c", "f"))).To(BeFalse())
-			env := dqSettled(dqDev, dqTagDev, "f", "e")
-			env.Status = dqWithNote(env.Status, "f")
-			Expect(dqNeedsNudge(env)).To(BeFalse())
+			Expect(vcsNeedsNudge(vcsProposing(vcsDev, vcsTagDev, "f", "c", "f"))).To(BeFalse())
+			env := vcsSettled(vcsDev, vcsTagDev, "f", "e")
+			env.Status = vcsWithNote(env.Status, "f")
+			Expect(vcsNeedsNudge(env)).To(BeFalse())
 		})
 
 		It("is false while the tag does not exist", func() {
-			Expect(dqNeedsNudge(dqSettled(dqDev, dqTagDev, "", "e"))).To(BeFalse())
+			Expect(vcsNeedsNudge(vcsSettled(vcsDev, vcsTagDev, "", "e"))).To(BeFalse())
 		})
 	})
 
-	Describe("dqBackoff: pacing ChangeTransferPolicy nudges", func() {
+	Describe("vcsBackoff: pacing ChangeTransferPolicy nudges", func() {
 		var (
-			backoff *dqBackoff
+			backoff *vcsBackoff
 			start   time.Time
 		)
 
 		BeforeEach(func() {
-			backoff = newDQBackoff(15*time.Second, 2*time.Minute)
+			backoff = newVCSBackoff(15*time.Second, 2*time.Minute)
 			start = time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
 		})
 
@@ -1220,42 +1220,42 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 	})
 
-	Describe("dqValidateEnvironments: spec.environments must cover the PromotionStrategy", func() {
-		specEnvs := func(branches ...string) []promoterv1alpha1.DependentsQualifiedEnvironment {
-			out := make([]promoterv1alpha1.DependentsQualifiedEnvironment, 0, len(branches))
+	Describe("vcsValidateEnvironments: spec.environments must cover the PromotionStrategy", func() {
+		specEnvs := func(branches ...string) []promoterv1alpha1.ValidatedCommitStatusEnvironment {
+			out := make([]promoterv1alpha1.ValidatedCommitStatusEnvironment, 0, len(branches))
 			for _, branch := range branches {
-				out = append(out, promoterv1alpha1.DependentsQualifiedEnvironment{Branch: branch, Tag: "env/" + branch})
+				out = append(out, promoterv1alpha1.ValidatedCommitStatusEnvironment{Branch: branch, Tag: "env/" + branch})
 			}
 			return out
 		}
 
 		It("accepts one entry per PromotionStrategy environment in any order", func() {
-			Expect(dqValidateEnvironments(specEnvs(dqProd, dqDev, dqTest), []string{dqDev, dqTest, dqProd})).To(Succeed())
+			Expect(vcsValidateEnvironments(specEnvs(vcsProd, vcsDev, vcsTest), []string{vcsDev, vcsTest, vcsProd})).To(Succeed())
 		})
 
 		It("rejects a PromotionStrategy environment with no tag", func() {
-			err := dqValidateEnvironments(specEnvs(dqDev, dqTest), []string{dqDev, dqTest, dqProd})
+			err := vcsValidateEnvironments(specEnvs(vcsDev, vcsTest), []string{vcsDev, vcsTest, vcsProd})
 			Expect(err).To(MatchError(ContainSubstring(`spec.environments has no entry for PromotionStrategy environment "environment/prod"`)))
 		})
 
 		It("rejects an entry for a branch the PromotionStrategy does not have", func() {
-			err := dqValidateEnvironments(specEnvs(dqDev, dqTest, dqProd, "environment/extra"), []string{dqDev, dqTest, dqProd})
+			err := vcsValidateEnvironments(specEnvs(vcsDev, vcsTest, vcsProd, "environment/extra"), []string{vcsDev, vcsTest, vcsProd})
 			Expect(err).To(MatchError(ContainSubstring(`spec.environments lists "environment/extra", which is not an environment of the PromotionStrategy`)))
 		})
 	})
 
-	Describe("dqNoteKey: the qualification note entry an environment owns", func() {
+	Describe("vcsNoteKey: the qualification note entry an environment owns", func() {
 		It("is the branch for an environment that owns its active branch", func() {
-			Expect(dqNoteKey(dqProd, "")).To(Equal("environment/prod"))
+			Expect(vcsNoteKey(vcsProd, "")).To(Equal("environment/prod"))
 		})
 
 		It("includes the activePath so environments sharing an active branch do not overwrite each other", func() {
-			Expect(dqNoteKey("environments", "apps/one")).To(Equal("environments:apps/one"))
-			Expect(dqNoteKey("environments", "apps/one")).NotTo(Equal(dqNoteKey("environments", "apps/two")))
+			Expect(vcsNoteKey("environments", "apps/one")).To(Equal("environments:apps/one"))
+			Expect(vcsNoteKey("environments", "apps/one")).NotTo(Equal(vcsNoteKey("environments", "apps/two")))
 		})
 	})
 
-	Describe("dqRestored: whether the live commit was put there by a RestoreActiveCommit", func() {
+	Describe("vcsRestored: whether the live commit was put there by a RestoreActiveCommit", func() {
 		restore := func(branch, activeSha string) promoterv1alpha1.RestoreActiveCommit {
 			return promoterv1alpha1.RestoreActiveCommit{
 				Spec:   promoterv1alpha1.RestoreActiveCommitSpec{Branch: branch},
@@ -1264,26 +1264,26 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		}
 
 		It("is true when a restore for the branch produced the active commit", func() {
-			racs := []promoterv1alpha1.RestoreActiveCommit{restore(dqDev, "aaa"), restore(dqTest, "bbb")}
-			Expect(dqRestored(racs, dqTest, "bbb")).To(BeTrue())
+			racs := []promoterv1alpha1.RestoreActiveCommit{restore(vcsDev, "aaa"), restore(vcsTest, "bbb")}
+			Expect(vcsRestored(racs, vcsTest, "bbb")).To(BeTrue())
 		})
 
 		It("is false when the environment has been promoted past the restore commit", func() {
-			Expect(dqRestored([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "bbb")}, dqTest, "ccc")).To(BeFalse())
+			Expect(vcsRestored([]promoterv1alpha1.RestoreActiveCommit{restore(vcsTest, "bbb")}, vcsTest, "ccc")).To(BeFalse())
 		})
 
 		It("is false for another environment's restore", func() {
-			Expect(dqRestored([]promoterv1alpha1.RestoreActiveCommit{restore(dqDev, "bbb")}, dqTest, "bbb")).To(BeFalse())
+			Expect(vcsRestored([]promoterv1alpha1.RestoreActiveCommit{restore(vcsDev, "bbb")}, vcsTest, "bbb")).To(BeFalse())
 		})
 
 		It("is false for a restore that has not run yet", func() {
-			Expect(dqRestored([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "")}, dqTest, "")).To(BeFalse())
+			Expect(vcsRestored([]promoterv1alpha1.RestoreActiveCommit{restore(vcsTest, "")}, vcsTest, "")).To(BeFalse())
 		})
 	})
 })
 
-// dqRemoteTagSha returns the commit a tag points at on the test git server, or "" when the tag does not exist.
-func dqRemoteTagSha(ctx context.Context, gitPath, tag string) (string, error) {
+// vcsRemoteTagSha returns the commit a tag points at on the test git server, or "" when the tag does not exist.
+func vcsRemoteTagSha(ctx context.Context, gitPath, tag string) (string, error) {
 	out, err := runGitCmd(ctx, gitPath, "ls-remote", "origin", "refs/tags/"+tag)
 	if err != nil {
 		return "", err
@@ -1295,8 +1295,8 @@ func dqRemoteTagSha(ctx context.Context, gitPath, tag string) (string, error) {
 	return fields[0], nil
 }
 
-// dqPushTag points a tag at sha on the test git server, as a person with push access would.
-func dqPushTag(ctx context.Context, gitPath, tag, sha string) {
+// vcsPushTag points a tag at sha on the test git server, as a person with push access would.
+func vcsPushTag(ctx context.Context, gitPath, tag, sha string) {
 	GinkgoHelper()
 	_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
 	Expect(err).NotTo(HaveOccurred())
@@ -1304,15 +1304,15 @@ func dqPushTag(ctx context.Context, gitPath, tag, sha string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-// dqDefaultBranch returns the test repository's DRY branch name.
-func dqDefaultBranch(ctx context.Context, gitPath string) string {
+// vcsDefaultBranch returns the test repository's DRY branch name.
+func vcsDefaultBranch(ctx context.Context, gitPath string) string {
 	GinkgoHelper()
 	out, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
 	Expect(err).NotTo(HaveOccurred())
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(out), "origin/"))
 }
 
-var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
+var _ = Describe("ValidatedCommitStatus Controller", func() {
 	const (
 		tagDevelopment = "env/development"
 		tagStaging     = "env/staging"
@@ -1320,15 +1320,15 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 	)
 
 	// newGate builds a gate for the three test environments of a PromotionStrategy.
-	newGate := func(name, dryBranch string) *promoterv1alpha1.DependentsQualifiedCommitStatus {
-		return &promoterv1alpha1.DependentsQualifiedCommitStatus{
+	newGate := func(name, dryBranch string) *promoterv1alpha1.ValidatedCommitStatus {
+		return &promoterv1alpha1.ValidatedCommitStatus{
 			Name:      name,
 			Namespace: "default",
-			Spec: promoterv1alpha1.DependentsQualifiedCommitStatusSpec{
+			Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  promoterv1alpha1.DependentsQualifiedCommitStatusKey,
-				DrySource:            promoterv1alpha1.DependentsQualifiedDrySource{Branch: dryBranch},
-				Environments: []promoterv1alpha1.DependentsQualifiedEnvironment{
+				Key:                  promoterv1alpha1.ValidatedCommitStatusKey,
+				DrySource:            promoterv1alpha1.ValidatedCommitStatusDrySource{Branch: dryBranch},
+				Environments: []promoterv1alpha1.ValidatedCommitStatusEnvironment{
 					{Branch: testBranchDevelopment, Tag: tagDevelopment},
 					{Branch: testBranchStaging, Tag: tagStaging},
 					{Branch: testBranchProduction, Tag: tagProduction},
@@ -1337,8 +1337,8 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 		}
 	}
 
-	readyCondition := func(ctx context.Context, g Gomega, gate *promoterv1alpha1.DependentsQualifiedCommitStatus) *metav1.Condition {
-		updated := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
+	readyCondition := func(ctx context.Context, g Gomega, gate *promoterv1alpha1.ValidatedCommitStatus) *metav1.Condition {
+		updated := &promoterv1alpha1.ValidatedCommitStatus{}
 		g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), updated)).To(Succeed())
 		condition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 		g.Expect(condition).NotTo(BeNil())
@@ -1347,8 +1347,8 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 	}
 
 	Context("When unmarshalling the test data", func() {
-		It("should unmarshal the DependentsQualifiedCommitStatus resource", func() {
-			err := unmarshalYamlStrict(testDependentsQualifiedCommitStatusYAML, &promoterv1alpha1.DependentsQualifiedCommitStatus{})
+		It("should unmarshal the ValidatedCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testValidatedCommitStatusYAML, &promoterv1alpha1.ValidatedCommitStatus{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -1410,17 +1410,17 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			scmProvider       *promoterv1alpha1.ScmProvider
 			gitRepo           *promoterv1alpha1.GitRepository
 			promotionStrategy *promoterv1alpha1.PromotionStrategy
-			gate              *promoterv1alpha1.DependentsQualifiedCommitStatus
+			gate              *promoterv1alpha1.ValidatedCommitStatus
 			gitPath           string
 			dryBranch         string
 		)
 
 		// environmentStatus returns the gate's status entry for a branch, failing the enclosing Eventually
 		// while the entry does not exist.
-		environmentStatus := func(g Gomega, branch string) promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus {
-			updated := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
+		environmentStatus := func(g Gomega, branch string) promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus {
+			updated := &promoterv1alpha1.ValidatedCommitStatus{}
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), updated)).To(Succeed())
-			idx := slices.IndexFunc(updated.Status.Environments, func(e promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus) bool {
+			idx := slices.IndexFunc(updated.Status.Environments, func(e promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus) bool {
 				return e.Branch == branch
 			})
 			g.Expect(idx).To(BeNumerically(">=", 0), "no status entry for %s", branch)
@@ -1442,7 +1442,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			return ps.Status.Environments[idx].Active.Hydrated.Sha
 		}
 		tagSha := func(g Gomega, tag string) string {
-			sha, err := dqRemoteTagSha(ctx, gitPath, tag)
+			sha, err := vcsRemoteTagSha(ctx, gitPath, tag)
 			g.Expect(err).NotTo(HaveOccurred())
 			return sha
 		}
@@ -1450,7 +1450,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 		// points at.
 		hydrate := func(proposedBranch, tag string) {
 			GinkgoHelper()
-			sha, err := dqRemoteTagSha(ctx, gitPath, tag)
+			sha, err := vcsRemoteTagSha(ctx, gitPath, tag)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sha).NotTo(BeEmpty(), "tag %s does not exist", tag)
 			Expect(hydrateEnvironment(ctx, gitPath, proposedBranch, sha, "hydrate "+tag+" at "+sha)).To(Succeed())
@@ -1487,12 +1487,12 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			ctx = context.Background()
 			gate = nil
 
-			By("Setting up a test git repository and a PromotionStrategy ordered by a DependentsQualifiedCommitStatus")
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "dependents-qualified-commit-status-controller-test", "default")
+			By("Setting up a test git repository and a PromotionStrategy ordered by a ValidatedCommitStatus")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "validated-commit-status-controller-test", "default")
 			promotionStrategy.Spec.ProposedCommitStatuses = nil
 			promotionStrategy.Spec.OrderCommitStatusRef = promoterv1alpha1.OrderCommitStatusRef{
 				Group: promoterv1alpha1.SchemeGroupVersion.Group,
-				Kind:  promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind,
+				Kind:  promoterv1alpha1.ValidatedOrderCommitStatusKind,
 				Name:  name,
 			}
 			setupInitialTestGitRepoOnServer(ctx, gitRepo)
@@ -1501,7 +1501,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			gitPath, err = cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
-			dryBranch = dqDefaultBranch(ctx, gitPath)
+			dryBranch = vcsDefaultBranch(ctx, gitPath)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1550,7 +1550,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Not creating any tag while the DRY branch is unknown")
-			Expect(dqRemoteTagSha(ctx, gitPath, tagDevelopment)).To(BeEmpty())
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagDevelopment)).To(BeEmpty())
 		})
 
 		It("should set Ready=False with reason TagPushFailed when a tag cannot be pushed, and still manage the others", func() {
@@ -1558,7 +1558,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 
 			By("Occupying the ref namespace the development tag needs")
 			// refs/tags/blocker exists, so refs/tags/blocker/development cannot be created.
-			dqPushTag(ctx, gitPath, "blocker", headSha())
+			vcsPushTag(ctx, gitPath, "blocker", headSha())
 
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
@@ -1598,7 +1598,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
 				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionTrue))
 
-				updated := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
+				updated := &promoterv1alpha1.ValidatedCommitStatus{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), updated)).To(Succeed())
 				g.Expect(updated.Status.Dry).NotTo(BeNil())
 				g.Expect(updated.Status.Dry.Sha).To(Equal(first))
@@ -1631,7 +1631,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 				cs := &promoterv1alpha1.CommitStatus{}
 				csName := utils.CommitStatusResourceName(ctx, gate, testBranchStaging)
 				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
-				g.Expect(cs.Spec.Name).To(Equal(promoterv1alpha1.DependentsQualifiedCommitStatusKey))
+				g.Expect(cs.Spec.Name).To(Equal(promoterv1alpha1.ValidatedCommitStatusKey))
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(cs.Spec.Sha).To(Equal(staging.ReportedSha))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1680,8 +1680,8 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(dqRemoteTagSha(ctx, gitPath, tagStaging)).To(Equal(first))
-			Expect(dqRemoteTagSha(ctx, gitPath, tagProduction)).To(Equal(first))
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagStaging)).To(Equal(first))
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagProduction)).To(Equal(first))
 
 			By("Promoting the new commit to development, where it is not yet healthy")
 			hydrate(testBranchDevelopmentNext, tagDevelopment)
@@ -1707,7 +1707,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 				g.Expect(tagSha(g, tagStaging)).To(Equal(second))
 				g.Expect(environmentStatus(g, testBranchStaging).Tag.Sha).To(Equal(second))
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(dqRemoteTagSha(ctx, gitPath, tagProduction)).To(Equal(first))
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagProduction)).To(Equal(first))
 
 			By("Promoting staging, which advances production's tag")
 			hydrate(testBranchStagingNext, tagStaging)
@@ -1959,7 +1959,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Tagging the second commit for production before staging has run it")
-			dqPushTag(ctx, gitPath, tagProduction, second)
+			vcsPushTag(ctx, gitPath, tagProduction, second)
 			hydrate(testBranchProductionNext, tagProduction)
 			Eventually(func(g Gomega) {
 				production := environmentStatus(g, testBranchProduction)
@@ -1999,7 +1999,7 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("Moving production's tag backward to the first commit")
-			dqPushTag(ctx, gitPath, tagProduction, first)
+			vcsPushTag(ctx, gitPath, tagProduction, first)
 			hydrate(testBranchProductionNext, tagProduction)
 			Eventually(func(g Gomega) {
 				g.Expect(activeDrySha(g, testBranchProduction)).To(Equal(first))

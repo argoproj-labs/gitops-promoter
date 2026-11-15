@@ -17,29 +17,29 @@ limitations under the License.
 
 package v1alpha1
 
-// DependentsQualifiedCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatusConfiguration type for use
+// ValidatedCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusConfiguration type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatusConfiguration defines the configuration for the DependentsQualifiedCommitStatus controller.
+// ValidatedCommitStatusConfiguration defines the configuration for the ValidatedCommitStatus controller.
 //
-// This configuration controls how the DependentsQualifiedCommitStatus controller processes reconciliation
+// This configuration controls how the ValidatedCommitStatus controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type DependentsQualifiedCommitStatusConfigurationApplyConfiguration struct {
-	// WorkQueue contains the work queue configuration for the DependentsQualifiedCommitStatus controller.
+type ValidatedCommitStatusConfigurationApplyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ValidatedCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the DependentsQualifiedCommitStatusConfiguration type for use with
+// ValidatedCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusConfiguration type for use with
 // apply.
-func DependentsQualifiedCommitStatusConfiguration() *DependentsQualifiedCommitStatusConfigurationApplyConfiguration {
-	return &DependentsQualifiedCommitStatusConfigurationApplyConfiguration{}
+func ValidatedCommitStatusConfiguration() *ValidatedCommitStatusConfigurationApplyConfiguration {
+	return &ValidatedCommitStatusConfigurationApplyConfiguration{}
 }
 
 // WithWorkQueue sets the WorkQueue field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WorkQueue field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *DependentsQualifiedCommitStatusConfigurationApplyConfiguration {
+func (b *ValidatedCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *ValidatedCommitStatusConfigurationApplyConfiguration {
 	b.WorkQueue = value
 	return b
 }

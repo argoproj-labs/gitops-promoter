@@ -26,78 +26,78 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DependentsQualifiedCommitStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatus type for use
+// ValidatedCommitStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatus type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatus is the Schema for the dependentsqualifiedcommitstatuses API
-type DependentsQualifiedCommitStatusApplyConfiguration struct {
+// ValidatedCommitStatus is the Schema for the validatedcommitstatuses API
+type ValidatedCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	// spec defines the desired state of DependentsQualifiedCommitStatus
-	Spec *DependentsQualifiedCommitStatusSpecApplyConfiguration `json:"spec,omitempty"`
-	// status defines the observed state of DependentsQualifiedCommitStatus
-	Status *DependentsQualifiedCommitStatusStatusApplyConfiguration `json:"status,omitempty"`
+	// spec defines the desired state of ValidatedCommitStatus
+	Spec *ValidatedCommitStatusSpecApplyConfiguration `json:"spec,omitempty"`
+	// status defines the observed state of ValidatedCommitStatus
+	Status *ValidatedCommitStatusStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// DependentsQualifiedCommitStatus constructs a declarative configuration of the DependentsQualifiedCommitStatus type for use with
+// ValidatedCommitStatus constructs a declarative configuration of the ValidatedCommitStatus type for use with
 // apply.
-func DependentsQualifiedCommitStatus(name, namespace string) *DependentsQualifiedCommitStatusApplyConfiguration {
-	b := &DependentsQualifiedCommitStatusApplyConfiguration{}
+func ValidatedCommitStatus(name, namespace string) *ValidatedCommitStatusApplyConfiguration {
+	b := &ValidatedCommitStatusApplyConfiguration{}
 	b.WithName(name)
 	b.WithNamespace(namespace)
-	b.WithKind("DependentsQualifiedCommitStatus")
+	b.WithKind("ValidatedCommitStatus")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b
 }
 
-// ExtractDependentsQualifiedCommitStatusFrom extracts the applied configuration owned by fieldManager from
-// dependentsQualifiedCommitStatus for the specified subresource. Pass an empty string for subresource to extract
+// ExtractValidatedCommitStatusFrom extracts the applied configuration owned by fieldManager from
+// validatedCommitStatus for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// dependentsQualifiedCommitStatus must be a unmodified DependentsQualifiedCommitStatus API object that was retrieved from the Kubernetes API.
-// ExtractDependentsQualifiedCommitStatusFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// validatedCommitStatus must be a unmodified ValidatedCommitStatus API object that was retrieved from the Kubernetes API.
+// ExtractValidatedCommitStatusFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractDependentsQualifiedCommitStatusFrom(dependentsQualifiedCommitStatus *apiv1alpha1.DependentsQualifiedCommitStatus, fieldManager string, subresource string) (*DependentsQualifiedCommitStatusApplyConfiguration, error) {
-	b := &DependentsQualifiedCommitStatusApplyConfiguration{}
-	err := managedfields.ExtractInto(dependentsQualifiedCommitStatus, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedCommitStatus"), fieldManager, b, subresource)
+func ExtractValidatedCommitStatusFrom(validatedCommitStatus *apiv1alpha1.ValidatedCommitStatus, fieldManager string, subresource string) (*ValidatedCommitStatusApplyConfiguration, error) {
+	b := &ValidatedCommitStatusApplyConfiguration{}
+	err := managedfields.ExtractInto(validatedCommitStatus, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatus"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(dependentsQualifiedCommitStatus.Name)
-	b.WithNamespace(dependentsQualifiedCommitStatus.Namespace)
+	b.WithName(validatedCommitStatus.Name)
+	b.WithNamespace(validatedCommitStatus.Namespace)
 
-	b.WithKind("DependentsQualifiedCommitStatus")
+	b.WithKind("ValidatedCommitStatus")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractDependentsQualifiedCommitStatus extracts the applied configuration owned by fieldManager from
-// dependentsQualifiedCommitStatus. If no managedFields are found in dependentsQualifiedCommitStatus for fieldManager, a
-// DependentsQualifiedCommitStatusApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractValidatedCommitStatus extracts the applied configuration owned by fieldManager from
+// validatedCommitStatus. If no managedFields are found in validatedCommitStatus for fieldManager, a
+// ValidatedCommitStatusApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// dependentsQualifiedCommitStatus must be a unmodified DependentsQualifiedCommitStatus API object that was retrieved from the Kubernetes API.
-// ExtractDependentsQualifiedCommitStatus provides a way to perform a extract/modify-in-place/apply workflow.
+// validatedCommitStatus must be a unmodified ValidatedCommitStatus API object that was retrieved from the Kubernetes API.
+// ExtractValidatedCommitStatus provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractDependentsQualifiedCommitStatus(dependentsQualifiedCommitStatus *apiv1alpha1.DependentsQualifiedCommitStatus, fieldManager string) (*DependentsQualifiedCommitStatusApplyConfiguration, error) {
-	return ExtractDependentsQualifiedCommitStatusFrom(dependentsQualifiedCommitStatus, fieldManager, "")
+func ExtractValidatedCommitStatus(validatedCommitStatus *apiv1alpha1.ValidatedCommitStatus, fieldManager string) (*ValidatedCommitStatusApplyConfiguration, error) {
+	return ExtractValidatedCommitStatusFrom(validatedCommitStatus, fieldManager, "")
 }
 
-// ExtractDependentsQualifiedCommitStatusStatus extracts the applied configuration owned by fieldManager from
-// dependentsQualifiedCommitStatus for the status subresource.
-func ExtractDependentsQualifiedCommitStatusStatus(dependentsQualifiedCommitStatus *apiv1alpha1.DependentsQualifiedCommitStatus, fieldManager string) (*DependentsQualifiedCommitStatusApplyConfiguration, error) {
-	return ExtractDependentsQualifiedCommitStatusFrom(dependentsQualifiedCommitStatus, fieldManager, "status")
+// ExtractValidatedCommitStatusStatus extracts the applied configuration owned by fieldManager from
+// validatedCommitStatus for the status subresource.
+func ExtractValidatedCommitStatusStatus(validatedCommitStatus *apiv1alpha1.ValidatedCommitStatus, fieldManager string) (*ValidatedCommitStatusApplyConfiguration, error) {
+	return ExtractValidatedCommitStatusFrom(validatedCommitStatus, fieldManager, "status")
 }
 
-func (b DependentsQualifiedCommitStatusApplyConfiguration) IsApplyConfiguration() {}
+func (b ValidatedCommitStatusApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithKind(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithKind(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -105,7 +105,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithKind(value strin
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithAPIVersion(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithAPIVersion(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -113,7 +113,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithAPIVersion(value
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithName(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithName(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -122,7 +122,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithName(value strin
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithGenerateName(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithGenerateName(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -131,7 +131,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithGenerateName(val
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithNamespace(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithNamespace(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -140,7 +140,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithNamespace(value 
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithUID(value types.UID) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithUID(value types.UID) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -149,7 +149,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithUID(value types.
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithResourceVersion(value string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithResourceVersion(value string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -158,7 +158,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithResourceVersion(
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithGeneration(value int64) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithGeneration(value int64) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -167,7 +167,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithGeneration(value
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithCreationTimestamp(value metav1.Time) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithCreationTimestamp(value metav1.Time) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -176,7 +176,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithCreationTimestam
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -185,7 +185,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithDeletionTimestam
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -195,7 +195,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithDeletionGracePer
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithLabels(entries map[string]string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithLabels(entries map[string]string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -210,7 +210,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithLabels(entries m
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithAnnotations(entries map[string]string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithAnnotations(entries map[string]string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -224,7 +224,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithAnnotations(entr
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -238,7 +238,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithOwnerReferences(
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithFinalizers(values ...string) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithFinalizers(values ...string) *ValidatedCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -246,7 +246,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithFinalizers(value
 	return b
 }
 
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *ValidatedCommitStatusApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -255,7 +255,7 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) ensureObjectMetaAppl
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithSpec(value *DependentsQualifiedCommitStatusSpecApplyConfiguration) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithSpec(value *ValidatedCommitStatusSpecApplyConfiguration) *ValidatedCommitStatusApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -263,29 +263,29 @@ func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithSpec(value *Depe
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) WithStatus(value *DependentsQualifiedCommitStatusStatusApplyConfiguration) *DependentsQualifiedCommitStatusApplyConfiguration {
+func (b *ValidatedCommitStatusApplyConfiguration) WithStatus(value *ValidatedCommitStatusStatusApplyConfiguration) *ValidatedCommitStatusApplyConfiguration {
 	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) GetKind() *string {
+func (b *ValidatedCommitStatusApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) GetAPIVersion() *string {
+func (b *ValidatedCommitStatusApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) GetName() *string {
+func (b *ValidatedCommitStatusApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *DependentsQualifiedCommitStatusApplyConfiguration) GetNamespace() *string {
+func (b *ValidatedCommitStatusApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

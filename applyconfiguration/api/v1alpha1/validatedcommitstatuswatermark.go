@@ -21,13 +21,13 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DependentsQualifiedWatermarkApplyConfiguration represents a declarative configuration of the DependentsQualifiedWatermark type for use
+// ValidatedCommitStatusWatermarkApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusWatermark type for use
 // with apply.
 //
-// DependentsQualifiedWatermark is the newest dry commit an environment has qualified: a commit that was live
+// ValidatedCommitStatusWatermark is the newest dry commit an environment has qualified: a commit that was live
 // in the environment while every active commit status was success. Every commit before it on the dry branch
 // is qualified too.
-type DependentsQualifiedWatermarkApplyConfiguration struct {
+type ValidatedCommitStatusWatermarkApplyConfiguration struct {
 	// QualifiedAt is when the controller recorded the qualification.
 	QualifiedAt *v1.Time `json:"qualifiedAt,omitempty"`
 	// DrySha is the newest qualified dry commit.
@@ -36,16 +36,16 @@ type DependentsQualifiedWatermarkApplyConfiguration struct {
 	HydratedSha *string `json:"hydratedSha,omitempty"`
 }
 
-// DependentsQualifiedWatermarkApplyConfiguration constructs a declarative configuration of the DependentsQualifiedWatermark type for use with
+// ValidatedCommitStatusWatermarkApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusWatermark type for use with
 // apply.
-func DependentsQualifiedWatermark() *DependentsQualifiedWatermarkApplyConfiguration {
-	return &DependentsQualifiedWatermarkApplyConfiguration{}
+func ValidatedCommitStatusWatermark() *ValidatedCommitStatusWatermarkApplyConfiguration {
+	return &ValidatedCommitStatusWatermarkApplyConfiguration{}
 }
 
 // WithQualifiedAt sets the QualifiedAt field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the QualifiedAt field is set to the value of the last call.
-func (b *DependentsQualifiedWatermarkApplyConfiguration) WithQualifiedAt(value v1.Time) *DependentsQualifiedWatermarkApplyConfiguration {
+func (b *ValidatedCommitStatusWatermarkApplyConfiguration) WithQualifiedAt(value v1.Time) *ValidatedCommitStatusWatermarkApplyConfiguration {
 	b.QualifiedAt = &value
 	return b
 }
@@ -53,7 +53,7 @@ func (b *DependentsQualifiedWatermarkApplyConfiguration) WithQualifiedAt(value v
 // WithDrySha sets the DrySha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DrySha field is set to the value of the last call.
-func (b *DependentsQualifiedWatermarkApplyConfiguration) WithDrySha(value string) *DependentsQualifiedWatermarkApplyConfiguration {
+func (b *ValidatedCommitStatusWatermarkApplyConfiguration) WithDrySha(value string) *ValidatedCommitStatusWatermarkApplyConfiguration {
 	b.DrySha = &value
 	return b
 }
@@ -61,7 +61,7 @@ func (b *DependentsQualifiedWatermarkApplyConfiguration) WithDrySha(value string
 // WithHydratedSha sets the HydratedSha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the HydratedSha field is set to the value of the last call.
-func (b *DependentsQualifiedWatermarkApplyConfiguration) WithHydratedSha(value string) *DependentsQualifiedWatermarkApplyConfiguration {
+func (b *ValidatedCommitStatusWatermarkApplyConfiguration) WithHydratedSha(value string) *ValidatedCommitStatusWatermarkApplyConfiguration {
 	b.HydratedSha = &value
 	return b
 }

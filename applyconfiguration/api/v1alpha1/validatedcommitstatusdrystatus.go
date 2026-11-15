@@ -17,25 +17,25 @@ limitations under the License.
 
 package v1alpha1
 
-// DependentsQualifiedDryStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedDryStatus type for use
+// ValidatedCommitStatusDryStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusDryStatus type for use
 // with apply.
 //
-// DependentsQualifiedDryStatus is the observed state of the dry branch.
-type DependentsQualifiedDryStatusApplyConfiguration struct {
+// ValidatedCommitStatusDryStatus is the observed state of the dry branch.
+type ValidatedCommitStatusDryStatusApplyConfiguration struct {
 	// Sha is the HEAD of the dry branch when the controller last reconciled.
 	Sha *string `json:"sha,omitempty"`
 }
 
-// DependentsQualifiedDryStatusApplyConfiguration constructs a declarative configuration of the DependentsQualifiedDryStatus type for use with
+// ValidatedCommitStatusDryStatusApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusDryStatus type for use with
 // apply.
-func DependentsQualifiedDryStatus() *DependentsQualifiedDryStatusApplyConfiguration {
-	return &DependentsQualifiedDryStatusApplyConfiguration{}
+func ValidatedCommitStatusDryStatus() *ValidatedCommitStatusDryStatusApplyConfiguration {
+	return &ValidatedCommitStatusDryStatusApplyConfiguration{}
 }
 
 // WithSha sets the Sha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Sha field is set to the value of the last call.
-func (b *DependentsQualifiedDryStatusApplyConfiguration) WithSha(value string) *DependentsQualifiedDryStatusApplyConfiguration {
+func (b *ValidatedCommitStatusDryStatusApplyConfiguration) WithSha(value string) *ValidatedCommitStatusDryStatusApplyConfiguration {
 	b.Sha = &value
 	return b
 }

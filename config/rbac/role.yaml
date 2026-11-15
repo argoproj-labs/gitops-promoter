@@ -41,12 +41,12 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - dependentsqualifiedcommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
   - scheduledcommitstatuses
   - timedcommitstatuses
+  - validatedcommitstatuses
   - webrequestcommitstatuses
   verbs:
   - get
@@ -59,7 +59,6 @@ rules:
   - changetransferpolicies/finalizers
   - changetransferpolicyhistories/finalizers
   - clusterscmproviders/finalizers
-  - dependentsqualifiedcommitstatuses/finalizers
   - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
@@ -68,6 +67,7 @@ rules:
   - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
+  - validatedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
   verbs:
   - update
@@ -79,7 +79,6 @@ rules:
   - changetransferpolicyhistories/status
   - clusterscmproviders/status
   - commitstatuses/status
-  - dependentsqualifiedcommitstatuses/status
   - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
@@ -89,6 +88,7 @@ rules:
   - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
+  - validatedcommitstatuses/status
   - webrequestcommitstatuses/status
   verbs:
   - get

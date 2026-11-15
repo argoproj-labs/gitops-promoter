@@ -17,12 +17,12 @@ limitations under the License.
 
 package v1alpha1
 
-// DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatusUpstreamStatus type for use
+// ValidatedCommitStatusUpstreamStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusUpstreamStatus type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
+// ValidatedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
 // this environment's tag points at.
-type DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration struct {
+type ValidatedCommitStatusUpstreamStatusApplyConfiguration struct {
 	// Branch is the upstream environment branch name.
 	Branch *string `json:"branch,omitempty"`
 	// Reason explains why the upstream is not satisfied. Omitted when satisfied is true.
@@ -31,16 +31,16 @@ type DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration struct {
 	Satisfied *bool `json:"satisfied,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration constructs a declarative configuration of the DependentsQualifiedCommitStatusUpstreamStatus type for use with
+// ValidatedCommitStatusUpstreamStatusApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusUpstreamStatus type for use with
 // apply.
-func DependentsQualifiedCommitStatusUpstreamStatus() *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration {
-	return &DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration{}
+func ValidatedCommitStatusUpstreamStatus() *ValidatedCommitStatusUpstreamStatusApplyConfiguration {
+	return &ValidatedCommitStatusUpstreamStatusApplyConfiguration{}
 }
 
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) WithBranch(value string) *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration {
+func (b *ValidatedCommitStatusUpstreamStatusApplyConfiguration) WithBranch(value string) *ValidatedCommitStatusUpstreamStatusApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -48,7 +48,7 @@ func (b *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) WithBr
 // WithReason sets the Reason field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Reason field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) WithReason(value string) *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration {
+func (b *ValidatedCommitStatusUpstreamStatusApplyConfiguration) WithReason(value string) *ValidatedCommitStatusUpstreamStatusApplyConfiguration {
 	b.Reason = &value
 	return b
 }
@@ -56,7 +56,7 @@ func (b *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) WithRe
 // WithSatisfied sets the Satisfied field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Satisfied field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) WithSatisfied(value bool) *DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration {
+func (b *ValidatedCommitStatusUpstreamStatusApplyConfiguration) WithSatisfied(value bool) *ValidatedCommitStatusUpstreamStatusApplyConfiguration {
 	b.Satisfied = &value
 	return b
 }

@@ -21,16 +21,16 @@ import (
 	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatusEnvironmentStatus type for use
+// ValidatedCommitStatusEnvironmentStatusApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusEnvironmentStatus type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatusEnvironmentStatus defines observed state for one environment branch.
-type DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration struct {
+// ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch.
+type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Tag is the environment's tag as last read from the dry repository.
-	Tag *DependentsQualifiedTagStatusApplyConfiguration `json:"tag,omitempty"`
+	Tag *ValidatedCommitStatusTagStatusApplyConfiguration `json:"tag,omitempty"`
 	// Qualified is the newest dry commit this environment has qualified. Omitted until the environment has
 	// qualified a commit.
-	Qualified *DependentsQualifiedWatermarkApplyConfiguration `json:"qualified,omitempty"`
+	Qualified *ValidatedCommitStatusWatermarkApplyConfiguration `json:"qualified,omitempty"`
 	// Branch is the environment branch name.
 	Branch *string `json:"branch,omitempty"`
 	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
@@ -40,19 +40,19 @@ type DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.
 	ActiveCommitStatuses []ChangeRequestPolicyCommitStatusPhaseApplyConfiguration `json:"activeCommitStatuses,omitempty"`
 	// Upstreams lists this environment's direct upstreams and whether each has qualified the tagged commit.
-	Upstreams []DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration `json:"upstreams,omitempty"`
+	Upstreams []ValidatedCommitStatusUpstreamStatusApplyConfiguration `json:"upstreams,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the DependentsQualifiedCommitStatusEnvironmentStatus type for use with
+// ValidatedCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusEnvironmentStatus type for use with
 // apply.
-func DependentsQualifiedCommitStatusEnvironmentStatus() *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
-	return &DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration{}
+func ValidatedCommitStatusEnvironmentStatus() *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	return &ValidatedCommitStatusEnvironmentStatusApplyConfiguration{}
 }
 
 // WithTag sets the Tag field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Tag field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithTag(value *DependentsQualifiedTagStatusApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithTag(value *ValidatedCommitStatusTagStatusApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Tag = value
 	return b
 }
@@ -60,7 +60,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithQualified sets the Qualified field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Qualified field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithQualified(value *DependentsQualifiedWatermarkApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithQualified(value *ValidatedCommitStatusWatermarkApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Qualified = value
 	return b
 }
@@ -68,7 +68,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithBranch(value string) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithBranch(value string) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -76,7 +76,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.GateEnvironmentCommitStatusApplyConfiguration.Phase = &value
 	return b
 }
@@ -84,7 +84,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithDescription sets the Description field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Description field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithDescription(value string) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithDescription(value string) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.GateEnvironmentCommitStatusApplyConfiguration.Description = &value
 	return b
 }
@@ -92,7 +92,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithUrl sets the Url field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Url field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithUrl(value string) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUrl(value string) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.GateEnvironmentCommitStatusApplyConfiguration.Url = &value
 	return b
 }
@@ -100,7 +100,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithReportedSha sets the ReportedSha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ReportedSha field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithReportedSha(value string) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithReportedSha(value string) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.GateEnvironmentCommitStatusApplyConfiguration.ReportedSha = &value
 	return b
 }
@@ -108,7 +108,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithActiveCommitStatuses adds the given value to the ActiveCommitStatuses field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the ActiveCommitStatuses field.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithActiveCommitStatuses(values ...*ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithActiveCommitStatuses(values ...*ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithActiveCommitStatuses")
@@ -121,7 +121,7 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // WithUpstreams adds the given value to the Upstreams field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Upstreams field.
-func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreams(values ...*DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreams(values ...*ValidatedCommitStatusUpstreamStatusApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithUpstreams")

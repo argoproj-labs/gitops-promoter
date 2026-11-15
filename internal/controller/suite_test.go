@@ -272,14 +272,14 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	dqcsReconciler := &DependentsQualifiedCommitStatusReconciler{
+	validatedCommitStatusReconciler := &ValidatedCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("DependentsQualifiedCommitStatus"),
+		Recorder:    k8sManager.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}
-	err = dqcsReconciler.SetupWithManager(ctx, k8sManager)
+	err = validatedCommitStatusReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PromotionStrategyReconciler{
@@ -362,7 +362,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager,
 		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
-		webhookreceiver.EnqueueFunc(dqcsReconciler.GetEnqueueFunc()))
+		webhookreceiver.EnqueueFunc(validatedCommitStatusReconciler.GetEnqueueFunc()))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")

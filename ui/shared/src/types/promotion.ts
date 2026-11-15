@@ -87,7 +87,7 @@ export type CommitStatusManagerKind =
   | 'ArgoCDCommitStatus'
   | 'WebRequestCommitStatus'
   | 'DependentsSuccessfulCommitStatus'
-  | 'DependentsQualifiedCommitStatus';
+  | 'ValidatedCommitStatus';
 
 export type CommitStatusManager =
   | components['schemas']['TimedCommitStatus']
@@ -96,7 +96,7 @@ export type CommitStatusManager =
   | components['schemas']['ArgoCDCommitStatus']
   | components['schemas']['WebRequestCommitStatus']
   | components['schemas']['DependentsSuccessfulCommitStatus']
-  | components['schemas']['DependentsQualifiedCommitStatus'];
+  | components['schemas']['ValidatedCommitStatus'];
 
 /** {@link BranchCommitStatus} stamped with the manager join computed by `mergeCommitStatusManagers`. */
 export interface EnrichedBranchCommitStatus extends BranchCommitStatus {

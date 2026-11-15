@@ -132,16 +132,16 @@ which is only supported on ClusterScmProvider because it uses the controller's o
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
-### DependentsQualifiedCommitStatus
+### ValidatedCommitStatus
 
-A DependentsQualifiedCommitStatus is the ordering gate for
+A ValidatedCommitStatus is the ordering gate for
 [environment tags](advanced-usage/holding-back-environments.md). Every environment hydrates from its own tag in the DRY
 repository. The controller moves each tag to the newest DRY commit the environment's upstreams have run
 [successfully](gating-promotions/index.md#environment-success), and gates each promotion on the hydrator having caught
 up to the tag and on the upstreams having qualified the tagged commit. It reads the environments and their `dependsOn`
 from the referenced PromotionStrategy, the same way DependentsSuccessfulCommitStatus does. Attach the gate with
 `PromotionStrategy.spec.orderCommitStatusRef`. See
-[Dependents Qualified Commit Status](gating-promotions/built-in-gates/dependents-qualified-commit-status.md).
+[Validated Commit Status](gating-promotions/built-in-gates/validated-commit-status.md).
 
 `status.dry.sha` is the DRY branch HEAD the controller last observed. `status.environments[]` reports each
 environment's tag, its newest qualified commit, per-upstream satisfaction, active commit statuses, and child
@@ -149,7 +149,7 @@ CommitStatus mirror fields. See [`GateEnvironmentCommitStatus`](#gateenvironment
 semantics.
 
 ```yaml
-{!internal/controller/testdata/DependentsQualifiedCommitStatus.yaml!}
+{!internal/controller/testdata/ValidatedCommitStatus.yaml!}
 ```
 
 ### DependentsSuccessfulCommitStatus
@@ -265,9 +265,9 @@ The `DependentsSuccessfulCommitStatus` CRD may also have the following condition
 
 * `CommitStatusesNotReady`
 
-#### `DependentsQualifiedCommitStatus`
+#### `ValidatedCommitStatus`
 
-The `DependentsQualifiedCommitStatus` CRD may also have the following condition reasons:
+The `ValidatedCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
 * `DryRepositoryUnavailable`

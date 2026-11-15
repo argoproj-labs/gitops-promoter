@@ -174,8 +174,8 @@ func newFakeClient(objs ...client.Object) client.Client {
 			}
 			return []string{ctp.Status.Active.Hydrated.Sha}
 		}).
-		WithIndex(&promoterv1alpha1.DependentsQualifiedCommitStatus{}, promoterv1alpha1.DependentsQualifiedObservedDryShaField, func(obj client.Object) []string {
-			gate, ok := obj.(*promoterv1alpha1.DependentsQualifiedCommitStatus)
+		WithIndex(&promoterv1alpha1.ValidatedCommitStatus{}, promoterv1alpha1.ValidatedCommitStatusObservedDryShaField, func(obj client.Object) []string {
+			gate, ok := obj.(*promoterv1alpha1.ValidatedCommitStatus)
 			if !ok {
 				return nil
 			}
@@ -186,19 +186,19 @@ func newFakeClient(objs ...client.Object) client.Client {
 
 // newDryGate returns a gate that reads dry branch "main" (last seen at testShaA) and the tags "env/dev"
 // (last seen at testShaA) and "env/prod" (last seen at testShaB).
-func newDryGate(name string) *promoterv1alpha1.DependentsQualifiedCommitStatus {
-	gate := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
+func newDryGate(name string) *promoterv1alpha1.ValidatedCommitStatus {
+	gate := &promoterv1alpha1.ValidatedCommitStatus{}
 	gate.Name = name
 	gate.Namespace = testNamespace
 	gate.Spec.DrySource.Branch = "main"
-	gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+	gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
 		{Branch: "environment/dev", Tag: "env/dev"},
 		{Branch: "environment/prod", Tag: "env/prod"},
 	}
-	gate.Status.Dry = &promoterv1alpha1.DependentsQualifiedDryStatus{Sha: testShaA}
-	gate.Status.Environments = []promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus{
-		{Branch: "environment/dev", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "env/dev", Sha: testShaA}},
-		{Branch: "environment/prod", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "env/prod", Sha: testShaB}},
+	gate.Status.Dry = &promoterv1alpha1.ValidatedCommitStatusDryStatus{Sha: testShaA}
+	gate.Status.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
+		{Branch: "environment/dev", Tag: &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "env/dev", Sha: testShaA}},
+		{Branch: "environment/prod", Tag: &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "env/prod", Sha: testShaB}},
 	}
 	return gate
 }

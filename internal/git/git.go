@@ -133,7 +133,7 @@ const HydratorNotesRef = "refs/notes/hydrator.metadata"
 // or merges performed directly on the SCM).
 const PromoterHistoryNotesRef = "refs/notes/promoter.history"
 
-// PromoterQualifiedNotesRef is the git notes reference the DependentsQualifiedCommitStatus controller uses to
+// PromoterQualifiedNotesRef is the git notes reference the ValidatedCommitStatus controller uses to
 // record, on an environment's active hydrated commit, which dry SHA the environment ran successfully. It is
 // separate from PromoterHistoryNotesRef because the ChangeTransferPolicy controller treats an existing
 // promotion-history note as "already written".

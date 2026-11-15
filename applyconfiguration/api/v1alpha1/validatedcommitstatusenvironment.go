@@ -21,11 +21,11 @@ import (
 	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// DependentsQualifiedEnvironmentApplyConfiguration represents a declarative configuration of the DependentsQualifiedEnvironment type for use
+// ValidatedCommitStatusEnvironmentApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusEnvironment type for use
 // with apply.
 //
-// DependentsQualifiedEnvironment declares the tag one environment hydrates from.
-type DependentsQualifiedEnvironmentApplyConfiguration struct {
+// ValidatedCommitStatusEnvironment declares the tag one environment hydrates from.
+type ValidatedCommitStatusEnvironmentApplyConfiguration struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -39,16 +39,16 @@ type DependentsQualifiedEnvironmentApplyConfiguration struct {
 	Advance *apiv1alpha1.TagAdvanceMode `json:"advance,omitempty"`
 }
 
-// DependentsQualifiedEnvironmentApplyConfiguration constructs a declarative configuration of the DependentsQualifiedEnvironment type for use with
+// ValidatedCommitStatusEnvironmentApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusEnvironment type for use with
 // apply.
-func DependentsQualifiedEnvironment() *DependentsQualifiedEnvironmentApplyConfiguration {
-	return &DependentsQualifiedEnvironmentApplyConfiguration{}
+func ValidatedCommitStatusEnvironment() *ValidatedCommitStatusEnvironmentApplyConfiguration {
+	return &ValidatedCommitStatusEnvironmentApplyConfiguration{}
 }
 
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithBranch(value string) *DependentsQualifiedEnvironmentApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithBranch(value string) *ValidatedCommitStatusEnvironmentApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -56,7 +56,7 @@ func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithBranch(value stri
 // WithTag sets the Tag field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Tag field is set to the value of the last call.
-func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithTag(value string) *DependentsQualifiedEnvironmentApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithTag(value string) *ValidatedCommitStatusEnvironmentApplyConfiguration {
 	b.Tag = &value
 	return b
 }
@@ -64,7 +64,7 @@ func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithTag(value string)
 // WithAdvance sets the Advance field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Advance field is set to the value of the last call.
-func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithAdvance(value apiv1alpha1.TagAdvanceMode) *DependentsQualifiedEnvironmentApplyConfiguration {
+func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithAdvance(value apiv1alpha1.TagAdvanceMode) *ValidatedCommitStatusEnvironmentApplyConfiguration {
 	b.Advance = &value
 	return b
 }

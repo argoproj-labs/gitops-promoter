@@ -19,7 +19,7 @@ and it has two well-known costs:
 
 Environment tags solve both. Instead of hydrating from HEAD, every environment hydrates from its own **environment
 tag** in the DRY repository. The
-[DependentsQualifiedCommitStatus](../gating-promotions/built-in-gates/dependents-qualified-commit-status.md) ordering
+[ValidatedCommitStatus](../gating-promotions/built-in-gates/validated-commit-status.md) ordering
 gate moves those tags for you: an environment's tag only ever points at a commit its upstream environments have already
 run successfully. A higher environment's candidate is therefore always something it is allowed to take, no matter what
 has landed on the DRY branch since. If you want to decide the timing yourself, you take over an environment's tag and
@@ -53,7 +53,7 @@ prod  hydrates env/prod  → D is proposed; test qualified it, so prod may merge
    tag the controller moved, the second check is true by construction. It matters when a person moves the tag.
 
 The gate sits in the usual place: the PromotionStrategy's `orderCommitStatusRef` points at the
-DependentsQualifiedCommitStatus, and the PromotionStrategy controller injects its key onto every ChangeTransferPolicy's
+ValidatedCommitStatus, and the PromotionStrategy controller injects its key onto every ChangeTransferPolicy's
 `proposedCommitStatuses`. The PR, auto-merge, and the active commit statuses on each environment are unchanged.
 
 ### What happens to an environment that is busy
@@ -96,11 +96,11 @@ references the gate through `orderCommitStatusRef`.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsQualifiedCommitStatus
+kind: ValidatedCommitStatus
 metadata:
   name: demo
 spec:
-  key: dependents-qualified
+  key: validated
   promotionStrategyRef:
     name: demo
   drySource:
@@ -148,7 +148,7 @@ moved, right away. Without the webhook it notices on its requeue interval.
 
 ### Adopting environment tags on an existing PromotionStrategy
 
-1. Create the DependentsQualifiedCommitStatus. The controller creates every missing environment tag.
+1. Create the ValidatedCommitStatus. The controller creates every missing environment tag.
 2. Change each Application's `targetRevision` from the DRY branch to its tag.
 3. Point the PromotionStrategy's `orderCommitStatusRef` at the new gate.
 
@@ -175,7 +175,7 @@ moving that tag and you move it.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsQualifiedCommitStatus
+kind: ValidatedCommitStatus
 metadata:
   name: demo
 spec:

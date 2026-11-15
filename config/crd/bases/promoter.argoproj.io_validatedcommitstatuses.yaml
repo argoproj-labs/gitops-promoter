@@ -4,24 +4,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: dependentsqualifiedcommitstatuses.promoter.argoproj.io
+  name: validatedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: DependentsQualifiedCommitStatus
-    listKind: DependentsQualifiedCommitStatusList
-    plural: dependentsqualifiedcommitstatuses
-    singular: dependentsqualifiedcommitstatus
+    kind: ValidatedCommitStatus
+    listKind: ValidatedCommitStatusList
+    plural: validatedcommitstatuses
+    singular: validatedcommitstatus
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: DependentsQualifiedCommitStatus is the Schema for the dependentsqualifiedcommitstatuses
+        description: ValidatedCommitStatus is the Schema for the validatedcommitstatuses
           API
         externalDocs:
           description: CRD reference (examples and behavior)
-          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentsqualifiedcommitstatus
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#validatedcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -41,7 +41,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DependentsQualifiedCommitStatus
+            description: spec defines the desired state of ValidatedCommitStatus
             properties:
               drySource:
                 description: DrySource is where the dry commits and the environment
@@ -84,7 +84,7 @@ spec:
                   Environments declares the tag each environment hydrates from. There must be exactly one entry for
                   every environment of the referenced PromotionStrategy, and every entry must name its own tag.
                 items:
-                  description: DependentsQualifiedEnvironment declares the tag one
+                  description: ValidatedCommitStatusEnvironment declares the tag one
                     environment hydrates from.
                   properties:
                     advance:
@@ -182,7 +182,7 @@ spec:
                 description: |-
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
                   empty, no URL is set on the child CommitStatus. The template receives .Environment,
-                  .DependentsQualifiedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
+                  .ValidatedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
                 properties:
                   options:
                     description: "Options sets options for the template. Options are
@@ -218,7 +218,7 @@ spec:
             - promotionStrategyRef
             type: object
           status:
-            description: status defines the observed state of DependentsQualifiedCommitStatus
+            description: status defines the observed state of ValidatedCommitStatus
             properties:
               conditions:
                 description: Conditions represent the latest available observations
@@ -295,8 +295,8 @@ spec:
                 description: Environments reports the tag, qualification, and gate
                   state of each environment.
                 items:
-                  description: DependentsQualifiedCommitStatusEnvironmentStatus defines
-                    observed state for one environment branch.
+                  description: ValidatedCommitStatusEnvironmentStatus defines observed
+                    state for one environment branch.
                   properties:
                     activeCommitStatuses:
                       description: ActiveCommitStatuses is a verbatim copy of the
@@ -408,7 +408,7 @@ spec:
                         and whether each has qualified the tagged commit.
                       items:
                         description: |-
-                          DependentsQualifiedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
+                          ValidatedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
                           this environment's tag points at.
                         properties:
                           branch:

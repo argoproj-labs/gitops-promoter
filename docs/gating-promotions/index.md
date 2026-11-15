@@ -30,7 +30,7 @@ status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The c
 `spec.key` onto every `ChangeTransferPolicy`; without a resolvable ref the PromotionStrategy fails reconcile.
 The built-in ordering gates are [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md),
 where every environment follows the DRY branch HEAD, and
-[DependentsQualifiedCommitStatus](built-in-gates/dependents-qualified-commit-status.md), where every environment
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md), where every environment
 follows its own tag.
 
 Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
@@ -160,7 +160,7 @@ publishTo: []
 
 Omitting the field is not an empty list. The default fills in `[scm]`. The controller posts to the SCM when `scm` is in the list. Promotion gates use the phase in every case.
 
-Every built-in gate (`ArgoCDCommitStatus`, `DependentsQualifiedCommitStatus`, `DependentsSuccessfulCommitStatus`,
+Every built-in gate (`ArgoCDCommitStatus`, `ValidatedCommitStatus`, `DependentsSuccessfulCommitStatus`,
 `GitCommitStatus`, `ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
 copies the list to every CommitStatus it creates.
 
@@ -228,7 +228,7 @@ or declare `dependsOn` on `PromotionStrategy.spec.environments[]` for fan-out an
 [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy) for wiring details.
 
 To let higher environments lag behind the DRY branch HEAD, or to choose when an environment gets a new version, use
-[DependentsQualifiedCommitStatus](built-in-gates/dependents-qualified-commit-status.md) instead. See
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md) instead. See
 [Holding Back Environments](../advanced-usage/holding-back-environments.md).
 
 ### Argo CD Health Status

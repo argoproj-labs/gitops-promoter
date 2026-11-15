@@ -266,66 +266,6 @@ func (in DependentEnvironment) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusConfiguration) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusConfiguration"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusEnvironmentStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusList"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusSpec) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusSpec"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedCommitStatusUpstreamStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedCommitStatusUpstreamStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedDrySource) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedDrySource"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedDryStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedDryStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedEnvironment) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedEnvironment"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedTagStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedTagStatus"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DependentsQualifiedWatermark) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedWatermark"
-}
-
-// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DependentsSuccessfulCommitStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatus"
 }
@@ -793,6 +733,66 @@ func (in TriggerModeSpec) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in URLConfig) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.URLConfig"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusDrySource) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusDrySource"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusDryStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusDryStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusTagStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusTagStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusUpstreamStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusUpstreamStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusWatermark) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusWatermark"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

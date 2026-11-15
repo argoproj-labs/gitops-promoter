@@ -127,13 +127,13 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.DependentsSuccessfulCommitStatusList](ctx, c, ps)
 			},
 		),
-		Entry("DependentsQualifiedCommitStatus",
-			&promoterv1alpha1.DependentsQualifiedCommitStatus{
+		Entry("ValidatedCommitStatus",
+			&promoterv1alpha1.ValidatedCommitStatus{
 				Name: gateName, Namespace: ns,
-				Spec: promoterv1alpha1.DependentsQualifiedCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
+				Spec: promoterv1alpha1.ValidatedCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 			},
 			func(c client.Client) []reconcile.Request {
-				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.DependentsQualifiedCommitStatusList](ctx, c, ps)
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.ValidatedCommitStatusList](ctx, c, ps)
 			},
 		),
 	)

@@ -12,17 +12,17 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: dependentsqualifiedcommitstatus-admin-role
+  name: validatedcommitstatus-admin-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dependentsqualifiedcommitstatuses
+  - validatedcommitstatuses
   verbs:
   - '*'
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dependentsqualifiedcommitstatuses/status
+  - validatedcommitstatuses/status
   verbs:
   - get

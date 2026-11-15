@@ -153,11 +153,11 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.DependentsSuccessfulCommitStatuses = nilIfEmpty(dagCSList.Items)
 
-	qualifiedCSList := &promoterv1alpha1.DependentsQualifiedCommitStatusList{}
+	qualifiedCSList := &promoterv1alpha1.ValidatedCommitStatusList{}
 	if err := reader.List(ctx, qualifiedCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
-		return nil, fmt.Errorf("failed to list DependentsQualifiedCommitStatuses: %w", err)
+		return nil, fmt.Errorf("failed to list ValidatedCommitStatuses: %w", err)
 	}
-	bundle.DependentsQualifiedCommitStatuses = nilIfEmpty(qualifiedCSList.Items)
+	bundle.ValidatedCommitStatuses = nilIfEmpty(qualifiedCSList.Items)
 
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {

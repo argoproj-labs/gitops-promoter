@@ -76,7 +76,7 @@ function dependents(key: string, branches: string[]) {
   >[number];
 }
 
-function dependentsQualified(key: string, branches: string[]) {
+function validated(key: string, branches: string[]) {
   return {
     spec: { key, promotionStrategyRef: { name: 'my-strategy' } },
     status: {
@@ -87,7 +87,7 @@ function dependentsQualified(key: string, branches: string[]) {
       })),
     },
   } as unknown as NonNullable<
-    CommitStatusManagerBundle['dependentsQualifiedCommitStatuses']
+    CommitStatusManagerBundle['validatedCommitStatuses']
   >[number];
 }
 
@@ -126,7 +126,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
     ['DependentsSuccessfulCommitStatus', 'dependentsSuccessfulCommitStatuses', dependents],
-    ['DependentsQualifiedCommitStatus', 'dependentsQualifiedCommitStatuses', dependentsQualified],
+    ['ValidatedCommitStatus', 'validatedCommitStatuses', validated],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);

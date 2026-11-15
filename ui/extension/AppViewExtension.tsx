@@ -33,7 +33,7 @@ function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManag
     argoCDCommitStatuses: bundle.argoCDCommitStatuses,
     webRequestCommitStatuses: bundle.webRequestCommitStatuses,
     dependentsSuccessfulCommitStatuses: bundle.dependentsSuccessfulCommitStatuses,
-    dependentsQualifiedCommitStatuses: bundle.dependentsQualifiedCommitStatuses,
+    validatedCommitStatuses: bundle.validatedCommitStatuses,
   };
 }
 

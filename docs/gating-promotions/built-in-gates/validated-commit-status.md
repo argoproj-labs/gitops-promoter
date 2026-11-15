@@ -1,11 +1,11 @@
-# Dependents Qualified Commit Status Controller
+# Validated Commit Status Controller
 
 > [!NOTE]
 > This gate is new. It is covered by the controller's own tests, which play the hydrator and the SCM. Before relying
 > on it, check two things in a non-production PromotionStrategy: that your hydrator hydrates again when a tag it
 > follows moves, and that Promoter's credentials are allowed to create and move your environment tags.
 
-The Dependents Qualified Commit Status controller is an **ordering gate that manages environment tags**. Like
+The Validated Commit Status controller is an **ordering gate that manages environment tags**. Like
 [DependentsSuccessfulCommitStatus](dependents-successful-commit-status.md), it orders each environment after its
 **dependent environments**. It differs in two ways:
 
@@ -31,7 +31,7 @@ spec:
     name: demo
   orderCommitStatusRef:
     group: promoter.argoproj.io
-    kind: DependentsQualifiedCommitStatus
+    kind: ValidatedCommitStatus
     name: demo
   environments:
     - branch: environment/dev
@@ -39,11 +39,11 @@ spec:
     - branch: environment/prod
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsQualifiedCommitStatus
+kind: ValidatedCommitStatus
 metadata:
   name: demo
 spec:
-  key: dependents-qualified
+  key: validated
   promotionStrategyRef:
     name: demo
   drySource:
@@ -216,7 +216,7 @@ The backoff starts at 15 seconds and doubles up to 2 minutes for as long as the 
 
 This replaces the PromotionStrategy controller's existing nudge, which compares sibling environments and assumes they
 all converge on the same DRY commit. With environment tags they do not, so that comparison is turned off for a
-PromotionStrategy whose ordering gate is a DependentsQualifiedCommitStatus.
+PromotionStrategy whose ordering gate is a ValidatedCommitStatus.
 
 A commit that is a no-op for several environments in a row moves through them one at a time: tag push, hydration, note,
 qualification, next tag. Each hop costs a hydrator cycle and a note fetch, where today all environments hydrate HEAD at
@@ -242,7 +242,7 @@ whose `orderCommitStatusRef` points here.
 ### `spec.key`
 
 Required. The gate name the PromotionStrategy controller injects onto every `ChangeTransferPolicy`'s
-`proposedCommitStatuses`. A common value is `dependents-qualified`. Lowercase alphanumeric with hyphens, 1–63
+`proposedCommitStatuses`. A common value is `validated`. Lowercase alphanumeric with hyphens, 1–63
 characters.
 
 ### `spec.drySource`
@@ -276,17 +276,17 @@ See [Where a status is published](../index.md#where-a-status-is-published-publis
 
 Optional Go template for the SCM details URL on each per-environment gate `CommitStatus`. Same variables and options
 as [DependentsSuccessfulCommitStatus](dependents-successful-commit-status.md#commit-status-url-template), with
-`.DependentsQualifiedCommitStatus` in place of `.DependentsSuccessfulCommitStatus`.
+`.ValidatedCommitStatus` in place of `.DependentsSuccessfulCommitStatus`.
 
 ### Full example
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsQualifiedCommitStatus
+kind: ValidatedCommitStatus
 metadata:
   name: demo
 spec:
-  key: dependents-qualified
+  key: validated
   promotionStrategyRef:
     name: demo
   drySource:
@@ -308,7 +308,7 @@ spec:
 
 ## Wiring the gate into the PromotionStrategy
 
-Set `orderCommitStatusRef` on the PromotionStrategy to `kind: DependentsQualifiedCommitStatus`. The resolution contract
+Set `orderCommitStatusRef` on the PromotionStrategy to `kind: ValidatedCommitStatus`. The resolution contract
 (`spec.key` and `spec.promotionStrategyRef.name`, typed `Get` for in-tree kinds) is the one described in
 [DependentsSuccessfulCommitStatus > Wiring the gate](dependents-successful-commit-status.md#wiring-the-gate-into-the-promotionstrategy).
 A PromotionStrategy uses exactly one ordering gate. To switch an existing PromotionStrategy, follow
@@ -390,7 +390,7 @@ In addition to the [standard conditions](../../crd-specs.md#status-conditions), 
 
 ## Comparison with DependentsSuccessfulCommitStatus
 
-| | DependentsSuccessfulCommitStatus | DependentsQualifiedCommitStatus |
+| | DependentsSuccessfulCommitStatus | ValidatedCommitStatus |
 |-|----------------------------------|---------------------------------|
 | Each environment hydrates from | the DRY branch | its own tag |
 | Promotion candidate for a dependent | HEAD | the newest commit every upstream has qualified, or whatever a person tagged |
@@ -403,5 +403,5 @@ In addition to the [standard conditions](../../crd-specs.md#status-conditions), 
 | State | none | status + git notes |
 
 Use DependentsSuccessfulCommitStatus when release-latest suits you and you want the strictest live check. Use
-DependentsQualifiedCommitStatus when higher environments release on a slower cadence than lower ones, or when someone
+ValidatedCommitStatus when higher environments release on a slower cadence than lower ones, or when someone
 needs to choose what a higher environment gets and when.

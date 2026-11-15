@@ -54,13 +54,13 @@ const (
 type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies
-// (for pushes to hydrated branches) and DependentsQualifiedCommitStatuses (for pushes to the dry branch
+// (for pushes to hydrated branches) and ValidatedCommitStatuses (for pushes to the dry branch
 // or the environment tags they read).
 type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
-	// enqueueDryGate enqueues a DependentsQualifiedCommitStatus. When nil, pushes are not matched
+	// enqueueDryGate enqueues a ValidatedCommitStatus. When nil, pushes are not matched
 	// against gates at all.
 	enqueueDryGate EnqueueFunc
 
@@ -82,7 +82,7 @@ type WebhookReceiver struct {
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver. enqueueCTP is called for pushes to
 // hydrated branches; enqueueDryGate for pushes to a dry branch or environment tag that a
-// DependentsQualifiedCommitStatus reads (nil disables that routing).
+// ValidatedCommitStatus reads (nil disables that routing).
 func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueueDryGate EnqueueFunc) *WebhookReceiver {
 	return &WebhookReceiver{
 		mgr:            mgr,
@@ -333,7 +333,7 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 }
 
 // tryLookupAndEnqueue performs a single lookup for the pushed ref and enqueues what reads it:
-// the DependentsQualifiedCommitStatuses whose dry branch or environment tag was pushed, or
+// the ValidatedCommitStatuses whose dry branch or environment tag was pushed, or
 // else the ChangeTransferPolicy whose hydrated branch was pushed when exactly one is found.
 // via distinguishes the synchronous webhook path from the deferred retry path in logs. found
 // reports whether anything was enqueued; retryable reports whether a later attempt could
@@ -346,7 +346,7 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 	if gateErr != nil {
 		// Transient API/index failure. Carry on with the CTP lookup; a miss there is retried,
 		// and the retry looks for gates again.
-		logger.V(4).Info("transient DependentsQualifiedCommitStatus lookup failure", "error", gateErr)
+		logger.V(4).Info("transient ValidatedCommitStatus lookup failure", "error", gateErr)
 	}
 	if gates > 0 {
 		// A dry commit is never a hydrated commit, so there is no CTP to look for.
@@ -378,17 +378,17 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 	}
 }
 
-// enqueueDryGates enqueues every DependentsQualifiedCommitStatus that reads the pushed ref (its
+// enqueueDryGates enqueues every ValidatedCommitStatus that reads the pushed ref (its
 // dry branch or one of its environment tags) and last observed the ref's previous SHA. It
 // returns how many gates were enqueued.
 func (wr *WebhookReceiver) enqueueDryGates(ctx context.Context, sha, ref, via string) (int, error) {
 	if wr.enqueueDryGate == nil {
 		return 0, nil
 	}
-	var gates promoterv1alpha1.DependentsQualifiedCommitStatusList
-	err := wr.k8sClient.List(ctx, &gates, client.MatchingFields{promoterv1alpha1.DependentsQualifiedObservedDryShaField: sha})
+	var gates promoterv1alpha1.ValidatedCommitStatusList
+	err := wr.k8sClient.List(ctx, &gates, client.MatchingFields{promoterv1alpha1.ValidatedCommitStatusObservedDryShaField: sha})
 	if err != nil {
-		return 0, fmt.Errorf("failed to list dependentsqualifiedcommitstatuses for webhook receiver: %w", err)
+		return 0, fmt.Errorf("failed to list validatedcommitstatuses for webhook receiver: %w", err)
 	}
 
 	enqueued := 0
@@ -399,13 +399,13 @@ func (wr *WebhookReceiver) enqueueDryGates(ctx context.Context, sha, ref, via st
 		}
 		wr.enqueueDryGate(gate.Namespace, gate.Name)
 		enqueued++
-		log.FromContext(ctx).Info("Triggered reconcile of DependentsQualifiedCommitStatus via "+via, "namespace", gate.Namespace, "name", gate.Name)
+		log.FromContext(ctx).Info("Triggered reconcile of ValidatedCommitStatus via "+via, "namespace", gate.Namespace, "name", gate.Name)
 	}
 	return enqueued, nil
 }
 
 // dryGateReadsRef reports whether ref is the gate's dry branch or one of its environment tags.
-func dryGateReadsRef(gate *promoterv1alpha1.DependentsQualifiedCommitStatus, ref string) bool {
+func dryGateReadsRef(gate *promoterv1alpha1.ValidatedCommitStatus, ref string) bool {
 	if ref == "refs/heads/"+gate.Spec.DrySource.Branch {
 		return true
 	}

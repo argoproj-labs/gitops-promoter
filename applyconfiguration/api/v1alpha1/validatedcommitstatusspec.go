@@ -21,11 +21,11 @@ import (
 	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// DependentsQualifiedCommitStatusSpecApplyConfiguration represents a declarative configuration of the DependentsQualifiedCommitStatusSpec type for use
+// ValidatedCommitStatusSpecApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusSpec type for use
 // with apply.
 //
-// DependentsQualifiedCommitStatusSpec defines the desired state of DependentsQualifiedCommitStatus.
-type DependentsQualifiedCommitStatusSpecApplyConfiguration struct {
+// ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.
+type ValidatedCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and
 	// their dependencies (dependsOn) come from the PromotionStrategy.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
@@ -34,13 +34,13 @@ type DependentsQualifiedCommitStatusSpecApplyConfiguration struct {
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
 	// DrySource is where the dry commits and the environment tags live.
-	DrySource *DependentsQualifiedDrySourceApplyConfiguration `json:"drySource,omitempty"`
+	DrySource *ValidatedCommitStatusDrySourceApplyConfiguration `json:"drySource,omitempty"`
 	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
 	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
-	Environments []DependentsQualifiedEnvironmentApplyConfiguration `json:"environments,omitempty"`
+	Environments []ValidatedCommitStatusEnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
-	// .DependentsQualifiedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
+	// .ValidatedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
 	// PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
 	// - "scm": the CommitStatus controller posts them to the SCM provider
@@ -49,16 +49,16 @@ type DependentsQualifiedCommitStatusSpecApplyConfiguration struct {
 	PublishTo *[]apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 }
 
-// DependentsQualifiedCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DependentsQualifiedCommitStatusSpec type for use with
+// ValidatedCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusSpec type for use with
 // apply.
-func DependentsQualifiedCommitStatusSpec() *DependentsQualifiedCommitStatusSpecApplyConfiguration {
-	return &DependentsQualifiedCommitStatusSpecApplyConfiguration{}
+func ValidatedCommitStatusSpec() *ValidatedCommitStatusSpecApplyConfiguration {
+	return &ValidatedCommitStatusSpecApplyConfiguration{}
 }
 
 // WithPromotionStrategyRef sets the PromotionStrategyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *ValidatedCommitStatusSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
 	return b
 }
@@ -66,7 +66,7 @@ func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithPromotionStr
 // WithKey sets the Key field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Key field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithKey(value string) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithKey(value string) *ValidatedCommitStatusSpecApplyConfiguration {
 	b.Key = &value
 	return b
 }
@@ -74,7 +74,7 @@ func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithKey(value st
 // WithDrySource sets the DrySource field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DrySource field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithDrySource(value *DependentsQualifiedDrySourceApplyConfiguration) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithDrySource(value *ValidatedCommitStatusDrySourceApplyConfiguration) *ValidatedCommitStatusSpecApplyConfiguration {
 	b.DrySource = value
 	return b
 }
@@ -82,7 +82,7 @@ func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithDrySource(va
 // WithEnvironments adds the given value to the Environments field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Environments field.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DependentsQualifiedEnvironmentApplyConfiguration) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*ValidatedCommitStatusEnvironmentApplyConfiguration) *ValidatedCommitStatusSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithEnvironments")
@@ -95,7 +95,7 @@ func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithEnvironments
 // WithURL sets the URL field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the URL field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *ValidatedCommitStatusSpecApplyConfiguration {
 	b.URL = value
 	return b
 }
@@ -103,7 +103,7 @@ func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithURL(value *U
 // WithPublishTo sets the PublishTo field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PublishTo field is set to the value of the last call.
-func (b *DependentsQualifiedCommitStatusSpecApplyConfiguration) WithPublishTo(value []apiv1alpha1.CommitStatusPublishTo) *DependentsQualifiedCommitStatusSpecApplyConfiguration {
+func (b *ValidatedCommitStatusSpecApplyConfiguration) WithPublishTo(value []apiv1alpha1.CommitStatusPublishTo) *ValidatedCommitStatusSpecApplyConfiguration {
 	b.PublishTo = &value
 	return b
 }

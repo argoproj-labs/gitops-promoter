@@ -492,16 +492,16 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "DependentsSuccessfulCommitStatus")
 		panic(fmt.Errorf("unable to create DependentsSuccessfulCommitStatus controller: %w", err))
 	}
-	dqcsReconciler := &controller.DependentsQualifiedCommitStatusReconciler{
+	validatedCommitStatusReconciler := &controller.ValidatedCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("DependentsQualifiedCommitStatus"),
+		Recorder:    localManager.GetEventRecorder("ValidatedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}
-	if err := dqcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DependentsQualifiedCommitStatus")
-		panic(fmt.Errorf("unable to create DependentsQualifiedCommitStatus controller: %w", err))
+	if err := validatedCommitStatusReconciler.SetupWithManager(runCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ValidatedCommitStatus")
+		panic(fmt.Errorf("unable to create ValidatedCommitStatus controller: %w", err))
 	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),
@@ -523,7 +523,7 @@ func runController(
 
 	whr := webhookreceiver.NewWebhookReceiver(localManager,
 		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
-		webhookreceiver.EnqueueFunc(dqcsReconciler.GetEnqueueFunc()))
+		webhookreceiver.EnqueueFunc(validatedCommitStatusReconciler.GetEnqueueFunc()))
 
 	g, ctx := errgroup.WithContext(runCtx)
 

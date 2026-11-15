@@ -54,30 +54,30 @@ import (
 )
 
 const (
-	// dqSoftRetry is how soon the gate tries again after a failure it reports on its Ready condition instead
+	// vcsSoftRetry is how soon the gate tries again after a failure it reports on its Ready condition instead
 	// of returning as an error (the dry repository could not be read, or a tag push was rejected).
-	dqSoftRetry = time.Minute
-	// dqNudgeBaseDelay and dqNudgeMaxDelay bound how often the gate wakes a ChangeTransferPolicy whose
+	vcsSoftRetry = time.Minute
+	// vcsNudgeBaseDelay and vcsNudgeMaxDelay bound how often the gate wakes a ChangeTransferPolicy whose
 	// hydrator has not caught up to its environment tag yet.
-	dqNudgeBaseDelay = 15 * time.Second
-	dqNudgeMaxDelay  = 2 * time.Minute
-	// dqNoteSearchDepth is how many commits back on an active branch the gate looks for a qualification
+	vcsNudgeBaseDelay = 15 * time.Second
+	vcsNudgeMaxDelay  = 2 * time.Minute
+	// vcsNoteSearchDepth is how many commits back on an active branch the gate looks for a qualification
 	// note when it has no status to start from.
-	dqNoteSearchDepth = 200
-	// dqShortShaLength is how much of a SHA is shown in commit status descriptions.
-	dqShortShaLength = 7
+	vcsNoteSearchDepth = 200
+	// vcsShortShaLength is how much of a SHA is shown in commit status descriptions.
+	vcsShortShaLength = 7
 )
 
-// DependentsQualifiedURLTemplateData is the data passed to DependentsQualifiedCommitStatus.spec.url.template.
-type DependentsQualifiedURLTemplateData struct {
+// ValidatedCommitStatusURLTemplateData is the data passed to ValidatedCommitStatus.spec.url.template.
+type ValidatedCommitStatusURLTemplateData struct {
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	Environment       string
 	// DependsOnQuery is DependsOn encoded as repeated env= query parameters
 	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
 	DependsOnQuery string
 	// DependsOn is the current environment's immediate upstream branches (one edge away).
-	DependsOn                       []string
-	DependentsQualifiedCommitStatus promoterv1alpha1.DependentsQualifiedCommitStatus
+	DependsOn             []string
+	ValidatedCommitStatus promoterv1alpha1.ValidatedCommitStatus
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -88,8 +88,8 @@ type DependentsQualifiedURLTemplateData struct {
 // out (pushes tags, writes notes, applies CommitStatuses).
 // ---------------------------------------------------------------------------------------------------------
 
-// dqCommitGraph answers ancestry questions about dry commits.
-type dqCommitGraph interface {
+// vcsCommitGraph answers ancestry questions about dry commits.
+type vcsCommitGraph interface {
 	// Contains reports whether descendant is ancestor or has ancestor in its history. A commit the graph
 	// does not know is contained in nothing and contains nothing.
 	Contains(ctx context.Context, descendant, ancestor string) (bool, error)
@@ -97,16 +97,16 @@ type dqCommitGraph interface {
 	MergeBase(ctx context.Context, shas ...string) (string, error)
 }
 
-// dqEnvironment is what the gate knows about one environment when it decides.
-type dqEnvironment struct {
+// vcsEnvironment is what the gate knows about one environment when it decides.
+type vcsEnvironment struct {
 	// Qualified is the newest dry commit the environment has qualified, nil when it has qualified nothing.
-	Qualified *promoterv1alpha1.DependentsQualifiedWatermark
+	Qualified *promoterv1alpha1.ValidatedCommitStatusWatermark
 	// Branch is the environment's active branch.
 	Branch string
 	// Tag is the name of the environment's tag; TagSha is the dry commit it points at, "" when it does not exist.
 	Tag    string
 	TagSha string
-	// LiveDrySha is the dry commit whose manifests the environment is running (see dqLiveDrySha).
+	// LiveDrySha is the dry commit whose manifests the environment is running (see vcsLiveDrySha).
 	LiveDrySha string
 	// DependsOn lists the environment's direct upstreams. Empty for a root.
 	DependsOn []string
@@ -119,8 +119,8 @@ type dqEnvironment struct {
 	Restored bool
 }
 
-// dqTagMove is one tag the controller should create or move.
-type dqTagMove struct {
+// vcsTagMove is one tag the controller should create or move.
+type vcsTagMove struct {
 	Branch string
 	Tag    string
 	// From is the commit the tag points at now, "" when the tag is to be created.
@@ -128,33 +128,33 @@ type dqTagMove struct {
 	To   string
 }
 
-// dqGate is the ordering commit status for one environment's proposed commit.
-type dqGate struct {
+// vcsGate is the ordering commit status for one environment's proposed commit.
+type vcsGate struct {
 	Phase       promoterv1alpha1.CommitStatusPhase
 	Description string
-	Upstreams   []promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus
+	Upstreams   []promoterv1alpha1.ValidatedCommitStatusUpstreamStatus
 }
 
-func dqShortSha(sha string) string {
-	return utils.TruncateString(sha, dqShortShaLength)
+func vcsShortSha(sha string) string {
+	return utils.TruncateString(sha, vcsShortShaLength)
 }
 
-// dqShortShaOrNone is dqShortSha for descriptions that may have no commit to name.
-func dqShortShaOrNone(sha string) string {
+// vcsShortShaOrNone is vcsShortSha for descriptions that may have no commit to name.
+func vcsShortShaOrNone(sha string) string {
 	if sha == "" {
 		return "none"
 	}
-	return dqShortSha(sha)
+	return vcsShortSha(sha)
 }
 
-// dqLiveDrySha returns the dry commit whose manifests an environment is running.
+// vcsLiveDrySha returns the dry commit whose manifests an environment is running.
 //
 // That is normally the active dry SHA. The exception is a no-op hydration: the hydrator processed a newer dry
 // commit, found nothing to change, and recorded that in a git note on the proposed tip instead of pushing a
 // commit. If the proposed tip is what the environment is running, the environment is running the newer
 // commit's manifests too. sameManifests answers that; it is only asked when a note claims a newer dry commit
 // and nothing is waiting to be promoted.
-func dqLiveDrySha(status promoterv1alpha1.EnvironmentStatus, sameManifests func() (bool, error)) (string, error) {
+func vcsLiveDrySha(status promoterv1alpha1.EnvironmentStatus, sameManifests func() (bool, error)) (string, error) {
 	active := status.Active.Dry.Sha
 	if active != status.Proposed.Dry.Sha {
 		// A promotion is pending; the note describes the proposed commit, not what is live.
@@ -176,12 +176,12 @@ func dqLiveDrySha(status promoterv1alpha1.EnvironmentStatus, sameManifests func(
 	return active, nil
 }
 
-// dqQualify returns the environment's watermark after looking at what is live in it now.
+// vcsQualify returns the environment's watermark after looking at what is live in it now.
 //
 // It returns env.Qualified itself (the same pointer) when nothing changes, a new watermark when the
 // environment qualifies a newer commit or a restore pulls the watermark back, and nil when the environment
 // has qualified nothing that is still on the dry branch.
-func dqQualify(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, now metav1.Time) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
+func vcsQualify(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, now metav1.Time) (*promoterv1alpha1.ValidatedCommitStatusWatermark, error) {
 	watermark := env.Qualified
 	if watermark != nil {
 		onBranch, err := graph.Contains(ctx, head, watermark.DrySha)
@@ -206,7 +206,7 @@ func dqQualify(ctx context.Context, graph dqCommitGraph, head string, env dqEnvi
 		return watermark, nil
 	}
 
-	next := &promoterv1alpha1.DependentsQualifiedWatermark{
+	next := &promoterv1alpha1.ValidatedCommitStatusWatermark{
 		QualifiedAt: now,
 		DrySha:      live,
 		HydratedSha: env.Status.Active.Hydrated.Sha,
@@ -244,43 +244,43 @@ func dqQualify(ctx context.Context, graph dqCommitGraph, head string, env dqEnvi
 	return next, nil
 }
 
-// dqPlanTags returns the tags to create or move, in environment order.
+// vcsPlanTags returns the tags to create or move, in environment order.
 //
 // A root's tag follows the dry branch HEAD. A dependent's tag follows the newest commit every direct upstream
 // has qualified. A tag only moves forward, except that a tag which is no longer on the dry branch (the branch
 // was force-pushed) is reset. An advance: Manual tag is created when missing and never moved.
-func dqPlanTags(ctx context.Context, graph dqCommitGraph, head string, envs []dqEnvironment) ([]dqTagMove, error) {
-	byBranch := make(map[string]dqEnvironment, len(envs))
+func vcsPlanTags(ctx context.Context, graph vcsCommitGraph, head string, envs []vcsEnvironment) ([]vcsTagMove, error) {
+	byBranch := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
 		byBranch[env.Branch] = env
 	}
 
-	var moves []dqTagMove
+	var moves []vcsTagMove
 	for _, env := range envs {
-		target, err := dqTagTarget(ctx, graph, head, env, byBranch)
+		target, err := vcsTagTarget(ctx, graph, head, env, byBranch)
 		if err != nil {
 			return nil, err
 		}
 		var to string
 		if env.TagSha == "" {
-			to, err = dqNewTagSha(ctx, graph, head, env, target)
+			to, err = vcsNewTagSha(ctx, graph, head, env, target)
 		} else {
-			to, err = dqMovedTagSha(ctx, graph, head, env, target)
+			to, err = vcsMovedTagSha(ctx, graph, head, env, target)
 		}
 		if err != nil {
 			return nil, err
 		}
 		if to != "" && to != env.TagSha {
-			moves = append(moves, dqTagMove{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: to})
+			moves = append(moves, vcsTagMove{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: to})
 		}
 	}
 	return moves, nil
 }
 
-// dqTagTarget returns the commit an automatically advanced tag wants to be at: the dry branch HEAD for a
+// vcsTagTarget returns the commit an automatically advanced tag wants to be at: the dry branch HEAD for a
 // root, the newest commit every direct upstream has qualified for a dependent, and "" for a dependent with an
 // upstream that has qualified nothing.
-func dqTagTarget(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, byBranch map[string]dqEnvironment) (string, error) {
+func vcsTagTarget(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, byBranch map[string]vcsEnvironment) (string, error) {
 	if len(env.DependsOn) == 0 {
 		return head, nil
 	}
@@ -299,10 +299,10 @@ func dqTagTarget(ctx context.Context, graph dqCommitGraph, head string, env dqEn
 	return target, nil
 }
 
-// dqNewTagSha returns where to create a missing tag: at the commit that is live in the environment, so the
+// vcsNewTagSha returns where to create a missing tag: at the commit that is live in the environment, so the
 // first hydration from the tag changes nothing, or at the dry branch HEAD when nothing on the branch is live.
 // An automatically advanced tag is created directly at its target when that is ahead.
-func dqNewTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, target string) (string, error) {
+func vcsNewTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string) (string, error) {
 	base := head
 	if env.LiveDrySha != "" {
 		onBranch, err := graph.Contains(ctx, head, env.LiveDrySha)
@@ -326,8 +326,8 @@ func dqNewTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEn
 	return base, nil
 }
 
-// dqMovedTagSha returns where an existing tag should point; env.TagSha when it should stay.
-func dqMovedTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, target string) (string, error) {
+// vcsMovedTagSha returns where an existing tag should point; env.TagSha when it should stay.
+func vcsMovedTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string) (string, error) {
 	if env.Manual {
 		return env.TagSha, nil
 	}
@@ -353,12 +353,12 @@ func dqMovedTagSha(ctx context.Context, graph dqCommitGraph, head string, env dq
 	return env.TagSha, nil
 }
 
-// dqEvaluateGate decides whether an environment's proposed commit may be promoted: the hydrator has caught up
+// vcsEvaluateGate decides whether an environment's proposed commit may be promoted: the hydrator has caught up
 // to the environment's tag, the tagged commit is on the dry branch, and every direct upstream has qualified
 // the tagged commit or a newer one that contains it.
-func dqEvaluateGate(ctx context.Context, graph dqCommitGraph, head, dryBranch string, env dqEnvironment, byBranch map[string]dqEnvironment) (dqGate, error) {
-	pending := func(description string) dqGate {
-		return dqGate{Phase: promoterv1alpha1.CommitPhasePending, Description: description}
+func vcsEvaluateGate(ctx context.Context, graph vcsCommitGraph, head, dryBranch string, env vcsEnvironment, byBranch map[string]vcsEnvironment) (vcsGate, error) {
+	pending := func(description string) vcsGate {
+		return vcsGate{Phase: promoterv1alpha1.CommitPhasePending, Description: description}
 	}
 
 	if env.TagSha == "" {
@@ -367,27 +367,27 @@ func dqEvaluateGate(ctx context.Context, graph dqCommitGraph, head, dryBranch st
 
 	hydrated := getEffectiveHydratedDrySha(env.Status)
 	if hydrated != env.TagSha {
-		return pending(fmt.Sprintf("Waiting for hydrator to process tag %q at %s (currently %s)", env.Tag, dqShortSha(env.TagSha), dqShortShaOrNone(hydrated))), nil
+		return pending(fmt.Sprintf("Waiting for hydrator to process tag %q at %s (currently %s)", env.Tag, vcsShortSha(env.TagSha), vcsShortShaOrNone(hydrated))), nil
 	}
 
 	onBranch, err := graph.Contains(ctx, head, env.TagSha)
 	if err != nil {
-		return dqGate{}, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
+		return vcsGate{}, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
 	}
 	if !onBranch {
-		return pending(fmt.Sprintf("Tag %q at %s is not on dry branch %q", env.Tag, dqShortSha(env.TagSha), dryBranch)), nil
+		return pending(fmt.Sprintf("Tag %q at %s is not on dry branch %q", env.Tag, vcsShortSha(env.TagSha), dryBranch)), nil
 	}
 
-	gate := dqGate{
+	gate := vcsGate{
 		Phase:       promoterv1alpha1.CommitPhaseSuccess,
-		Description: fmt.Sprintf("Tag %q at %s is hydrated", env.Tag, dqShortSha(env.TagSha)),
+		Description: fmt.Sprintf("Tag %q at %s is hydrated", env.Tag, vcsShortSha(env.TagSha)),
 	}
 	if len(env.DependsOn) == 0 {
 		return gate, nil
 	}
 	gate.Description += " and qualified upstream"
 
-	gate.Upstreams = make([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus, 0, len(env.DependsOn))
+	gate.Upstreams = make([]promoterv1alpha1.ValidatedCommitStatusUpstreamStatus, 0, len(env.DependsOn))
 	for _, upstream := range env.DependsOn {
 		newest := ""
 		satisfied := false
@@ -395,15 +395,15 @@ func dqEvaluateGate(ctx context.Context, graph dqCommitGraph, head, dryBranch st
 			newest = watermark.DrySha
 			satisfied, err = graph.Contains(ctx, watermark.DrySha, env.TagSha)
 			if err != nil {
-				return dqGate{}, fmt.Errorf("failed to check whether %q has qualified tag %q: %w", upstream, env.Tag, err)
+				return vcsGate{}, fmt.Errorf("failed to check whether %q has qualified tag %q: %w", upstream, env.Tag, err)
 			}
 		}
 		if satisfied {
-			gate.Upstreams = append(gate.Upstreams, promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{Branch: upstream, Satisfied: true})
+			gate.Upstreams = append(gate.Upstreams, promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{Branch: upstream, Satisfied: true})
 			continue
 		}
-		reason := fmt.Sprintf("Waiting for %q to qualify dry %s (newest qualified: %s)", upstream, dqShortSha(env.TagSha), dqShortShaOrNone(newest))
-		gate.Upstreams = append(gate.Upstreams, promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{Branch: upstream, Reason: reason})
+		reason := fmt.Sprintf("Waiting for %q to qualify dry %s (newest qualified: %s)", upstream, vcsShortSha(env.TagSha), vcsShortShaOrNone(newest))
+		gate.Upstreams = append(gate.Upstreams, promoterv1alpha1.ValidatedCommitStatusUpstreamStatus{Branch: upstream, Reason: reason})
 		if gate.Phase != promoterv1alpha1.CommitPhasePending {
 			gate.Phase = promoterv1alpha1.CommitPhasePending
 			gate.Description = reason
@@ -412,39 +412,39 @@ func dqEvaluateGate(ctx context.Context, graph dqCommitGraph, head, dryBranch st
 	return gate, nil
 }
 
-// dqNeedsNudge reports whether the environment's ChangeTransferPolicy should be woken to look at the proposed
+// vcsNeedsNudge reports whether the environment's ChangeTransferPolicy should be woken to look at the proposed
 // branch again: its tag points at a commit the hydrator has not reported yet.
-func dqNeedsNudge(env dqEnvironment) bool {
+func vcsNeedsNudge(env vcsEnvironment) bool {
 	return env.TagSha != "" && getEffectiveHydratedDrySha(env.Status) != env.TagSha
 }
 
-// dqBackoff spaces out nudges for one (key, target) pair: immediately, then after base, doubling up to max.
+// vcsBackoff spaces out nudges for one (key, target) pair: immediately, then after base, doubling up to max.
 // A new target for a key starts over.
-type dqBackoff struct {
-	entries map[string]dqBackoffEntry
+type vcsBackoff struct {
+	entries map[string]vcsBackoffEntry
 	base    time.Duration
 	max     time.Duration
 	mu      sync.Mutex
 }
 
-type dqBackoffEntry struct {
+type vcsBackoffEntry struct {
 	nextAt time.Time
 	target string
 	delay  time.Duration
 }
 
-func newDQBackoff(base, maxDelay time.Duration) *dqBackoff {
-	return &dqBackoff{entries: map[string]dqBackoffEntry{}, base: base, max: maxDelay}
+func newVCSBackoff(base, maxDelay time.Duration) *vcsBackoff {
+	return &vcsBackoff{entries: map[string]vcsBackoffEntry{}, base: base, max: maxDelay}
 }
 
 // next reports whether to act now for key, and how long to wait before asking again.
-func (b *dqBackoff) next(key, target string, now time.Time) (fire bool, wait time.Duration) {
+func (b *vcsBackoff) next(key, target string, now time.Time) (fire bool, wait time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	entry, ok := b.entries[key]
 	if !ok || entry.target != target {
-		b.entries[key] = dqBackoffEntry{target: target, delay: min(2*b.base, b.max), nextAt: now.Add(b.base)}
+		b.entries[key] = vcsBackoffEntry{target: target, delay: min(2*b.base, b.max), nextAt: now.Add(b.base)}
 		return true, b.base
 	}
 	if now.Before(entry.nextAt) {
@@ -458,15 +458,15 @@ func (b *dqBackoff) next(key, target string, now time.Time) (fire bool, wait tim
 }
 
 // forget drops the state for key, so the next call to next fires immediately.
-func (b *dqBackoff) forget(key string) {
+func (b *vcsBackoff) forget(key string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.entries, key)
 }
 
-// dqValidateEnvironments checks that spec.environments has exactly one entry per PromotionStrategy
+// vcsValidateEnvironments checks that spec.environments has exactly one entry per PromotionStrategy
 // environment. (The CRD already guarantees the entries have distinct branches and distinct tags.)
-func dqValidateEnvironments(specEnvs []promoterv1alpha1.DependentsQualifiedEnvironment, branches []string) error {
+func vcsValidateEnvironments(specEnvs []promoterv1alpha1.ValidatedCommitStatusEnvironment, branches []string) error {
 	declared := make(map[string]struct{}, len(specEnvs))
 	for _, env := range specEnvs {
 		declared[env.Branch] = struct{}{}
@@ -486,19 +486,19 @@ func dqValidateEnvironments(specEnvs []promoterv1alpha1.DependentsQualifiedEnvir
 	return nil
 }
 
-// dqNoteKey is the key of an environment's entry in a qualification note. Environments that share an active
+// vcsNoteKey is the key of an environment's entry in a qualification note. Environments that share an active
 // branch (each with its own activePath) annotate the same commits, so the path is part of the key.
-func dqNoteKey(branch, activePath string) string {
+func vcsNoteKey(branch, activePath string) string {
 	if activePath == "" {
 		return branch
 	}
 	return branch + ":" + activePath
 }
 
-// dqRestored reports whether the commit that is live on branch was put there by one of the given
+// vcsRestored reports whether the commit that is live on branch was put there by one of the given
 // RestoreActiveCommits. A RestoreActiveCommit is deleted once it no longer blocks its environment, so false
 // does not mean the commit is not a restore: see liveCommitIsRestore.
-func dqRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydratedSha string) bool {
+func vcsRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydratedSha string) bool {
 	if activeHydratedSha == "" {
 		return false
 	}
@@ -514,8 +514,8 @@ func dqRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydra
 // Reconciler.
 // ---------------------------------------------------------------------------------------------------------
 
-// DependentsQualifiedCommitStatusReconciler reconciles a DependentsQualifiedCommitStatus object
-type DependentsQualifiedCommitStatusReconciler struct {
+// ValidatedCommitStatusReconciler reconciles a ValidatedCommitStatus object
+type ValidatedCommitStatusReconciler struct {
 	client.Client
 	Recorder    events.EventRecorder
 	Scheme      *runtime.Scheme
@@ -527,20 +527,20 @@ type DependentsQualifiedCommitStatusReconciler struct {
 	// enqueueFunc requests a reconcile of a gate from outside the controller (the webhook receiver).
 	enqueueFunc func(namespace, name string)
 
-	nudges     *dqBackoff
+	nudges     *vcsBackoff
 	nudgesOnce sync.Once
 }
 
-// GetEnqueueFunc returns a function that requests a reconcile of a DependentsQualifiedCommitStatus. The
+// GetEnqueueFunc returns a function that requests a reconcile of a ValidatedCommitStatus. The
 // webhook receiver uses it when the dry branch or an environment tag is pushed. It should be called after
 // SetupWithManager.
-func (r *DependentsQualifiedCommitStatusReconciler) GetEnqueueFunc() func(namespace, name string) {
+func (r *ValidatedCommitStatusReconciler) GetEnqueueFunc() func(namespace, name string) {
 	return r.enqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentsqualifiedcommitstatuses,verbs=get;list;watch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentsqualifiedcommitstatuses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentsqualifiedcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=validatedcommitstatuses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=validatedcommitstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=validatedcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch
@@ -556,48 +556,48 @@ func (r *DependentsQualifiedCommitStatusReconciler) GetEnqueueFunc() func(namesp
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
 //
 //nolint:dupl // Ordering gate controllers share the same Reconcile skeleton by design.
-func (r *DependentsQualifiedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *ValidatedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Reconciling DependentsQualifiedCommitStatus")
+	logger.Info("Reconciling ValidatedCommitStatus")
 	startTime := time.Now()
 
-	var dqcs promoterv1alpha1.DependentsQualifiedCommitStatus
+	var vcs promoterv1alpha1.ValidatedCommitStatus
 	// This applies the resource status via Server-Side Apply at the end of reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
-	defer utils.HandleReconciliationResult(ctx, startTime, &dqcs, r.Client, r.Recorder, constants.DependentsQualifiedCommitStatusControllerFieldOwner, &result, &err, &previousReady)
+	defer utils.HandleReconciliationResult(ctx, startTime, &vcs, r.Client, r.Recorder, constants.ValidatedCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
-	// 1. Fetch the DependentsQualifiedCommitStatus instance.
-	if err = r.Get(ctx, req.NamespacedName, &dqcs); err != nil {
+	// 1. Fetch the ValidatedCommitStatus instance.
+	if err = r.Get(ctx, req.NamespacedName, &vcs); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("DependentsQualifiedCommitStatus not found")
+			logger.Info("ValidatedCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get DependentsQualifiedCommitStatus %q: %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get ValidatedCommitStatus %q: %w", req.Name, err)
 	}
 
 	// Start fresh on the Ready condition each reconcile.
-	previousReady = utils.RemoveReadyCondition(&dqcs)
+	previousReady = utils.RemoveReadyCondition(&vcs)
 
 	// 2. Fetch the referenced PromotionStrategy.
 	var ps promoterv1alpha1.PromotionStrategy
-	psKey := client.ObjectKey{Namespace: dqcs.Namespace, Name: dqcs.Spec.PromotionStrategyRef.Name}
+	psKey := client.ObjectKey{Namespace: vcs.Namespace, Name: vcs.Spec.PromotionStrategyRef.Name}
 	if err = r.Get(ctx, psKey, &ps); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", dqcs.Spec.PromotionStrategyRef.Name, err)
+			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", vcs.Spec.PromotionStrategyRef.Name, err)
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", dqcs.Spec.PromotionStrategyRef.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", vcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
 	// 3. Advance tags, record qualifications, and write the gate for every environment.
-	retryAfter, err := r.reconcileEnvironments(ctx, &dqcs, &ps)
+	retryAfter, err := r.reconcileEnvironments(ctx, &vcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile environment tags: %w", err)
 	}
 
 	// 4. Requeue using the configured requeue duration, or sooner when something is waiting on a retry.
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.DependentsQualifiedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ValidatedCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for DependentsQualifiedCommitStatus %q: %w", dqcs.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for ValidatedCommitStatus %q: %w", vcs.Name, err)
 	}
 	if retryAfter > 0 && retryAfter < requeueDuration {
 		requeueDuration = retryAfter
@@ -606,43 +606,43 @@ func (r *DependentsQualifiedCommitStatusReconciler) Reconcile(ctx context.Contex
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
-// dqRepositories opens the git clones one reconcile needs, at most once each. The dry repository and the
+// vcsRepositories opens the git clones one reconcile needs, at most once each. The dry repository and the
 // PromotionStrategy's (hydrated) repository are usually the same GitRepository and then share a clone.
-type dqRepositories struct {
-	reconciler *DependentsQualifiedCommitStatusReconciler
-	dqcs       *promoterv1alpha1.DependentsQualifiedCommitStatus
+type vcsRepositories struct {
+	reconciler *ValidatedCommitStatusReconciler
+	vcs        *promoterv1alpha1.ValidatedCommitStatus
 	ps         *promoterv1alpha1.PromotionStrategy
 	opened     map[string]*git.EnvironmentOperations
 	// notesFetched is true once the qualification notes of the hydrated repository were fetched.
 	notesFetched bool
 }
 
-func (q *dqRepositories) dryRepositoryName() string {
-	if ref := q.dqcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
+func (q *vcsRepositories) dryRepositoryName() string {
+	if ref := q.vcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
 		return ref.Name
 	}
 	return q.ps.Spec.RepositoryReference.Name
 }
 
 // dry returns the clone that holds the dry branch and the environment tags.
-func (q *dqRepositories) dry(ctx context.Context) (*git.EnvironmentOperations, error) {
+func (q *vcsRepositories) dry(ctx context.Context) (*git.EnvironmentOperations, error) {
 	return q.open(ctx, q.dryRepositoryName())
 }
 
 // hydrated returns the clone that holds the environment branches.
-func (q *dqRepositories) hydrated(ctx context.Context) (*git.EnvironmentOperations, error) {
+func (q *vcsRepositories) hydrated(ctx context.Context) (*git.EnvironmentOperations, error) {
 	return q.open(ctx, q.ps.Spec.RepositoryReference.Name)
 }
 
-func (q *dqRepositories) open(ctx context.Context, repositoryName string) (*git.EnvironmentOperations, error) {
+func (q *vcsRepositories) open(ctx context.Context, repositoryName string) (*git.EnvironmentOperations, error) {
 	if ops, ok := q.opened[repositoryName]; ok {
 		return ops, nil
 	}
 	r := q.reconciler
 	repoRef := promoterv1alpha1.ObjectReference{Name: repositoryName}
-	repoKey := client.ObjectKey{Namespace: q.dqcs.Namespace, Name: repositoryName}
+	repoKey := client.ObjectKey{Namespace: q.vcs.Namespace, Name: repositoryName}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr, repoRef, q.dqcs)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr, repoRef, q.vcs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret for GitRepository %q: %w", repositoryName, err)
 	}
@@ -657,7 +657,7 @@ func (q *dqRepositories) open(ctx context.Context, repositoryName string) (*git.
 
 	// The clone on disk is keyed by this identity. controller-runtime never reconciles one gate
 	// concurrently with itself, so a per-gate identity gives each clone a single writer.
-	ops := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, q.dqcs.Namespace+"/"+q.dqcs.Name+"/"+repositoryName)
+	ops := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, q.vcs.Namespace+"/"+q.vcs.Name+"/"+repositoryName)
 	if err := ops.CloneRepo(ctx); err != nil {
 		return nil, fmt.Errorf("failed to clone GitRepository %q: %w", repositoryName, err)
 	}
@@ -668,12 +668,12 @@ func (q *dqRepositories) open(ctx context.Context, repositoryName string) (*git.
 	return ops, nil
 }
 
-// dqGitGraph answers ancestry questions from the dry clone.
-type dqGitGraph struct {
+// vcsGitGraph answers ancestry questions from the dry clone.
+type vcsGitGraph struct {
 	ops *git.EnvironmentOperations
 }
 
-func (g dqGitGraph) Contains(ctx context.Context, descendant, ancestor string) (bool, error) {
+func (g vcsGitGraph) Contains(ctx context.Context, descendant, ancestor string) (bool, error) {
 	contains, err := g.ops.CommitIsAncestorOrSame(ctx, ancestor, descendant)
 	if err != nil {
 		return false, fmt.Errorf("failed to check whether %s contains %s: %w", descendant, ancestor, err)
@@ -681,7 +681,7 @@ func (g dqGitGraph) Contains(ctx context.Context, descendant, ancestor string) (
 	return contains, nil
 }
 
-func (g dqGitGraph) MergeBase(ctx context.Context, shas ...string) (string, error) {
+func (g vcsGitGraph) MergeBase(ctx context.Context, shas ...string) (string, error) {
 	base, err := g.ops.MergeBase(ctx, shas...)
 	if err != nil {
 		return "", fmt.Errorf("failed to find merge base: %w", err)
@@ -689,8 +689,8 @@ func (g dqGitGraph) MergeBase(ctx context.Context, shas ...string) (string, erro
 	return base, nil
 }
 
-// dqDryState is what the gate read from the dry repository.
-type dqDryState struct {
+// vcsDryState is what the gate read from the dry repository.
+type vcsDryState struct {
 	ops *git.EnvironmentOperations
 	// tags maps each environment tag to the commit it points at, "" when the tag does not exist.
 	tags map[string]string
@@ -699,41 +699,41 @@ type dqDryState struct {
 }
 
 // readDryRepository reads the dry branch HEAD and every environment tag from the remote.
-func (r *DependentsQualifiedCommitStatusReconciler) readDryRepository(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, repos *dqRepositories) (*dqDryState, error) {
+func (r *ValidatedCommitStatusReconciler) readDryRepository(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, repos *vcsRepositories) (*vcsDryState, error) {
 	ops, err := repos.dry(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the dry repository: %w", err)
 	}
 
 	lastKnownHead := ""
-	if dqcs.Status.Dry != nil {
-		lastKnownHead = dqcs.Status.Dry.Sha
+	if vcs.Status.Dry != nil {
+		lastKnownHead = vcs.Status.Dry.Sha
 	}
-	names := make([]string, 0, len(dqcs.Spec.Environments))
-	for _, env := range dqcs.Spec.Environments {
+	names := make([]string, 0, len(vcs.Spec.Environments))
+	for _, env := range vcs.Spec.Environments {
 		names = append(names, env.Tag)
 	}
-	head, tags, err := dqReadDryRefs(ctx, ops, dqcs.Spec.DrySource.Branch, lastKnownHead, names)
+	head, tags, err := vcsReadDryRefs(ctx, ops, vcs.Spec.DrySource.Branch, lastKnownHead, names)
 	if err != nil {
 		return nil, err
 	}
-	return &dqDryState{ops: ops, head: head, tags: tags}, nil
+	return &vcsDryState{ops: ops, head: head, tags: tags}, nil
 }
 
-// dqDryRefReader reads refs of the dry repository from its remote. *git.EnvironmentOperations implements it.
-type dqDryRefReader interface {
+// vcsDryRefReader reads refs of the dry repository from its remote. *git.EnvironmentOperations implements it.
+type vcsDryRefReader interface {
 	GetBranchSha(ctx context.Context, branch, lastKnownSha string) (string, error)
 	FetchTags(ctx context.Context, tags ...string) (map[string]string, error)
 }
 
-// dqReadDryRefs reads the commit each environment tag points at, then the dry branch HEAD.
+// vcsReadDryRefs reads the commit each environment tag points at, then the dry branch HEAD.
 //
 // The order matters because the two reads are not one snapshot. A tag that is not reachable from HEAD is
 // treated as left behind by a force-push and reset. Reading the tags first means a tag on the branch is
 // always paired with a HEAD at least as new as the branch was when the tag was read. The other way round, a
 // push that moves the branch and a tag between the reads would pair the new tag with the old HEAD, and the
 // tag would be moved backward.
-func dqReadDryRefs(ctx context.Context, reader dqDryRefReader, branch, lastKnownHead string, tagNames []string) (head string, tags map[string]string, err error) {
+func vcsReadDryRefs(ctx context.Context, reader vcsDryRefReader, branch, lastKnownHead string, tagNames []string) (head string, tags map[string]string, err error) {
 	// Tags are read from the remote on every reconcile: a person may move one at any time, and not every
 	// SCM tells us when they do.
 	tags, err = reader.FetchTags(ctx, tagNames...)
@@ -750,7 +750,7 @@ func dqReadDryRefs(ctx context.Context, reader dqDryRefReader, branch, lastKnown
 // reconcileEnvironments does the work of one reconcile. It returns how soon to reconcile again when
 // something is waiting on a retry (0 when nothing is), and an error for failures that should surface as
 // Ready=False with reason ReconciliationError.
-func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (time.Duration, error) {
+func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (time.Duration, error) {
 	logger := logf.FromContext(ctx)
 
 	environments, err := resolveDependentEnvironments(ps)
@@ -764,35 +764,35 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 	if err := dependencies.validateDAG(); err != nil {
 		return 0, fmt.Errorf("invalid dependency graph: %w", err)
 	}
-	if err := dqValidateEnvironments(dqcs.Spec.Environments, dependencies.branches); err != nil {
+	if err := vcsValidateEnvironments(vcs.Spec.Environments, dependencies.branches); err != nil {
 		return 0, err
 	}
 
-	repos := &dqRepositories{reconciler: r, dqcs: dqcs, ps: ps}
-	dry, err := r.readDryRepository(ctx, dqcs, repos)
+	repos := &vcsRepositories{reconciler: r, vcs: vcs, ps: ps}
+	dry, err := r.readDryRepository(ctx, vcs, repos)
 	if err != nil {
 		// Without the dry repository nothing can be decided. Leave the tags, the child CommitStatuses, and
 		// the last reported status alone, and say why on the Ready condition.
 		logger.Info("Dry repository is unavailable", "error", err.Error())
-		dqSetNotReady(dqcs, promoterConditions.DryRepositoryUnavailable, err.Error())
-		return dqSoftRetry, nil
+		vcsSetNotReady(vcs, promoterConditions.DryRepositoryUnavailable, err.Error())
+		return vcsSoftRetry, nil
 	}
-	graph := dqGitGraph{ops: dry.ops}
+	graph := vcsGitGraph{ops: dry.ops}
 
 	// Observe.
-	envs, err := r.observeEnvironments(ctx, dqcs, ps, dependencies, dry, repos)
+	envs, err := r.observeEnvironments(ctx, vcs, ps, dependencies, dry, repos)
 	if err != nil {
 		return 0, err
 	}
 
 	// Qualify. A failure to persist a qualification does not stop the rest of the reconcile; it is returned
 	// at the end so the status still reflects everything else.
-	activePaths := dqActivePaths(ps)
+	activePaths := vcsActivePaths(ps)
 	var qualifyErrs []error
 	now := metav1.Now()
 	for i := range envs {
 		env := &envs[i]
-		qualified, err := dqQualify(ctx, graph, dry.head, *env, now)
+		qualified, err := vcsQualify(ctx, graph, dry.head, *env, now)
 		if err != nil {
 			return 0, err
 		}
@@ -801,13 +801,13 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 				// The note is the durable record, so do not act on an advance that was not written: keep
 				// what was qualified before and try again later. A pull-back is acted on regardless.
 				qualifyErrs = append(qualifyErrs, err)
-				qualified, err = dqUnrecordedQualification(ctx, graph, dry.head, *env, qualified)
+				qualified, err = vcsUnrecordedQualification(ctx, graph, dry.head, *env, qualified)
 				if err != nil {
 					return 0, err
 				}
 			} else {
 				logger.Info("Environment qualified a dry commit", "branch", env.Branch, "drySha", qualified.DrySha, "restored", env.Restored)
-				r.Recorder.Eventf(dqcs, nil, "Normal", constants.EnvironmentQualifiedReason, "QualifyingEnvironment",
+				r.Recorder.Eventf(vcs, nil, "Normal", constants.EnvironmentQualifiedReason, "QualifyingEnvironment",
 					constants.EnvironmentQualifiedMessage, env.Branch, qualified.DrySha)
 			}
 		}
@@ -815,32 +815,32 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 	}
 
 	// Move tags.
-	dqcs.Status.Dry = &promoterv1alpha1.DependentsQualifiedDryStatus{Sha: dry.head}
+	vcs.Status.Dry = &promoterv1alpha1.ValidatedCommitStatusDryStatus{Sha: dry.head}
 	planEnvs, err := r.withLiveDryShasFromGit(ctx, repos, envs, activePaths)
 	if err != nil {
 		return 0, err
 	}
-	moves, err := dqPlanTags(ctx, graph, dry.head, planEnvs)
+	moves, err := vcsPlanTags(ctx, graph, dry.head, planEnvs)
 	if err != nil {
 		return 0, err
 	}
-	pushErrs := r.pushTags(ctx, dqcs, dry.ops, moves, envs)
+	pushErrs := r.pushTags(ctx, vcs, dry.ops, moves, envs)
 
 	// Gate.
-	commitStatuses, err := r.writeGates(ctx, dqcs, ps, graph, dry.head, envs)
+	commitStatuses, err := r.writeGates(ctx, vcs, ps, graph, dry.head, envs)
 	if err != nil {
 		return 0, err
 	}
-	if err := utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, dqcs, commitStatuses); err != nil {
+	if err := utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, vcs, commitStatuses); err != nil {
 		return 0, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
-	utils.InheritNotReadyConditionFromObjects(dqcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
+	utils.InheritNotReadyConditionFromObjects(vcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	retryAfter := r.nudgeHydration(ctx, dqcs, ps, envs)
+	retryAfter := r.nudgeHydration(ctx, vcs, ps, envs)
 
 	if len(pushErrs) > 0 {
-		dqSetNotReady(dqcs, promoterConditions.TagPushFailed, errors.Join(pushErrs...).Error())
-		retryAfter = dqSooner(retryAfter, dqSoftRetry)
+		vcsSetNotReady(vcs, promoterConditions.TagPushFailed, errors.Join(pushErrs...).Error())
+		retryAfter = vcsSooner(retryAfter, vcsSoftRetry)
 	}
 	if len(qualifyErrs) > 0 {
 		return 0, errors.Join(qualifyErrs...)
@@ -848,28 +848,28 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 	return retryAfter, nil
 }
 
-// dqSooner returns the shorter of two waits, where 0 means "no wait requested".
-func dqSooner(a, b time.Duration) time.Duration {
+// vcsSooner returns the shorter of two waits, where 0 means "no wait requested".
+func vcsSooner(a, b time.Duration) time.Duration {
 	if a == 0 || (b != 0 && b < a) {
 		return b
 	}
 	return a
 }
 
-// dqSetNotReady sets Ready=False with the given reason. HandleReconciliationResult keeps a Ready condition
+// vcsSetNotReady sets Ready=False with the given reason. HandleReconciliationResult keeps a Ready condition
 // the reconciler set itself as long as the reconcile returns no error.
-func dqSetNotReady(dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, reason promoterConditions.CommonReason, message string) {
-	meta.SetStatusCondition(dqcs.GetConditions(), metav1.Condition{
+func vcsSetNotReady(vcs *promoterv1alpha1.ValidatedCommitStatus, reason promoterConditions.CommonReason, message string) {
+	meta.SetStatusCondition(vcs.GetConditions(), metav1.Condition{
 		Type:               string(promoterConditions.Ready),
 		Status:             metav1.ConditionFalse,
 		Reason:             string(reason),
 		Message:            message,
-		ObservedGeneration: dqcs.Generation,
+		ObservedGeneration: vcs.Generation,
 	})
 }
 
-// dqActivePaths returns the effective activePath of every environment of a PromotionStrategy, by branch.
-func dqActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
+// vcsActivePaths returns the effective activePath of every environment of a PromotionStrategy, by branch.
+func vcsActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
 	paths := make(map[string]string, len(ps.Spec.Environments))
 	for _, environment := range ps.Spec.Environments {
 		activePath := ps.Spec.ActivePath
@@ -881,14 +881,14 @@ func dqActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
 	return paths
 }
 
-// dqUnrecordedQualification returns the watermark to act on when attempted, the environment's new watermark,
+// vcsUnrecordedQualification returns the watermark to act on when attempted, the environment's new watermark,
 // could not be written to its note. It errs toward holding promotions back.
 //
 // An advance is not acted on: the note is the durable record, so the previous watermark stands (if it is
 // still on the dry branch) until the note is written. A pull-back after a restore is acted on at once:
 // keeping the previous watermark would leave downstream promotions of the commits the restore took back
 // open for as long as the note cannot be written.
-func dqUnrecordedQualification(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, attempted *promoterv1alpha1.DependentsQualifiedWatermark) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
+func vcsUnrecordedQualification(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, attempted *promoterv1alpha1.ValidatedCommitStatusWatermark) (*promoterv1alpha1.ValidatedCommitStatusWatermark, error) {
 	previous := env.Qualified
 	if previous == nil {
 		return nil, nil
@@ -914,30 +914,30 @@ func dqUnrecordedQualification(ctx context.Context, graph dqCommitGraph, head st
 }
 
 // observeEnvironments gathers what the decisions need for every environment, in PromotionStrategy order.
-func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
+func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 	ctx context.Context,
-	dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 	dependencies *dag,
-	dry *dqDryState,
-	repos *dqRepositories,
-) ([]dqEnvironment, error) {
-	specByBranch := make(map[string]promoterv1alpha1.DependentsQualifiedEnvironment, len(dqcs.Spec.Environments))
-	for _, env := range dqcs.Spec.Environments {
+	dry *vcsDryState,
+	repos *vcsRepositories,
+) ([]vcsEnvironment, error) {
+	specByBranch := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironment, len(vcs.Spec.Environments))
+	for _, env := range vcs.Spec.Environments {
 		specByBranch[env.Branch] = env
 	}
 	statusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for _, envStatus := range ps.Status.Environments {
 		statusByBranch[envStatus.Branch] = envStatus
 	}
-	previousByBranch := make(map[string]promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus, len(dqcs.Status.Environments))
-	for _, previous := range dqcs.Status.Environments {
+	previousByBranch := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, len(vcs.Status.Environments))
+	for _, previous := range vcs.Status.Environments {
 		previousByBranch[previous.Branch] = previous
 	}
-	activePaths := dqActivePaths(ps)
+	activePaths := vcsActivePaths(ps)
 
 	var racList promoterv1alpha1.RestoreActiveCommitList
-	if err := r.List(ctx, &racList, client.InNamespace(dqcs.Namespace)); err != nil {
+	if err := r.List(ctx, &racList, client.InNamespace(vcs.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list RestoreActiveCommits: %w", err)
 	}
 	racs := make([]promoterv1alpha1.RestoreActiveCommit, 0, len(racList.Items))
@@ -947,23 +947,23 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 		}
 	}
 
-	envs := make([]dqEnvironment, 0, len(dependencies.branches))
+	envs := make([]vcsEnvironment, 0, len(dependencies.branches))
 	for _, branch := range dependencies.branches {
 		spec := specByBranch[branch]
 		status := statusByBranch[branch]
 		activePath := activePaths[branch]
 
-		env := dqEnvironment{
+		env := vcsEnvironment{
 			Branch:    branch,
 			Tag:       spec.Tag,
 			TagSha:    dry.tags[spec.Tag],
 			Manual:    spec.Advance == promoterv1alpha1.TagAdvanceManual,
 			DependsOn: dependencies.dependsOn[branch],
 			Status:    status,
-			Restored:  dqRestored(racs, branch, status.Active.Hydrated.Sha),
+			Restored:  vcsRestored(racs, branch, status.Active.Hydrated.Sha),
 		}
 
-		live, err := dqLiveDrySha(status, func() (bool, error) {
+		live, err := vcsLiveDrySha(status, func() (bool, error) {
 			return r.sameManifests(ctx, repos, branch, activePath, status)
 		})
 		if err != nil {
@@ -1006,8 +1006,8 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 //
 // The result is only for planning tags. What an environment qualifies is decided from the commit statuses the
 // PromotionStrategy reports, never from this reading, so envs itself is left alone.
-func (r *DependentsQualifiedCommitStatusReconciler) withLiveDryShasFromGit(ctx context.Context, repos *dqRepositories, envs []dqEnvironment, activePaths map[string]string) ([]dqEnvironment, error) {
-	planned := make([]dqEnvironment, len(envs))
+func (r *ValidatedCommitStatusReconciler) withLiveDryShasFromGit(ctx context.Context, repos *vcsRepositories, envs []vcsEnvironment, activePaths map[string]string) ([]vcsEnvironment, error) {
+	planned := make([]vcsEnvironment, len(envs))
 	copy(planned, envs)
 	for i, env := range envs {
 		if env.TagSha != "" || env.Status.Active.Hydrated.Sha != "" {
@@ -1024,21 +1024,21 @@ func (r *DependentsQualifiedCommitStatusReconciler) withLiveDryShasFromGit(ctx c
 	return planned, nil
 }
 
-// dqIsMissingRemoteRef reports whether a git fetch failed because the ref does not exist on the remote.
-func dqIsMissingRemoteRef(err error) bool {
+// vcsIsMissingRemoteRef reports whether a git fetch failed because the ref does not exist on the remote.
+func vcsIsMissingRemoteRef(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "couldn't find remote ref")
 }
 
 // liveDryShaFromGit returns the dry SHA recorded in hydrator.metadata at the tip of an environment's active
 // branch, or "" when the branch does not exist or its tip has no metadata.
-func (r *DependentsQualifiedCommitStatusReconciler) liveDryShaFromGit(ctx context.Context, repos *dqRepositories, branch, activePath string) (string, error) {
+func (r *ValidatedCommitStatusReconciler) liveDryShaFromGit(ctx context.Context, repos *vcsRepositories, branch, activePath string) (string, error) {
 	ops, err := repos.hydrated(ctx)
 	if err != nil {
 		return "", err
 	}
 	tip, err := ops.GetBranchSha(ctx, branch, "")
 	if err != nil {
-		if dqIsMissingRemoteRef(err) {
+		if vcsIsMissingRemoteRef(err) {
 			// The environment has never been promoted to, so nothing is live in it.
 			return "", nil
 		}
@@ -1057,7 +1057,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) liveDryShaFromGit(ctx contex
 // It reads the Promoter-restored-from marker the restore left on the commit. The RestoreActiveCommit itself
 // is not enough to go by: it is deleted once it no longer blocks the environment, which can be before this
 // gate has seen it (the gate was not running, or its status was lost and rebuilt from the notes).
-func (r *DependentsQualifiedCommitStatusReconciler) liveCommitIsRestore(ctx context.Context, repos *dqRepositories, branch, activeHydratedSha string) (bool, error) {
+func (r *ValidatedCommitStatusReconciler) liveCommitIsRestore(ctx context.Context, repos *vcsRepositories, branch, activeHydratedSha string) (bool, error) {
 	if activeHydratedSha == "" {
 		return false, nil
 	}
@@ -1084,7 +1084,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) liveCommitIsRestore(ctx cont
 
 // sameManifests reports whether the environment's proposed tip has the same content as what is live on its
 // active branch.
-func (r *DependentsQualifiedCommitStatusReconciler) sameManifests(ctx context.Context, repos *dqRepositories, branch, activePath string, status promoterv1alpha1.EnvironmentStatus) (bool, error) {
+func (r *ValidatedCommitStatusReconciler) sameManifests(ctx context.Context, repos *vcsRepositories, branch, activePath string, status promoterv1alpha1.EnvironmentStatus) (bool, error) {
 	proposed, active := status.Proposed.Hydrated.Sha, status.Active.Hydrated.Sha
 	if proposed == "" || active == "" {
 		return false, nil
@@ -1128,13 +1128,13 @@ func (r *DependentsQualifiedCommitStatusReconciler) sameManifests(ctx context.Co
 
 // loadQualification reads the environment's newest qualification from the notes on its active branch. It
 // returns nil when there is none, which includes an active branch that does not exist yet.
-func (r *DependentsQualifiedCommitStatusReconciler) loadQualification(ctx context.Context, repos *dqRepositories, branch, activePath string) (*promoterv1alpha1.DependentsQualifiedWatermark, error) {
+func (r *ValidatedCommitStatusReconciler) loadQualification(ctx context.Context, repos *vcsRepositories, branch, activePath string) (*promoterv1alpha1.ValidatedCommitStatusWatermark, error) {
 	ops, err := repos.hydrated(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err := ops.FetchBranch(ctx, branch); err != nil {
-		if dqIsMissingRemoteRef(err) {
+		if vcsIsMissingRemoteRef(err) {
 			// The environment has never been promoted to, so it has qualified nothing.
 			return nil, nil
 		}
@@ -1146,14 +1146,14 @@ func (r *DependentsQualifiedCommitStatusReconciler) loadQualification(ctx contex
 		}
 		repos.notesFetched = true
 	}
-	entry, hydratedSha, err := ops.FindNewestQualifiedNoteEntry(ctx, "origin/"+branch, dqNoteKey(branch, activePath), dqNoteSearchDepth)
+	entry, hydratedSha, err := ops.FindNewestQualifiedNoteEntry(ctx, "origin/"+branch, vcsNoteKey(branch, activePath), vcsNoteSearchDepth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qualification notes of %q: %w", branch, err)
 	}
 	if entry == nil || entry.DrySha == "" {
 		return nil, nil
 	}
-	return &promoterv1alpha1.DependentsQualifiedWatermark{
+	return &promoterv1alpha1.ValidatedCommitStatusWatermark{
 		QualifiedAt: entry.QualifiedAt,
 		DrySha:      entry.DrySha,
 		HydratedSha: hydratedSha,
@@ -1161,7 +1161,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) loadQualification(ctx contex
 }
 
 // recordQualification writes the environment's qualification to a note on the active commit that was live.
-func (r *DependentsQualifiedCommitStatusReconciler) recordQualification(ctx context.Context, repos *dqRepositories, env dqEnvironment, activePath string, watermark *promoterv1alpha1.DependentsQualifiedWatermark) error {
+func (r *ValidatedCommitStatusReconciler) recordQualification(ctx context.Context, repos *vcsRepositories, env vcsEnvironment, activePath string, watermark *promoterv1alpha1.ValidatedCommitStatusWatermark) error {
 	if watermark.HydratedSha == "" {
 		// Nothing to annotate. A live dry SHA without an active hydrated commit is not something a
 		// ChangeTransferPolicy reports; status alone carries the watermark if it ever does.
@@ -1184,7 +1184,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) recordQualification(ctx cont
 	for _, commitStatus := range env.Status.Active.CommitStatuses {
 		entry.CommitStatuses = append(entry.CommitStatuses, git.QualifiedNoteCommitStatus{Key: commitStatus.Key, Phase: commitStatus.Phase})
 	}
-	if err := ops.SetQualifiedNoteEntry(ctx, watermark.HydratedSha, dqNoteKey(env.Branch, activePath), entry); err != nil {
+	if err := ops.SetQualifiedNoteEntry(ctx, watermark.HydratedSha, vcsNoteKey(env.Branch, activePath), entry); err != nil {
 		return fmt.Errorf("failed to record that %q qualified dry %s: %w", env.Branch, watermark.DrySha, err)
 	}
 	return nil
@@ -1192,12 +1192,12 @@ func (r *DependentsQualifiedCommitStatusReconciler) recordQualification(ctx cont
 
 // pushTags carries out the planned tag moves and updates envs with the tags' new positions. A failed push
 // does not stop the others; the failures are returned.
-func (r *DependentsQualifiedCommitStatusReconciler) pushTags(
+func (r *ValidatedCommitStatusReconciler) pushTags(
 	ctx context.Context,
-	dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	ops *git.EnvironmentOperations,
-	moves []dqTagMove,
-	envs []dqEnvironment,
+	moves []vcsTagMove,
+	envs []vcsEnvironment,
 ) []error {
 	logger := logf.FromContext(ctx)
 	indexByBranch := make(map[string]int, len(envs))
@@ -1211,7 +1211,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) pushTags(
 		// at once, and one rejected tag must not hold back the others.
 		if err := ops.PushTag(ctx, move.Tag, move.To); err != nil {
 			logger.Error(err, "Failed to push environment tag", "branch", move.Branch, "tag", move.Tag, "to", move.To)
-			r.Recorder.Eventf(dqcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
+			r.Recorder.Eventf(vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
 				constants.EnvironmentTagPushFailedMessage, move.Tag, move.Branch, err)
 			errs = append(errs, err)
 			continue
@@ -1223,7 +1223,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) pushTags(
 			from = constants.EnvironmentTagNoPreviousSha
 		}
 		logger.Info("Moved environment tag", "branch", move.Branch, "tag", move.Tag, "from", from, "to", move.To)
-		r.Recorder.Eventf(dqcs, nil, "Normal", constants.EnvironmentTagMovedReason, "AdvancingTag",
+		r.Recorder.Eventf(vcs, nil, "Normal", constants.EnvironmentTagMovedReason, "AdvancingTag",
 			constants.EnvironmentTagMovedMessage, move.Tag, move.Branch, from, move.To)
 	}
 	return errs
@@ -1231,26 +1231,26 @@ func (r *DependentsQualifiedCommitStatusReconciler) pushTags(
 
 // writeGates writes status.environments and the child CommitStatus of every environment that has a proposed
 // change. It returns the child CommitStatuses that are still wanted.
-func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
+func (r *ValidatedCommitStatusReconciler) writeGates(
 	ctx context.Context,
-	dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-	graph dqCommitGraph,
+	graph vcsCommitGraph,
 	head string,
-	envs []dqEnvironment,
+	envs []vcsEnvironment,
 ) ([]*promoterv1alpha1.CommitStatus, error) {
 	logger := logf.FromContext(ctx)
-	byBranch := make(map[string]dqEnvironment, len(envs))
+	byBranch := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
 		byBranch[env.Branch] = env
 	}
 
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(envs))
-	dqcs.Status.Environments = make([]promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus, 0, len(envs))
+	vcs.Status.Environments = make([]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, 0, len(envs))
 	for _, env := range envs {
-		entry := promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus{
+		entry := promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
 			Branch:               env.Branch,
-			Tag:                  &promoterv1alpha1.DependentsQualifiedTagStatus{Name: env.Tag, Sha: env.TagSha},
+			Tag:                  &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.Tag, Sha: env.TagSha},
 			Qualified:            env.Qualified,
 			ActiveCommitStatuses: env.Status.Active.CommitStatuses,
 		}
@@ -1262,8 +1262,8 @@ func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
 		if env.Status.Active.Dry.Sha == env.Status.Proposed.Dry.Sha || proposedHydratedSha == "" {
 			logger.V(4).Info("Skipping environment with no proposed change", "branch", env.Branch)
 			existing := &promoterv1alpha1.CommitStatus{}
-			name := utils.CommitStatusResourceName(ctx, dqcs, env.Branch)
-			if err := r.Get(ctx, client.ObjectKey{Namespace: dqcs.Namespace, Name: name}, existing); err != nil {
+			name := utils.CommitStatusResourceName(ctx, vcs, env.Branch)
+			if err := r.Get(ctx, client.ObjectKey{Namespace: vcs.Namespace, Name: name}, existing); err != nil {
 				if !k8serrors.IsNotFound(err) {
 					return nil, fmt.Errorf("failed to get existing CommitStatus for branch %q: %w", env.Branch, err)
 				}
@@ -1271,11 +1271,11 @@ func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
 				commitStatuses = append(commitStatuses, existing)
 				entry.GateEnvironmentCommitStatus = utils.GateEnvironmentCommitStatusFromCommitStatus(existing)
 			}
-			dqcs.Status.Environments = append(dqcs.Status.Environments, entry)
+			vcs.Status.Environments = append(vcs.Status.Environments, entry)
 			continue
 		}
 
-		gate, err := dqEvaluateGate(ctx, graph, head, dqcs.Spec.DrySource.Branch, env, byBranch)
+		gate, err := vcsEvaluateGate(ctx, graph, head, vcs.Spec.DrySource.Branch, env, byBranch)
 		if err != nil {
 			return nil, err
 		}
@@ -1288,44 +1288,44 @@ func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
 
 		// Bind the CommitStatus to the proposed branch's hydrated SHA: that is the commit the
 		// ChangeTransferPolicy inspects when gating the promotion PR.
-		commitStatus, report, err := r.applyCommitStatus(ctx, dqcs, ps, env, gate, proposedHydratedSha)
+		commitStatus, report, err := r.applyCommitStatus(ctx, vcs, ps, env, gate, proposedHydratedSha)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set commit status for branch %q: %w", env.Branch, err)
 		}
 		commitStatuses = append(commitStatuses, commitStatus)
 		entry.GateEnvironmentCommitStatus = report
 		entry.Upstreams = gate.Upstreams
-		dqcs.Status.Environments = append(dqcs.Status.Environments, entry)
+		vcs.Status.Environments = append(vcs.Status.Environments, entry)
 	}
 	return commitStatuses, nil
 }
 
 // applyCommitStatus applies the child CommitStatus that carries an environment's gate.
-func (r *DependentsQualifiedCommitStatusReconciler) applyCommitStatus(
+func (r *ValidatedCommitStatusReconciler) applyCommitStatus(
 	ctx context.Context,
-	dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-	env dqEnvironment,
-	gate dqGate,
+	env vcsEnvironment,
+	gate vcsGate,
 	reportedSha string,
 ) (*promoterv1alpha1.CommitStatus, promoterv1alpha1.GateEnvironmentCommitStatus, error) {
-	key := dqcs.Spec.Key
-	commitStatusName := utils.CommitStatusResourceName(ctx, dqcs, env.Branch)
+	key := vcs.Spec.Key
+	commitStatusName := utils.CommitStatusResourceName(ctx, vcs, env.Branch)
 
-	kind := reflect.TypeFor[promoterv1alpha1.DependentsQualifiedCommitStatus]().Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ValidatedCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	var renderedURL string
-	if dqcs.Spec.URL.Template != "" {
-		data := DependentsQualifiedURLTemplateData{
-			Environment:                     env.Branch,
-			DependentsQualifiedCommitStatus: *dqcs,
-			PromotionStrategy:               ps,
-			DependsOn:                       env.DependsOn,
-			DependsOnQuery:                  buildDependsOnQuery(env.DependsOn),
+	if vcs.Spec.URL.Template != "" {
+		data := ValidatedCommitStatusURLTemplateData{
+			Environment:           env.Branch,
+			ValidatedCommitStatus: *vcs,
+			PromotionStrategy:     ps,
+			DependsOn:             env.DependsOn,
+			DependsOnQuery:        buildDependsOnQuery(env.DependsOn),
 		}
 		var err error
-		renderedURL, err = renderGateURL(dqcs.Spec.URL.Template, dqcs.Spec.URL.Options, data)
+		renderedURL, err = renderGateURL(vcs.Spec.URL.Template, vcs.Spec.URL.Options, data)
 		if err != nil {
 			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, err
 		}
@@ -1340,20 +1340,20 @@ func (r *DependentsQualifiedCommitStatusReconciler) applyCommitStatus(
 		WithName(key).
 		WithDescription(gate.Description).
 		WithPhase(gate.Phase)
-	if dqcs.Spec.PublishTo != nil {
-		commitStatusSpec = commitStatusSpec.WithPublishTo(*dqcs.Spec.PublishTo)
+	if vcs.Spec.PublishTo != nil {
+		commitStatusSpec = commitStatusSpec.WithPublishTo(*vcs.Spec.PublishTo)
 	}
 	if renderedURL != "" {
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, dqcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(dqcs, env.Branch, key)).
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, vcs.Namespace).
+		WithLabels(utils.CommitStatusStandardLabels(vcs, env.Branch, key)).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
-			WithName(dqcs.Name).
-			WithUID(dqcs.UID).
+			WithName(vcs.Name).
+			WithUID(vcs.UID).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
 		WithSpec(commitStatusSpec)
@@ -1362,7 +1362,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) applyCommitStatus(
 	// so the phase-change event below stays transition-only.
 	previousPhase := ""
 	existingCommitStatus := &promoterv1alpha1.CommitStatus{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: dqcs.Namespace, Name: commitStatusName}, existingCommitStatus); err == nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: vcs.Namespace, Name: commitStatusName}, existingCommitStatus); err == nil {
 		previousPhase = string(existingCommitStatus.Spec.Phase)
 	} else if !k8serrors.IsNotFound(err) {
 		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to get existing CommitStatus %q: %w", commitStatusName, err)
@@ -1370,12 +1370,12 @@ func (r *DependentsQualifiedCommitStatusReconciler) applyCommitStatus(
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = dqcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsQualifiedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	commitStatus.Namespace = vcs.Namespace
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ValidatedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
-	emitCommitStatusPhaseChangedEvent(r.Recorder, dqcs, key, env.Branch, previousPhase, string(gate.Phase))
+	emitCommitStatusPhaseChangedEvent(r.Recorder, vcs, key, env.Branch, previousPhase, string(gate.Phase))
 
 	return commitStatus, promoterv1alpha1.GateEnvironmentCommitStatus{
 		Phase:       gate.Phase,
@@ -1388,12 +1388,12 @@ func (r *DependentsQualifiedCommitStatusReconciler) applyCommitStatus(
 // nudgeHydration wakes the ChangeTransferPolicy of every environment whose hydrator has not reported its
 // tag's commit yet, so the policy notices the hydrator's output even when no webhook announces it. It
 // returns how soon the gate should reconcile again to nudge the next time, 0 when no environment is waiting.
-func (r *DependentsQualifiedCommitStatusReconciler) nudgeHydration(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, envs []dqEnvironment) time.Duration {
+func (r *ValidatedCommitStatusReconciler) nudgeHydration(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, envs []vcsEnvironment) time.Duration {
 	if r.EnqueueCTP == nil {
 		return 0
 	}
 	r.nudgesOnce.Do(func() {
-		r.nudges = newDQBackoff(dqNudgeBaseDelay, dqNudgeMaxDelay)
+		r.nudges = newVCSBackoff(vcsNudgeBaseDelay, vcsNudgeMaxDelay)
 	})
 
 	var soonest time.Duration
@@ -1401,17 +1401,17 @@ func (r *DependentsQualifiedCommitStatusReconciler) nudgeHydration(ctx context.C
 	for _, env := range envs {
 		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, env.Branch))
 		// The gate's UID is part of the key so two gates (or a gate deleted and recreated) do not share state.
-		key := string(dqcs.UID) + "/" + ctpName
-		if !dqNeedsNudge(env) {
+		key := string(vcs.UID) + "/" + ctpName
+		if !vcsNeedsNudge(env) {
 			r.nudges.forget(key)
 			continue
 		}
 		fire, wait := r.nudges.next(key, env.TagSha, now)
 		if fire {
 			logf.FromContext(ctx).V(4).Info("Waking ChangeTransferPolicy to look for the hydrator's output", "changeTransferPolicy", ctpName, "tag", env.Tag, "tagSha", env.TagSha)
-			r.EnqueueCTP(dqcs.Namespace, ctpName)
+			r.EnqueueCTP(vcs.Namespace, ctpName)
 		}
-		soonest = dqSooner(soonest, wait)
+		soonest = vcsSooner(soonest, wait)
 	}
 	return soonest
 }
@@ -1419,53 +1419,53 @@ func (r *DependentsQualifiedCommitStatusReconciler) nudgeHydration(ctx context.C
 // SetupWithManager sets up the controller with the Manager.
 //
 //nolint:dupl // Gate controllers share the same SetupWithManager skeleton by design.
-func (r *DependentsQualifiedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *ValidatedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
-	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.DependentsQualifiedCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ValidatedCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get DependentsQualifiedCommitStatus rate limiter: %w", err)
+		return fmt.Errorf("failed to get ValidatedCommitStatus rate limiter: %w", err)
 	}
 
-	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.DependentsQualifiedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ValidatedCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get DependentsQualifiedCommitStatus max concurrent reconciles: %w", err)
+		return fmt.Errorf("failed to get ValidatedCommitStatus max concurrent reconciles: %w", err)
 	}
 
 	// The webhook receiver finds the gates to wake for a push by the dry SHAs they last observed.
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.DependentsQualifiedCommitStatus{}, promoterv1alpha1.DependentsQualifiedObservedDryShaField, func(rawObj client.Object) []string {
-		dqcs, ok := rawObj.(*promoterv1alpha1.DependentsQualifiedCommitStatus)
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ValidatedCommitStatus{}, promoterv1alpha1.ValidatedCommitStatusObservedDryShaField, func(rawObj client.Object) []string {
+		vcs, ok := rawObj.(*promoterv1alpha1.ValidatedCommitStatus)
 		if !ok {
 			return nil
 		}
-		return dqcs.ObservedDryShas()
+		return vcs.ObservedDryShas()
 	}); err != nil {
-		return fmt.Errorf("failed to set field index for %s: %w", promoterv1alpha1.DependentsQualifiedObservedDryShaField, err)
+		return fmt.Errorf("failed to set field index for %s: %w", promoterv1alpha1.ValidatedCommitStatusObservedDryShaField, err)
 	}
 
 	externalEnqueueChan := make(chan event.GenericEvent, 1024)
 	r.enqueueFunc = func(namespace, name string) {
-		dqcs := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
-		dqcs.SetNamespace(namespace)
-		dqcs.SetName(name)
+		vcs := &promoterv1alpha1.ValidatedCommitStatus{}
+		vcs.SetNamespace(namespace)
+		vcs.SetName(name)
 
 		select {
-		case externalEnqueueChan <- event.GenericEvent{Object: dqcs}:
+		case externalEnqueueChan <- event.GenericEvent{Object: vcs}:
 		default:
-			logf.FromContext(ctx).Info("DependentsQualifiedCommitStatus enqueue channel is full, blocking until space is available",
+			logf.FromContext(ctx).Info("ValidatedCommitStatus enqueue channel is full, blocking until space is available",
 				"namespace", namespace, "name", name)
-			externalEnqueueChan <- event.GenericEvent{Object: dqcs}
+			externalEnqueueChan <- event.GenericEvent{Object: vcs}
 		}
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.DependentsQualifiedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.DependentsQualifiedCommitStatusList](r.Client)).
+		For(&promoterv1alpha1.ValidatedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.ValidatedCommitStatusList](r.Client)).
 		// A restore revokes qualifications, so look again when one appears or reports what it restored.
 		Watches(&promoterv1alpha1.RestoreActiveCommit{}, handler.EnqueueRequestsFromMapFunc(r.gatesForRestoreActiveCommit)).
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
-		Named("dependentsqualifiedcommitstatus").
+		Named("validatedcommitstatus").
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -1474,14 +1474,14 @@ func (r *DependentsQualifiedCommitStatusReconciler) SetupWithManager(ctx context
 }
 
 // gatesForRestoreActiveCommit maps a RestoreActiveCommit to the gates that order its PromotionStrategy.
-func (r *DependentsQualifiedCommitStatusReconciler) gatesForRestoreActiveCommit(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *ValidatedCommitStatusReconciler) gatesForRestoreActiveCommit(ctx context.Context, obj client.Object) []reconcile.Request {
 	rac, ok := obj.(*promoterv1alpha1.RestoreActiveCommit)
 	if !ok {
 		return nil
 	}
-	var gates promoterv1alpha1.DependentsQualifiedCommitStatusList
+	var gates promoterv1alpha1.ValidatedCommitStatusList
 	if err := r.List(ctx, &gates, client.InNamespace(rac.Namespace), client.MatchingFields{PromotionStrategyRefField: rac.Spec.PromotionStrategyRef.Name}); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to list DependentsQualifiedCommitStatuses for RestoreActiveCommit", "restoreActiveCommit", rac.Name)
+		logf.FromContext(ctx).Error(err, "Failed to list ValidatedCommitStatuses for RestoreActiveCommit", "restoreActiveCommit", rac.Name)
 		return nil
 	}
 	requests := make([]reconcile.Request, 0, len(gates.Items))
