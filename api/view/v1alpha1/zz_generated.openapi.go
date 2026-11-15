@@ -7184,7 +7184,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ValidatedCommitStatusEnvironment declares the tag one environment hydrates from.",
+				Description: "ValidatedCommitStatusEnvironment sets up one environment.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"branch": {
@@ -7197,21 +7197,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 					},
 					"tag": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The controller creates the tag if it does not exist. Must not start with '-', contain ':', or contain '..'.",
-							Default:     "",
+							Description: "Tag overrides the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The default is <branch>-tag, or <branch>-tag/<activePath> when the environment has an activePath. Set it when that name is taken, for example because several PromotionStrategies with the same environment branches share one dry repository. Every environment needs its own tag. Must not start with '-', contain ':', or contain '..'.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
-					"advance": {
+					"validation": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
+							Description: "Validation says who validates dry commits for this environment. Automatic (the default): the controller moves the tag to the newest commit every environment this one depends on has qualified. Manual: a person or CI moves the tag; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
-				Required: []string{"branch", "tag"},
+				Required: []string{"branch"},
 			},
 		},
 	}
@@ -7407,7 +7406,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Environments declares the tag each environment hydrates from. There must be exactly one entry for every environment of the referenced PromotionStrategy, and every entry must name its own tag.",
+							Description: "Environments overrides how individual environments are set up. An environment of the PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every branch listed must be an environment of the PromotionStrategy.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -7445,7 +7444,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec
 						},
 					},
 				},
-				Required: []string{"promotionStrategyRef", "key", "drySource", "environments"},
+				Required: []string{"promotionStrategyRef", "key", "drySource"},
 			},
 		},
 		Dependencies: []string{

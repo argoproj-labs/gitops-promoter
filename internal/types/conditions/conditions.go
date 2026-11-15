@@ -53,4 +53,7 @@ const (
 	DryRepositoryUnavailable CommonReason = "DryRepositoryUnavailable"
 	// TagPushFailed is the reason when an environment tag could not be created or moved.
 	TagPushFailed CommonReason = "TagPushFailed"
+	// EnvironmentTagsOwnedByAnotherGate is the reason when another ValidatedCommitStatus moves the
+	// environment tags of the same PromotionStrategy. Only one may.
+	EnvironmentTagsOwnedByAnotherGate CommonReason = "EnvironmentTagsOwnedByAnotherGate"
 )

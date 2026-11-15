@@ -24,19 +24,24 @@ import (
 // ValidatedCommitStatusEnvironmentApplyConfiguration represents a declarative configuration of the ValidatedCommitStatusEnvironment type for use
 // with apply.
 //
-// ValidatedCommitStatusEnvironment declares the tag one environment hydrates from.
+// ValidatedCommitStatusEnvironment sets up one environment.
 type ValidatedCommitStatusEnvironmentApplyConfiguration struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
 	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
-	// Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-	// refs/tags/ prefix). The controller creates the tag if it does not exist.
+	// Tag overrides the name of the tag in the dry repository that this environment's hydrator reads
+	// (without the refs/tags/ prefix). The default is <branch>-tag, or <branch>-tag/<activePath> when the
+	// environment has an activePath. Set it when that name is taken, for example because several
+	// PromotionStrategies with the same environment branches share one dry repository. Every environment
+	// needs its own tag.
 	// Must not start with '-', contain ':', or contain '..'.
 	Tag *string `json:"tag,omitempty"`
-	// Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-	// still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
-	Advance *apiv1alpha1.TagAdvanceMode `json:"advance,omitempty"`
+	// Validation says who validates dry commits for this environment. Automatic (the default): the
+	// controller moves the tag to the newest commit every environment this one depends on has qualified.
+	// Manual: a person or CI moves the tag; the controller still verifies that what they tagged is
+	// hydrated and qualified upstream before it may be promoted.
+	Validation *apiv1alpha1.ValidationPolicy `json:"validation,omitempty"`
 }
 
 // ValidatedCommitStatusEnvironmentApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusEnvironment type for use with
@@ -61,10 +66,10 @@ func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithTag(value strin
 	return b
 }
 
-// WithAdvance sets the Advance field in the declarative configuration to the given value
+// WithValidation sets the Validation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Advance field is set to the value of the last call.
-func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithAdvance(value apiv1alpha1.TagAdvanceMode) *ValidatedCommitStatusEnvironmentApplyConfiguration {
-	b.Advance = &value
+// If called multiple times, the Validation field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithValidation(value apiv1alpha1.ValidationPolicy) *ValidatedCommitStatusEnvironmentApplyConfiguration {
+	b.Validation = &value
 	return b
 }

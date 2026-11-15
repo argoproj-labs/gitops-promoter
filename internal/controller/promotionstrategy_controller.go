@@ -217,7 +217,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	//
 	// Environments ordered by a ValidatedCommitStatus each hydrate from their own
 	// tag, so their proposed dry SHAs disagree on purpose; that gate nudges its own CTPs.
-	if !isValidatedOrdering(&ps) {
+	if referencedValidatedCommitStatus(&ps) == "" {
 		r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
 	}
 
@@ -455,14 +455,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
-}
-
-// isValidatedOrdering reports whether the strategy's ordering gate is a
-// ValidatedCommitStatus, which gives every environment its own dry tag to hydrate from.
-func isValidatedOrdering(ps *promoterv1alpha1.PromotionStrategy) bool {
-	ref := ps.Spec.OrderCommitStatusRef.WithDefaults()
-	return ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup &&
-		ref.Kind == promoterv1alpha1.ValidatedOrderCommitStatusKind
 }
 
 // enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA

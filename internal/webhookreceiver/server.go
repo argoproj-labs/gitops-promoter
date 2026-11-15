@@ -404,7 +404,8 @@ func (wr *WebhookReceiver) enqueueDryGates(ctx context.Context, sha, ref, via st
 	return enqueued, nil
 }
 
-// dryGateReadsRef reports whether ref is the gate's dry branch or one of its environment tags.
+// dryGateReadsRef reports whether ref is the gate's dry branch or one of its environment tags. The tag
+// names are taken from the gate's status: most are not in its spec, where only an override is written.
 func dryGateReadsRef(gate *promoterv1alpha1.ValidatedCommitStatus, ref string) bool {
 	if ref == "refs/heads/"+gate.Spec.DrySource.Branch {
 		return true
@@ -413,8 +414,8 @@ func dryGateReadsRef(gate *promoterv1alpha1.ValidatedCommitStatus, ref string) b
 	if !isTag {
 		return false
 	}
-	for _, env := range gate.Spec.Environments {
-		if env.Tag == tag {
+	for _, env := range gate.Status.Environments {
+		if env.Tag != nil && env.Tag.Name == tag {
 			return true
 		}
 	}

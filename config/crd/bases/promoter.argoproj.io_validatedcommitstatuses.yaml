@@ -81,21 +81,12 @@ spec:
                 type: object
               environments:
                 description: |-
-                  Environments declares the tag each environment hydrates from. There must be exactly one entry for
-                  every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+                  Environments overrides how individual environments are set up. An environment of the
+                  PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every
+                  branch listed must be an environment of the PromotionStrategy.
                 items:
-                  description: ValidatedCommitStatusEnvironment declares the tag one
-                    environment hydrates from.
+                  description: ValidatedCommitStatusEnvironment sets up one environment.
                   properties:
-                    advance:
-                      default: Auto
-                      description: |-
-                        Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-                        still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
-                      enum:
-                      - Auto
-                      - Manual
-                      type: string
                     branch:
                       description: |-
                         Branch is the environment's active branch. It must match an environment of the referenced
@@ -113,10 +104,13 @@ spec:
                         rule: '!self.contains(''..'')'
                     tag:
                       description: |-
-                        Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-                        refs/tags/ prefix). The controller creates the tag if it does not exist.
+                        Tag overrides the name of the tag in the dry repository that this environment's hydrator reads
+                        (without the refs/tags/ prefix). The default is <branch>-tag, or <branch>-tag/<activePath> when the
+                        environment has an activePath. Set it when that name is taken, for example because several
+                        PromotionStrategies with the same environment branches share one dry repository. Every environment
+                        needs its own tag.
                         Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
+                      maxLength: 255
                       minLength: 1
                       type: string
                       x-kubernetes-validations:
@@ -126,19 +120,25 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: tag must not contain '..'
                         rule: '!self.contains(''..'')'
+                    validation:
+                      default: Automatic
+                      description: |-
+                        Validation says who validates dry commits for this environment. Automatic (the default): the
+                        controller moves the tag to the newest commit every environment this one depends on has qualified.
+                        Manual: a person or CI moves the tag; the controller still verifies that what they tagged is
+                        hydrated and qualified upstream before it may be promoted.
+                      enum:
+                      - Automatic
+                      - Manual
+                      type: string
                   required:
                   - branch
-                  - tag
                   type: object
-                maxItems: 50
-                minItems: 1
+                maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
-                x-kubernetes-validations:
-                - message: each environment must have its own tag
-                  rule: self.all(e, self.exists_one(o, o.tag == e.tag))
               key:
                 description: |-
                   Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
@@ -213,7 +213,6 @@ spec:
                 type: object
             required:
             - drySource
-            - environments
             - key
             - promotionStrategyRef
             type: object

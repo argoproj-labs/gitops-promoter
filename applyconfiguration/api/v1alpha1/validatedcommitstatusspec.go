@@ -35,8 +35,9 @@ type ValidatedCommitStatusSpecApplyConfiguration struct {
 	Key *string `json:"key,omitempty"`
 	// DrySource is where the dry commits and the environment tags live.
 	DrySource *ValidatedCommitStatusDrySourceApplyConfiguration `json:"drySource,omitempty"`
-	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
-	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+	// Environments overrides how individual environments are set up. An environment of the
+	// PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every
+	// branch listed must be an environment of the PromotionStrategy.
 	Environments []ValidatedCommitStatusEnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,

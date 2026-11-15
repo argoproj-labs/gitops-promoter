@@ -2109,20 +2109,17 @@ export type components = {
             /** @description Sha is the HEAD of the dry branch when the controller last reconciled. */
             sha?: string;
         };
-        /** @description ValidatedCommitStatusEnvironment declares the tag one environment hydrates from. */
+        /** @description ValidatedCommitStatusEnvironment sets up one environment. */
         ValidatedCommitStatusEnvironment: {
-            /** @description Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
-            advance?: string;
             /**
              * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             branch: string;
-            /**
-             * @description Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The controller creates the tag if it does not exist. Must not start with '-', contain ':', or contain '..'.
-             * @default
-             */
-            tag: string;
+            /** @description Tag overrides the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The default is <branch>-tag, or <branch>-tag/<activePath> when the environment has an activePath. Set it when that name is taken, for example because several PromotionStrategies with the same environment branches share one dry repository. Every environment needs its own tag. Must not start with '-', contain ':', or contain '..'. */
+            tag?: string;
+            /** @description Validation says who validates dry commits for this environment. Automatic (the default): the controller moves the tag to the newest commit every environment this one depends on has qualified. Manual: a person or CI moves the tag; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
+            validation?: string;
         };
         /** @description ValidatedCommitStatusEnvironmentStatus defines observed state for one environment branch. */
         ValidatedCommitStatusEnvironmentStatus: {
@@ -2155,8 +2152,8 @@ export type components = {
              * @default {}
              */
             drySource: components["schemas"]["ValidatedCommitStatusDrySource"];
-            /** @description Environments declares the tag each environment hydrates from. There must be exactly one entry for every environment of the referenced PromotionStrategy, and every entry must name its own tag. */
-            environments: components["schemas"]["ValidatedCommitStatusEnvironment"][];
+            /** @description Environments overrides how individual environments are set up. An environment of the PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every branch listed must be an environment of the PromotionStrategy. */
+            environments?: components["schemas"]["ValidatedCommitStatusEnvironment"][];
             /**
              * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
              * @default

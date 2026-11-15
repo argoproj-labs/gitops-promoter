@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -614,7 +615,7 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			})
 		})
 
-		Context("advance: Manual", func() {
+		Context("validation: Manual", func() {
 			It("never moves the tag", func() {
 				dev, test, prod := chain("f", "f", "b")
 				dev.Qualified = vcsWatermark("f")
@@ -733,7 +734,7 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 				Expect(moves).To(Equal([]vcsTagMove{{Branch: vcsTest, Tag: vcsTagTest, From: "e", To: "b"}}))
 			})
 
-			It("leaves an advance: Manual tag alone", func() {
+			It("leaves a validation: Manual tag alone", func() {
 				dev, _, _ := chain("e", "", "")
 				dev.Manual = true
 				moves, err := vcsPlanTags(ctx, graph, "q", []vcsEnvironment{dev})
@@ -1160,27 +1161,149 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 		})
 	})
 
-	Describe("vcsValidateEnvironments: spec.environments must cover the PromotionStrategy", func() {
-		specEnvs := func(branches ...string) []promoterv1alpha1.ValidatedCommitStatusEnvironment {
-			out := make([]promoterv1alpha1.ValidatedCommitStatusEnvironment, 0, len(branches))
+	Describe("vcsEnvironmentSettings: how each environment is set up", func() {
+		strategy := func(activePath string, branches ...string) *promoterv1alpha1.PromotionStrategy {
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			ps.Spec.ActivePath = activePath
 			for _, branch := range branches {
-				out = append(out, promoterv1alpha1.ValidatedCommitStatusEnvironment{Branch: branch, Tag: "env/" + branch})
+				ps.Spec.Environments = append(ps.Spec.Environments, promoterv1alpha1.Environment{Branch: branch})
 			}
-			return out
+			return ps
 		}
 
-		It("accepts one entry per PromotionStrategy environment in any order", func() {
-			Expect(vcsValidateEnvironments(specEnvs(vcsProd, vcsDev, vcsTest), []string{vcsDev, vcsTest, vcsProd})).To(Succeed())
+		It("names every tag after its environment branch and has the controller move it, by default", func() {
+			settings := vcsEnvironmentSettings(&promoterv1alpha1.ValidatedCommitStatus{}, strategy("", vcsDev, vcsProd))
+			Expect(settings).To(Equal(map[string]vcsEnvironmentSetting{
+				vcsDev:  {Tag: "environment/dev-tag"},
+				vcsProd: {Tag: "environment/prod-tag"},
+			}))
 		})
 
-		It("rejects a PromotionStrategy environment with no tag", func() {
-			err := vcsValidateEnvironments(specEnvs(vcsDev, vcsTest), []string{vcsDev, vcsTest, vcsProd})
-			Expect(err).To(MatchError(ContainSubstring(`spec.environments has no entry for PromotionStrategy environment "environment/prod"`)))
+		It("puts the activePath in the tag name, the environment's own before the strategy's", func() {
+			ps := strategy("apps/one", vcsDev, vcsProd)
+			ps.Spec.Environments[1].ActivePath = "apps/prod"
+			settings := vcsEnvironmentSettings(&promoterv1alpha1.ValidatedCommitStatus{}, ps)
+			Expect(settings[vcsDev].Tag).To(Equal("environment/dev-tag/apps/one"))
+			Expect(settings[vcsProd].Tag).To(Equal("environment/prod-tag/apps/prod"))
+		})
+
+		It("takes the tag name and who validates from spec.environments", func() {
+			gate := &promoterv1alpha1.ValidatedCommitStatus{}
+			gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: vcsTest, Tag: vcsTagTest},
+				{Branch: vcsProd, Validation: promoterv1alpha1.ValidationManual},
+			}
+			settings := vcsEnvironmentSettings(gate, strategy("", vcsDev, vcsTest, vcsProd))
+			Expect(settings).To(Equal(map[string]vcsEnvironmentSetting{
+				vcsDev:  {Tag: "environment/dev-tag"},
+				vcsTest: {Tag: vcsTagTest},
+				vcsProd: {Tag: "environment/prod-tag", Manual: true},
+			}))
+		})
+
+		It("has no setting for a branch that is not an environment of the strategy", func() {
+			gate := &promoterv1alpha1.ValidatedCommitStatus{}
+			gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{{Branch: "environment/extra"}}
+			Expect(vcsEnvironmentSettings(gate, strategy("", vcsDev))).NotTo(HaveKey("environment/extra"))
+		})
+	})
+
+	Describe("vcsValidateEnvironments: spec.environments must fit the PromotionStrategy", func() {
+		branches := []string{vcsDev, vcsTest, vcsProd}
+		defaults := map[string]vcsEnvironmentSetting{
+			vcsDev:  {Tag: vcsTagDev},
+			vcsTest: {Tag: vcsTagTest},
+			vcsProd: {Tag: vcsTagProd},
+		}
+
+		It("accepts a gate that lists no environment, or only some", func() {
+			Expect(vcsValidateEnvironments(nil, branches, defaults)).To(Succeed())
+			some := []promoterv1alpha1.ValidatedCommitStatusEnvironment{{Branch: vcsProd}}
+			Expect(vcsValidateEnvironments(some, branches, defaults)).To(Succeed())
 		})
 
 		It("rejects an entry for a branch the PromotionStrategy does not have", func() {
-			err := vcsValidateEnvironments(specEnvs(vcsDev, vcsTest, vcsProd, "environment/extra"), []string{vcsDev, vcsTest, vcsProd})
+			extra := []promoterv1alpha1.ValidatedCommitStatusEnvironment{{Branch: "environment/extra"}}
+			err := vcsValidateEnvironments(extra, branches, defaults)
 			Expect(err).To(MatchError(ContainSubstring(`spec.environments lists "environment/extra", which is not an environment of the PromotionStrategy`)))
+		})
+
+		It("rejects two environments that read the same tag", func() {
+			shared := map[string]vcsEnvironmentSetting{
+				vcsDev:  {Tag: vcsTagDev},
+				vcsTest: {Tag: vcsTagProd},
+				vcsProd: {Tag: vcsTagProd},
+			}
+			err := vcsValidateEnvironments(nil, branches, shared)
+			Expect(err).To(MatchError(ContainSubstring(`environments "environment/test" and "environment/prod" both read tag "env/prod"`)))
+		})
+	})
+
+	Describe("validatedCommitStatusFor: which ValidatedCommitStatus moves the tags of a PromotionStrategy", func() {
+		const namespace = "test-ns"
+		created := time.Date(2026, 11, 13, 15, 0, 0, 0, time.UTC)
+
+		gate := func(name, strategy string, age time.Duration) *promoterv1alpha1.ValidatedCommitStatus {
+			return &promoterv1alpha1.ValidatedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, CreationTimestamp: metav1.NewTime(created.Add(-age))},
+				Spec: promoterv1alpha1.ValidatedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: strategy},
+					Key:                  promoterv1alpha1.ValidatedCommitStatusKey,
+					DrySource:            promoterv1alpha1.ValidatedCommitStatusDrySource{Branch: "main"},
+				},
+			}
+		}
+		strategy := func(ref promoterv1alpha1.OrderCommitStatusRef) *promoterv1alpha1.PromotionStrategy {
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			ps.Name, ps.Namespace = "demo", namespace
+			ps.Spec.OrderCommitStatusRef = ref
+			return ps
+		}
+		owner := func(ps *promoterv1alpha1.PromotionStrategy, gates ...client.Object) string {
+			GinkgoHelper()
+			builder := fake.NewClientBuilder().WithScheme(utils.GetScheme())
+			for _, kind := range GateCommitStatusKinds() {
+				builder = builder.WithIndex(kind, PromotionStrategyRefField, PromotionStrategyRefIndexValues)
+			}
+			found, err := validatedCommitStatusFor(ctx, builder.WithObjects(gates...).Build(), ps)
+			Expect(err).NotTo(HaveOccurred())
+			if found == nil {
+				return ""
+			}
+			return found.Name
+		}
+		validatedRef := func(name string) promoterv1alpha1.OrderCommitStatusRef {
+			return promoterv1alpha1.OrderCommitStatusRef{Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind, Name: name}
+		}
+
+		It("is none when no gate references the strategy", func() {
+			Expect(owner(strategy(validatedRef("demo")))).To(BeEmpty())
+			Expect(owner(strategy(validatedRef("demo")), gate("elsewhere", "another-strategy", time.Hour))).To(BeEmpty())
+		})
+
+		It("is the one the strategy references, however young", func() {
+			Expect(owner(strategy(validatedRef("young")),
+				gate("old", "demo", 48*time.Hour),
+				gate("young", "demo", time.Minute),
+			)).To(Equal("young"))
+		})
+
+		It("is the oldest while the strategy references another kind of gate, or a gate that is not there", func() {
+			gates := []client.Object{
+				gate("young", "demo", time.Minute),
+				gate("old", "demo", 48*time.Hour),
+				gate("older-but-elsewhere", "another-strategy", 96*time.Hour),
+			}
+			Expect(owner(strategy(promoterv1alpha1.OrderCommitStatusRef{Name: "young"}), gates...)).To(Equal("old"),
+				"the default kind is DependentsSuccessfulCommitStatus, so the name is not a ValidatedCommitStatus's")
+			Expect(owner(strategy(validatedRef("missing")), gates...)).To(Equal("old"))
+		})
+
+		It("goes by name between gates of the same age", func() {
+			Expect(owner(strategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"}),
+				gate("b", "demo", time.Hour),
+				gate("a", "demo", time.Hour),
+			)).To(Equal("a"))
 		})
 	})
 
@@ -1300,39 +1423,37 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			ctx = context.Background()
 		})
 
-		It("should reject two environments that share a tag", func() {
-			gate := newGate("dq-duplicate-tag", "main")
-			gate.Spec.Environments[2].Tag = tagStaging
-			err := k8sClient.Create(ctx, gate)
-			Expect(err).To(MatchError(ContainSubstring("each environment must have its own tag")))
-		})
-
-		It("should reject an unknown advance mode", func() {
-			gate := newGate("dq-bad-advance", "main")
-			gate.Spec.Environments[2].Advance = "Sometimes"
+		It("should reject an unknown validation policy", func() {
+			gate := newGate("vcs-bad-validation", "main")
+			gate.Spec.Environments[2].Validation = "Sometimes"
 			err := k8sClient.Create(ctx, gate)
 			Expect(err).To(MatchError(ContainSubstring("Unsupported value")))
 		})
 
 		It("should reject a tag that is not a valid ref name", func() {
-			gate := newGate("dq-bad-tag", "main")
+			gate := newGate("vcs-bad-tag", "main")
 			gate.Spec.Environments[0].Tag = "-env..dev"
 			err := k8sClient.Create(ctx, gate)
 			Expect(err).To(HaveOccurred())
 		})
 
-		It("should default advance to Auto", func() {
-			gate := newGate("dq-default-advance", "main")
+		It("should default validation to Automatic, and accept a gate that lists no environment", func() {
+			gate := newGate("vcs-default-validation", "main")
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
-			Expect(gate.Spec.Environments[0].Advance).To(Equal(promoterv1alpha1.TagAdvanceAuto))
+			Expect(gate.Spec.Environments[0].Validation).To(Equal(promoterv1alpha1.ValidationAutomatic))
+
+			bare := newGate("vcs-no-environments", "main")
+			bare.Spec.Environments = nil
+			Expect(k8sClient.Create(ctx, bare)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, bare) })
 		})
 	})
 
 	Context("When the PromotionStrategy is missing", func() {
 		It("should set Ready=False when the PromotionStrategy is not found", func() {
 			ctx := context.Background()
-			gate := newGate("dq-missing-ps", "main")
+			gate := newGate("vcs-missing-ps", "main")
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
 
@@ -1459,22 +1580,68 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			_ = k8sClient.Delete(ctx, scmSecret)
 		})
 
-		It("should set Ready=False when spec.environments does not cover the PromotionStrategy", func() {
+		It("should set Ready=False when two environments read the same tag", func() {
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments = gate.Spec.Environments[:2]
+			gate.Spec.Environments[2].Tag = tagStaging
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				condition := readyCondition(ctx, g, gate)
 				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(condition.Message).To(ContainSubstring(`spec.environments has no entry for PromotionStrategy environment "environment/production"`))
+				g.Expect(condition.Message).To(ContainSubstring(`environments "environment/staging" and "environment/production" both read tag "env/staging"`))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Not creating any tag for a gate that is misconfigured")
 			Consistently(func(g Gomega) {
 				g.Expect(tagSha(g, tagDevelopment)).To(BeEmpty())
 			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("should name the tags after the environment branches when spec.environments does not say", func() {
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments = nil
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(tagSha(g, branch+"-tag")).NotTo(BeEmpty(), "tag of %s", branch)
+					g.Expect(environmentStatus(g, branch).Tag.Name).To(Equal(branch + "-tag"))
+				}
+				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should leave the tags to the gate the PromotionStrategy uses when a second gate references it", func() {
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			second := newGate(name+"-second", dryBranch)
+			second.Spec.PromotionStrategyRef.Name = name
+			second.Spec.Key = "validated-second"
+			Expect(k8sClient.Create(ctx, second)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, second) })
+
+			Eventually(func(g Gomega) {
+				condition := readyCondition(ctx, g, second)
+				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(condition.Reason).To(Equal(string(promoterConditions.EnvironmentTagsOwnedByAnotherGate)))
+				g.Expect(condition.Message).To(ContainSubstring(name))
+
+				updated := &promoterv1alpha1.ValidatedCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(second), updated)).To(Succeed())
+				g.Expect(updated.Status.Environments).To(BeEmpty())
+				g.Expect(updated.Status.Dry).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should set Ready=False with reason DryRepositoryUnavailable when the DRY branch cannot be read", func() {
@@ -1521,7 +1688,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 		})
 
 		It("should advance tags and gate promotions as environments qualify commits", func() {
-			const healthKey = "dq-health"
+			const healthKey = "vcs-health"
 			neverHydrated()
 
 			By("Requiring an active commit status on development")
@@ -1779,7 +1946,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Requiring a commit status on development that nothing reports, so that it cannot qualify the commit again")
-			promotionStrategy.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "dq-health"}}
+			promotionStrategy.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "vcs-health"}}
 
 			By("Creating the gate first, so that it reconciles the new PromotionStrategy before anything is reported")
 			gate = newGate(name, dryBranch)
@@ -1832,7 +1999,7 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments[2].Advance = promoterv1alpha1.TagAdvanceManual
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			By("Creating the root's tag at the DRY branch HEAD and the other tags at what their environment runs")
@@ -1861,11 +2028,11 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
 		})
 
-		It("should leave an advance: Manual tag to a person and verify what they tag", func() {
+		It("should leave a validation: Manual tag to a person and verify what they tag", func() {
 			neverHydrated()
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments[2].Advance = promoterv1alpha1.TagAdvanceManual
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			By("Creating the missing tags, including the manual one")

@@ -12,10 +12,5 @@ spec:
   drySource:
     branch: main
   environments:
-    - branch: environment/development
-      tag: env/development
-    - branch: environment/staging
-      tag: env/staging
     - branch: environment/production
-      tag: env/production
-      advance: Manual
+      validation: Manual

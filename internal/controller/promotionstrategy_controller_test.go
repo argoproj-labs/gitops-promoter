@@ -6027,28 +6027,28 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// their proposed dry SHAs disagree on purpose and there is no shared batch target to nudge
 		// towards. That gate nudges its own ChangeTransferPolicies instead.
 		DescribeTable("skipping strategies whose environments hydrate from their own tags",
-			func(ref promoterv1alpha1.OrderCommitStatusRef, expected bool) {
+			func(ref promoterv1alpha1.OrderCommitStatusRef, expected string) {
 				ps := &promoterv1alpha1.PromotionStrategy{}
 				ps.Spec.OrderCommitStatusRef = ref
-				Expect(isValidatedOrdering(ps)).To(Equal(expected))
+				Expect(referencedValidatedCommitStatus(ps)).To(Equal(expected))
 			},
-			Entry("the default ordering gate", promoterv1alpha1.OrderCommitStatusRef{Name: "gate"}, false),
+			Entry("the default ordering gate", promoterv1alpha1.OrderCommitStatusRef{Name: "gate"}, ""),
 			Entry("an explicit DependentsSuccessfulCommitStatus",
-				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.DefaultOrderCommitStatusKind}, false),
+				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.DefaultOrderCommitStatusKind}, ""),
 			Entry("a ValidatedCommitStatus with the default group",
-				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind}, true),
+				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.ValidatedOrderCommitStatusKind}, "gate"),
 			Entry("a ValidatedCommitStatus with the group spelled out",
 				promoterv1alpha1.OrderCommitStatusRef{
 					Name:  "gate",
 					Group: promoterv1alpha1.DefaultOrderCommitStatusGroup,
 					Kind:  promoterv1alpha1.ValidatedOrderCommitStatusKind,
-				}, true),
+				}, "gate"),
 			Entry("a kind of the same name in another group",
 				promoterv1alpha1.OrderCommitStatusRef{
 					Name:  "gate",
 					Group: "example.com",
 					Kind:  promoterv1alpha1.ValidatedOrderCommitStatusKind,
-				}, false),
+				}, ""),
 		)
 
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else

@@ -26,17 +26,16 @@ import (
 // the gates to wake when the dry branch or an environment tag is pushed.
 const ValidatedCommitStatusObservedDryShaField = ".status.observedDryShas"
 
-// TagAdvanceMode says who moves an environment's tag.
-// +kubebuilder:validation:Enum=Auto;Manual
-type TagAdvanceMode string
+// ValidationPolicy says who validates dry commits for an environment, and so who moves its tag.
+// +kubebuilder:validation:Enum=Automatic;Manual
+type ValidationPolicy string
 
 const (
-	// TagAdvanceAuto has the controller move the tag: to the dry branch HEAD for an environment with no
+	// ValidationAutomatic has the controller move the tag: to the dry branch HEAD for an environment with no
 	// upstreams, and to the newest commit every upstream has qualified for any other environment.
-	TagAdvanceAuto TagAdvanceMode = "Auto"
-	// TagAdvanceManual leaves the tag to a person (or their CI). The controller creates the tag if it is
-	// missing and never moves it afterwards.
-	TagAdvanceManual TagAdvanceMode = "Manual"
+	ValidationAutomatic ValidationPolicy = "Automatic"
+	// ValidationManual leaves the tag to a person or CI. The controller never moves it on its own.
+	ValidationManual ValidationPolicy = "Manual"
 )
 
 // ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.
@@ -59,15 +58,14 @@ type ValidatedCommitStatusSpec struct {
 	// +required
 	DrySource ValidatedCommitStatusDrySource `json:"drySource"`
 
-	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
-	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
-	// +required
+	// Environments overrides how individual environments are set up. An environment of the
+	// PromotionStrategy that is not listed uses validation Automatic and the default tag name. Every
+	// branch listed must be an environment of the PromotionStrategy.
+	// +optional
 	// +listType=map
 	// +listMapKey=branch
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=50
-	// +kubebuilder:validation:XValidation:rule="self.all(e, self.exists_one(o, o.tag == e.tag))",message="each environment must have its own tag"
-	Environments []ValidatedCommitStatusEnvironment `json:"environments"`
+	// +kubebuilder:validation:MaxItems=500
+	Environments []ValidatedCommitStatusEnvironment `json:"environments,omitempty"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
@@ -105,7 +103,7 @@ type ValidatedCommitStatusDrySource struct {
 	GitRepositoryRef *ObjectReference `json:"gitRepositoryRef,omitempty"`
 }
 
-// ValidatedCommitStatusEnvironment declares the tag one environment hydrates from.
+// ValidatedCommitStatusEnvironment sets up one environment.
 type ValidatedCommitStatusEnvironment struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
@@ -118,22 +116,27 @@ type ValidatedCommitStatusEnvironment struct {
 	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 
-	// Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-	// refs/tags/ prefix). The controller creates the tag if it does not exist.
+	// Tag overrides the name of the tag in the dry repository that this environment's hydrator reads
+	// (without the refs/tags/ prefix). The default is <branch>-tag, or <branch>-tag/<activePath> when the
+	// environment has an activePath. Set it when that name is taken, for example because several
+	// PromotionStrategies with the same environment branches share one dry repository. Every environment
+	// needs its own tag.
 	// Must not start with '-', contain ':', or contain '..'.
-	// +required
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:MaxLength=255
 	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="tag must not start with '-'"
 	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="tag must not contain ':'"
 	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="tag must not contain '..'"
-	Tag string `json:"tag"`
+	Tag string `json:"tag,omitempty"`
 
-	// Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-	// still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+	// Validation says who validates dry commits for this environment. Automatic (the default): the
+	// controller moves the tag to the newest commit every environment this one depends on has qualified.
+	// Manual: a person or CI moves the tag; the controller still verifies that what they tagged is
+	// hydrated and qualified upstream before it may be promoted.
 	// +optional
-	// +kubebuilder:default=Auto
-	Advance TagAdvanceMode `json:"advance,omitempty"`
+	// +kubebuilder:default=Automatic
+	Validation ValidationPolicy `json:"validation,omitempty"`
 }
 
 // ValidatedCommitStatusDryStatus is the observed state of the dry branch.

@@ -191,10 +191,6 @@ func newDryGate(name string) *promoterv1alpha1.ValidatedCommitStatus {
 	gate.Name = name
 	gate.Namespace = testNamespace
 	gate.Spec.DrySource.Branch = "main"
-	gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
-		{Branch: "environment/dev", Tag: "env/dev"},
-		{Branch: "environment/prod", Tag: "env/prod"},
-	}
 	gate.Status.Dry = &promoterv1alpha1.ValidatedCommitStatusDryStatus{Sha: testShaA}
 	gate.Status.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
 		{Branch: "environment/dev", Tag: &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: "env/dev", Sha: testShaA}},

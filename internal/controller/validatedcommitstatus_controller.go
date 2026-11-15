@@ -51,6 +51,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/validations"
 )
 
 const (
@@ -115,7 +116,7 @@ type vcsEnvironment struct {
 	DependsOn []string
 	// Status is the environment's status on the PromotionStrategy.
 	Status promoterv1alpha1.EnvironmentStatus
-	// Manual is true when a person moves the tag (advance: Manual).
+	// Manual is true when a person moves the tag (validation: Manual).
 	Manual bool
 	// Restored is true when the live commit was put there by a RestoreActiveCommit. It is only known to be
 	// right when an older commit than Qualified is live, which is the only time it is used.
@@ -251,7 +252,7 @@ func vcsQualify(ctx context.Context, graph vcsCommitGraph, head string, env vcsE
 //
 // A root's tag follows the dry branch HEAD. A dependent's tag follows the newest commit every direct upstream
 // has qualified. A tag only moves forward, except that a tag which is no longer on the dry branch (the branch
-// was force-pushed) is reset. An advance: Manual tag is created when missing and never moved.
+// was force-pushed) is reset. A validation: Manual tag is created when missing and never moved.
 func vcsPlanTags(ctx context.Context, graph vcsCommitGraph, head string, envs []vcsEnvironment) ([]vcsTagMove, error) {
 	byBranch := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
@@ -467,24 +468,56 @@ func (b *vcsBackoff) forget(key string) {
 	delete(b.entries, key)
 }
 
-// vcsValidateEnvironments checks that spec.environments has exactly one entry per PromotionStrategy
-// environment. (The CRD already guarantees the entries have distinct branches and distinct tags.)
-func vcsValidateEnvironments(specEnvs []promoterv1alpha1.ValidatedCommitStatusEnvironment, branches []string) error {
-	declared := make(map[string]struct{}, len(specEnvs))
-	for _, env := range specEnvs {
-		declared[env.Branch] = struct{}{}
+// vcsEnvironmentSetting is how the gate treats one environment, with the defaults filled in.
+type vcsEnvironmentSetting struct {
+	// Tag is the name of the tag the environment's hydrator reads.
+	Tag string
+	// Manual is true when a person moves the tag (validation: Manual).
+	Manual bool
+}
+
+// vcsEnvironmentSettings returns the setting of every environment of the PromotionStrategy, by branch.
+// spec.environments only lists the environments that differ from the defaults: the controller moves the tag,
+// and the tag is named after the environment's branch (see validations.TagName).
+func vcsEnvironmentSettings(vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) map[string]vcsEnvironmentSetting {
+	settings := make(map[string]vcsEnvironmentSetting, len(ps.Spec.Environments))
+	for branch, activePath := range vcsActivePaths(ps) {
+		settings[branch] = vcsEnvironmentSetting{Tag: validations.TagName(branch, activePath)}
 	}
+	for _, env := range vcs.Spec.Environments {
+		setting, isEnvironment := settings[env.Branch]
+		if !isEnvironment {
+			continue
+		}
+		if env.Tag != "" {
+			setting.Tag = env.Tag
+		}
+		setting.Manual = env.Validation == promoterv1alpha1.ValidationManual
+		settings[env.Branch] = setting
+	}
+	return settings
+}
+
+// vcsValidateEnvironments checks that every branch in spec.environments is an environment of the
+// PromotionStrategy, and that no two environments read the same tag. branches are the strategy's
+// environments, in order.
+func vcsValidateEnvironments(specEnvs []promoterv1alpha1.ValidatedCommitStatusEnvironment, branches []string, settings map[string]vcsEnvironmentSetting) error {
 	known := make(map[string]struct{}, len(branches))
 	for _, branch := range branches {
 		known[branch] = struct{}{}
-		if _, ok := declared[branch]; !ok {
-			return fmt.Errorf("spec.environments has no entry for PromotionStrategy environment %q", branch)
-		}
 	}
 	for _, env := range specEnvs {
 		if _, ok := known[env.Branch]; !ok {
 			return fmt.Errorf("spec.environments lists %q, which is not an environment of the PromotionStrategy", env.Branch)
 		}
+	}
+	readBy := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		tag := settings[branch].Tag
+		if other, taken := readBy[tag]; taken {
+			return fmt.Errorf("environments %q and %q both read tag %q; give one of them its own tag in spec.environments", other, branch, tag)
+		}
+		readBy[tag] = branch
 	}
 	return nil
 }
@@ -591,22 +624,82 @@ func (r *ValidatedCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", vcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	// 3. Advance tags, record qualifications, and write the gate for every environment.
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ValidatedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for ValidatedCommitStatus %q: %w", vcs.Name, err)
+	}
+
+	// 3. Only one gate moves the tags of a PromotionStrategy. Two would each take the other's moves for
+	// moves made by hand.
+	owner, err := r.tagOwner(ctx, &vcs, &ps)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if owner != vcs.Name {
+		vcsSetNotReady(&vcs, promoterConditions.EnvironmentTagsOwnedByAnotherGate,
+			fmt.Sprintf("ValidatedCommitStatus %q already moves the environment tags of PromotionStrategy %q; only one may", owner, ps.Name))
+		return ctrl.Result{RequeueAfter: requeueDuration}, nil
+	}
+
+	// 4. Advance tags, record qualifications, and write the gate for every environment.
 	retryAfter, err := r.reconcileEnvironments(ctx, &vcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile environment tags: %w", err)
 	}
 
-	// 4. Requeue using the configured requeue duration, or sooner when something is waiting on a retry.
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ValidatedCommitStatusConfiguration](ctx, r.SettingsMgr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for ValidatedCommitStatus %q: %w", vcs.Name, err)
-	}
+	// 5. Requeue using the configured requeue duration, or sooner when something is waiting on a retry.
 	if retryAfter > 0 && retryAfter < requeueDuration {
 		requeueDuration = retryAfter
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// referencedValidatedCommitStatus returns the name of the ValidatedCommitStatus the PromotionStrategy
+// uses as its ordering gate, "" when its ordering gate is of another kind.
+func referencedValidatedCommitStatus(ps *promoterv1alpha1.PromotionStrategy) string {
+	ref := ps.Spec.OrderCommitStatusRef.WithDefaults()
+	if ref.Group != promoterv1alpha1.GroupVersion.Group || ref.Kind != promoterv1alpha1.ValidatedOrderCommitStatusKind {
+		return ""
+	}
+	return ref.Name
+}
+
+// validatedCommitStatusFor returns the one ValidatedCommitStatus that moves the environment tags of ps:
+// the one the strategy references as its ordering gate, or else the oldest that references the strategy.
+// It returns nil when no ValidatedCommitStatus references the strategy.
+func validatedCommitStatusFor(ctx context.Context, c client.Client, ps *promoterv1alpha1.PromotionStrategy) (*promoterv1alpha1.ValidatedCommitStatus, error) {
+	var gates promoterv1alpha1.ValidatedCommitStatusList
+	if err := c.List(ctx, &gates, client.InNamespace(ps.Namespace), client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
+		return nil, fmt.Errorf("failed to list ValidatedCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
+	referenced := referencedValidatedCommitStatus(ps)
+	var oldest *promoterv1alpha1.ValidatedCommitStatus
+	for i := range gates.Items {
+		gate := &gates.Items[i]
+		if gate.Name == referenced {
+			return gate, nil
+		}
+		if oldest == nil || gate.CreationTimestamp.Before(&oldest.CreationTimestamp) ||
+			(gate.CreationTimestamp.Equal(&oldest.CreationTimestamp) && gate.Name < oldest.Name) {
+			oldest = gate
+		}
+	}
+	return oldest, nil
+}
+
+// tagOwner returns the name of the one ValidatedCommitStatus that moves the environment tags of ps.
+func (r *ValidatedCommitStatusReconciler) tagOwner(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
+	owner, err := validatedCommitStatusFor(ctx, r.Client, ps)
+	if err != nil {
+		return "", err
+	}
+	if owner == nil {
+		// The list is read from a cache that has not caught up with this gate yet.
+		return vcs.Name, nil
+	}
+	return owner.Name, nil
 }
 
 // vcsRepositories opens the git clones one reconcile needs, at most once each. The dry repository and the
@@ -710,17 +803,13 @@ type vcsDryState struct {
 
 // readDryRepository reads the dry branch HEAD and every environment tag from the remote. Tags are read on
 // every reconcile: a person may move one at any time, and not every SCM tells us when they do.
-func (r *ValidatedCommitStatusReconciler) readDryRepository(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, repos *vcsRepositories) (*vcsDryState, error) {
+func (r *ValidatedCommitStatusReconciler) readDryRepository(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, repos *vcsRepositories, tags []string) (*vcsDryState, error) {
 	ops, err := repos.dry(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the dry repository: %w", err)
 	}
 
-	names := make([]string, 0, len(vcs.Spec.Environments))
-	for _, env := range vcs.Spec.Environments {
-		names = append(names, env.Tag)
-	}
-	refs, err := ops.SyncDryRefs(ctx, vcs.Spec.DrySource.Branch, names)
+	refs, err := ops.SyncDryRefs(ctx, vcs.Spec.DrySource.Branch, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dry branch %q and the environment tags: %w", vcs.Spec.DrySource.Branch, err)
 	}
@@ -744,12 +833,17 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	if err := dependencies.validateDAG(); err != nil {
 		return 0, fmt.Errorf("invalid dependency graph: %w", err)
 	}
-	if err := vcsValidateEnvironments(vcs.Spec.Environments, dependencies.branches); err != nil {
+	environmentSettings := vcsEnvironmentSettings(vcs, ps)
+	if err := vcsValidateEnvironments(vcs.Spec.Environments, dependencies.branches, environmentSettings); err != nil {
 		return 0, err
+	}
+	tags := make([]string, 0, len(dependencies.branches))
+	for _, branch := range dependencies.branches {
+		tags = append(tags, environmentSettings[branch].Tag)
 	}
 
 	repos := &vcsRepositories{reconciler: r, vcs: vcs, ps: ps}
-	dry, err := r.readDryRepository(ctx, vcs, repos)
+	dry, err := r.readDryRepository(ctx, vcs, repos, tags)
 	if err != nil {
 		// Without the dry repository nothing can be decided. Leave the tags, the child CommitStatuses, and
 		// the last reported status alone, and say why on the Ready condition.
@@ -760,7 +854,7 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	graph := vcsGitGraph{ops: dry.ops}
 
 	// Observe.
-	envs, err := r.observeEnvironments(ctx, vcs, ps, dependencies, dry, repos)
+	envs, err := r.observeEnvironments(ctx, vcs, ps, dependencies, environmentSettings, dry, repos)
 	if err != nil {
 		return 0, err
 	}
@@ -899,13 +993,10 @@ func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 	dependencies *dag,
+	environmentSettings map[string]vcsEnvironmentSetting,
 	dry *vcsDryState,
 	repos *vcsRepositories,
 ) ([]vcsEnvironment, error) {
-	specByBranch := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironment, len(vcs.Spec.Environments))
-	for _, env := range vcs.Spec.Environments {
-		specByBranch[env.Branch] = env
-	}
 	statusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for _, envStatus := range ps.Status.Environments {
 		statusByBranch[envStatus.Branch] = envStatus
@@ -929,16 +1020,16 @@ func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 
 	envs := make([]vcsEnvironment, 0, len(dependencies.branches))
 	for _, branch := range dependencies.branches {
-		spec := specByBranch[branch]
+		setting := environmentSettings[branch]
 		status := statusByBranch[branch]
 		activePath := activePaths[branch]
 
 		env := vcsEnvironment{
 			Branch:    branch,
-			Tag:       spec.Tag,
-			TagSha:    dry.tags[spec.Tag].Commit,
-			TagRaw:    dry.tags[spec.Tag].Raw,
-			Manual:    spec.Advance == promoterv1alpha1.TagAdvanceManual,
+			Tag:       setting.Tag,
+			TagSha:    dry.tags[setting.Tag].Commit,
+			TagRaw:    dry.tags[setting.Tag].Raw,
+			Manual:    setting.Manual,
 			DependsOn: dependencies.dependsOn[branch],
 			Status:    status,
 			Restored:  vcsRestored(racs, branch, status.Active.Hydrated.Sha),

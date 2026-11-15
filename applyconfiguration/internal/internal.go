@@ -1931,8 +1931,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: secretRef
       type:
         namedType: io.k8s.api.core.v1.LocalObjectReference
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TagAdvanceMode
-  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatus
   map:
     fields:
@@ -2103,16 +2101,16 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironment
   map:
     fields:
-    - name: advance
-      type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TagAdvanceMode
-      default: Auto
     - name: branch
       type:
         scalar: string
     - name: tag
       type:
         scalar: string
+    - name: validation
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidationPolicy
+      default: Automatic
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironmentStatus
   map:
     fields:
@@ -2243,6 +2241,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: qualifiedAt
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidationPolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatus
   map:
     fields:

@@ -24,7 +24,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 5,818 | 0.01% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
-| ValidatedCommitStatus | v1alpha1 | 275,713 | 0.28% |
+| ValidatedCommitStatus | v1alpha1 | 300,711 | 0.30% |
 | WebRequestCommitStatus | v1alpha1 | 25 | 0.00% |
 
 ### Per-resource detail
@@ -358,18 +358,17 @@ Source: `promoter.argoproj.io_validatedcommitstatuses.yaml`
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
 | `.status.environments[].activeCommitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
-| `.spec.environments` | 115,302 | 1.15% | `self.all(e, self.exists_one(o, o.tag == e.tag))` |
-| `.spec.environments[].branch` | 2,100 | 0.02% | `!self.contains(':')` |
-| `.spec.environments[].branch` | 2,100 | 0.02% | `!self.contains('..')` |
-| `.spec.environments[].tag` | 2,100 | 0.02% | `!self.contains(':')` |
-| `.spec.environments[].tag` | 2,100 | 0.02% | `!self.contains('..')` |
+| `.spec.environments[].tag` | 52,000 | 0.52% | `!self.contains(':')` |
+| `.spec.environments[].tag` | 52,000 | 0.52% | `!self.contains('..')` |
+| `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains(':')` |
+| `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains('..')` |
+| `.spec.environments[].branch` | 1,500 | 0.01% | `!self.startsWith('-')` |
+| `.spec.environments[].tag` | 1,500 | 0.01% | `!self.startsWith('-')` |
 | `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
-| `.spec.environments[].branch` | 150 | 0.00% | `!self.startsWith('-')` |
-| `.spec.environments[].tag` | 150 | 0.00% | `!self.startsWith('-')` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains(':')` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains('..')` |
 | `.spec.drySource.branch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **275,713** | **0.28%** | |
+| **Total** | **300,711** | **0.30%** | |
 
 #### WebRequestCommitStatus
 

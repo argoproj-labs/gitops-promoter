@@ -12,16 +12,14 @@ spec:
     # Optional. Defaults to the PromotionStrategy's repository.
     gitRepositoryRef:
       name: example-git-repository
-  # One entry per PromotionStrategy environment. Each environment's hydrator reads from its tag.
+  # Optional. An environment that is not listed is validated by the controller and reads the tag
+  # <branch>-tag (<branch>-tag/<activePath> when it has an activePath).
   environments:
-    - branch: environment/dev
-      tag: env/dev
-    - branch: environment/staging
-      tag: env/staging
     - branch: environment/prod
+      # Optional. Automatic (the default) has the controller move the tag; Manual leaves it to a person.
+      validation: Manual
+      # Optional. Overrides the name of the tag this environment's hydrator reads.
       tag: env/prod
-      # Optional. Auto (the default) has the controller move the tag; Manual leaves it to a person.
-      advance: Manual
   url:
     template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
   # Optional. Destinations copied onto each CommitStatus. Default is [scm]. An empty list keeps them in Kubernetes only.
@@ -34,7 +32,7 @@ status:
   environments:
     - branch: environment/dev
       tag:
-        name: env/dev
+        name: environment/dev-tag
         sha: fedcba9876543210fedcba9876543210fedcba98
       qualified:
         drySha: 0123456789abcdef0123456789abcdef01234567
@@ -46,7 +44,7 @@ status:
           description: Waiting for sync
     - branch: environment/staging
       tag:
-        name: env/staging
+        name: environment/staging-tag
         sha: 0123456789abcdef0123456789abcdef01234567
       qualified:
         drySha: 0123456789abcdef0123456789abcdef01234567
