@@ -73,6 +73,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller,
 	// which gates promotions on whether dependent environments have ever run the target dry SHA successfully.
 	ValidatedCommitStatus *ValidatedCommitStatusConfigurationApplyConfiguration `json:"validatedCommitStatus,omitempty"`
+	// CommitValidation contains the configuration for the CommitValidation controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	CommitValidation *CommitValidationConfigurationApplyConfiguration `json:"commitValidation,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -187,6 +190,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessful
 // If called multiple times, the ValidatedCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithValidatedCommitStatus(value *ValidatedCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.ValidatedCommitStatus = value
+	return b
+}
+
+// WithCommitValidation sets the CommitValidation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CommitValidation field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithCommitValidation(value *CommitValidationConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.CommitValidation = value
 	return b
 }
 

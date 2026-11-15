@@ -501,6 +501,101 @@ export type components = {
             /** @description Sha is the commit SHA that the status is set on. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             sha?: string;
         };
+        /**
+         * @description CommitValidation is the Schema for the commitvalidations API. It submits manual validations for one environment of a PromotionStrategy and shows that environment's validation history.
+         *
+         *     The work queue coalesces events, so a second change to spec.sha before the first was handled would be lost. The rules below make the API server reject it instead.
+         */
+        CommitValidation: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of CommitValidation
+             * @default {}
+             */
+            spec: components["schemas"]["CommitValidationSpec"];
+            /**
+             * @description status defines the observed state of CommitValidation
+             * @default {}
+             */
+            status?: components["schemas"]["CommitValidationStatus"];
+        };
+        /** @description CommitValidationHistoryEntry is one validation of the environment, read back from the repository, or the record of one move of its tag by hand. */
+        CommitValidationHistoryEntry: {
+            /** @description Reason is the reason given with the validation, if any. */
+            reason?: string;
+            /**
+             * @description Sha is the validated dry commit. For a tag moved by hand, the commit it was moved to.
+             * @default
+             */
+            sha: string;
+            /**
+             * @description Source says how the validation was made: through a CommitValidation (Resource), or as a pushed git note (Git). External marks an entry that is no validation: the environment's tag was moved by hand. Automatic marks a line that calls itself an automatic validation, which is not applied.
+             * @default
+             */
+            source: string;
+            /** @description ValidatedAt is when the validation was made. For a tag moved by hand, when the controller saw it. */
+            validatedAt: components["schemas"]["Time"];
+            /** @description ValidatedBy names who or what validated the commit. For a pushed note without one, it is the author of the notes commit. For a tag moved by hand it is the ValidatedCommitStatus that saw the move: git does not say who pushes a tag. */
+            validatedBy?: string;
+        };
+        /** @description CommitValidationRequestStatus is the outcome for the SHA currently in spec. */
+        CommitValidationRequestStatus: {
+            /** @description HandledAt is when the controller recorded or rejected the request. */
+            handledAt: components["schemas"]["Time"];
+            /** @description Message explains a rejection. */
+            message?: string;
+            /**
+             * @description Phase is Recorded when the validation was written to the repository, and Rejected when it was not.
+             * @default
+             */
+            phase: string;
+            /**
+             * @description Sha is the spec.sha this outcome is for.
+             * @default
+             */
+            sha: string;
+        };
+        /** @description CommitValidationSpec defines the desired state of CommitValidation. promotionStrategyRef and branch are immutable: a CommitValidation stands for one environment of one strategy, which is what lets RBAC by resource name decide who may validate that environment. sha and reason together are one request. */
+        CommitValidationSpec: {
+            /**
+             * @description Branch is the environment branch on that PromotionStrategy that this resource validates commits for. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description PromotionStrategyRef selects the PromotionStrategy that owns the environment.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description Reason is copied into the validation, for example a change ticket. It belongs to sha and can only be set or changed together with it. */
+            reason?: string;
+            /** @description Sha is the dry commit to validate for the environment. It may be any commit in the repository, on or off the dry branch. Omit it to use the resource only to view the environment's validation history. It cannot change until status.request reports the current value as handled. */
+            sha?: string;
+        };
+        /** @description CommitValidationStatus defines the observed state of CommitValidation. */
+        CommitValidationStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description History lists the environment's validations, newest first, capped at 20. It is rebuilt from the git notes under refs/notes/promoter.validations, which are the record. */
+            history?: components["schemas"]["CommitValidationHistoryEntry"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+            /** @description Request is the outcome for the SHA currently in spec. Omitted while spec.sha is not set or has not been handled yet. */
+            request?: components["schemas"]["CommitValidationRequestStatus"];
+        };
         /** @description Condition contains details for one aspect of the current state of this API Resource. */
         Condition: {
             /** @description lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable. */
@@ -1444,6 +1539,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description CommitValidations are the CommitValidations whose spec.promotionStrategyRef names this PromotionStrategy. Each one submits validations for one environment and shows its history. */
+            commitValidations?: components["schemas"]["CommitValidation"][];
             /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
             dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */

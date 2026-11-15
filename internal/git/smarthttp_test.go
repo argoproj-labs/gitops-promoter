@@ -100,20 +100,6 @@ var _ = Describe("A git server that does not serve unadvertised commits", func()
 		Expect(ops.EnsureCommit(ctx, strings.Repeat("ab", 20))).To(BeFalse())
 	})
 
-	It("answers whether a commit exists by looking on the fallback branch", func() {
-		Expect(git.RemoteCommitExists(ctx, gap, dry.repo, third, dry.branch)).To(BeTrue(), "the branch tip")
-		Expect(git.RemoteCommitExists(ctx, gap, dry.repo, second, dry.branch)).To(BeTrue(), "found on the fallback branch")
-		Expect(git.RemoteCommitExists(ctx, gap, dry.repo, hotfix2, dry.branch)).To(BeTrue(), "the hotfix branch tip")
-		Expect(git.RemoteCommitExists(ctx, gap, dry.repo, strings.Repeat("ab", 20), dry.branch)).To(BeFalse())
-
-		By("Not finding a commit that is neither a tip nor on the fallback branch")
-		Expect(git.RemoteCommitExists(ctx, gap, dry.repo, hotfix1, dry.branch)).To(BeFalse())
-
-		By("Failing, rather than guessing, when there is no branch to look on")
-		_, err := git.RemoteCommitExists(ctx, gap, dry.repo, second, "")
-		Expect(err).To(MatchError(ContainSubstring("does not serve commit")))
-	})
-
 	It("records and lists validations", func() {
 		ops := newOps("default/gate")
 		cursor, err := ops.AppendValidations(ctx, []git.ValidationEntry{

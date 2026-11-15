@@ -107,6 +107,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.CommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CommitStatusStatus"):
 		return &apiv1alpha1.CommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidation"):
+		return &apiv1alpha1.CommitValidationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationConfiguration"):
+		return &apiv1alpha1.CommitValidationConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationHistoryEntry"):
+		return &apiv1alpha1.CommitValidationHistoryEntryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationRequestStatus"):
+		return &apiv1alpha1.CommitValidationRequestStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationSpec"):
+		return &apiv1alpha1.CommitValidationSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CommitValidationStatus"):
+		return &apiv1alpha1.CommitValidationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfiguration"):
 		return &apiv1alpha1.ControllerConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfigurationSpec"):

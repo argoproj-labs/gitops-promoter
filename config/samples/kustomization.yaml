@@ -13,6 +13,7 @@ resources:
 - promoter_v1alpha1_gitcommitstatus.yaml
 - promoter_v1alpha1_dependentssuccessfulcommitstatus.yaml
 - promoter_v1alpha1_validatedcommitstatus.yaml
+- promoter_v1alpha1_commitvalidation.yaml
 - promoter_v1alpha1_scheduledcommitstatus.yaml
 - promoter_v1alpha1_changetransferpolicyhistory.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

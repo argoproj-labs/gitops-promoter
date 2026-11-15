@@ -98,6 +98,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	ValidatedCommitStatus ValidatedCommitStatusConfiguration `json:"validatedCommitStatus"`
 
+	// CommitValidation contains the configuration for the CommitValidation controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	CommitValidation CommitValidationConfiguration `json:"commitValidation"`
+
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -304,6 +309,17 @@ type DependentsSuccessfulCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type ValidatedCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the ValidatedCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// CommitValidationConfiguration defines the configuration for the CommitValidation controller.
+//
+// This configuration controls how the CommitValidation controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type CommitValidationConfiguration struct {
+	// WorkQueue contains the work queue configuration for the CommitValidation controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

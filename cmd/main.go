@@ -504,6 +504,16 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "ValidatedCommitStatus")
 		panic(fmt.Errorf("unable to create ValidatedCommitStatus controller: %w", err))
 	}
+	if err := (&controller.CommitValidationReconciler{
+		Client:                       localManager.GetClient(),
+		Scheme:                       localManager.GetScheme(),
+		Recorder:                     localManager.GetEventRecorder("CommitValidation"),
+		SettingsMgr:                  settingsMgr,
+		EnqueueValidatedCommitStatus: validatedCommitStatusReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CommitValidation")
+		panic(fmt.Errorf("unable to create CommitValidation controller: %w", err))
+	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),

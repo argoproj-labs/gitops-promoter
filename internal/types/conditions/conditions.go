@@ -47,6 +47,13 @@ const (
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
 
+// Reasons that apply to CommitValidation.
+const (
+	// ValidatedCommitStatusNotFound is the reason when a validation is requested for a PromotionStrategy
+	// that has no ValidatedCommitStatus to apply it.
+	ValidatedCommitStatusNotFound CommonReason = "ValidatedCommitStatusNotFound"
+)
+
 // Reasons that apply to ValidatedCommitStatus.
 const (
 	// DryRepositoryUnavailable is the reason when the dry branch or the environment tags could not be read.

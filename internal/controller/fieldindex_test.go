@@ -60,6 +60,8 @@ var _ = Describe("GateCommitStatusKinds", func() {
 		}
 		Expect(got).NotTo(HaveKey("RestoreActiveCommit"),
 			"RestoreActiveCommit has Spec.PromotionStrategyRef but is not a commit-status gate")
+		Expect(got).NotTo(HaveKey("CommitValidation"),
+			"CommitValidation has Spec.PromotionStrategyRef but is not a commit-status gate")
 	})
 })
 

@@ -159,6 +159,20 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.ValidatedCommitStatuses = nilIfEmpty(qualifiedCSList.Items)
 
+	// CommitValidations name the PromotionStrategy directly. They are not commit-status gates, so they
+	// have no PromotionStrategyRef field index here.
+	cvList := &promoterv1alpha1.CommitValidationList{}
+	if err := reader.List(ctx, cvList, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list CommitValidations: %w", err)
+	}
+	var commitValidations []promoterv1alpha1.CommitValidation
+	for i := range cvList.Items {
+		if cvList.Items[i].Spec.PromotionStrategyRef.Name == name {
+			commitValidations = append(commitValidations, cvList.Items[i])
+		}
+	}
+	bundle.CommitValidations = nilIfEmpty(commitValidations)
+
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ScheduledCommitStatuses: %w", err)

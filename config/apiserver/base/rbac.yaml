@@ -25,6 +25,7 @@ rules:
       - scheduledcommitstatuses
       - dependentssuccessfulcommitstatuses
       - validatedcommitstatuses
+      - commitvalidations
       - gitrepositories
       - scmproviders
       - clusterscmproviders

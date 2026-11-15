@@ -71,6 +71,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return dependentsSuccessfulCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ValidatedCommitStatus:
 		return validatedCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.CommitValidation:
+		return commitValidationStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.GitCommitStatus:
 		return gitCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ArgoCDCommitStatus:
@@ -172,6 +174,16 @@ func validatedCommitStatusStatusApply(o *promoterv1alpha1.ValidatedCommitStatus,
 		return nil, err
 	}
 	return acv1alpha1.ValidatedCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func commitValidationStatusApply(o *promoterv1alpha1.CommitValidation, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.CommitValidationStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.CommitValidation(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func gitCommitStatusStatusApply(o *promoterv1alpha1.GitCommitStatus, conditionsOnly bool) (any, error) {

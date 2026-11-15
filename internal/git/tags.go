@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 )
 
 // commitsOnlyFilter keeps trees and blobs out of a fetch. Ordering environments needs the shape of the
@@ -393,98 +390,8 @@ func (g *EnvironmentOperations) ContainsCommit(ctx context.Context, descendant, 
 // isMissingObjectFetchError reports whether a fetch by SHA failed because the remote does not have the
 // object, or does not serve objects that no ref points at.
 func isMissingObjectFetchError(stderr string) bool {
-	return isAbsentObjectFetchError(stderr) || isUnadvertisedObjectFetchError(stderr)
-}
-
-// isAbsentObjectFetchError reports whether the remote said it does not have the object.
-func isAbsentObjectFetchError(stderr string) bool {
 	return strings.Contains(stderr, "not our ref") ||
 		strings.Contains(stderr, "couldn't find remote ref") ||
-		strings.Contains(stderr, "no such remote ref")
-}
-
-// isUnadvertisedObjectFetchError reports whether the fetch was refused because no ref points at the
-// object and the remote does not serve such objects by SHA. That says nothing about whether it has it.
-func isUnadvertisedObjectFetchError(stderr string) bool {
-	return strings.Contains(stderr, "unadvertised object")
-}
-
-// scratchRepository creates an empty bare repository that knows the remote as origin, for a one-off read
-// that should leave nothing behind in a clone. The caller removes it with the returned function.
-func scratchRepository(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository) (dir string, remove func() error, err error) {
-	dir, err = os.MkdirTemp("", "scratch-*")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create scratch directory: %w", err)
-	}
-	remove = func() error {
-		if removeErr := os.RemoveAll(dir); removeErr != nil {
-			return fmt.Errorf("failed to remove scratch directory %q: %w", dir, removeErr)
-		}
-		return nil
-	}
-
-	_, stderr, err := runCmd(ctx, gap, dir, "init", "--bare", "--quiet")
-	if err == nil {
-		// A filtered fetch needs a named remote; git records it as a promisor on the first such fetch.
-		_, stderr, err = runCmd(ctx, gap, dir, "config", "remote.origin.url", gap.GetGitHttpsRepoUrl(*gitRepo))
-	}
-	if err != nil {
-		err = fmt.Errorf("failed to set up scratch repository: %w (stderr: %s)", err, strings.TrimSpace(stderr))
-		if removeErr := remove(); removeErr != nil {
-			err = fmt.Errorf("%w (%w)", err, removeErr)
-		}
-		return "", nil, err
-	}
-	return dir, remove, nil
-}
-
-// RemoteCommitExists reports whether the repository has the commit, without needing a clone. It fetches
-// that one commit object into a scratch repository, which is removed again.
-//
-// Some servers do not serve a commit by SHA unless a ref points at it. For those, the answer comes from
-// fallbackBranch instead: the branch's commits are fetched and searched. With no fallback branch, such
-// a server is an error, because the question cannot be answered.
-//
-// RemoteCommitExists is concurrency-safe: it uses no shared clone.
-func RemoteCommitExists(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, sha, fallbackBranch string) (exists bool, err error) {
-	if !fullObjectID.MatchString(sha) {
-		return false, nil
-	}
-
-	dir, remove, err := scratchRepository(ctx, gap, gitRepo)
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		if removeErr := remove(); removeErr != nil && err == nil {
-			err = removeErr
-		}
-	}()
-
-	probe := func() bool {
-		_, _, probeErr := runCmdWithEnv(ctx, gap, dir, noLazyFetchEnv, "cat-file", "-e", sha+"^{commit}")
-		return probeErr == nil
-	}
-
-	start := time.Now()
-	_, stderr, fetchErr := runCmd(ctx, gap, dir, "fetch", "--no-tags", "--depth=1", commitsOnlyFilter, "origin", sha)
-	metrics.RecordGitOperation(gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(fetchErr), time.Since(start))
-	switch {
-	case fetchErr == nil:
-		return probe(), nil
-	case isAbsentObjectFetchError(stderr):
-		return false, nil
-	case !isUnadvertisedObjectFetchError(stderr):
-		return false, fmt.Errorf("failed to fetch commit %q: %w (stderr: %s)", sha, fetchErr, strings.TrimSpace(stderr))
-	case fallbackBranch == "":
-		return false, fmt.Errorf("the remote does not serve commit %q by SHA and there is no branch to look for it on", sha)
-	}
-
-	start = time.Now()
-	_, stderr, fetchErr = runCmd(ctx, gap, dir, "fetch", "--no-tags", commitsOnlyFilter, "origin", "+"+branchRef(fallbackBranch)+":"+branchRef(fallbackBranch))
-	metrics.RecordGitOperation(gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(fetchErr), time.Since(start))
-	if fetchErr != nil {
-		return false, fmt.Errorf("failed to fetch branch %q to look for commit %q: %w (stderr: %s)", fallbackBranch, sha, fetchErr, strings.TrimSpace(stderr))
-	}
-	return probe(), nil
+		strings.Contains(stderr, "no such remote ref") ||
+		strings.Contains(stderr, "unadvertised object")
 }

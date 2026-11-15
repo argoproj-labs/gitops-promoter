@@ -287,6 +287,15 @@ var _ = SynchronizedBeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	enqueueValidatedCommitStatus = validatedCommitStatusReconciler.GetEnqueueFunc()
 
+	err = (&CommitValidationReconciler{
+		Client:                       k8sManager.GetClient(),
+		Scheme:                       k8sManager.GetScheme(),
+		Recorder:                     k8sManager.GetEventRecorder("CommitValidation"),
+		SettingsMgr:                  settingsMgr,
+		EnqueueValidatedCommitStatus: validatedCommitStatusReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),

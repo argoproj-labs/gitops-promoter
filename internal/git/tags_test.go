@@ -445,42 +445,6 @@ var _ = Describe("Environment tags", func() {
 		})
 	})
 
-	Describe("RemoteCommitExists", func() {
-		var gap *fakeGitProvider
-
-		BeforeEach(func() {
-			gap = &fakeGitProvider{tempDirPath: dry.remoteDir}
-		})
-
-		It("finds commits on and off the dry branch, tips or not", func() {
-			second := dry.commit("second")
-			dry.push()
-			mustGit(dry.workDir, "checkout", "-b", "hotfix", first)
-			hotfix1 := dry.commit("hotfix one")
-			dry.commit("hotfix two")
-			mustGit(dry.workDir, "push", "origin", "hotfix")
-
-			for _, sha := range []string{first, second, hotfix1} {
-				Expect(git.RemoteCommitExists(ctx, gap, dry.repo, sha, dry.branch)).To(BeTrue(), sha)
-			}
-		})
-
-		It("reports a commit the repository does not have", func() {
-			Expect(git.RemoteCommitExists(ctx, gap, dry.repo, strings.Repeat("cd", 20), dry.branch)).To(BeFalse())
-		})
-
-		It("reports an object that is not a commit, and a malformed SHA, as missing", func() {
-			tree := strings.TrimSpace(mustGit(dry.workDir, "rev-parse", first+"^{tree}"))
-			Expect(git.RemoteCommitExists(ctx, gap, dry.repo, tree, dry.branch)).To(BeFalse())
-			Expect(git.RemoteCommitExists(ctx, gap, dry.repo, "4f2a9c", dry.branch)).To(BeFalse())
-		})
-
-		It("returns an error when the repository cannot be reached", func() {
-			_, err := git.RemoteCommitExists(ctx, &fakeGitProvider{tempDirPath: filepath.Join(dry.remoteDir, "nowhere")}, dry.repo, first, dry.branch)
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
 	Describe("MoveTag input", func() {
 		It("only takes full object IDs, for the commit and for the lease", func() {
 			ops := dry.newOps("default/gate")

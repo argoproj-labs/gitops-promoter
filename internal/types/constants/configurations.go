@@ -46,6 +46,10 @@ const (
 	// performed by the ValidatedCommitStatus controller.
 	ValidatedCommitStatusControllerFieldOwner = "promoter.argoproj.io/validatedcommitstatus-controller"
 
+	// CommitValidationControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the CommitValidation controller.
+	CommitValidationControllerFieldOwner = "promoter.argoproj.io/commitvalidation-controller"
+
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
 	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"

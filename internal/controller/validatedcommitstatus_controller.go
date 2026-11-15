@@ -67,6 +67,11 @@ const (
 	vcsNoteSearchDepth = 200
 	// vcsShortShaLength is how much of a SHA is shown in commit status descriptions.
 	vcsShortShaLength = 7
+	// vcsNotedRetry is how soon the gate reconciles again after it wrote into the validation notes itself.
+	// Its place in the notes (status.validationsCursor) stays before what it wrote, because another writer
+	// may have got in first. The next reconcile reads on from there, and whoever watches the cursor, such
+	// as a CommitValidation showing the environment's history, then sees the new line.
+	vcsNotedRetry = 5 * time.Second
 	// vcsLostCursorWalk is how many commits of the validation notes the gate looks back over when it no
 	// longer knows how far it had applied them.
 	vcsLostCursorWalk = 500
@@ -1212,10 +1217,16 @@ type vcsRepositories struct {
 }
 
 func (q *vcsRepositories) dryRepositoryName() string {
-	if ref := q.vcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
+	return vcsDryRepositoryName(q.vcs, q.ps)
+}
+
+// vcsDryRepositoryName returns the name of the GitRepository that holds the dry branch, the environment
+// tags and the validation notes: the one the gate names, or else the PromotionStrategy's own.
+func vcsDryRepositoryName(vcs *promoterv1alpha1.ValidatedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) string {
+	if ref := vcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
 		return ref.Name
 	}
-	return q.ps.Spec.RepositoryReference.Name
+	return ps.Spec.RepositoryReference.Name
 }
 
 // dry returns the clone that holds the dry branch and the environment tags.
@@ -1392,7 +1403,7 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	}
 
 	// Validate. What people asked for since the notes were last applied.
-	if err := r.collectValidations(ctx, vcs, dry, graph, envs, firstRun); err != nil {
+	if err := r.collectValidations(ctx, vcs, dry, envs, firstRun); err != nil {
 		return 0, err
 	}
 	if err := r.observeIdleness(ctx, ps, envs); err != nil {
@@ -1414,7 +1425,7 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	// From here on status says where every tag is and what put it there, whatever else fails: the next
 	// reconcile goes by it.
 	vcsRecordEnvironments(vcs, envs, plans, pushed, dry.notesTip, now)
-	noteErr := r.noteHandMoves(ctx, vcs, dry.ops)
+	noted, noteErr := r.noteHandMoves(ctx, vcs, dry.ops)
 
 	// Gate.
 	commitStatuses, err := r.writeGates(ctx, vcs, ps, graph, dry.head, envs)
@@ -1427,25 +1438,15 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	utils.InheritNotReadyConditionFromObjects(vcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	retryAfter := r.nudgeHydration(ctx, vcs, ps, envs)
-
-	for i, env := range envs {
-		held := vcs.Status.Environments[i].Held
-		if env.Settling && held != nil && held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy {
-			// The environment has finished its promotion in every respect but one: its merged pull request
-			// still exists. Every earlier step towards idle changes the PromotionStrategy's status, which
-			// brings the gate back. The deletion of the pull request changes nothing there, so it is the
-			// one step that has to be polled for.
-			retryAfter = vcsSooner(retryAfter, vcsNudgeBaseDelay)
-		}
+	retryAfter = vcsSooner(retryAfter, vcsRetryAfterTags(vcs, envs, pushed))
+	if noted {
+		retryAfter = vcsSooner(retryAfter, vcsNotedRetry)
 	}
+
 	var pushErrs []error
 	for _, result := range pushed {
 		if result.Err != nil {
 			pushErrs = append(pushErrs, result.Err)
-		}
-		if result.Overtaken {
-			// Someone moved the tag while the controller was about to. Look at it again soon.
-			retryAfter = vcsSooner(retryAfter, vcsNudgeBaseDelay)
 		}
 	}
 	if len(pushErrs) > 0 {
@@ -1460,6 +1461,26 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 		return 0, errors.Join(qualifyErrs...)
 	}
 	return retryAfter, nil
+}
+
+// vcsRetryAfterTags returns how soon the gate should look at the tags again for a reason nothing will wake it
+// for, 0 when there is none.
+func vcsRetryAfterTags(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []vcsEnvironment, pushed []vcsPushResult) time.Duration {
+	for i, env := range envs {
+		held := vcs.Status.Environments[i].Held
+		if env.Settling && held != nil && held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy {
+			// The environment has finished its promotion in every respect but one: its merged pull request
+			// still exists. Every earlier step towards idle changes the PromotionStrategy's status, which
+			// brings the gate back. The deletion of the pull request changes nothing there, so it is the
+			// one step that has to be polled for.
+			return vcsNudgeBaseDelay
+		}
+		if pushed[i].Overtaken {
+			// Someone moved the tag while the controller was about to. Look at it again soon.
+			return vcsNudgeBaseDelay
+		}
+	}
+	return 0
 }
 
 // vcsSooner returns the shorter of two waits, where 0 means "no wait requested".
@@ -2048,7 +2069,6 @@ func (r *ValidatedCommitStatusReconciler) collectValidations(
 	ctx context.Context,
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
 	dry *vcsDryState,
-	graph vcsCommitGraph,
 	envs []vcsEnvironment,
 	firstRun bool,
 ) error {
@@ -2110,7 +2130,7 @@ func (r *ValidatedCommitStatusReconciler) collectValidations(
 		if !vcsManualValidation(line.Line) {
 			continue
 		}
-		ignored, err := r.unusableValidation(ctx, dry, graph, line.Sha)
+		ignored, err := vcsUnusableValidation(ctx, dry.ops, dry.head, line.Sha)
 		if err != nil {
 			return err
 		}
@@ -2135,7 +2155,7 @@ func (r *ValidatedCommitStatusReconciler) collectValidations(
 		if env.Validation != nil || pending == nil {
 			continue
 		}
-		ignored, err := r.unusableValidation(ctx, dry, graph, pending.Sha)
+		ignored, err := vcsUnusableValidation(ctx, dry.ops, dry.head, pending.Sha)
 		if err != nil {
 			return err
 		}
@@ -2146,9 +2166,10 @@ func (r *ValidatedCommitStatusReconciler) collectValidations(
 	return nil
 }
 
-// unusableValidation says why a validation of the given commit cannot be applied, "" when it can.
-func (r *ValidatedCommitStatusReconciler) unusableValidation(ctx context.Context, dry *vcsDryState, graph vcsCommitGraph, sha string) (string, error) {
-	found, err := dry.ops.EnsureCommit(ctx, sha)
+// vcsUnusableValidation says why a validation of the given commit cannot be applied, "" when it can. head is
+// the head of the dry branch, which ops has fetched.
+func vcsUnusableValidation(ctx context.Context, ops *git.EnvironmentOperations, head, sha string) (string, error) {
+	found, err := ops.EnsureCommit(ctx, sha)
 	if err != nil {
 		return "", fmt.Errorf("failed to look for validated commit %s: %w", sha, err)
 	}
@@ -2157,7 +2178,7 @@ func (r *ValidatedCommitStatusReconciler) unusableValidation(ctx context.Context
 	}
 	// A hydrated commit is a commit of the repository too, when the environment branches live with the dry
 	// branch. Tagging one would have the hydrator hydrate manifests, and the gate pass the result unseen.
-	base, err := graph.MergeBase(ctx, dry.head, sha)
+	base, err := ops.MergeBase(ctx, head, sha)
 	if err != nil {
 		return "", fmt.Errorf("failed to compare validated commit %s with the dry branch: %w", sha, err)
 	}
@@ -2168,8 +2189,8 @@ func (r *ValidatedCommitStatusReconciler) unusableValidation(ctx context.Context
 }
 
 // noteHandMoves writes, into the validation notes, the record of every tag that status says was pushed by
-// hand and that the notes do not have yet.
-func (r *ValidatedCommitStatusReconciler) noteHandMoves(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ops *git.EnvironmentOperations) error {
+// hand and that the notes do not have yet. It reports whether it wrote any.
+func (r *ValidatedCommitStatusReconciler) noteHandMoves(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ops *git.EnvironmentOperations) (bool, error) {
 	var entries []git.ValidationEntry
 	for _, env := range vcs.Status.Environments {
 		entry, moved := vcsHandMoveRecord(vcs.Name, env.Tag)
@@ -2178,19 +2199,19 @@ func (r *ValidatedCommitStatusReconciler) noteHandMoves(ctx context.Context, vcs
 		}
 		recorded, err := ops.ValidationRecorded(ctx, entry.Sha, entry.Line.ID)
 		if err != nil {
-			return fmt.Errorf("failed to look for the record of tag %q moved by hand: %w", entry.Line.Target, err)
+			return false, fmt.Errorf("failed to look for the record of tag %q moved by hand: %w", entry.Line.Target, err)
 		}
 		if !recorded {
 			entries = append(entries, entry)
 		}
 	}
 	if len(entries) == 0 {
-		return nil
+		return false, nil
 	}
 	if _, err := ops.AppendValidations(ctx, entries); err != nil {
-		return fmt.Errorf("failed to record tags moved by hand: %w", err)
+		return false, fmt.Errorf("failed to record tags moved by hand: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // writeGates writes the child CommitStatus of every environment that has a proposed change, and the gate's

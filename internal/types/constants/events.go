@@ -160,6 +160,18 @@ const (
 	// Args: the validated SHA, tag, why it was ignored.
 	ValidationIgnoredMessage = "Ignored a validation of %s for tag %q: %s"
 
+	// CommitValidationRecordedReason indicates that a CommitValidation wrote the requested validation to git.
+	CommitValidationRecordedReason = "CommitValidationRecorded"
+	// CommitValidationRecordedMessage is the message for a recorded validation.
+	// Args: the validated SHA, environment branch.
+	CommitValidationRecordedMessage = "Recorded the validation of %s for environment branch %s"
+
+	// CommitValidationRejectedReason indicates that a CommitValidation asked for a commit that cannot be validated.
+	CommitValidationRejectedReason = "CommitValidationRejected"
+	// CommitValidationRejectedMessage is the message for a rejected validation.
+	// Args: the SHA that was asked for, environment branch, why it was rejected.
+	CommitValidationRejectedMessage = "Rejected the validation of %s for environment branch %s: %s"
+
 	// EnvironmentTagPushFailedReason indicates that a ValidatedCommitStatus could not push an environment tag.
 	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"
 	// EnvironmentTagPushFailedMessage is the message for a failed environment tag push.
