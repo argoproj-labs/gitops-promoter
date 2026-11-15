@@ -15,8 +15,8 @@ Each bundle contains the `PromotionStrategy`, its `ChangeTransferPolicy`,
 (`ArgoCDCommitStatus`, `ValidatedCommitStatus`,
 `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
 `ScheduledCommitStatus`, `TimedCommitStatus`,
-`WebRequestCommitStatus`), and the git config (`GitRepository` plus its
-`ScmProvider` or `ClusterScmProvider`).
+`WebRequestCommitStatus`), the `CommitValidation`s of its environments, and the
+git config (`GitRepository` plus its `ScmProvider` or `ClusterScmProvider`).
 
 > [!WARNING]
 > *Secrets are never included*

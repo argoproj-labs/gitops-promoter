@@ -12,9 +12,16 @@ spec:
     # Optional. Defaults to the PromotionStrategy's repository.
     gitRepositoryRef:
       name: example-git-repository
-  # Optional. An environment that is not listed is validated by the controller and reads the tag
-  # <branch>-tag (<branch>-tag/<activePath> when it has an activePath).
+  # Optional. Accept (the default) applies validations that were pushed to the notes of the dry repository
+  # directly. Ignore applies only what a CommitValidation asks for.
+  pushedValidations: Accept
+  # Optional. An environment that is not listed is validated by the controller, advances immediately, and
+  # reads the tag <branch>-tag (<branch>-tag/<activePath> when it has an activePath).
   environments:
+    - branch: environment/staging
+      # Optional. Immediately (the default), or WhenIdle to move the tag only once the environment has
+      # finished what it is promoting.
+      advance: WhenIdle
     - branch: environment/prod
       # Optional. Automatic (the default) has the controller move the tag; Manual leaves it to a person.
       validation: Manual
@@ -29,10 +36,16 @@ status:
   observedGeneration: 1
   dry:
     sha: fedcba9876543210fedcba9876543210fedcba98
+  # The last commit of refs/notes/promoter.validations whose validations were applied.
+  validationsCursor: 9a3f11c05d7b2e4f6a8c0b1d3e5f7a9c2b4d6e80
   environments:
     - branch: environment/dev
       tag:
         name: environment/dev-tag
+        sha: fedcba9876543210fedcba9876543210fedcba98
+        source: Automatic
+        movedAt: "2026-01-02T03:20:00Z"
+      upstreamCleared:
         sha: fedcba9876543210fedcba9876543210fedcba98
       qualified:
         drySha: 0123456789abcdef0123456789abcdef01234567
@@ -46,6 +59,10 @@ status:
       tag:
         name: environment/staging-tag
         sha: 0123456789abcdef0123456789abcdef01234567
+        source: Automatic
+        movedAt: "2026-01-02T03:04:06Z"
+      upstreamCleared:
+        sha: 0123456789abcdef0123456789abcdef01234567
       qualified:
         drySha: 0123456789abcdef0123456789abcdef01234567
         hydratedSha: "2222222222222222222222222222222222222222"
@@ -58,22 +75,26 @@ status:
         - branch: environment/dev
           satisfied: true
       phase: success
-      description: Tag "env/staging" at 0123456 is hydrated and qualified upstream
+      description: Tag "environment/staging-tag" at 0123456 is hydrated and qualified upstream
       url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fstaging
       reportedSha: abc123def4567890abcdef1234567890abcdef12
+    # Production runs a commit a person validated for it. The gate passes it although staging has not
+    # qualified it.
     - branch: environment/prod
       tag:
         name: env/prod
         sha: fedcba9876543210fedcba9876543210fedcba98
+        source: Manual
+        movedAt: "2026-01-02T03:25:00Z"
+        validatedBy: CommitValidation/example-prod
+      upstreamCleared:
+        sha: 0123456789abcdef0123456789abcdef01234567
+      appliedRequest: 5b1f6c0e-7d2a-4c3b-9e8f-0a1b2c3d4e5f/4
       activeCommitStatuses:
         - key: argocd-health
           phase: success
           description: Application healthy
-      upstreams:
-        - branch: environment/staging
-          satisfied: false
-          reason: 'Waiting for "environment/staging" to qualify dry fedcba9 (newest qualified: 0123456)'
-      phase: pending
-      description: 'Waiting for "environment/staging" to qualify dry fedcba9 (newest qualified: 0123456)'
+      phase: success
+      description: Tag "env/prod" at fedcba9 is hydrated and was validated by CommitValidation/example-prod
       url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fprod
       reportedSha: def456abc7890123def456abc7890123def456ab

@@ -7,6 +7,36 @@ integrations you can enable to improve your Argo CD experience while using GitOp
 >
 > To build or test the UI extension locally, see [Developing the Argo CD Extension](../contributing/developing-the-argocd-extension.md) in Contributing.
 
+## Hydrating Each Environment from Its Own Tag
+
+By default every Application's source hydrator reads the DRY branch (`drySource.targetRevision: HEAD` or a branch
+name). If the PromotionStrategy is ordered by a
+[ValidatedCommitStatus](../gating-promotions/built-in-gates/validated-commit-status.md), each Application must read
+its environment's tag instead:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/example/app
+      path: deploy/prod
+      targetRevision: environment/prod-tag   # <environment branch>-tag
+    syncSource:
+      targetBranch: environment/prod
+      path: deploy/prod
+    hydrateTo:
+      targetBranch: environment/prod-next
+```
+
+With `PromotionStrategy.spec.activePath` the tag is `<environment branch>-tag/<activePath>`, for example
+`environment/prod-tag/apps/app-one`. An Application that still reads the DRY branch produces proposals that never
+match the tag, and its promotions wait at the ordering gate. See
+[Pointing the hydrators at the tags](../gating-promotions/built-in-gates/validated-commit-status.md#pointing-the-hydrators-at-the-tags)
+and, for an existing PromotionStrategy,
+[Setup and migration](../gating-promotions/built-in-gates/validated-commit-status.md#setup-and-migration).
+
 ## UI Extension
 
 GitOps Promoter provides a custom [Argo CD UI Extension](https://argo-cd.readthedocs.io/en/stable/developer-guide/extensions/ui-extensions/).

@@ -31,7 +31,7 @@ status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The c
 The built-in ordering gates are [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md),
 where every environment follows the DRY branch HEAD, and
 [ValidatedCommitStatus](built-in-gates/validated-commit-status.md), where every environment
-follows its own tag.
+follows its own tag and a person can validate a commit for an environment.
 
 Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
@@ -227,7 +227,8 @@ or declare `dependsOn` on `PromotionStrategy.spec.environments[]` for fan-out an
 `orderCommitStatusRef`; the controller injects `spec.key` onto every CTP. See that page and
 [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy) for wiring details.
 
-To let higher environments lag behind the DRY branch HEAD, or to choose when an environment gets a new version, use
+To let later environments lag behind the DRY branch HEAD, to approve a commit for an environment before it is
+hydrated, or to send a commit to one environment past the others, use
 [ValidatedCommitStatus](built-in-gates/validated-commit-status.md) instead. See
 [Holding Back Environments](../advanced-usage/holding-back-environments.md).
 
