@@ -2111,6 +2111,8 @@ export type components = {
         };
         /** @description ValidatedCommitStatusEnvironment sets up one environment. */
         ValidatedCommitStatusEnvironment: {
+            /** @description Advance says when the controller may move this environment's tag. Immediately (the default), or WhenIdle to wait until the environment has finished what it is promoting, so that a promotion that is under way is not replaced by the next one. A validation by a person always applies immediately. */
+            advance?: string;
             /**
              * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
              * @default
@@ -2156,7 +2158,7 @@ export type components = {
             /** @description Message says what the commit is waiting for. */
             message?: string;
             /**
-             * @description Reason is Pinned when the commit does not contain the commit the tag is on.
+             * @description Reason is Pinned when the commit does not contain the commit the tag is on, and Busy when the environment advances WhenIdle and is not idle.
              * @default
              */
             reason: string;

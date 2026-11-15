@@ -24,7 +24,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 5,818 | 0.01% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
-| ValidatedCommitStatus | v1alpha1 | 300,711 | 0.30% |
+| ValidatedCommitStatus | v1alpha1 | 305,211 | 0.31% |
 | WebRequestCommitStatus | v1alpha1 | 25 | 0.00% |
 
 ### Per-resource detail
@@ -362,13 +362,14 @@ Source: `promoter.argoproj.io_validatedcommitstatuses.yaml`
 | `.spec.environments[].tag` | 52,000 | 0.52% | `!self.contains('..')` |
 | `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains('..')` |
+| `.spec.environments[]` | 4,500 | 0.04% | `!(has(self.validation) && self.validation == 'Manual' && has(self.advance) && self.advance == 'WhenIdle')` |
 | `.spec.environments[].branch` | 1,500 | 0.01% | `!self.startsWith('-')` |
 | `.spec.environments[].tag` | 1,500 | 0.01% | `!self.startsWith('-')` |
 | `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains(':')` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains('..')` |
 | `.spec.drySource.branch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **300,711** | **0.30%** | |
+| **Total** | **305,211** | **0.31%** | |
 
 #### WebRequestCommitStatus
 

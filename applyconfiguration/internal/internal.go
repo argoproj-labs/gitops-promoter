@@ -38,6 +38,8 @@ func Parser() *typed.Parser {
 var parserOnce sync.Once
 var parser *typed.Parser
 var schemaYAML = typed.YAMLObject(`types:
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AdvancePolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ApplicationsSelected
   map:
     fields:
@@ -2101,6 +2103,10 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironment
   map:
     fields:
+    - name: advance
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AdvancePolicy
+      default: Immediately
     - name: branch
       type:
         scalar: string

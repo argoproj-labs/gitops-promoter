@@ -143,6 +143,12 @@ type vcsEnvironment struct {
 	Status promoterv1alpha1.EnvironmentStatus
 	// Manual is true when a person moves the tag (validation: Manual).
 	Manual bool
+	// WhenIdle is true when the controller moves the tag only while the environment is idle (advance:
+	// WhenIdle). Idle says whether it is, and Settling that it will be once its merged pull request is
+	// gone. Both are only known with WhenIdle.
+	WhenIdle bool
+	Idle     bool
+	Settling bool
 	// Restored is true when the live commit was put there by a RestoreActiveCommit. It is only known to be
 	// right when an older commit than Qualified is live, which is the only time it is used.
 	Restored bool
@@ -417,7 +423,7 @@ func vcsPlanTag(ctx context.Context, graph vcsCommitGraph, head string, env vcsE
 	if env.Manual || target == "" {
 		return plan, nil
 	}
-	return vcsAdvanceTag(ctx, graph, head, plan)
+	return vcsAdvanceTag(ctx, graph, head, env, plan)
 }
 
 // vcsApplyValidation plans what a validation asks for: the tag on the validated commit, as placed by that
@@ -631,7 +637,7 @@ func vcsOwnMove(ctx context.Context, graph vcsCommitGraph, head string, env vcsE
 
 // vcsAdvanceTag decides whether the controller moves an existing, automatically validated tag to its
 // target, which is known.
-func vcsAdvanceTag(ctx context.Context, graph vcsCommitGraph, head string, plan vcsTagPlan) (vcsTagPlan, error) {
+func vcsAdvanceTag(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, plan vcsTagPlan) (vcsTagPlan, error) {
 	onBranch, err := graph.Contains(ctx, head, plan.From)
 	if err != nil {
 		return vcsTagPlan{}, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", plan.Tag, err)
@@ -656,6 +662,16 @@ func vcsAdvanceTag(ctx context.Context, graph vcsCommitGraph, head string, plan 
 		return vcsTagPlan{}, fmt.Errorf("failed to compare tag %q with its target: %w", plan.Tag, err)
 	}
 	if ahead {
+		if env.WhenIdle && !env.Idle {
+			// The environment is still busy with what its tag last asked of it. Moving the tag now would
+			// replace a promotion that is under way with the next one.
+			plan.Held = &promoterv1alpha1.ValidatedCommitStatusHeld{
+				Sha:     plan.Target,
+				Reason:  promoterv1alpha1.ValidatedHeldReasonBusy,
+				Message: "Waiting for the environment to finish promoting " + vcsShortSha(plan.From),
+			}
+			return plan, nil
+		}
 		plan.To, plan.MoveSource = plan.Target, promoterv1alpha1.ValidatedTagSourceAutomatic
 		return plan, nil
 	}
@@ -934,6 +950,8 @@ type vcsEnvironmentSetting struct {
 	Tag string
 	// Manual is true when a person moves the tag (validation: Manual).
 	Manual bool
+	// WhenIdle is true when the controller moves the tag only while the environment is idle (advance: WhenIdle).
+	WhenIdle bool
 }
 
 // vcsEnvironmentSettings returns the setting of every environment of the PromotionStrategy, by branch.
@@ -953,6 +971,7 @@ func vcsEnvironmentSettings(vcs *promoterv1alpha1.ValidatedCommitStatus, ps *pro
 			setting.Tag = env.Tag
 		}
 		setting.Manual = env.Validation == promoterv1alpha1.ValidationManual
+		setting.WhenIdle = env.Advance == promoterv1alpha1.AdvanceWhenIdle
 		settings[env.Branch] = setting
 	}
 	return settings
@@ -1053,6 +1072,8 @@ func (r *ValidatedCommitStatusReconciler) GetEnqueueFunc() func(namespace, name 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
@@ -1374,6 +1395,9 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	if err := r.collectValidations(ctx, vcs, dry, graph, envs, firstRun); err != nil {
 		return 0, err
 	}
+	if err := r.observeIdleness(ctx, ps, envs); err != nil {
+		return 0, err
+	}
 
 	// Move tags.
 	vcs.Status.Dry = &promoterv1alpha1.ValidatedCommitStatusDryStatus{Sha: dry.head}
@@ -1404,6 +1428,16 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 
 	retryAfter := r.nudgeHydration(ctx, vcs, ps, envs)
 
+	for i, env := range envs {
+		held := vcs.Status.Environments[i].Held
+		if env.Settling && held != nil && held.Reason == promoterv1alpha1.ValidatedHeldReasonBusy {
+			// The environment has finished its promotion in every respect but one: its merged pull request
+			// still exists. Every earlier step towards idle changes the PromotionStrategy's status, which
+			// brings the gate back. The deletion of the pull request changes nothing there, so it is the
+			// one step that has to be polled for.
+			retryAfter = vcsSooner(retryAfter, vcsNudgeBaseDelay)
+		}
+	}
 	var pushErrs []error
 	for _, result := range pushed {
 		if result.Err != nil {
@@ -1536,6 +1570,7 @@ func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 			TagSha:    dry.tags[setting.Tag].Commit,
 			TagRaw:    dry.tags[setting.Tag].Raw,
 			Manual:    setting.Manual,
+			WhenIdle:  setting.WhenIdle,
 			DependsOn: dependencies.dependsOn[branch],
 			Status:    status,
 			Restored:  vcsRestored(racs, branch, status.Active.Hydrated.Sha),
@@ -1947,6 +1982,62 @@ func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []v
 	}
 	vcs.Status.Environments = entries
 	vcs.Status.ValidationsCursor = cursor
+}
+
+// observeIdleness fills in, for every environment that advances WhenIdle, whether it is idle: its hydrator has
+// processed the commit its tag points at, nothing is proposed, no active commit status is pending, and no
+// promotion pull request exists. A failed commit status counts as idle, so that a fix can roll forward.
+//
+// It reads the ChangeTransferPolicy and its PullRequest rather than the PromotionStrategy's copy of them.
+// The copy trails by a reconcile, and the pull request exists before the ChangeTransferPolicy reports it.
+func (r *ValidatedCommitStatusReconciler) observeIdleness(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, envs []vcsEnvironment) error {
+	for i := range envs {
+		env := &envs[i]
+		if !env.WhenIdle {
+			continue
+		}
+		if env.TagSha == "" {
+			// The tag does not exist, so nothing has been asked of the environment.
+			env.Idle = true
+			continue
+		}
+
+		var ctp promoterv1alpha1.ChangeTransferPolicy
+		key := client.ObjectKey{Namespace: ps.Namespace, Name: utils.ChangeTransferPolicyNameForEnvironment(ps.Name, env.Branch)}
+		if err := r.Get(ctx, key, &ctp); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Nothing can be said about an environment that is not set up yet.
+				continue
+			}
+			return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", key.Name, err)
+		}
+		current := promoterv1alpha1.EnvironmentStatus{Active: ctp.Status.Active, Proposed: ctp.Status.Proposed}
+		if vcsBusy(current, env.TagSha) {
+			continue
+		}
+
+		var pullRequests promoterv1alpha1.PullRequestList
+		if err := r.List(ctx, &pullRequests, ctpPullRequestListOptions(&ctp)); err != nil {
+			return fmt.Errorf("failed to list PullRequests of ChangeTransferPolicy %q: %w", key.Name, err)
+		}
+		env.Settling = len(pullRequests.Items) > 0
+		env.Idle = !env.Settling
+	}
+	return nil
+}
+
+// vcsBusy reports whether an environment still has something to do for the commit its tag points at: the
+// hydrator has not processed the commit, a change is proposed, or an active commit status is pending.
+func vcsBusy(current promoterv1alpha1.EnvironmentStatus, tagSha string) bool {
+	if getEffectiveHydratedDrySha(current) != tagSha || current.Proposed.Dry.Sha != current.Active.Dry.Sha {
+		return true
+	}
+	for _, status := range current.Active.CommitStatuses {
+		if status.Phase == string(promoterv1alpha1.CommitPhasePending) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectValidations reads from the validation notes what people asked for since the notes were last

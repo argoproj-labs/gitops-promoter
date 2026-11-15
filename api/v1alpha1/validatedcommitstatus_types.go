@@ -38,6 +38,18 @@ const (
 	ValidationManual ValidationPolicy = "Manual"
 )
 
+// AdvancePolicy says when the controller may move the tag of an environment it validates for.
+// +kubebuilder:validation:Enum=Immediately;WhenIdle
+type AdvancePolicy string
+
+const (
+	// AdvanceImmediately moves the tag as soon as there is a newer commit to move it to.
+	AdvanceImmediately AdvancePolicy = "Immediately"
+	// AdvanceWhenIdle moves the tag only once the environment is idle: its hydrator has processed the tag's
+	// commit, no promotion pull request is open, and no active commit status is pending.
+	AdvanceWhenIdle AdvancePolicy = "WhenIdle"
+)
+
 // ValidatedTagSource says what put an environment's tag where it is.
 // +kubebuilder:validation:Enum=Manual;Automatic;Seeded;External
 type ValidatedTagSource string
@@ -58,13 +70,15 @@ const (
 )
 
 // ValidatedHeldReason says why the controller has not moved a tag to the commit it would move it to.
-// +kubebuilder:validation:Enum=Pinned
+// +kubebuilder:validation:Enum=Pinned;Busy
 type ValidatedHeldReason string
 
 const (
 	// ValidatedHeldReasonPinned means the commit does not contain the commit the tag is on. A tag only
 	// moves forward on its own.
 	ValidatedHeldReasonPinned ValidatedHeldReason = "Pinned"
+	// ValidatedHeldReasonBusy means the environment advances WhenIdle and is not idle.
+	ValidatedHeldReasonBusy ValidatedHeldReason = "Busy"
 )
 
 // ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.
@@ -133,6 +147,7 @@ type ValidatedCommitStatusDrySource struct {
 }
 
 // ValidatedCommitStatusEnvironment sets up one environment.
+// +kubebuilder:validation:XValidation:rule="!(has(self.validation) && self.validation == 'Manual' && has(self.advance) && self.advance == 'WhenIdle')",message="validation Manual cannot be combined with advance WhenIdle: the controller does not move the tag of an environment people validate for"
 type ValidatedCommitStatusEnvironment struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
@@ -166,6 +181,13 @@ type ValidatedCommitStatusEnvironment struct {
 	// +optional
 	// +kubebuilder:default=Automatic
 	Validation ValidationPolicy `json:"validation,omitempty"`
+
+	// Advance says when the controller may move this environment's tag. Immediately (the default), or
+	// WhenIdle to wait until the environment has finished what it is promoting, so that a promotion that
+	// is under way is not replaced by the next one. A validation by a person always applies immediately.
+	// +optional
+	// +kubebuilder:default=Immediately
+	Advance AdvancePolicy `json:"advance,omitempty"`
 }
 
 // ValidatedCommitStatusDryStatus is the observed state of the dry branch.
@@ -231,7 +253,8 @@ type ValidatedCommitStatusHeld struct {
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 
-	// Reason is Pinned when the commit does not contain the commit the tag is on.
+	// Reason is Pinned when the commit does not contain the commit the tag is on, and Busy when the
+	// environment advances WhenIdle and is not idle.
 	// +required
 	Reason ValidatedHeldReason `json:"reason"`
 

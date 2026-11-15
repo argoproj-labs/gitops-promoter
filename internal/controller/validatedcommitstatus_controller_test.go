@@ -1239,6 +1239,61 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			Expect(plans[1].MovedAt).To(Equal(&seen))
 		})
 
+		Context("advance: WhenIdle", func() {
+			planTest := func(devQualified string, test vcsEnvironment) vcsTagPlan {
+				GinkgoHelper()
+				dev := vcsSettled(vcsDev, vcsTagDev, "f", "f")
+				dev.Qualified = vcsWatermark(devQualified)
+				test.DependsOn = []string{vcsDev}
+				test.WhenIdle = true
+				plans, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test}, vcsPlanTime)
+				Expect(err).NotTo(HaveOccurred())
+				return plans[1]
+			}
+
+			It("holds the commit the tag would move to as Busy while the environment is not idle", func() {
+				plan := planTest("e", vcsSettled(vcsTest, vcsTagTest, "c", "b"))
+				Expect(plan.moves()).To(BeFalse())
+				Expect(plan.Held).To(Equal(&promoterv1alpha1.ValidatedCommitStatusHeld{
+					Sha:     "e",
+					Reason:  promoterv1alpha1.ValidatedHeldReasonBusy,
+					Message: "Waiting for the environment to finish promoting c",
+				}))
+			})
+
+			It("moves the tag once the environment is idle, to the newest commit there is by then", func() {
+				test := vcsSettled(vcsTest, vcsTagTest, "c", "c")
+				test.Idle = true
+				plan := planTest("e", test)
+				Expect(plan.To).To(Equal("e"))
+				Expect(plan.Held).To(BeNil())
+			})
+
+			It("holds nothing when there is nothing to move the tag to", func() {
+				plan := planTest("c", vcsSettled(vcsTest, vcsTagTest, "c", "b"))
+				Expect(plan.moves()).To(BeFalse())
+				Expect(plan.Held).To(BeNil())
+			})
+
+			It("does not hold a validation: a person's word applies at once", func() {
+				test := vcsSettled(vcsTest, vcsTagTest, "c", "b")
+				test.Validation = &vcsValidation{Sha: "e", By: "jane@example.com"}
+				plan := planTest("d", test)
+				Expect(plan.To).To(Equal("e"))
+				Expect(plan.MoveSource).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+			})
+
+			It("does not wait to put a tag back on the DRY branch", func() {
+				plan := planTest("e", vcsSettled(vcsTest, vcsTagTest, "x", "b"))
+				Expect(plan.To).To(Equal("e"))
+			})
+
+			It("does not wait to create a tag", func() {
+				plan := planTest("e", vcsSettled(vcsTest, vcsTagTest, "", "c"))
+				Expect(plan.To).To(Equal("e"))
+			})
+		})
+
 		It("records nothing about a tag that does not exist", func() {
 			plan := vcsTagPlan{Tag: vcsTagTest}
 			Expect(plan.tagStatus(false, vcsPlanTime)).To(Equal(&promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: vcsTagTest}))
@@ -1771,6 +1826,18 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			}))
 		})
 
+		It("takes when the controller may move the tag from spec.environments", func() {
+			gate := &promoterv1alpha1.ValidatedCommitStatus{}
+			gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{
+				{Branch: vcsTest, Advance: promoterv1alpha1.AdvanceWhenIdle},
+				{Branch: vcsProd, Advance: promoterv1alpha1.AdvanceImmediately},
+			}
+			settings := vcsEnvironmentSettings(gate, strategy("", vcsDev, vcsTest, vcsProd))
+			Expect(settings[vcsDev].WhenIdle).To(BeFalse())
+			Expect(settings[vcsTest].WhenIdle).To(BeTrue())
+			Expect(settings[vcsProd].WhenIdle).To(BeFalse())
+		})
+
 		It("has no setting for a branch that is not an environment of the strategy", func() {
 			gate := &promoterv1alpha1.ValidatedCommitStatus{}
 			gate.Spec.Environments = []promoterv1alpha1.ValidatedCommitStatusEnvironment{{Branch: "environment/extra"}}
@@ -2064,6 +2131,19 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 		)
 	})
 
+	DescribeTable("vcsBusy: whether an environment still has something to do for the commit its tag is on",
+		func(status promoterv1alpha1.EnvironmentStatus, tagSha string, expected bool) {
+			Expect(vcsBusy(status, tagSha)).To(Equal(expected))
+		},
+		Entry("the tagged commit is live and every check passed", vcsStatus(vcsTest, "d", "d", success), "d", false),
+		Entry("the tagged commit is live and there are no checks", vcsStatus(vcsTest, "d", "d"), "d", false),
+		Entry("the tagged commit is live and a check failed: a fix has to be able to roll forward", vcsStatus(vcsTest, "d", "d", failure), "d", false),
+		Entry("the tagged commit is live and a check is still running", vcsStatus(vcsTest, "d", "d", success, pending), "d", true),
+		Entry("the tagged commit is proposed and not merged", vcsStatus(vcsTest, "c", "d", success), "d", true),
+		Entry("the hydrator has not processed the tagged commit", vcsStatus(vcsTest, "c", "c", success), "d", true),
+		Entry("the tagged commit changed nothing, which the hydrator noted", vcsWithNote(vcsStatus(vcsTest, "c", "c", success), "d"), "d", false),
+	)
+
 	Describe("vcsNoteKey: the qualification note entry an environment owns", func() {
 		It("is the branch for an environment that owns its active branch", func() {
 			Expect(vcsNoteKey(vcsProd, "")).To(Equal("environment/prod"))
@@ -2185,6 +2265,25 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 			gate.Spec.Environments[2].Validation = "Sometimes"
 			err := k8sClient.Create(ctx, gate)
 			Expect(err).To(MatchError(ContainSubstring("Unsupported value")))
+		})
+
+		It("should reject advance WhenIdle for an environment people validate for, and an unknown advance policy", func() {
+			gate := newGate("vcs-manual-when-idle", "main")
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			gate.Spec.Environments[2].Advance = promoterv1alpha1.AdvanceWhenIdle
+			err := k8sClient.Create(ctx, gate)
+			Expect(err).To(MatchError(ContainSubstring("validation Manual cannot be combined with advance WhenIdle")))
+
+			gate = newGate("vcs-bad-advance", "main")
+			gate.Spec.Environments[1].Advance = "Sometimes"
+			err = k8sClient.Create(ctx, gate)
+			Expect(err).To(MatchError(ContainSubstring("Unsupported value")))
+
+			gate = newGate("vcs-when-idle", "main")
+			gate.Spec.Environments[1].Advance = promoterv1alpha1.AdvanceWhenIdle
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
+			Expect(gate.Spec.Environments[0].Advance).To(Equal(promoterv1alpha1.AdvanceImmediately), "the default")
 		})
 
 		It("should reject a tag that is not a valid ref name", func() {
@@ -3261,6 +3360,61 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
 				g.Expect(production.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(activeDrySha(g, testBranchProduction)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should hold a tag while its environment is promoting, with advance: WhenIdle, and move it when the promotion is done", func() {
+			second := headSha()
+			first := liveSha()
+
+			By("Having staging's promotions wait for a person to merge them")
+			promotionStrategy.Spec.Environments[1].AutoMerge = new(false)
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[1].Advance = promoterv1alpha1.AdvanceWhenIdle
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
+				g.Expect(tagSha(g, tagStaging)).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Moving staging's tag while staging has nothing in flight")
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagStaging)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchStagingNext, tagStaging)
+
+			By("Holding the next commit while staging's promotion is still open")
+			third, err := makeDryCommit(ctx, gitPath, "third release")
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(third))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			Eventually(func(g Gomega) {
+				held := environmentStatus(g, testBranchStaging).Held
+				g.Expect(held).NotTo(BeNil())
+				g.Expect(held.Sha).To(Equal(third))
+				g.Expect(held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonBusy))
+				g.Expect(held.Message).To(Equal("Waiting for the environment to finish promoting " + second[:7]))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(tagSha(g, tagStaging)).To(Equal(second))
+				g.Expect(activeDrySha(g, testBranchStaging)).To(Equal(first))
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Moving the tag once the promotion has merged")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments[1].AutoMerge = new(true)
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchStaging)).To(Equal(second))
+				g.Expect(tagSha(g, tagStaging)).To(Equal(third))
+				g.Expect(environmentStatus(g, testBranchStaging).Held).To(BeNil())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 

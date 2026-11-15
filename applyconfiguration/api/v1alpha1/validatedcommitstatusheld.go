@@ -28,7 +28,8 @@ import (
 type ValidatedCommitStatusHeldApplyConfiguration struct {
 	// Sha is the dry commit that is waiting.
 	Sha *string `json:"sha,omitempty"`
-	// Reason is Pinned when the commit does not contain the commit the tag is on.
+	// Reason is Pinned when the commit does not contain the commit the tag is on, and Busy when the
+	// environment advances WhenIdle and is not idle.
 	Reason *apiv1alpha1.ValidatedHeldReason `json:"reason,omitempty"`
 	// Message says what the commit is waiting for.
 	Message *string `json:"message,omitempty"`

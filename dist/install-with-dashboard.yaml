@@ -9451,6 +9451,16 @@ spec:
                 items:
                   description: ValidatedCommitStatusEnvironment sets up one environment.
                   properties:
+                    advance:
+                      default: Immediately
+                      description: |-
+                        Advance says when the controller may move this environment's tag. Immediately (the default), or
+                        WhenIdle to wait until the environment has finished what it is promoting, so that a promotion that
+                        is under way is not replaced by the next one. A validation by a person always applies immediately.
+                      enum:
+                      - Immediately
+                      - WhenIdle
+                      type: string
                     branch:
                       description: |-
                         Branch is the environment's active branch. It must match an environment of the referenced
@@ -9498,6 +9508,12 @@ spec:
                   required:
                   - branch
                   type: object
+                  x-kubernetes-validations:
+                  - message: 'validation Manual cannot be combined with advance WhenIdle:
+                      the controller does not move the tag of an environment people
+                      validate for'
+                    rule: '!(has(self.validation) && self.validation == ''Manual''
+                      && has(self.advance) && self.advance == ''WhenIdle'')'
                 maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
@@ -9716,10 +9732,12 @@ spec:
                           description: Message says what the commit is waiting for.
                           type: string
                         reason:
-                          description: Reason is Pinned when the commit does not contain
-                            the commit the tag is on.
+                          description: |-
+                            Reason is Pinned when the commit does not contain the commit the tag is on, and Busy when the
+                            environment advances WhenIdle and is not idle.
                           enum:
                           - Pinned
+                          - Busy
                           type: string
                         sha:
                           description: Sha is the dry commit that is waiting.

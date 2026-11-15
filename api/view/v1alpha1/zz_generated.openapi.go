@@ -7212,6 +7212,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 							Format:      "",
 						},
 					},
+					"advance": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Advance says when the controller may move this environment's tag. Immediately (the default), or WhenIdle to wait until the environment has finished what it is promoting, so that a promotion that is under way is not replaced by the next one. A validation by a person always applies immediately.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"branch"},
 			},
@@ -7357,7 +7364,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld
 					},
 					"reason": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Reason is Pinned when the commit does not contain the commit the tag is on.",
+							Description: "Reason is Pinned when the commit does not contain the commit the tag is on, and Busy when the environment advances WhenIdle and is not idle.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

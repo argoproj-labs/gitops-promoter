@@ -42,6 +42,10 @@ type ValidatedCommitStatusEnvironmentApplyConfiguration struct {
 	// Manual: a person or CI moves the tag; the controller still verifies that what they tagged is
 	// hydrated and qualified upstream before it may be promoted.
 	Validation *apiv1alpha1.ValidationPolicy `json:"validation,omitempty"`
+	// Advance says when the controller may move this environment's tag. Immediately (the default), or
+	// WhenIdle to wait until the environment has finished what it is promoting, so that a promotion that
+	// is under way is not replaced by the next one. A validation by a person always applies immediately.
+	Advance *apiv1alpha1.AdvancePolicy `json:"advance,omitempty"`
 }
 
 // ValidatedCommitStatusEnvironmentApplyConfiguration constructs a declarative configuration of the ValidatedCommitStatusEnvironment type for use with
@@ -71,5 +75,13 @@ func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithTag(value strin
 // If called multiple times, the Validation field is set to the value of the last call.
 func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithValidation(value apiv1alpha1.ValidationPolicy) *ValidatedCommitStatusEnvironmentApplyConfiguration {
 	b.Validation = &value
+	return b
+}
+
+// WithAdvance sets the Advance field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Advance field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentApplyConfiguration) WithAdvance(value apiv1alpha1.AdvancePolicy) *ValidatedCommitStatusEnvironmentApplyConfiguration {
+	b.Advance = &value
 	return b
 }
