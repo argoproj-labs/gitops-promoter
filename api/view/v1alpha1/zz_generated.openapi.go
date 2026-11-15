@@ -184,10 +184,12 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ValidatedCommitStatusDryStatus{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusDryStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusEnvironment{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironment(ref),
 		apiv1alpha1.ValidatedCommitStatusEnvironmentStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld(ref),
 		apiv1alpha1.ValidatedCommitStatusList{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusList(ref),
 		apiv1alpha1.ValidatedCommitStatusSpec{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec(ref),
 		apiv1alpha1.ValidatedCommitStatusStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagStatus(ref),
+		apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusUpstreamCleared(ref),
 		apiv1alpha1.ValidatedCommitStatusUpstreamStatus{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusUpstreamStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusWatermark(ref),
 		apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
@@ -7235,6 +7237,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName()),
 						},
 					},
+					"upstreamCleared": {
+						SchemaProps: spec.SchemaProps{
+							Description: "UpstreamCleared is the newest dry commit every environment this one depends on has qualified. For an environment with no upstreams it is the head of the dry branch. It is where the controller moves an automatically validated tag, and tells an approver what is ready for a Manual environment. Omitted while an upstream has qualified nothing.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName()),
+						},
+					},
+					"held": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Held is set only while the controller has a commit to move the tag to and cannot move it there.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName()),
+						},
+					},
 					"branch": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Branch is the environment branch name.",
@@ -7315,7 +7329,44 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName()},
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusHeld is a commit the controller would move an environment's tag to, and cannot yet.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit that is waiting.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is Pinned when the commit does not contain the commit the tag is on.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message says what the commit is waiting for.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha", "reason"},
+			},
+		},
 	}
 }
 
@@ -7551,8 +7602,52 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagS
 							Format:      "",
 						},
 					},
+					"source": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Source says what put the tag where it is. External means it was pushed by hand. Omitted while the tag does not exist.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"movedAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MovedAt is when the controller moved the tag, or noticed that it had been moved.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"acknowledgedTarget": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation. It is the commit the controller would have moved the tag to at that moment (see upstreamCleared). The tag stays where the person put it until the controller has a newer commit than this one to move it to. Omitted for a tag the controller placed.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"name"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusUpstreamCleared(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusUpstreamCleared is the newest dry commit that is cleared for an environment.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha"},
 			},
 		},
 	}

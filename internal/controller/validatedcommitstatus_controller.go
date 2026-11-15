@@ -102,6 +102,9 @@ type vcsCommitGraph interface {
 type vcsEnvironment struct {
 	// Qualified is the newest dry commit the environment has qualified, nil when it has qualified nothing.
 	Qualified *promoterv1alpha1.ValidatedCommitStatusWatermark
+	// Recorded is the tag as the gate's status last had it: where it was, what had put it there, and the
+	// target a person's placement of it acknowledged. Nil when status has no record of the environment.
+	Recorded *promoterv1alpha1.ValidatedCommitStatusTagStatus
 	// Branch is the environment's active branch.
 	Branch string
 	// Tag is the name of the environment's tag; TagSha is the dry commit it points at, "" when it does not exist.
@@ -123,13 +126,67 @@ type vcsEnvironment struct {
 	Restored bool
 }
 
-// vcsTagMove is one tag the controller should create or move.
-type vcsTagMove struct {
+// vcsTagPlan is what the gate decided about one environment's tag: what put the tag where it was found, and
+// where the tag should be.
+type vcsTagPlan struct {
+	// Held is set while the controller has a commit to move the tag to and cannot move it there.
+	Held *promoterv1alpha1.ValidatedCommitStatusHeld
+	// MovedAt is when the tag came to be where it was found, as far as the gate knows.
+	MovedAt *metav1.Time
+	// Branch is the environment's active branch, and Tag the name of its tag.
 	Branch string
 	Tag    string
-	// From is the commit the tag points at now, "" when the tag is to be created.
+	// From is the commit the tag was found on, "" when the tag does not exist. To is the commit it should be
+	// on: From when the tag stays, and "" when a tag that does not exist is not created yet.
 	From string
 	To   string
+	// Source says what put the tag on From. Empty when the tag does not exist.
+	Source promoterv1alpha1.ValidatedTagSource
+	// MoveSource says what puts the tag on To. Only set when To differs from From.
+	MoveSource promoterv1alpha1.ValidatedTagSource
+	// Acknowledged is the target a person's placement of the tag acknowledged (see
+	// ValidatedCommitStatusTagStatus.AcknowledgedTarget). Empty for a tag the controller placed.
+	Acknowledged string
+	// Target is the commit an automatically validated tag is headed for: the dry branch HEAD for a root, the
+	// newest commit every direct upstream has qualified for any other environment. Empty while an upstream
+	// has qualified nothing.
+	Target string
+	// MovedByHand is true when the tag was found somewhere other than where the controller recorded it, and
+	// nothing the controller did explains it.
+	MovedByHand bool
+}
+
+// moves reports whether the tag has to be pushed.
+func (p vcsTagPlan) moves() bool {
+	return p.To != p.From
+}
+
+// tagStatus returns the tag as it is after this reconcile. moved says whether the planned move was pushed.
+func (p vcsTagPlan) tagStatus(moved bool, now metav1.Time) *promoterv1alpha1.ValidatedCommitStatusTagStatus {
+	tag := &promoterv1alpha1.ValidatedCommitStatusTagStatus{
+		Name:               p.Tag,
+		Sha:                p.From,
+		Source:             p.Source,
+		MovedAt:            p.MovedAt,
+		AcknowledgedTarget: p.Acknowledged,
+	}
+	if moved {
+		tag.Sha, tag.Source, tag.MovedAt = p.To, p.MoveSource, &now
+		if vcsControllerPlaced(p.MoveSource) {
+			tag.AcknowledgedTarget = ""
+		}
+	}
+	if tag.Sha == "" {
+		// Nothing is known about a tag that does not exist.
+		return &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: p.Tag}
+	}
+	return tag
+}
+
+// vcsControllerPlaced reports whether a tag with this source is where the controller decided it should be,
+// as opposed to where a person put it.
+func vcsControllerPlaced(source promoterv1alpha1.ValidatedTagSource) bool {
+	return source == promoterv1alpha1.ValidatedTagSourceAutomatic || source == promoterv1alpha1.ValidatedTagSourceSeeded
 }
 
 // vcsGate is the ordering commit status for one environment's proposed commit.
@@ -248,37 +305,51 @@ func vcsQualify(ctx context.Context, graph vcsCommitGraph, head string, env vcsE
 	return next, nil
 }
 
-// vcsPlanTags returns the tags to create or move, in environment order.
+// vcsPlanTags decides, for every environment in order, what put its tag where it is and where the tag
+// should be.
 //
 // A root's tag follows the dry branch HEAD. A dependent's tag follows the newest commit every direct upstream
-// has qualified. A tag only moves forward, except that a tag which is no longer on the dry branch (the branch
-// was force-pushed) is reset. A validation: Manual tag is created when missing and never moved.
-func vcsPlanTags(ctx context.Context, graph vcsCommitGraph, head string, envs []vcsEnvironment) ([]vcsTagMove, error) {
+// has qualified. A tag only moves forward on its own, except that a tag which is no longer on the dry branch
+// (the branch was force-pushed) is put back on it. A validation: Manual tag is created when it is missing
+// and something is live, and is never moved.
+//
+// A tag a person pushed stays where they put it until the controller has a newer commit to move it to than
+// it had when they pushed.
+func vcsPlanTags(ctx context.Context, graph vcsCommitGraph, head string, envs []vcsEnvironment, now metav1.Time) ([]vcsTagPlan, error) {
 	byBranch := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
 		byBranch[env.Branch] = env
 	}
 
-	var moves []vcsTagMove
+	plans := make([]vcsTagPlan, 0, len(envs))
 	for _, env := range envs {
 		target, err := vcsTagTarget(ctx, graph, head, env, byBranch)
 		if err != nil {
 			return nil, err
 		}
-		var to string
-		if env.TagSha == "" {
-			to, err = vcsNewTagSha(ctx, graph, head, env, target)
-		} else {
-			to, err = vcsMovedTagSha(ctx, graph, head, env, target)
-		}
+		plan, err := vcsPlanTag(ctx, graph, head, env, target, now)
 		if err != nil {
 			return nil, err
 		}
-		if to != "" && to != env.TagSha {
-			moves = append(moves, vcsTagMove{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: to})
-		}
+		plans = append(plans, plan)
 	}
-	return moves, nil
+	return plans, nil
+}
+
+// vcsPlanTag decides about one environment's tag. target is where an automatically validated tag is headed
+// (see vcsTagTarget).
+func vcsPlanTag(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string, now metav1.Time) (vcsTagPlan, error) {
+	plan := vcsTagPlan{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: env.TagSha, Target: target}
+	if env.TagSha == "" {
+		return vcsPlanMissingTag(ctx, graph, head, env, plan)
+	}
+	if err := vcsTagProvenance(ctx, graph, head, env, now, &plan); err != nil {
+		return vcsTagPlan{}, err
+	}
+	if env.Manual || target == "" {
+		return plan, nil
+	}
+	return vcsAdvanceTag(ctx, graph, head, plan)
 }
 
 // vcsTagTarget returns the commit an automatically advanced tag wants to be at: the dry branch HEAD for a
@@ -303,11 +374,42 @@ func vcsTagTarget(ctx context.Context, graph vcsCommitGraph, head string, env vc
 	return target, nil
 }
 
-// vcsNewTagSha returns where to create a missing tag: at the commit that is live in the environment, so the
-// first hydration from the tag changes nothing, or at the dry branch HEAD when nothing on the branch is live.
-// An automatically advanced tag is created directly at its target when that is ahead.
+// vcsPlanMissingTag decides where to create a tag that does not exist.
+func vcsPlanMissingTag(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, plan vcsTagPlan) (vcsTagPlan, error) {
+	// A tag the gate has on record was deleted. It goes back where it was, with what was known about it:
+	// creating it afresh would take an environment that a person had put somewhere off what they chose.
+	if recorded := env.Recorded; recorded != nil && recorded.Sha != "" {
+		known, err := graph.Contains(ctx, recorded.Sha, recorded.Sha)
+		if err != nil {
+			return vcsTagPlan{}, fmt.Errorf("failed to look up the commit tag %q was on: %w", env.Tag, err)
+		}
+		if known {
+			plan.To, plan.MoveSource, plan.Acknowledged = recorded.Sha, recorded.Source, recorded.AcknowledgedTarget
+			plan.MovedByHand = true
+			return plan, nil
+		}
+	}
+
+	to, err := vcsNewTagSha(ctx, graph, head, env, plan.Target)
+	if err != nil {
+		return vcsTagPlan{}, err
+	}
+	plan.To = to
+	if to != "" {
+		plan.MoveSource = promoterv1alpha1.ValidatedTagSourceSeeded
+	}
+	return plan, nil
+}
+
+// vcsNewTagSha returns where to create a tag the gate has never seen: at the commit that is live in the
+// environment, so the first hydration from the tag changes nothing. An automatically validated tag is created
+// directly at its target when that is ahead of what is live, or when nothing on the dry branch is live.
+//
+// It returns "" when there is nowhere to create the tag yet: nothing on the dry branch is live in the
+// environment and either a person validates for it, or its upstreams have qualified nothing. Creating the tag
+// at the dry branch HEAD would propose a commit nobody chose and nothing upstream has run.
 func vcsNewTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string) (string, error) {
-	base := head
+	base := ""
 	if env.LiveDrySha != "" {
 		onBranch, err := graph.Contains(ctx, head, env.LiveDrySha)
 		if err != nil {
@@ -320,6 +422,9 @@ func vcsNewTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vc
 	if env.Manual || target == "" || target == base {
 		return base, nil
 	}
+	if base == "" {
+		return target, nil
+	}
 	ahead, err := graph.Contains(ctx, target, base)
 	if err != nil {
 		return "", fmt.Errorf("failed to compare the target of tag %q with %q's live commit: %w", env.Tag, env.Branch, err)
@@ -330,31 +435,161 @@ func vcsNewTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vc
 	return base, nil
 }
 
-// vcsMovedTagSha returns where an existing tag should point; env.TagSha when it should stay.
-func vcsMovedTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string) (string, error) {
+// vcsTagProvenance works out what put an existing tag where it was found, and fills that into plan.
+func vcsTagProvenance(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, now metav1.Time, plan *vcsTagPlan) error {
+	recorded := env.Recorded
+	if recorded == nil || (recorded.Sha == env.TagSha && recorded.Source == "") {
+		// The gate has no record of the tag: it is new to the environment, or its status was lost.
+		plan.Source = vcsUnrecordedSource(env)
+		return nil
+	}
+	if recorded.Sha == env.TagSha {
+		plan.Source, plan.MovedAt, plan.Acknowledged = recorded.Source, recorded.MovedAt, recorded.AcknowledgedTarget
+		return nil
+	}
+
+	// The tag is not where the gate recorded it.
+	plan.MovedAt = &now
+	source, own, err := vcsOwnMove(ctx, graph, head, env, plan.Target)
+	if err != nil {
+		return err
+	}
+	if own {
+		plan.Source = source
+		return nil
+	}
+	plan.Source = promoterv1alpha1.ValidatedTagSourceExternal
+	plan.MovedByHand = true
+	if !env.Manual {
+		// The tag stays where the person put it until the controller has something newer than this.
+		plan.Acknowledged = plan.Target
+	}
+	return nil
+}
+
+// vcsUnrecordedSource is what the gate takes a tag to have been placed by when it has no record of it: the
+// controller for an environment it validates for, a person for an environment people validate for.
+func vcsUnrecordedSource(env vcsEnvironment) promoterv1alpha1.ValidatedTagSource {
 	if env.Manual {
-		return env.TagSha, nil
+		return promoterv1alpha1.ValidatedTagSourceExternal
 	}
-	onBranch, err := graph.Contains(ctx, head, env.TagSha)
+	return promoterv1alpha1.ValidatedTagSourceAutomatic
+}
+
+// vcsOwnMove reports whether a tag that is not where status recorded it could have been put there by the
+// controller itself, and by what kind of move. The controller pushes a tag before it records the push, so the
+// reconcile that moved the tag may not have got to write status.
+//
+// Nothing is lost by taking a person's push for the controller's own here: it is a push to a commit the
+// controller would have moved the tag to or past, and the gate verifies the tag the same either way.
+func vcsOwnMove(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string) (promoterv1alpha1.ValidatedTagSource, bool, error) {
+	recorded := env.Recorded
+	if recorded.Sha == "" {
+		// Status says the tag did not exist. The controller creates a tag in one place only.
+		seed, err := vcsNewTagSha(ctx, graph, head, env, target)
+		if err != nil {
+			return "", false, err
+		}
+		return promoterv1alpha1.ValidatedTagSourceSeeded, seed == env.TagSha, nil
+	}
+	if env.Manual || target == "" {
+		// The controller does not move this tag.
+		return "", false, nil
+	}
+
+	reached, err := graph.Contains(ctx, target, env.TagSha)
 	if err != nil {
-		return "", fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
+		return "", false, fmt.Errorf("failed to compare tag %q with its target: %w", env.Tag, err)
 	}
-	if target == "" || target == env.TagSha {
-		return env.TagSha, nil
+	if !reached {
+		return "", false, nil
 	}
-	if !onBranch {
-		// The dry branch was rewritten. The tag points at history that no longer exists there, so
-		// "forward" has no meaning; put it back on the branch.
-		return target, nil
-	}
-	ahead, err := graph.Contains(ctx, target, env.TagSha)
+	forward, err := graph.Contains(ctx, env.TagSha, recorded.Sha)
 	if err != nil {
-		return "", fmt.Errorf("failed to compare tag %q with its target: %w", env.Tag, err)
+		return "", false, fmt.Errorf("failed to compare tag %q with where it was: %w", env.Tag, err)
+	}
+	if forward {
+		return promoterv1alpha1.ValidatedTagSourceAutomatic, true, nil
+	}
+	// Not forward: the controller only goes there to put a tag back on the dry branch, and never one that a
+	// person validated.
+	if recorded.Source == promoterv1alpha1.ValidatedTagSourceManual {
+		return "", false, nil
+	}
+	wasOnBranch, err := graph.Contains(ctx, head, recorded.Sha)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to check whether tag %q was on the dry branch: %w", env.Tag, err)
+	}
+	return promoterv1alpha1.ValidatedTagSourceAutomatic, !wasOnBranch, nil
+}
+
+// vcsAdvanceTag decides whether the controller moves an existing, automatically validated tag to its
+// target, which is known.
+func vcsAdvanceTag(ctx context.Context, graph vcsCommitGraph, head string, plan vcsTagPlan) (vcsTagPlan, error) {
+	onBranch, err := graph.Contains(ctx, head, plan.From)
+	if err != nil {
+		return vcsTagPlan{}, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", plan.Tag, err)
+	}
+	if !onBranch && plan.Source != promoterv1alpha1.ValidatedTagSourceManual {
+		// The tag points at history the dry branch does not have: the branch was rewritten, or someone
+		// pushed the tag there. "Forward" has no meaning from there, and nothing off the branch can be
+		// promoted without a validation, so the tag goes back on the branch.
+		plan.To, plan.MoveSource = plan.Target, promoterv1alpha1.ValidatedTagSourceAutomatic
+		return plan, nil
+	}
+
+	acknowledged, err := vcsTargetAcknowledged(ctx, graph, head, plan)
+	if err != nil {
+		return vcsTagPlan{}, err
+	}
+	if acknowledged || plan.Target == plan.From {
+		return plan, nil
+	}
+	ahead, err := graph.Contains(ctx, plan.Target, plan.From)
+	if err != nil {
+		return vcsTagPlan{}, fmt.Errorf("failed to compare tag %q with its target: %w", plan.Tag, err)
 	}
 	if ahead {
-		return target, nil
+		plan.To, plan.MoveSource = plan.Target, promoterv1alpha1.ValidatedTagSourceAutomatic
+		return plan, nil
 	}
-	return env.TagSha, nil
+	behind, err := graph.Contains(ctx, plan.From, plan.Target)
+	if err != nil {
+		return vcsTagPlan{}, fmt.Errorf("failed to compare tag %q with its target: %w", plan.Tag, err)
+	}
+	if behind {
+		// The tag is ahead of what is cleared. It is never moved backward; the gate holds the promotion.
+		return plan, nil
+	}
+	plan.Held = &promoterv1alpha1.ValidatedCommitStatusHeld{
+		Sha:     plan.Target,
+		Reason:  promoterv1alpha1.ValidatedHeldReasonPinned,
+		Message: "Waiting for the dry branch to contain " + vcsShortSha(plan.From),
+	}
+	return plan, nil
+}
+
+// vcsTargetAcknowledged reports whether the tag's target is nothing new to the person who placed the tag.
+// They put the tag where it is when the controller had plan.Acknowledged to move it to, and the tag stays
+// until the controller has something newer than that. An acknowledged commit the dry branch no longer has
+// says nothing about what is new, and neither does a tag that acknowledged nothing: the controller placed
+// it, or had nothing for it when a person did.
+func vcsTargetAcknowledged(ctx context.Context, graph vcsCommitGraph, head string, plan vcsTagPlan) (bool, error) {
+	if plan.Acknowledged == "" {
+		return false, nil
+	}
+	stillThere, err := graph.Contains(ctx, head, plan.Acknowledged)
+	if err != nil {
+		return false, fmt.Errorf("failed to check whether the target tag %q acknowledged is on the dry branch: %w", plan.Tag, err)
+	}
+	if !stillThere {
+		return false, nil
+	}
+	nothingNew, err := graph.Contains(ctx, plan.Acknowledged, plan.Target)
+	if err != nil {
+		return false, fmt.Errorf("failed to compare the target of tag %q with the one it acknowledged: %w", plan.Tag, err)
+	}
+	return nothingNew, nil
 }
 
 // vcsEvaluateGate decides whether an environment's proposed commit may be promoted: the hydrator has caught up
@@ -553,6 +788,10 @@ func vcsRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydr
 // ValidatedCommitStatusReconciler reconciles a ValidatedCommitStatus object
 type ValidatedCommitStatusReconciler struct {
 	client.Client
+	// APIReader reads the ValidatedCommitStatus from the API server instead of the cache. The gate's status
+	// is the record of what the controller found and did about each tag, and a reconcile that starts right
+	// after another one has to see what that one wrote. Optional: without it the cache is read.
+	APIReader   client.Reader
 	Recorder    events.EventRecorder
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
@@ -565,6 +804,15 @@ type ValidatedCommitStatusReconciler struct {
 
 	nudges     *vcsBackoff
 	nudgesOnce sync.Once
+}
+
+// gateReader returns what the ValidatedCommitStatus is read through: the API server when the reconciler
+// was given a reader for it, and the cache otherwise.
+func (r *ValidatedCommitStatusReconciler) gateReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
 }
 
 // GetEnqueueFunc returns a function that requests a reconcile of a ValidatedCommitStatus. The
@@ -603,7 +851,7 @@ func (r *ValidatedCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 	defer utils.HandleReconciliationResult(ctx, startTime, &vcs, r.Client, r.Recorder, constants.ValidatedCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	// 1. Fetch the ValidatedCommitStatus instance.
-	if err = r.Get(ctx, req.NamespacedName, &vcs); err != nil {
+	if err = r.gateReader().Get(ctx, req.NamespacedName, &vcs); err != nil {
 		if k8serrors.IsNotFound(err) {
 			logger.Info("ValidatedCommitStatus not found")
 			return ctrl.Result{}, nil
@@ -613,6 +861,10 @@ func (r *ValidatedCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 
 	// Start fresh on the Ready condition each reconcile.
 	previousReady = utils.RemoveReadyCondition(&vcs)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// 2. Fetch the referenced PromotionStrategy.
 	var ps promoterv1alpha1.PromotionStrategy
@@ -894,11 +1146,15 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 	if err != nil {
 		return 0, err
 	}
-	moves, err := vcsPlanTags(ctx, graph, dry.head, planEnvs)
+	plans, err := vcsPlanTags(ctx, graph, dry.head, planEnvs, now)
 	if err != nil {
 		return 0, err
 	}
-	pushErrs := r.pushTags(ctx, vcs, dry.ops, moves, envs)
+	r.reportHandMoves(ctx, vcs, envs, plans)
+	moved, pushErrs := r.pushTags(ctx, vcs, ps, graph, dry, plans, envs)
+	// From here on status says where every tag is and what put it there, whatever else fails: the next
+	// reconcile goes by it.
+	vcsRecordEnvironments(vcs, envs, plans, moved, now)
 
 	// Gate.
 	commitStatuses, err := r.writeGates(ctx, vcs, ps, graph, dry.head, envs)
@@ -1045,6 +1301,7 @@ func (r *ValidatedCommitStatusReconciler) observeEnvironments(
 
 		if previous, ok := previousByBranch[branch]; ok {
 			env.Qualified = previous.Qualified
+			env.Recorded = previous.Tag
 		} else {
 			// Nothing in status to start from (a new gate, or status was lost): rebuild from the notes.
 			// This does not wait for the PromotionStrategy to report the environment. The status written at
@@ -1262,49 +1519,153 @@ func (r *ValidatedCommitStatusReconciler) recordQualification(ctx context.Contex
 	return nil
 }
 
-// pushTags carries out the planned tag moves and updates envs with the tags' new positions. A failed push
-// does not stop the others; the failures are returned.
+// reportHandMoves says, in the log and with an event, which tags were found moved by someone else.
+func (r *ValidatedCommitStatusReconciler) reportHandMoves(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, envs []vcsEnvironment, plans []vcsTagPlan) {
+	for i, plan := range plans {
+		if !plan.MovedByHand {
+			continue
+		}
+		from := constants.EnvironmentTagNoPreviousSha
+		if recorded := envs[i].Recorded; recorded != nil && recorded.Sha != "" {
+			from = recorded.Sha
+		}
+		to := plan.From
+		if to == "" {
+			to = constants.EnvironmentTagNoPreviousSha
+		}
+		logf.FromContext(ctx).Info("Environment tag was moved outside the controller", "branch", plan.Branch, "tag", plan.Tag, "from", from, "to", to)
+		r.Recorder.Eventf(vcs, nil, "Normal", constants.EnvironmentTagMovedByHandReason, "ObservingEnvironmentTag",
+			constants.EnvironmentTagMovedByHandMessage, plan.Tag, plan.Branch, from, to)
+	}
+}
+
+// vcsHasProposal reports whether the environment has a proposed change for the gate to report on.
+func vcsHasProposal(env vcsEnvironment) bool {
+	return env.Status.Proposed.Hydrated.Sha != "" && env.Status.Active.Dry.Sha != env.Status.Proposed.Dry.Sha
+}
+
+// holdProposal sets the gate to pending on an environment's open proposal when its tag is about to leave
+// the commit the proposal was hydrated from. The gate is otherwise rewritten only after the push, and until
+// then says success about a proposal that the tag no longer asks for. A promotion that merges in between
+// puts a commit live that the move was meant to replace.
+func (r *ValidatedCommitStatusReconciler) holdProposal(
+	ctx context.Context,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	graph vcsCommitGraph,
+	head string,
+	env vcsEnvironment,
+	to string,
+	byBranch map[string]vcsEnvironment,
+) error {
+	if !vcsHasProposal(env) {
+		return nil
+	}
+	env.TagSha = to
+	gate, err := vcsEvaluateGate(ctx, graph, head, vcs.Spec.DrySource.Branch, env, byBranch)
+	if err != nil {
+		return err
+	}
+	if gate.Phase == promoterv1alpha1.CommitPhaseSuccess {
+		return nil
+	}
+	if _, _, err := r.applyCommitStatus(ctx, vcs, ps, env, gate, env.Status.Proposed.Hydrated.Sha); err != nil {
+		return fmt.Errorf("failed to hold the proposed change of %q before moving tag %q: %w", env.Branch, env.Tag, err)
+	}
+	return nil
+}
+
+// pushTags carries out the planned tag moves and updates envs with the tags' new positions. It returns, by
+// environment, whether the planned move was made. A failed push does not stop the others; the failures are
+// returned.
 func (r *ValidatedCommitStatusReconciler) pushTags(
 	ctx context.Context,
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
-	ops *git.EnvironmentOperations,
-	moves []vcsTagMove,
+	ps *promoterv1alpha1.PromotionStrategy,
+	graph vcsCommitGraph,
+	dry *vcsDryState,
+	plans []vcsTagPlan,
 	envs []vcsEnvironment,
-) []error {
+) ([]bool, []error) {
 	logger := logf.FromContext(ctx)
-	indexByBranch := make(map[string]int, len(envs))
-	for i, env := range envs {
-		indexByBranch[env.Branch] = i
+	byBranch := make(map[string]vcsEnvironment, len(envs))
+	for _, env := range envs {
+		byBranch[env.Branch] = env
 	}
 
+	moved := make([]bool, len(plans))
 	var errs []error
-	for _, move := range moves {
+	for i, plan := range plans {
+		if !plan.moves() {
+			continue
+		}
+		env := &envs[i]
+		failed := func(err error) {
+			logger.Error(err, "Failed to push environment tag", "branch", plan.Branch, "tag", plan.Tag, "to", plan.To)
+			r.Recorder.Eventf(vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
+				constants.EnvironmentTagPushFailedMessage, plan.Tag, plan.Branch, err)
+			errs = append(errs, err)
+		}
+		if err := r.holdProposal(ctx, vcs, ps, graph, dry.head, *env, plan.To, byBranch); err != nil {
+			failed(err)
+			continue
+		}
 		// Tags are pushed one at a time: GitHub sends no push event when more than three tags are pushed
 		// at once, and one rejected tag must not hold back the others.
-		env := &envs[indexByBranch[move.Branch]]
-		if err := ops.MoveTag(ctx, move.Tag, move.To, env.TagRaw); err != nil {
-			logger.Error(err, "Failed to push environment tag", "branch", move.Branch, "tag", move.Tag, "to", move.To)
-			r.Recorder.Eventf(vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
-				constants.EnvironmentTagPushFailedMessage, move.Tag, move.Branch, err)
-			errs = append(errs, err)
+		if err := dry.ops.MoveTag(ctx, plan.Tag, plan.To, env.TagRaw); err != nil {
+			failed(err)
 			continue
 		}
 		// The controller pushes lightweight tags, so the ref now holds the commit itself.
-		env.TagSha, env.TagRaw = move.To, move.To
+		env.TagSha, env.TagRaw = plan.To, plan.To
+		byBranch[env.Branch] = *env
+		moved[i] = true
 
-		from := move.From
+		from := plan.From
 		if from == "" {
 			from = constants.EnvironmentTagNoPreviousSha
 		}
-		logger.Info("Moved environment tag", "branch", move.Branch, "tag", move.Tag, "from", from, "to", move.To)
+		logger.Info("Moved environment tag", "branch", plan.Branch, "tag", plan.Tag, "from", from, "to", plan.To, "source", plan.MoveSource)
 		r.Recorder.Eventf(vcs, nil, "Normal", constants.EnvironmentTagMovedReason, "AdvancingTag",
-			constants.EnvironmentTagMovedMessage, move.Tag, move.Branch, from, move.To)
+			constants.EnvironmentTagMovedMessage, plan.Tag, plan.Branch, from, plan.To, plan.MoveSource)
 	}
-	return errs
+	return moved, errs
 }
 
-// writeGates writes status.environments and the child CommitStatus of every environment that has a proposed
-// change. It returns the child CommitStatuses that are still wanted.
+// vcsRecordEnvironments writes what this reconcile found and did about every environment into status. Each
+// environment keeps its last gate report; writeGates replaces it where there is a proposed change.
+func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []vcsEnvironment, plans []vcsTagPlan, moved []bool, now metav1.Time) {
+	previous := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, len(vcs.Status.Environments))
+	for _, entry := range vcs.Status.Environments {
+		previous[entry.Branch] = entry
+	}
+
+	entries := make([]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, 0, len(envs))
+	for i, env := range envs {
+		plan := plans[i]
+		entry := promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
+			Branch:                      env.Branch,
+			Tag:                         plan.tagStatus(moved[i], now),
+			Qualified:                   env.Qualified,
+			ActiveCommitStatuses:        env.Status.Active.CommitStatuses,
+			GateEnvironmentCommitStatus: previous[env.Branch].GateEnvironmentCommitStatus,
+			Upstreams:                   previous[env.Branch].Upstreams,
+		}
+		if plan.Target != "" {
+			entry.UpstreamCleared = &promoterv1alpha1.ValidatedCommitStatusUpstreamCleared{Sha: plan.Target}
+		}
+		if !moved[i] {
+			entry.Held = plan.Held
+		}
+		entries = append(entries, entry)
+	}
+	vcs.Status.Environments = entries
+}
+
+// writeGates writes the child CommitStatus of every environment that has a proposed change, and the gate's
+// report into the environment's status entry (see vcsRecordEnvironments). It returns the child CommitStatuses
+// that are still wanted. An environment whose gate cannot be written does not stop the others; the failures
+// are returned together.
 func (r *ValidatedCommitStatusReconciler) writeGates(
 	ctx context.Context,
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
@@ -1320,38 +1681,36 @@ func (r *ValidatedCommitStatusReconciler) writeGates(
 	}
 
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(envs))
-	vcs.Status.Environments = make([]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, 0, len(envs))
-	for _, env := range envs {
-		entry := promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
-			Branch:               env.Branch,
-			Tag:                  &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: env.Tag, Sha: env.TagSha},
-			Qualified:            env.Qualified,
-			ActiveCommitStatuses: env.Status.Active.CommitStatuses,
-		}
+	var errs []error
+	for i, env := range envs {
+		entry := &vcs.Status.Environments[i]
 
 		// With no proposed change (active and proposed dry SHAs match) there is no promotion to gate.
 		// Keep any existing CommitStatus so orphan cleanup leaves the last report alone, and mirror it
 		// onto status so operators still see it after the promotion completes.
-		proposedHydratedSha := env.Status.Proposed.Hydrated.Sha
-		if env.Status.Active.Dry.Sha == env.Status.Proposed.Dry.Sha || proposedHydratedSha == "" {
+		if !vcsHasProposal(env) {
 			logger.V(4).Info("Skipping environment with no proposed change", "branch", env.Branch)
 			existing := &promoterv1alpha1.CommitStatus{}
 			name := utils.CommitStatusResourceName(ctx, vcs, env.Branch)
 			if err := r.Get(ctx, client.ObjectKey{Namespace: vcs.Namespace, Name: name}, existing); err != nil {
 				if !k8serrors.IsNotFound(err) {
-					return nil, fmt.Errorf("failed to get existing CommitStatus for branch %q: %w", env.Branch, err)
+					errs = append(errs, fmt.Errorf("failed to get existing CommitStatus for branch %q: %w", env.Branch, err))
+					continue
 				}
+				entry.GateEnvironmentCommitStatus = promoterv1alpha1.GateEnvironmentCommitStatus{}
+				entry.Upstreams = nil
 			} else {
 				commitStatuses = append(commitStatuses, existing)
 				entry.GateEnvironmentCommitStatus = utils.GateEnvironmentCommitStatusFromCommitStatus(existing)
+				entry.Upstreams = nil
 			}
-			vcs.Status.Environments = append(vcs.Status.Environments, entry)
 			continue
 		}
 
 		gate, err := vcsEvaluateGate(ctx, graph, head, vcs.Spec.DrySource.Branch, env, byBranch)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 		logger.V(4).Info("Evaluated gate for environment",
 			"branch", env.Branch,
@@ -1362,16 +1721,16 @@ func (r *ValidatedCommitStatusReconciler) writeGates(
 
 		// Bind the CommitStatus to the proposed branch's hydrated SHA: that is the commit the
 		// ChangeTransferPolicy inspects when gating the promotion PR.
-		commitStatus, report, err := r.applyCommitStatus(ctx, vcs, ps, env, gate, proposedHydratedSha)
+		commitStatus, report, err := r.applyCommitStatus(ctx, vcs, ps, env, gate, env.Status.Proposed.Hydrated.Sha)
 		if err != nil {
-			return nil, fmt.Errorf("failed to set commit status for branch %q: %w", env.Branch, err)
+			errs = append(errs, fmt.Errorf("failed to set commit status for branch %q: %w", env.Branch, err))
+			continue
 		}
 		commitStatuses = append(commitStatuses, commitStatus)
 		entry.GateEnvironmentCommitStatus = report
 		entry.Upstreams = gate.Upstreams
-		vcs.Status.Environments = append(vcs.Status.Environments, entry)
 	}
-	return commitStatuses, nil
+	return commitStatuses, errors.Join(errs...)
 }
 
 // applyCommitStatus applies the child CommitStatus that carries an environment's gate.

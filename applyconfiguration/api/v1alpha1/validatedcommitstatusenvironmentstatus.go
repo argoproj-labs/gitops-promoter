@@ -31,6 +31,13 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Qualified is the newest dry commit this environment has qualified. Omitted until the environment has
 	// qualified a commit.
 	Qualified *ValidatedCommitStatusWatermarkApplyConfiguration `json:"qualified,omitempty"`
+	// UpstreamCleared is the newest dry commit every environment this one depends on has qualified. For an
+	// environment with no upstreams it is the head of the dry branch. It is where the controller moves an
+	// automatically validated tag, and tells an approver what is ready for a Manual environment. Omitted
+	// while an upstream has qualified nothing.
+	UpstreamCleared *ValidatedCommitStatusUpstreamClearedApplyConfiguration `json:"upstreamCleared,omitempty"`
+	// Held is set only while the controller has a commit to move the tag to and cannot move it there.
+	Held *ValidatedCommitStatusHeldApplyConfiguration `json:"held,omitempty"`
 	// Branch is the environment branch name.
 	Branch *string `json:"branch,omitempty"`
 	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
@@ -62,6 +69,22 @@ func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithTag(value
 // If called multiple times, the Qualified field is set to the value of the last call.
 func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithQualified(value *ValidatedCommitStatusWatermarkApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Qualified = value
+	return b
+}
+
+// WithUpstreamCleared sets the UpstreamCleared field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UpstreamCleared field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreamCleared(value *ValidatedCommitStatusUpstreamClearedApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.UpstreamCleared = value
+	return b
+}
+
+// WithHeld sets the Held field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Held field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithHeld(value *ValidatedCommitStatusHeldApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.Held = value
 	return b
 }
 

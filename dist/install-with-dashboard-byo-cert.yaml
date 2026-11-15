@@ -9708,6 +9708,28 @@ spec:
                     description:
                       description: Description mirrors child CommitStatus.spec.description.
                       type: string
+                    held:
+                      description: Held is set only while the controller has a commit
+                        to move the tag to and cannot move it there.
+                      properties:
+                        message:
+                          description: Message says what the commit is waiting for.
+                          type: string
+                        reason:
+                          description: Reason is Pinned when the commit does not contain
+                            the commit the tag is on.
+                          enum:
+                          - Pinned
+                          type: string
+                        sha:
+                          description: Sha is the dry commit that is waiting.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                      required:
+                      - reason
+                      - sha
+                      type: object
                     phase:
                       description: Phase mirrors child CommitStatus.spec.phase.
                       enum:
@@ -9753,6 +9775,20 @@ spec:
                       description: Tag is the environment's tag as last read from
                         the dry repository.
                       properties:
+                        acknowledgedTarget:
+                          description: |-
+                            AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation.
+                            It is the commit the controller would have moved the tag to at that moment (see upstreamCleared).
+                            The tag stays where the person put it until the controller has a newer commit than this one to move
+                            it to. Omitted for a tag the controller placed.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                          type: string
+                        movedAt:
+                          description: MovedAt is when the controller moved the tag,
+                            or noticed that it had been moved.
+                          format: date-time
+                          type: string
                         name:
                           description: Name is the tag name.
                           minLength: 1
@@ -9763,8 +9799,33 @@ spec:
                           maxLength: 64
                           pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
                           type: string
+                        source:
+                          description: |-
+                            Source says what put the tag where it is. External means it was pushed by hand. Omitted while the
+                            tag does not exist.
+                          enum:
+                          - Manual
+                          - Automatic
+                          - Seeded
+                          - External
+                          type: string
                       required:
                       - name
+                      type: object
+                    upstreamCleared:
+                      description: |-
+                        UpstreamCleared is the newest dry commit every environment this one depends on has qualified. For an
+                        environment with no upstreams it is the head of the dry branch. It is where the controller moves an
+                        automatically validated tag, and tells an approver what is ready for a Manual environment. Omitted
+                        while an upstream has qualified nothing.
+                      properties:
+                        sha:
+                          description: Sha is the dry commit.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                      required:
+                      - sha
                       type: object
                     upstreams:
                       description: Upstreams lists this environment's direct upstreams

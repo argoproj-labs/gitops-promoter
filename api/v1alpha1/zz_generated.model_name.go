@@ -766,6 +766,11 @@ func (in ValidatedCommitStatusEnvironmentStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusHeld) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusHeld"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ValidatedCommitStatusList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusList"
 }
@@ -783,6 +788,11 @@ func (in ValidatedCommitStatusStatus) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ValidatedCommitStatusTagStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusTagStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusUpstreamCleared) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusUpstreamCleared"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

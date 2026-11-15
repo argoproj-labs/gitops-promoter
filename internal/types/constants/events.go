@@ -141,10 +141,18 @@ const (
 	// EnvironmentTagMovedReason indicates that a ValidatedCommitStatus created or moved an environment tag.
 	EnvironmentTagMovedReason = "EnvironmentTagMoved"
 	// EnvironmentTagMovedMessage is the message for a created or moved environment tag.
-	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA.
-	EnvironmentTagMovedMessage = "Moved tag %q for environment branch %s from %s to %s"
+	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA, what
+	// moved it (Automatic, Seeded or Manual).
+	EnvironmentTagMovedMessage = "Moved tag %q for environment branch %s from %s to %s (%s)"
 	// EnvironmentTagNoPreviousSha is used in EnvironmentTagMoved messages when the tag did not exist.
 	EnvironmentTagNoPreviousSha = "<none>"
+
+	// EnvironmentTagMovedByHandReason indicates that an environment tag was moved, created or deleted
+	// outside the controller.
+	EnvironmentTagMovedByHandReason = "EnvironmentTagMovedByHand"
+	// EnvironmentTagMovedByHandMessage is the message for an environment tag moved outside the controller.
+	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA.
+	EnvironmentTagMovedByHandMessage = "Tag %q for environment branch %s was moved outside the controller from %s to %s"
 
 	// EnvironmentTagPushFailedReason indicates that a ValidatedCommitStatus could not push an environment tag.
 	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"

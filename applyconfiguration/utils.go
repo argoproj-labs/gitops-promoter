@@ -295,12 +295,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ValidatedCommitStatusEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusEnvironmentStatus"):
 		return &apiv1alpha1.ValidatedCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusHeld"):
+		return &apiv1alpha1.ValidatedCommitStatusHeldApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusSpec"):
 		return &apiv1alpha1.ValidatedCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusStatus"):
 		return &apiv1alpha1.ValidatedCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusTagStatus"):
 		return &apiv1alpha1.ValidatedCommitStatusTagStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusUpstreamCleared"):
+		return &apiv1alpha1.ValidatedCommitStatusUpstreamClearedApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusUpstreamStatus"):
 		return &apiv1alpha1.ValidatedCommitStatusUpstreamStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusWatermark"):

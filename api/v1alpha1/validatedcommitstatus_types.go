@@ -38,6 +38,34 @@ const (
 	ValidationManual ValidationPolicy = "Manual"
 )
 
+// ValidatedTagSource says what put an environment's tag where it is.
+// +kubebuilder:validation:Enum=Manual;Automatic;Seeded;External
+type ValidatedTagSource string
+
+const (
+	// ValidatedTagSourceManual means a person validated the commit for the environment, and the validation
+	// moved the tag there.
+	ValidatedTagSourceManual ValidatedTagSource = "Manual"
+	// ValidatedTagSourceAutomatic means the controller moved the tag there, to a commit the environments
+	// this one depends on have qualified.
+	ValidatedTagSourceAutomatic ValidatedTagSource = "Automatic"
+	// ValidatedTagSourceSeeded means the controller created the tag where the environment already was: at
+	// the dry commit that was live in it, or where an automatically validated tag was headed anyway.
+	ValidatedTagSourceSeeded ValidatedTagSource = "Seeded"
+	// ValidatedTagSourceExternal means the tag was pushed by hand, outside the controller.
+	ValidatedTagSourceExternal ValidatedTagSource = "External"
+)
+
+// ValidatedHeldReason says why the controller has not moved a tag to the commit it would move it to.
+// +kubebuilder:validation:Enum=Pinned
+type ValidatedHeldReason string
+
+const (
+	// ValidatedHeldReasonPinned means the commit does not contain the commit the tag is on. A tag only
+	// moves forward on its own.
+	ValidatedHeldReasonPinned ValidatedHeldReason = "Pinned"
+)
+
 // ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus.
 type ValidatedCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and
@@ -160,6 +188,50 @@ type ValidatedCommitStatusTagStatus struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	Sha string `json:"sha,omitempty"`
+
+	// Source says what put the tag where it is. External means it was pushed by hand. Omitted while the
+	// tag does not exist.
+	// +optional
+	Source ValidatedTagSource `json:"source,omitempty"`
+
+	// MovedAt is when the controller moved the tag, or noticed that it had been moved.
+	// +optional
+	MovedAt *metav1.Time `json:"movedAt,omitempty"`
+
+	// AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation.
+	// It is the commit the controller would have moved the tag to at that moment (see upstreamCleared).
+	// The tag stays where the person put it until the controller has a newer commit than this one to move
+	// it to. Omitted for a tag the controller placed.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	AcknowledgedTarget string `json:"acknowledgedTarget,omitempty"`
+}
+
+// ValidatedCommitStatusUpstreamCleared is the newest dry commit that is cleared for an environment.
+type ValidatedCommitStatusUpstreamCleared struct {
+	// Sha is the dry commit.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
+}
+
+// ValidatedCommitStatusHeld is a commit the controller would move an environment's tag to, and cannot yet.
+type ValidatedCommitStatusHeld struct {
+	// Sha is the dry commit that is waiting.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
+
+	// Reason is Pinned when the commit does not contain the commit the tag is on.
+	// +required
+	Reason ValidatedHeldReason `json:"reason"`
+
+	// Message says what the commit is waiting for.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // ValidatedCommitStatusWatermark is the newest dry commit an environment has qualified: a commit that was live
@@ -210,6 +282,17 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// qualified a commit.
 	// +optional
 	Qualified *ValidatedCommitStatusWatermark `json:"qualified,omitempty"`
+
+	// UpstreamCleared is the newest dry commit every environment this one depends on has qualified. For an
+	// environment with no upstreams it is the head of the dry branch. It is where the controller moves an
+	// automatically validated tag, and tells an approver what is ready for a Manual environment. Omitted
+	// while an upstream has qualified nothing.
+	// +optional
+	UpstreamCleared *ValidatedCommitStatusUpstreamCleared `json:"upstreamCleared,omitempty"`
+
+	// Held is set only while the controller has a commit to move the tag to and cannot move it there.
+	// +optional
+	Held *ValidatedCommitStatusHeld `json:"held,omitempty"`
 
 	// Branch is the environment branch name.
 	// +required

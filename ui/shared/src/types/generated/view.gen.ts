@@ -2132,6 +2132,8 @@ export type components = {
             branch: string;
             /** @description Description mirrors child CommitStatus.spec.description. */
             description?: string;
+            /** @description Held is set only while the controller has a commit to move the tag to and cannot move it there. */
+            held?: components["schemas"]["ValidatedCommitStatusHeld"];
             /** @description Phase mirrors child CommitStatus.spec.phase. */
             phase?: string;
             /** @description Qualified is the newest dry commit this environment has qualified. Omitted until the environment has qualified a commit. */
@@ -2140,10 +2142,27 @@ export type components = {
             reportedSha?: string;
             /** @description Tag is the environment's tag as last read from the dry repository. */
             tag?: components["schemas"]["ValidatedCommitStatusTagStatus"];
+            /** @description UpstreamCleared is the newest dry commit every environment this one depends on has qualified. For an environment with no upstreams it is the head of the dry branch. It is where the controller moves an automatically validated tag, and tells an approver what is ready for a Manual environment. Omitted while an upstream has qualified nothing. */
+            upstreamCleared?: components["schemas"]["ValidatedCommitStatusUpstreamCleared"];
             /** @description Upstreams lists this environment's direct upstreams and whether each has qualified the tagged commit. */
             upstreams?: components["schemas"]["ValidatedCommitStatusUpstreamStatus"][];
             /** @description Url mirrors child CommitStatus.spec.url. */
             url?: string;
+        };
+        /** @description ValidatedCommitStatusHeld is a commit the controller would move an environment's tag to, and cannot yet. */
+        ValidatedCommitStatusHeld: {
+            /** @description Message says what the commit is waiting for. */
+            message?: string;
+            /**
+             * @description Reason is Pinned when the commit does not contain the commit the tag is on.
+             * @default
+             */
+            reason: string;
+            /**
+             * @description Sha is the dry commit that is waiting.
+             * @default
+             */
+            sha: string;
         };
         /** @description ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus. */
         ValidatedCommitStatusSpec: {
@@ -2190,6 +2209,10 @@ export type components = {
         };
         /** @description ValidatedCommitStatusTagStatus is the observed state of one environment tag. */
         ValidatedCommitStatusTagStatus: {
+            /** @description AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation. It is the commit the controller would have moved the tag to at that moment (see upstreamCleared). The tag stays where the person put it until the controller has a newer commit than this one to move it to. Omitted for a tag the controller placed. */
+            acknowledgedTarget?: string;
+            /** @description MovedAt is when the controller moved the tag, or noticed that it had been moved. */
+            movedAt?: components["schemas"]["Time"];
             /**
              * @description Name is the tag name.
              * @default
@@ -2197,6 +2220,16 @@ export type components = {
             name: string;
             /** @description Sha is the dry commit the tag points at. Empty when the tag does not exist. */
             sha?: string;
+            /** @description Source says what put the tag where it is. External means it was pushed by hand. Omitted while the tag does not exist. */
+            source?: string;
+        };
+        /** @description ValidatedCommitStatusUpstreamCleared is the newest dry commit that is cleared for an environment. */
+        ValidatedCommitStatusUpstreamCleared: {
+            /**
+             * @description Sha is the dry commit.
+             * @default
+             */
+            sha: string;
         };
         /** @description ValidatedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit this environment's tag points at. */
         ValidatedCommitStatusUpstreamStatus: {

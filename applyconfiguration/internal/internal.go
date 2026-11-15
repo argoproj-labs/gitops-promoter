@@ -2128,6 +2128,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: description
       type:
         scalar: string
+    - name: held
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusHeld
     - name: phase
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
@@ -2140,6 +2143,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: tag
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusTagStatus
+    - name: upstreamCleared
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamCleared
     - name: upstreams
       type:
         list:
@@ -2147,6 +2153,18 @@ var schemaYAML = typed.YAMLObject(`types:
             namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamStatus
           elementRelationship: atomic
     - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusHeld
+  map:
+    fields:
+    - name: message
+      type:
+        scalar: string
+    - name: reason
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedHeldReason
+    - name: sha
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusSpec
@@ -2211,9 +2229,24 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusTagStatus
   map:
     fields:
+    - name: acknowledgedTarget
+      type:
+        scalar: string
+    - name: movedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
     - name: name
       type:
         scalar: string
+    - name: sha
+      type:
+        scalar: string
+    - name: source
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedTagSource
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamCleared
+  map:
+    fields:
     - name: sha
       type:
         scalar: string
@@ -2241,6 +2274,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: qualifiedAt
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedHeldReason
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedTagSource
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidationPolicy
   scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatus
