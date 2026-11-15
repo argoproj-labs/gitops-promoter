@@ -547,6 +547,46 @@ var _ = Describe("WebhookReceiver dry gate routing", func() {
 		Consistently(gates.count, 150*time.Millisecond, 20*time.Millisecond).Should(Equal(0))
 	})
 
+	It("does not retry a tag push that nothing reads, and does not take it for a delivery it gave up on", func() {
+		wr := newReceiver(newDryGate("gate"))
+		wr.retryTimeout = 30 * time.Second
+
+		By("A release tag, and a push of a gate's own tag that the gate has recorded already")
+		for _, ref := range []string{"refs/tags/v1.2.3", "refs/tags/env/dev"} {
+			found, retryable, err := wr.tryLookupAndEnqueue(lc.ctx, "cccccccccccccccccccccccccccccccccccccccc", ref, "test")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeFalse())
+			Expect(retryable).To(BeFalse(), "nothing reads %s, and nothing will", ref)
+
+			rec := postGitHubPushForRef(wr, "cccccccccccccccccccccccccccccccccccccccc", ref)
+			Expect(rec.Code).To(Equal(http.StatusNoContent))
+			Expect(testutil.ToFloat64(metrics.WebhookMissRetryPending)).To(Equal(0.0))
+		}
+		Expect(gates.count()).To(Equal(0))
+		Expect(ctps.count()).To(Equal(0))
+
+		By("Still retrying a branch push that nothing reads yet")
+		found, retryable, err := wr.tryLookupAndEnqueue(lc.ctx, "cccccccccccccccccccccccccccccccccccccccc", "refs/heads/main", "test")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeFalse())
+		Expect(retryable).To(BeTrue())
+	})
+
+	It("stops retrying a tag push once a lookup that works finds nothing that reads it", func() {
+		wr := newReceiver(newDryGate("gate"))
+		// The lookup of gates fails once, which is worth a retry. The retry finds that nothing reads the tag.
+		wr.k8sClient = &flakyListClient{Client: wr.k8sClient, failuresLeft: 1}
+		wr.retryTimeout = 30 * time.Second
+
+		rec := postGitHubPushForRef(wr, "cccccccccccccccccccccccccccccccccccccccc", "refs/tags/v1.2.3")
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Eventually(func() float64 {
+			return testutil.ToFloat64(metrics.WebhookMissRetryPending)
+		}, 2*time.Second, 10*time.Millisecond).Should(Equal(0.0), "the retry must not wait out its timeout")
+		Expect(gates.count()).To(Equal(0))
+		Expect(ctps.count()).To(Equal(0))
+	})
+
 	It("enqueues the gate on a retry when its status catches up after the push", func() {
 		// Two pushes in quick succession: the second arrives before the gate has recorded the first.
 		gate := newDryGate("gate")

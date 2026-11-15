@@ -231,6 +231,9 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
 		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
+	case lookupErr == nil:
+		// Nothing here reads the pushed ref, and no later attempt would find otherwise.
+		reqLogger.V(4).Info("nothing reads the pushed ref; ignoring webhook delivery", "ref", ref)
 	default:
 		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
 		// problems operators should see at default verbosity.
@@ -283,8 +286,10 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		// Retryable misses (no match yet, transient list failure) return (false, nil) to keep
 		// backing off until the outer timeout; terminal outcomes return an error to stop.
-		found, _, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
-		return found, err
+		// A lookup that worked and found that nothing reads the ref ends the retry as well: there is
+		// nothing left to wait for.
+		found, retryable, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
+		return found || !retryable, err
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
@@ -366,7 +371,13 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 		logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
 		return true, false, nil
 	case ctpLookupNotFound:
-		return false, true, nil
+		// A branch push that nothing reads yet may be read in a moment: the hydrated commit is not in
+		// a ChangeTransferPolicy's status yet, or the dry commit not in a gate's. A tag push that no gate
+		// reads is none of this receiver's business, and stays that way: release tags, and the pushes
+		// the gates themselves make, whose new position they have recorded by the time the webhook
+		// arrives. Retrying those would hold a retry slot until its timeout for nothing. A gate whose
+		// status was behind for a tag someone pushed finds the tag on its next reconcile.
+		return false, gateErr != nil || !strings.HasPrefix(ref, "refs/tags/"), nil
 	case ctpLookupListError:
 		// Transient API/index failures: a retry may succeed.
 		logger.V(4).Info("transient CTP lookup failure", "error", lookupErr)
