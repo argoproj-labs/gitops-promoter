@@ -71,7 +71,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
 	// ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller,
-	// which gates promotions on whether dependent environments have ever run the target dry SHA successfully.
+	// which moves each environment's tag in the dry repository and gates promotions on what the environments
+	// before it have run successfully, or a person has validated. The requeue duration is also how often the
+	// controller looks for validations pushed directly as git notes.
 	ValidatedCommitStatus *ValidatedCommitStatusConfigurationApplyConfiguration `json:"validatedCommitStatus,omitempty"`
 	// CommitValidation contains the configuration for the CommitValidation controller,
 	// including WorkQueue settings that control reconciliation behavior.

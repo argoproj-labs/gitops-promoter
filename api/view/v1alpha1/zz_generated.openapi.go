@@ -2956,7 +2956,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 					},
 					"validatedCommitStatus": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller, which gates promotions on whether dependent environments have ever run the target dry SHA successfully.",
+							Description: "ValidatedCommitStatus contains the configuration for the ValidatedCommitStatus controller, which moves each environment's tag in the dry repository and gates promotions on what the environments before it have run successfully, or a person has validated. The requeue duration is also how often the controller looks for validations pushed directly as git notes.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
