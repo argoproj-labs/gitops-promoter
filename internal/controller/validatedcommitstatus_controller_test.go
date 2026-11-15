@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,6 +41,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/validations"
 )
 
 //go:embed testdata/ValidatedCommitStatus.yaml
@@ -1017,6 +1020,225 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			})
 		})
 
+		Context("a validation", func() {
+			const jane = "jane@example.com"
+			// planTest plans test's tag in dev → test, where dev has qualified devQualified ("" for nothing).
+			planTest := func(head, devQualified string, test vcsEnvironment) vcsTagPlan {
+				GinkgoHelper()
+				dev := vcsSettled(vcsDev, vcsTagDev, head, head)
+				if devQualified != "" {
+					dev.Qualified = vcsWatermark(devQualified)
+				}
+				test.DependsOn = []string{vcsDev}
+				plans, err := vcsPlanTags(ctx, graph, head, []vcsEnvironment{dev, test}, vcsPlanTime)
+				Expect(err).NotTo(HaveOccurred())
+				return plans[1]
+			}
+			// validated returns test with its tag on tagSha, where status has it, and a validation of sha.
+			validated := func(tagSha, sha string) vcsEnvironment {
+				env := vcsSettled(vcsTest, vcsTagTest, tagSha, tagSha)
+				env.Recorded = &promoterv1alpha1.ValidatedCommitStatusTagStatus{
+					Name: vcsTagTest, Sha: tagSha, Source: promoterv1alpha1.ValidatedTagSourceAutomatic,
+				}
+				env.Validation = &vcsValidation{Sha: sha, By: jane}
+				return env
+			}
+
+			DescribeTable("moves the tag to its commit, wherever that is",
+				func(sha string) {
+					plan := planTest("f", "d", validated("d", sha))
+					Expect(plan.To).To(Equal(sha))
+					Expect(plan.MoveSource).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+					Expect(plan.Held).To(BeNil())
+
+					status := plan.tagStatus(true, vcsPlanTime)
+					Expect(status.Sha).To(Equal(sha))
+					Expect(status.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+					Expect(status.ValidatedBy).To(Equal(jane))
+					Expect(status.MovedAt).To(Equal(&vcsPlanTime))
+					Expect(status.AcknowledgedTarget).To(Equal("d"), "what the controller had for the tag when it was validated")
+				},
+				Entry("ahead of what the upstreams have qualified", "f"),
+				Entry("behind the tag", "b"),
+				Entry("off the DRY branch", "x"),
+			)
+
+			It("comes before the controller's own move, in the same reconcile", func() {
+				plan := planTest("f", "e", validated("c", "b"))
+				Expect(plan.To).To(Equal("b"), "not e, which the controller would have moved the tag to")
+			})
+
+			It("makes a validated tag of the tag that is on its commit already, without a push", func() {
+				plan := planTest("f", "d", validated("d", "d"))
+				Expect(plan.moves()).To(BeFalse())
+				Expect(plan.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				Expect(plan.ValidatedBy).To(Equal(jane))
+				Expect(plan.Acknowledged).To(Equal("d"))
+				Expect(plan.MovedAt).To(Equal(&vcsPlanTime))
+			})
+
+			It("explains a tag found on its commit: the controller moved it there and did not get to say so", func() {
+				test := validated("c", "x")
+				test.TagSha = "x"
+				plan := planTest("f", "d", test)
+				Expect(plan.moves()).To(BeFalse())
+				Expect(plan.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				Expect(plan.MovedByHand).To(BeFalse())
+			})
+
+			It("creates a tag that does not exist on its commit", func() {
+				test := vcsSettled(vcsTest, vcsTagTest, "", "")
+				test.Manual = true
+				test.Validation = &vcsValidation{Sha: "e", By: jane}
+				plan := planTest("f", "c", test)
+				Expect(plan.To).To(Equal("e"))
+				status := plan.tagStatus(true, vcsPlanTime)
+				Expect(status.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				Expect(status.AcknowledgedTarget).To(BeEmpty(), "the controller moves nothing for an environment people validate for")
+			})
+
+			It("is tried again when its move could not be pushed", func() {
+				test := validated("d", "b")
+				test.Validation.Pending = true
+				plan := planTest("f", "e", test)
+				Expect(plan.To).To(Equal("b"), "and the controller moves the tag nowhere else meanwhile")
+			})
+
+			It("gives way to a push of the tag by hand that came after it", func() {
+				test := validated("d", "b")
+				test.Validation.Pending = true
+				test.TagSha = "c"
+				plan := planTest("f", "e", test)
+				Expect(plan.MovedByHand).To(BeTrue())
+				Expect(plan.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+				Expect(plan.moves()).To(BeFalse())
+			})
+
+			It("does not give way to a push by hand when it was written after the notes were last applied", func() {
+				test := validated("d", "b")
+				test.TagSha = "c"
+				plan := planTest("f", "e", test)
+				Expect(plan.To).To(Equal("b"))
+			})
+		})
+
+		Context("a tag a validation placed", func() {
+			planTest := func(head, devQualified string, test vcsEnvironment) vcsTagPlan {
+				GinkgoHelper()
+				dev := vcsSettled(vcsDev, vcsTagDev, head, head)
+				if devQualified != "" {
+					dev.Qualified = vcsWatermark(devQualified)
+				}
+				test.DependsOn = []string{vcsDev}
+				plans, err := vcsPlanTags(ctx, graph, head, []vcsEnvironment{dev, test}, vcsPlanTime)
+				Expect(err).NotTo(HaveOccurred())
+				return plans[1]
+			}
+			manual := func(tagSha, acknowledged string) vcsEnvironment {
+				env := vcsSettled(vcsTest, vcsTagTest, tagSha, tagSha)
+				env.Recorded = &promoterv1alpha1.ValidatedCommitStatusTagStatus{
+					Name: vcsTagTest, Sha: tagSha, Source: promoterv1alpha1.ValidatedTagSourceManual,
+					ValidatedBy: "jane@example.com", AcknowledgedTarget: acknowledged,
+				}
+				return env
+			}
+
+			It("stays, validated, while the upstreams qualify nothing newer", func() {
+				plan := planTest("f", "d", manual("b", "d"))
+				Expect(plan.moves()).To(BeFalse())
+				status := plan.tagStatus(false, vcsPlanTime)
+				Expect(status.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				Expect(status.ValidatedBy).To(Equal("jane@example.com"))
+			})
+
+			It("is taken over by the controller once the upstreams qualify something newer that contains it", func() {
+				plan := planTest("f", "e", manual("b", "d"))
+				Expect(plan.To).To(Equal("e"))
+				status := plan.tagStatus(true, vcsPlanTime)
+				Expect(status.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+				Expect(status.ValidatedBy).To(BeEmpty())
+				Expect(status.AcknowledgedTarget).To(BeEmpty())
+			})
+
+			It("is left off the DRY branch, and holds what the upstreams qualify next as Pinned", func() {
+				// x is a hotfix on c. The tag was put there when dev had qualified c.
+				plan := planTest("f", "c", manual("x", "c"))
+				Expect(plan.moves()).To(BeFalse(), "a validated tag is not put back on the branch")
+				Expect(plan.Held).To(BeNil())
+
+				plan = planTest("f", "e", manual("x", "c"))
+				Expect(plan.moves()).To(BeFalse())
+				Expect(plan.Held).NotTo(BeNil())
+				Expect(plan.Held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonPinned))
+				Expect(plan.Held.Sha).To(Equal("e"))
+			})
+
+			It("is released once the DRY branch contains it", func() {
+				// r was validated for test when dev had qualified b. m merges it into the DRY branch.
+				plan := planTest("m", "m", manual("r", "b"))
+				Expect(plan.To).To(Equal("m"))
+			})
+		})
+
+		Context("a tag the gate has no record of, that the validation notes know", func() {
+			at := metav1.NewTime(time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC))
+			noted := func(source promoterv1alpha1.ValidatedTagSource, by string) vcsEnvironment {
+				env := vcsSettled(vcsTest, vcsTagTest, "b", "b")
+				env.DependsOn = []string{vcsDev}
+				env.Noted = &vcsNotedTag{At: at, By: by, Source: source}
+				return env
+			}
+			plan := func(test vcsEnvironment) vcsTagPlan {
+				GinkgoHelper()
+				dev := vcsSettled(vcsDev, vcsTagDev, "f", "f")
+				dev.Qualified = vcsWatermark("e")
+				plans, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test}, vcsPlanTime)
+				Expect(err).NotTo(HaveOccurred())
+				return plans[1]
+			}
+
+			It("is a validated tag again, and stays although the upstreams have qualified more", func() {
+				got := plan(noted(promoterv1alpha1.ValidatedTagSourceManual, "jane@example.com"))
+				Expect(got.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				Expect(got.ValidatedBy).To(Equal("jane@example.com"))
+				Expect(got.MovedAt).To(Equal(&at))
+				Expect(got.Acknowledged).To(Equal("e"))
+				Expect(got.moves()).To(BeFalse(), "a rollback is not undone by a gate that lost its status")
+			})
+
+			It("is a tag moved by hand again, with the time the move was first seen", func() {
+				got := plan(noted(promoterv1alpha1.ValidatedTagSourceExternal, ""))
+				Expect(got.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+				Expect(got.MovedAt).To(Equal(&at))
+				Expect(got.MovedByHand).To(BeFalse(), "it is not a new move")
+				Expect(got.moves()).To(BeFalse())
+			})
+
+			It("goes by status when status has a record", func() {
+				test := noted(promoterv1alpha1.ValidatedTagSourceManual, "jane@example.com")
+				test.Recorded = &promoterv1alpha1.ValidatedCommitStatusTagStatus{
+					Name: vcsTagTest, Sha: "b", Source: promoterv1alpha1.ValidatedTagSourceAutomatic,
+				}
+				Expect(plan(test).To).To(Equal("e"))
+			})
+		})
+
+		It("takes over the time of a hand move that is in the notes already, so it is not recorded twice", func() {
+			seen := metav1.NewTime(vcsPlanTime.Add(-time.Minute))
+			test := vcsSettled(vcsTest, vcsTagTest, "b", "b")
+			test.DependsOn = []string{vcsDev}
+			test.Recorded = &promoterv1alpha1.ValidatedCommitStatusTagStatus{
+				Name: vcsTagTest, Sha: "e", Source: promoterv1alpha1.ValidatedTagSourceAutomatic,
+			}
+			test.HandMoves = map[string]metav1.Time{"b": seen, "c": metav1.NewTime(vcsPlanTime.Add(-time.Hour))}
+			dev := vcsSettled(vcsDev, vcsTagDev, "f", "f")
+			dev.Qualified = vcsWatermark("e")
+			plans, err := vcsPlanTags(ctx, graph, "f", []vcsEnvironment{dev, test}, vcsPlanTime)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plans[1].MovedByHand).To(BeTrue())
+			Expect(plans[1].MovedAt).To(Equal(&seen))
+		})
+
 		It("records nothing about a tag that does not exist", func() {
 			plan := vcsTagPlan{Tag: vcsTagTest}
 			Expect(plan.tagStatus(false, vcsPlanTime)).To(Equal(&promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: vcsTagTest}))
@@ -1036,6 +1258,75 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
 			Expect(gate.Description).To(Equal(`Waiting for tag "env/dev" to be created`))
+		})
+
+		Context("for a tag a validation placed", func() {
+			// validatedTest returns test, which depends on dev, proposing the commit its validated tag is on.
+			validatedTest := func(tagSha, proposed string) (vcsEnvironment, map[string]vcsEnvironment) {
+				dev := vcsSettled(vcsDev, vcsTagDev, "f", "f")
+				dev.Qualified = vcsWatermark("c")
+				test := vcsProposing(vcsTest, vcsTagTest, tagSha, "b", proposed, vcsDev)
+				test.TagSource = promoterv1alpha1.ValidatedTagSourceManual
+				test.TagValidatedBy = "CommitValidation/demo-test"
+				return test, vcsByBranch(dev, test)
+			}
+
+			DescribeTable("succeeds without asking the upstreams, wherever the commit is",
+				func(tagSha string) {
+					test, byBranch := validatedTest(tagSha, tagSha)
+					gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, byBranch)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(gate.Phase).To(Equal(success))
+					Expect(gate.Description).To(Equal(`Tag "env/test" at ` + tagSha + ` is hydrated and was validated by CommitValidation/demo-test`))
+					Expect(gate.Upstreams).To(BeEmpty())
+				},
+				Entry("ahead of what dev has qualified", "e"),
+				Entry("off the DRY branch", "x"),
+				Entry("on history the DRY branch no longer has", "q"),
+			)
+
+			It("is still pending until the hydrator has processed the validated commit", func() {
+				test, byBranch := validatedTest("e", "d")
+				gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, byBranch)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gate.Phase).To(Equal(pending))
+				Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/test" at e (currently d)`))
+			})
+
+			It("does not need the graph", func() {
+				test, byBranch := validatedTest("e", "e")
+				gate, err := vcsEvaluateGate(ctx, vcsFailingGraph{}, "f", "main", test, byBranch)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gate.Phase).To(Equal(success))
+			})
+
+			It("says a person validated when it is not known who, and shortens a long name", func() {
+				test, byBranch := validatedTest("e", "e")
+				test.TagValidatedBy = ""
+				gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, byBranch)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gate.Description).To(Equal(`Tag "env/test" at e is hydrated and was validated by a person`))
+
+				test.TagValidatedBy = strings.Repeat("a", 100)
+				gate, err = vcsEvaluateGate(ctx, graph, "f", "main", test, byBranch)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gate.Description).To(HaveSuffix("validated by " + strings.Repeat("a", 60)))
+			})
+
+			DescribeTable("is not what the gate does for any other tag on the same commit",
+				func(source promoterv1alpha1.ValidatedTagSource) {
+					test, byBranch := validatedTest("e", "e")
+					test.TagSource = source
+					gate, err := vcsEvaluateGate(ctx, graph, "f", "main", test, byBranch)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(gate.Phase).To(Equal(pending))
+					Expect(gate.Description).To(Equal(`Waiting for "environment/dev" to qualify dry e (newest qualified: c)`))
+				},
+				Entry("pushed by hand", promoterv1alpha1.ValidatedTagSourceExternal),
+				Entry("moved by the controller", promoterv1alpha1.ValidatedTagSourceAutomatic),
+				Entry("created by the controller", promoterv1alpha1.ValidatedTagSourceSeeded),
+				Entry("of unknown origin", promoterv1alpha1.ValidatedTagSource("")),
+			)
 		})
 
 		It("is pending until the hydrator has processed the tagged commit", func() {
@@ -1586,6 +1877,193 @@ var _ = Describe("ValidatedCommitStatus decisions", func() {
 		})
 	})
 
+	Describe("the validation notes", func() {
+		const tag = vcsTagProd
+		at := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
+		// line returns the nth line of the notes: a line for the tag on sha, with the given source.
+		line := func(n int, sha, source string) git.ValidationEvent {
+			return git.ValidationEvent{
+				Sha:    sha,
+				Author: "jane@example.com",
+				Time:   at.Add(time.Duration(n) * time.Minute),
+				Line:   validations.Line{Target: tag, Source: source},
+			}
+		}
+
+		DescribeTable("vcsManualValidation: which lines are a person's validation",
+			func(source string, expected bool) {
+				Expect(vcsManualValidation(validations.Line{Target: tag, Source: source})).To(Equal(expected))
+			},
+			Entry("a line pushed as a note", validations.SourceGit, true),
+			Entry("a line a CommitValidation wrote", validations.SourceResource, true),
+			Entry("the record of a tag moved by hand", validations.SourceExternal, false),
+			Entry("an automatic validation, which this controller never writes", validations.SourceAutomatic, false),
+		)
+
+		Describe("vcsResumeAfter: where a gate that lost its place takes the notes up again", func() {
+			shas := func(lines []git.ValidationEvent) []string {
+				out := make([]string, 0, len(lines))
+				for _, l := range lines {
+					out = append(out, l.Sha)
+				}
+				return out
+			}
+
+			It("resumes after the newest line of the commit the tag is on", func() {
+				lines := []git.ValidationEvent{
+					line(1, "b", validations.SourceGit),
+					line(2, "c", validations.SourceGit),
+					line(3, "b", validations.SourceResource),
+					line(4, "d", validations.SourceGit),
+					line(5, "e", validations.SourceGit),
+				}
+				matched, later := vcsResumeAfter(lines, tag, "b")
+				Expect(matched).NotTo(BeNil())
+				Expect(matched.Time).To(Equal(at.Add(3*time.Minute)), "the newer of the two lines of b")
+				Expect(shas(later)).To(Equal([]string{"d", "e"}), "c was written before the tag was put on b, and is not applied again")
+			})
+
+			It("takes nothing when the notes have no line of the tag's commit: the controller put the tag there", func() {
+				lines := []git.ValidationEvent{line(1, "b", validations.SourceGit), line(2, "c", validations.SourceGit)}
+				matched, later := vcsResumeAfter(lines, tag, "e")
+				Expect(matched).To(BeNil())
+				Expect(later).To(BeEmpty())
+			})
+
+			It("resumes after the record of a move by hand, and never applies such a record", func() {
+				lines := []git.ValidationEvent{
+					line(1, "b", validations.SourceGit),
+					line(2, "c", validations.SourceExternal),
+					line(3, "d", validations.SourceExternal),
+					line(4, "e", validations.SourceGit),
+				}
+				matched, later := vcsResumeAfter(lines, tag, "c")
+				Expect(matched).NotTo(BeNil())
+				Expect(matched.Line.Source).To(Equal(validations.SourceExternal))
+				Expect(shas(later)).To(Equal([]string{"e"}), "the record of the move to d moves nothing")
+			})
+
+			It("ignores other tags and automatic validations", func() {
+				other := line(2, "b", validations.SourceGit)
+				other.Line.Target = vcsTagTest
+				lines := []git.ValidationEvent{
+					line(1, "b", validations.SourceAutomatic),
+					other,
+					line(3, "c", validations.SourceGit),
+				}
+				matched, later := vcsResumeAfter(lines, tag, "b")
+				Expect(matched).To(BeNil())
+				Expect(later).To(BeEmpty())
+
+				matched, later = vcsResumeAfter(append(lines, line(4, "b", validations.SourceGit), line(5, "d", validations.SourceAutomatic)), tag, "b")
+				Expect(matched).NotTo(BeNil())
+				Expect(later).To(BeEmpty())
+			})
+
+			It("takes nothing for a tag that does not exist", func() {
+				matched, later := vcsResumeAfter([]git.ValidationEvent{line(1, "b", validations.SourceGit)}, tag, "")
+				Expect(matched).To(BeNil())
+				Expect(later).To(BeEmpty())
+			})
+		})
+
+		Describe("vcsNoted: what a line says put the tag on its commit", func() {
+			It("is the validation, with who validated and when", func() {
+				validation := line(1, "b", validations.SourceGit)
+				Expect(vcsNoted(&validation)).To(Equal(&vcsNotedTag{
+					At: metav1.NewTime(at.Add(time.Minute)), By: "jane@example.com", Source: promoterv1alpha1.ValidatedTagSourceManual,
+				}))
+			})
+
+			It("is a push by hand, at the time the line gives for it", func() {
+				record := line(1, "b", validations.SourceExternal)
+				record.Line.At = at.Add(-time.Hour)
+				Expect(vcsNoted(&record)).To(Equal(&vcsNotedTag{
+					At: metav1.NewTime(at.Add(-time.Hour)), Source: promoterv1alpha1.ValidatedTagSourceExternal,
+				}))
+			})
+		})
+
+		DescribeTable("vcsResumesFromHead: which tags take no validation after the gate lost its place",
+			func(recorded *promoterv1alpha1.ValidatedCommitStatusTagStatus, expected bool) {
+				env := vcsSettled(vcsProd, tag, "c", "c")
+				env.Recorded = recorded
+				Expect(vcsResumesFromHead(env)).To(Equal(expected))
+			},
+			Entry("a tag status has no record of", nil, false),
+			Entry("a tag pushed by hand, still there",
+				&promoterv1alpha1.ValidatedCommitStatusTagStatus{Sha: "c", Source: promoterv1alpha1.ValidatedTagSourceExternal}, true),
+			Entry("a tag the controller moved, still there",
+				&promoterv1alpha1.ValidatedCommitStatusTagStatus{Sha: "c", Source: promoterv1alpha1.ValidatedTagSourceAutomatic}, true),
+			Entry("a tag a validation placed, still there: it resumes after that validation",
+				&promoterv1alpha1.ValidatedCommitStatusTagStatus{Sha: "c", Source: promoterv1alpha1.ValidatedTagSourceManual}, false),
+			Entry("a tag that is no longer where status has it",
+				&promoterv1alpha1.ValidatedCommitStatusTagStatus{Sha: "b", Source: promoterv1alpha1.ValidatedTagSourceExternal}, false),
+			Entry("a tag of unknown origin",
+				&promoterv1alpha1.ValidatedCommitStatusTagStatus{Sha: "c"}, false),
+		)
+
+		Describe("vcsHandMoveRecord: the record of a tag moved by hand", func() {
+			movedAt := metav1.NewTime(at)
+			moved := func(source promoterv1alpha1.ValidatedTagSource) *promoterv1alpha1.ValidatedCommitStatusTagStatus {
+				return &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: tag, Sha: "c", Source: source, MovedAt: &movedAt}
+			}
+
+			It("is a line that validates nothing, on the commit the tag was moved to", func() {
+				entry, ok := vcsHandMoveRecord("demo", moved(promoterv1alpha1.ValidatedTagSourceExternal))
+				Expect(ok).To(BeTrue())
+				Expect(entry.Sha).To(Equal("c"))
+				Expect(entry.Line.Validates()).To(BeFalse())
+				Expect(entry.Line).To(Equal(validations.Line{
+					Target: tag,
+					Source: validations.SourceExternal,
+					By:     "ValidatedCommitStatus/demo",
+					Reason: "Tag moved by hand",
+					At:     at,
+					ID:     tag + "@2026-11-13T09:00:00Z",
+				}))
+			})
+
+			It("is the same record for the same move, and another for a later move to the same commit", func() {
+				first, _ := vcsHandMoveRecord("demo", moved(promoterv1alpha1.ValidatedTagSourceExternal))
+				again, _ := vcsHandMoveRecord("demo", moved(promoterv1alpha1.ValidatedTagSourceExternal))
+				Expect(again.Line.ID).To(Equal(first.Line.ID))
+
+				later := moved(promoterv1alpha1.ValidatedTagSourceExternal)
+				laterAt := metav1.NewTime(at.Add(time.Hour))
+				later.MovedAt = &laterAt
+				second, _ := vcsHandMoveRecord("demo", later)
+				Expect(second.Line.ID).NotTo(Equal(first.Line.ID))
+			})
+
+			It("is written for no other tag", func() {
+				for _, source := range []promoterv1alpha1.ValidatedTagSource{
+					promoterv1alpha1.ValidatedTagSourceManual, promoterv1alpha1.ValidatedTagSourceAutomatic, promoterv1alpha1.ValidatedTagSourceSeeded, "",
+				} {
+					_, ok := vcsHandMoveRecord("demo", moved(source))
+					Expect(ok).To(BeFalse(), "source %q", source)
+				}
+				_, ok := vcsHandMoveRecord("demo", nil)
+				Expect(ok).To(BeFalse())
+				_, ok = vcsHandMoveRecord("demo", &promoterv1alpha1.ValidatedCommitStatusTagStatus{Name: tag, Source: promoterv1alpha1.ValidatedTagSourceExternal})
+				Expect(ok).To(BeFalse(), "a tag that does not exist")
+			})
+		})
+
+		DescribeTable("vcsFailedPushOutcome: what became of a push that reported an error",
+			func(after git.TagState, readErr error, expected vcsPushOutcome) {
+				before := git.TagState{Raw: "c", Commit: "c"}
+				Expect(vcsFailedPushOutcome(before, after, readErr, "e")).To(Equal(expected))
+			},
+			Entry("the tag is where it was: the push failed", git.TagState{Raw: "c", Commit: "c"}, nil, vcsPushFailed),
+			Entry("the tag is where the push put it: only the answer was lost", git.TagState{Raw: "e", Commit: "e"}, nil, vcsPushLanded),
+			Entry("the tag is somewhere else: someone moved it first", git.TagState{Raw: "d", Commit: "d"}, nil, vcsPushOvertaken),
+			Entry("the tag was deleted meanwhile", git.TagState{}, nil, vcsPushOvertaken),
+			Entry("the tag was replaced by an annotated tag of the same commit", git.TagState{Raw: "tagobject", Commit: "c"}, nil, vcsPushOvertaken),
+			Entry("the tag could not be read again", git.TagState{}, errors.New("remote unavailable"), vcsPushFailed),
+		)
+	})
+
 	Describe("vcsNoteKey: the qualification note entry an environment owns", func() {
 		It("is the branch for an environment that owns its active branch", func() {
 			Expect(vcsNoteKey(vcsProd, "")).To(Equal("environment/prod"))
@@ -1821,6 +2299,82 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 				_, err = runGitCmd(ctx, gitPath, "push", "origin", "HEAD:refs/heads/"+branch, "HEAD:refs/heads/"+branch+"-next")
 				Expect(err).NotTo(HaveOccurred())
 			}
+		}
+
+		// validate validates a DRY commit for the environment that reads tag, the way a person does: with a
+		// line in the validation note of the commit. No webhook announces a note, so the gate is enqueued,
+		// standing in for its requeue.
+		validate := func(tag, drySha, reason string) {
+			GinkgoHelper()
+			line := `{"target":"` + tag + `","reason":"` + reason + `"}`
+			// The controller writes to the same ref, so a push can lose the race and has to start over.
+			Eventually(func() error {
+				refspec := "+" + git.PromoterValidationsNotesRef + ":" + git.PromoterValidationsNotesRef
+				if _, err := runGitCmd(ctx, gitPath, "fetch", "origin", refspec); err != nil && !strings.Contains(err.Error(), "couldn't find remote ref") {
+					return err
+				}
+				if _, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterValidationsNotesRef, "append", "-m", line, drySha); err != nil {
+					return err
+				}
+				_, err := runGitCmd(ctx, gitPath, "push", "origin", git.PromoterValidationsNotesRef)
+				return err
+			}, constants.EventuallyTimeout, time.Second).Should(Succeed())
+			enqueueValidatedCommitStatus(gate.Namespace, gate.Name)
+		}
+		// validationLines returns the lines of the validation note of a DRY commit, as the repository has them.
+		validationLines := func(drySha string) []validations.Line {
+			refspec := "+" + git.PromoterValidationsNotesRef + ":" + git.PromoterValidationsNotesRef
+			if _, err := runGitCmd(ctx, gitPath, "fetch", "origin", refspec); err != nil {
+				return nil
+			}
+			note, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterValidationsNotesRef, "show", drySha)
+			if err != nil {
+				return nil
+			}
+			return validations.ParseNote(note)
+		}
+		// commitHotfix pushes a commit to a branch of that name that starts at the given DRY commit, and
+		// returns the commit. The DRY branch is checked out again afterwards.
+		commitHotfix := func(branch, from string) string {
+			GinkgoHelper()
+			for _, args := range [][]string{{"fetch", "origin"}, {"checkout", "-B", branch, from}} {
+				_, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			Expect(os.WriteFile(gitPath+"/hotfix.yaml", []byte("fixed: "+time.Now().Format(time.RFC3339Nano)), 0o644)).To(Succeed())
+			for _, args := range [][]string{{"add", "hotfix.yaml"}, {"commit", "-m", "hotfix"}, {"push", "origin", branch}} {
+				_, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			out, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(ctx, gitPath, "checkout", dryBranch)
+			Expect(err).NotTo(HaveOccurred())
+			return strings.TrimSpace(out)
+		}
+		// mergeIntoDry merges a branch into the DRY branch with a merge commit, pushes it, and returns the merge.
+		mergeIntoDry := func(branch string) string {
+			GinkgoHelper()
+			before := headSha()
+			for _, args := range [][]string{
+				{"checkout", dryBranch},
+				{"reset", "--hard", "origin/" + dryBranch},
+				{"merge", "--no-ff", "-m", "merge " + branch, branch},
+				{"push", "origin", dryBranch},
+			} {
+				_, err := runGitCmd(ctx, gitPath, args...)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			sendWebhookForPush(ctx, before, dryBranch)
+			return headSha()
+		}
+		// liveSha returns the DRY commit the test repository starts with in every environment: the parent
+		// of the DRY branch HEAD, which is hydrated nowhere.
+		liveSha := func() string {
+			GinkgoHelper()
+			out, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+dryBranch+"~1")
+			Expect(err).NotTo(HaveOccurred())
+			return strings.TrimSpace(out)
 		}
 
 		BeforeEach(func() {
@@ -2499,6 +3053,268 @@ var _ = Describe("ValidatedCommitStatus Controller", func() {
 				production := environmentStatus(g, testBranchProduction)
 				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
 				g.Expect(production.Tag.AcknowledgedTarget).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should move a tag to a commit a person validated, and promote it without asking the upstreams", func() {
+			second := headSha()
+			first := liveSha()
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			By("Creating production's tag at what is live there, and leaving it")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.UpstreamCleared).NotTo(BeNil())
+				g.Expect(production.UpstreamCleared.Sha).To(Equal(first), "staging runs the first commit")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Validating the second commit for production, which no other environment has run")
+			validate(tagProduction, second, "CHG-1234 approved")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(second))
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Tag.Sha).To(Equal(second))
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				g.Expect(production.Tag.ValidatedBy).To(Equal("testmail@test.com"), "the author of the note")
+				g.Expect(production.Pending).To(BeNil())
+
+				updated := &promoterv1alpha1.ValidatedCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), updated)).To(Succeed())
+				g.Expect(updated.Status.ValidationsCursor).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Promoting it to production, although staging still runs the first commit")
+			hydrate(testBranchProductionNext, tagProduction)
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(production.Description).To(Equal(
+					`Tag "env/production" at ` + second[:7] + ` is hydrated and was validated by testmail@test.com`))
+				g.Expect(activeDrySha(g, testBranchProduction)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagStaging)).To(Equal(first))
+
+			By("Deleting the gate and creating it again: what it knew is in git")
+			Expect(k8sClient.Delete(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), &promoterv1alpha1.ValidatedCommitStatus{})
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Tag.Sha).To(Equal(second))
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual), "the validation is in the notes")
+				g.Expect(production.Tag.ValidatedBy).To(Equal("testmail@test.com"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(second))
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("should send a hotfix that is not on the DRY branch to one environment, and pin it there until the branch contains the hotfix", func() {
+			second := headSha()
+			first := liveSha()
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
+				g.Expect(tagSha(g, tagStaging)).To(Equal(first))
+				cleared := environmentStatus(g, testBranchStaging).UpstreamCleared
+				g.Expect(cleared).NotTo(BeNil(), "development has qualified what it runs")
+				g.Expect(cleared.Sha).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Validating a hotfix for staging that starts at the first commit")
+			hotfix := commitHotfix("hotfix", first)
+			validate(tagStaging, hotfix, "hotfix")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagStaging)).To(Equal(hotfix))
+				staging := environmentStatus(g, testBranchStaging)
+				g.Expect(staging.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				g.Expect(staging.Tag.AcknowledgedTarget).To(Equal(first), "what development had qualified")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Promoting the hotfix to staging, where it qualifies nothing: it is not on the DRY branch")
+			hydrate(testBranchStagingNext, tagStaging)
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchStaging)).To(Equal(hotfix))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				staging := environmentStatus(g, testBranchStaging)
+				g.Expect(staging.Qualified).NotTo(BeNil())
+				g.Expect(staging.Qualified.DrySha).To(Equal(first))
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first), "production does not take the hotfix on its own")
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Development qualifying the second commit, which does not contain the hotfix")
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			Eventually(func(g Gomega) {
+				staging := environmentStatus(g, testBranchStaging)
+				g.Expect(staging.Held).NotTo(BeNil())
+				g.Expect(staging.Held.Reason).To(Equal(promoterv1alpha1.ValidatedHeldReasonPinned))
+				g.Expect(staging.Held.Sha).To(Equal(second))
+				g.Expect(staging.Held.Message).To(Equal("Waiting for the dry branch to contain " + hotfix[:7]))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagStaging)).To(Equal(hotfix))
+
+			By("Merging the hotfix into the DRY branch, and development qualifying the merge")
+			merge := mergeIntoDry("hotfix")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(merge))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+
+			By("Releasing the pin: the controller moves staging's tag again")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagStaging)).To(Equal(merge))
+				staging := environmentStatus(g, testBranchStaging)
+				g.Expect(staging.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceAutomatic))
+				g.Expect(staging.Held).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should ignore a validation of a commit that is not in the repository, or that is not a DRY commit", func() {
+			first := liveSha()
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			var hydrated string
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
+				hydrated = activeHydratedSha(g, testBranchProduction)
+				g.Expect(hydrated).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Validating a hydrated commit, which the repository has and the DRY branch shares no history with")
+			validate(tagProduction, hydrated, "not a dry commit")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ValidatedCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(gate), updated)).To(Succeed())
+				g.Expect(updated.Status.ValidationsCursor).NotTo(BeEmpty(), "the validation was read, and passed over")
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
+				g.Expect(environmentStatus(g, testBranchProduction).Pending).To(BeNil())
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("should record a tag that was pushed by hand in the validation notes", func() {
+			second := headSha()
+			first := liveSha()
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
+				g.Expect(environmentStatus(g, testBranchProduction).Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceSeeded))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing production's tag to the second commit by hand")
+			vcsPushTag(ctx, gitPath, tagProduction, second)
+			sendWebhookForRef(ctx, first, "refs/tags/"+tagProduction)
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Tag.Sha).To(Equal(second))
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceExternal))
+
+				var records []validations.Line
+				for _, line := range validationLines(second) {
+					if line.Target == tagProduction && line.Source == validations.SourceExternal {
+						records = append(records, line)
+					}
+				}
+				g.Expect(records).To(HaveLen(1))
+				g.Expect(records[0].By).To(Equal("ValidatedCommitStatus/" + gate.Name))
+				g.Expect(records[0].Reason).To(Equal("Tag moved by hand"))
+				g.Expect(records[0].Validates()).To(BeFalse())
+				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the tag like any other: staging has not qualified the second commit")
+			hydrate(testBranchProductionNext, tagProduction)
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(production.Description).To(Equal(
+					`Waiting for "environment/staging" to qualify dry ` + second[:7] + ` (newest qualified: ` + first[:7] + `)`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Validating the commit the tag is on: the same tag now passes")
+			validate(tagProduction, second, "approved after all")
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				g.Expect(production.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(activeDrySha(g, testBranchProduction)).To(Equal(second))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should keep a validation whose move of the tag is refused, and make the move once it is allowed", func() {
+			if !scmTarget.isFake() {
+				Skip("refusing a push takes a hook in the git server, which only the in-process server lets a spec install")
+			}
+			second := headSha()
+			first := liveSha()
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			gate.Spec.Environments[2].Validation = promoterv1alpha1.ValidationManual
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Protecting production's tag on the git server")
+			owner, repo := scmTarget.repoOwnerName(gitRepo)
+			hooks := filepath.Join(gitStoragePath, owner, repo, "hooks")
+			Expect(hooks).To(BeADirectory())
+			hook := filepath.Join(hooks, "update")
+			script := "#!/bin/sh\nif [ \"$1\" = \"refs/tags/" + tagProduction + "\" ]; then echo 'this tag is protected' >&2; exit 1; fi\n"
+			Expect(os.WriteFile(hook, []byte(script), 0o755)).To(Succeed())
+			DeferCleanup(func() { _ = os.Remove(hook) })
+
+			By("Validating the second commit for production")
+			validate(tagProduction, second, "approved")
+			Eventually(func(g Gomega) {
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Pending).NotTo(BeNil())
+				g.Expect(production.Pending.Sha).To(Equal(second))
+				g.Expect(production.Pending.ValidatedBy).To(Equal("testmail@test.com"))
+				g.Expect(production.Pending.Message).NotTo(BeEmpty())
+				g.Expect(production.Tag.Sha).To(Equal(first))
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceSeeded))
+
+				condition := readyCondition(ctx, g, gate)
+				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(condition.Reason).To(Equal(string(promoterConditions.TagPushFailed)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(vcsRemoteTagSha(ctx, gitPath, tagProduction)).To(Equal(first))
+
+			By("Lifting the protection: the validation is still there to apply")
+			Expect(os.Remove(hook)).To(Succeed())
+			enqueueValidatedCommitStatus(gate.Namespace, gate.Name)
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).To(Equal(second))
+				production := environmentStatus(g, testBranchProduction)
+				g.Expect(production.Pending).To(BeNil())
+				g.Expect(production.Tag.Source).To(Equal(promoterv1alpha1.ValidatedTagSourceManual))
+				g.Expect(production.Tag.ValidatedBy).To(Equal("testmail@test.com"))
+				g.Expect(readyCondition(ctx, g, gate).Status).To(Equal(metav1.ConditionTrue))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

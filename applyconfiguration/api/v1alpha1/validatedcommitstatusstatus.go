@@ -32,6 +32,9 @@ type ValidatedCommitStatusStatusApplyConfiguration struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 	// Dry is the observed state of the dry branch.
 	Dry *ValidatedCommitStatusDryStatusApplyConfiguration `json:"dry,omitempty"`
+	// ValidationsCursor is the last commit of refs/notes/promoter.validations in the dry repository whose
+	// validations the controller has applied. Omitted while that ref does not exist.
+	ValidationsCursor *string `json:"validationsCursor,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// Environments reports the tag, qualification, and gate state of each environment.
@@ -62,6 +65,14 @@ func (b *ValidatedCommitStatusStatusApplyConfiguration) WithInstanceID(value str
 // If called multiple times, the Dry field is set to the value of the last call.
 func (b *ValidatedCommitStatusStatusApplyConfiguration) WithDry(value *ValidatedCommitStatusDryStatusApplyConfiguration) *ValidatedCommitStatusStatusApplyConfiguration {
 	b.Dry = value
+	return b
+}
+
+// WithValidationsCursor sets the ValidationsCursor field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ValidationsCursor field is set to the value of the last call.
+func (b *ValidatedCommitStatusStatusApplyConfiguration) WithValidationsCursor(value string) *ValidatedCommitStatusStatusApplyConfiguration {
+	b.ValidationsCursor = &value
 	return b
 }
 

@@ -88,23 +88,26 @@ const (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg                 *rest.Config
-	cfgDev              *rest.Config
-	cfgStaging          *rest.Config
-	k8sClient           client.Client
-	k8sClientDev        client.Client
-	k8sClientStaging    client.Client
-	testEnv             *envtest.Environment
-	testEnvDev          *envtest.Environment
-	testEnvStaging      *envtest.Environment
-	gitServer           *http.Server
-	gitStoragePath      string
-	cancel              context.CancelFunc
-	ctx                 context.Context
-	gitServerPort       string
-	webhookReceiverPort int
-	scheme              = utils.GetScheme()
-	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	cfg              *rest.Config
+	cfgDev           *rest.Config
+	cfgStaging       *rest.Config
+	k8sClient        client.Client
+	k8sClientDev     client.Client
+	k8sClientStaging client.Client
+	testEnv          *envtest.Environment
+	testEnvDev       *envtest.Environment
+	testEnvStaging   *envtest.Environment
+	gitServer        *http.Server
+	gitStoragePath   string
+	// enqueueValidatedCommitStatus requests a reconcile of a ValidatedCommitStatus. Specs call it after
+	// pushing a validation note, which no webhook announces, in place of waiting for the gate's requeue.
+	enqueueValidatedCommitStatus func(namespace, name string)
+	cancel                       context.CancelFunc
+	ctx                          context.Context
+	gitServerPort                string
+	webhookReceiverPort          int
+	scheme                       = utils.GetScheme()
+	enqueueCTP                   CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
@@ -282,6 +285,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	}
 	err = validatedCommitStatusReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
+	enqueueValidatedCommitStatus = validatedCommitStatusReconciler.GetEnqueueFunc()
 
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
@@ -944,11 +948,17 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 // When the suite targets scmserver, the server already delivers real provider-shaped push
 // webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	sendWebhookForRef(ctx, sha, "refs/heads/"+branch)
+}
+
+// sendWebhookForRef is sendWebhookForPush for any ref, such as a tag. sha is what the ref pointed at
+// before the push.
+func sendWebhookForRef(ctx context.Context, sha, ref string) {
 	if scmTarget.sendsOwnWebhooks() {
 		return
 	}
 	// Build GitHub-style webhook payload
-	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
+	payload := buildGitHubWebhookPayload(sha, ref)
 
 	// Send the webhook request
 	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)

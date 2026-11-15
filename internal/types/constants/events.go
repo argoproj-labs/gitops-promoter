@@ -154,6 +154,12 @@ const (
 	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA.
 	EnvironmentTagMovedByHandMessage = "Tag %q for environment branch %s was moved outside the controller from %s to %s"
 
+	// ValidationIgnoredReason indicates that a validation in the notes of the dry repository was not applied.
+	ValidationIgnoredReason = "ValidationIgnored"
+	// ValidationIgnoredMessage is the message for an ignored validation.
+	// Args: the validated SHA, tag, why it was ignored.
+	ValidationIgnoredMessage = "Ignored a validation of %s for tag %q: %s"
+
 	// EnvironmentTagPushFailedReason indicates that a ValidatedCommitStatus could not push an environment tag.
 	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"
 	// EnvironmentTagPushFailedMessage is the message for a failed environment tag push.

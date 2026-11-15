@@ -2134,6 +2134,8 @@ export type components = {
             description?: string;
             /** @description Held is set only while the controller has a commit to move the tag to and cannot move it there. */
             held?: components["schemas"]["ValidatedCommitStatusHeld"];
+            /** @description Pending is set only while a validation asked for a move of the tag that could not be pushed. The controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of the tag by hand, takes its place. */
+            pending?: components["schemas"]["ValidatedCommitStatusPending"];
             /** @description Phase mirrors child CommitStatus.spec.phase. */
             phase?: string;
             /** @description Qualified is the newest dry commit this environment has qualified. Omitted until the environment has qualified a commit. */
@@ -2163,6 +2165,18 @@ export type components = {
              * @default
              */
             sha: string;
+        };
+        /** @description ValidatedCommitStatusPending is a move of an environment's tag that a validation asked for and that could not be pushed yet. */
+        ValidatedCommitStatusPending: {
+            /** @description Message is the error from the last attempt to push the tag. */
+            message?: string;
+            /**
+             * @description Sha is the validated dry commit the tag should point at.
+             * @default
+             */
+            sha: string;
+            /** @description ValidatedBy names who or what validated the commit. */
+            validatedBy?: string;
         };
         /** @description ValidatedCommitStatusSpec defines the desired state of ValidatedCommitStatus. */
         ValidatedCommitStatusSpec: {
@@ -2206,6 +2220,8 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
+            /** @description ValidationsCursor is the last commit of refs/notes/promoter.validations in the dry repository whose validations the controller has applied. Omitted while that ref does not exist. */
+            validationsCursor?: string;
         };
         /** @description ValidatedCommitStatusTagStatus is the observed state of one environment tag. */
         ValidatedCommitStatusTagStatus: {
@@ -2222,6 +2238,8 @@ export type components = {
             sha?: string;
             /** @description Source says what put the tag where it is. External means it was pushed by hand. Omitted while the tag does not exist. */
             source?: string;
+            /** @description ValidatedBy names who or what validated the commit the tag is on. Only set while source is Manual. */
+            validatedBy?: string;
         };
         /** @description ValidatedCommitStatusUpstreamCleared is the newest dry commit that is cleared for an environment. */
         ValidatedCommitStatusUpstreamCleared: {

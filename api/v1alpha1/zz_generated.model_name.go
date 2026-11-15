@@ -776,6 +776,11 @@ func (in ValidatedCommitStatusList) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ValidatedCommitStatusPending) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusPending"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ValidatedCommitStatusSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ValidatedCommitStatusSpec"
 }

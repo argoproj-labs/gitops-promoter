@@ -43,8 +43,9 @@ const (
 type ValidatedTagSource string
 
 const (
-	// ValidatedTagSourceManual means a person validated the commit for the environment, and the validation
-	// moved the tag there.
+	// ValidatedTagSourceManual means a person or CI validated the commit for the environment, with a line
+	// in the validation notes of the dry repository, and the validation moved the tag there. The gate does
+	// not ask whether the upstream environments have qualified such a commit.
 	ValidatedTagSourceManual ValidatedTagSource = "Manual"
 	// ValidatedTagSourceAutomatic means the controller moved the tag there, to a commit the environments
 	// this one depends on have qualified.
@@ -198,6 +199,11 @@ type ValidatedCommitStatusTagStatus struct {
 	// +optional
 	MovedAt *metav1.Time `json:"movedAt,omitempty"`
 
+	// ValidatedBy names who or what validated the commit the tag is on. Only set while source is Manual.
+	// +optional
+	// +kubebuilder:validation:MaxLength=1024
+	ValidatedBy string `json:"validatedBy,omitempty"`
+
 	// AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation.
 	// It is the commit the controller would have moved the tag to at that moment (see upstreamCleared).
 	// The tag stays where the person put it until the controller has a newer commit than this one to move
@@ -230,6 +236,25 @@ type ValidatedCommitStatusHeld struct {
 	Reason ValidatedHeldReason `json:"reason"`
 
 	// Message says what the commit is waiting for.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// ValidatedCommitStatusPending is a move of an environment's tag that a validation asked for and that
+// could not be pushed yet.
+type ValidatedCommitStatusPending struct {
+	// Sha is the validated dry commit the tag should point at.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
+
+	// ValidatedBy names who or what validated the commit.
+	// +optional
+	// +kubebuilder:validation:MaxLength=1024
+	ValidatedBy string `json:"validatedBy,omitempty"`
+
+	// Message is the error from the last attempt to push the tag.
 	// +optional
 	Message string `json:"message,omitempty"`
 }
@@ -294,6 +319,12 @@ type ValidatedCommitStatusEnvironmentStatus struct {
 	// +optional
 	Held *ValidatedCommitStatusHeld `json:"held,omitempty"`
 
+	// Pending is set only while a validation asked for a move of the tag that could not be pushed. The
+	// controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of
+	// the tag by hand, takes its place.
+	// +optional
+	Pending *ValidatedCommitStatusPending `json:"pending,omitempty"`
+
 	// Branch is the environment branch name.
 	// +required
 	// +kubebuilder:validation:MinLength=1
@@ -331,6 +362,13 @@ type ValidatedCommitStatusStatus struct {
 	// Dry is the observed state of the dry branch.
 	// +optional
 	Dry *ValidatedCommitStatusDryStatus `json:"dry,omitempty"`
+
+	// ValidationsCursor is the last commit of refs/notes/promoter.validations in the dry repository whose
+	// validations the controller has applied. Omitted while that ref does not exist.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	ValidationsCursor string `json:"validationsCursor,omitempty"`
 
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map

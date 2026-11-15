@@ -67,6 +67,13 @@ const (
 	vcsNoteSearchDepth = 200
 	// vcsShortShaLength is how much of a SHA is shown in commit status descriptions.
 	vcsShortShaLength = 7
+	// vcsLostCursorWalk is how many commits of the validation notes the gate looks back over when it no
+	// longer knows how far it had applied them.
+	vcsLostCursorWalk = 500
+	// vcsValidatedByLength is how much of a validator's name is shown in commit status descriptions.
+	vcsValidatedByLength = 60
+	// vcsHandMoveReason is the reason written with the record of a tag that was moved by hand.
+	vcsHandMoveReason = "Tag moved by hand"
 )
 
 // ValidatedCommitStatusURLTemplateData is the data passed to ValidatedCommitStatus.spec.url.template.
@@ -105,6 +112,17 @@ type vcsEnvironment struct {
 	// Recorded is the tag as the gate's status last had it: where it was, what had put it there, and the
 	// target a person's placement of it acknowledged. Nil when status has no record of the environment.
 	Recorded *promoterv1alpha1.ValidatedCommitStatusTagStatus
+	// Validation is the newest validation of a dry commit for this environment that has not been applied:
+	// one written since the validation notes were last applied, or else the one whose move of the tag could
+	// not be pushed. Nil when there is none.
+	Validation *vcsValidation
+	// Noted is what the validation notes say put the tag where it is. Only set for a tag that status has no
+	// record of.
+	Noted *vcsNotedTag
+	// HandMoves holds, by commit, when the gate wrote into the validation notes that it had found the tag
+	// moved there by hand, for the records its status does not have: the reconcile that wrote them did not
+	// get to write status.
+	HandMoves map[string]metav1.Time
 	// Branch is the environment's active branch.
 	Branch string
 	// Tag is the name of the environment's tag; TagSha is the dry commit it points at, "" when it does not exist.
@@ -113,6 +131,10 @@ type vcsEnvironment struct {
 	// TagRaw is what the tag ref held when it was read: the commit, or the tag object of an annotated tag.
 	// A push of the tag is leased on it, so a tag someone moved since is never overwritten.
 	TagRaw string
+	// TagSource says what put the tag on TagSha, and TagValidatedBy who validated that commit when a
+	// validation did. Both are filled in once the tags are planned and pushed, for the gate.
+	TagSource      promoterv1alpha1.ValidatedTagSource
+	TagValidatedBy string
 	// LiveDrySha is the dry commit whose manifests the environment is running (see vcsLiveDrySha).
 	LiveDrySha string
 	// DependsOn lists the environment's direct upstreams. Empty for a root.
@@ -126,6 +148,28 @@ type vcsEnvironment struct {
 	Restored bool
 }
 
+// vcsValidation is a validation of a dry commit for an environment: a person or CI said the commit may
+// deploy there, with a line in the validation notes.
+type vcsValidation struct {
+	// Sha is the validated dry commit.
+	Sha string
+	// By names who or what validated it.
+	By string
+	// Pending is true for a validation that was applied before and whose move of the tag could not be
+	// pushed. A push of the tag by hand since then takes its place.
+	Pending bool
+}
+
+// vcsNotedTag is what the validation notes say put a tag where it is.
+type vcsNotedTag struct {
+	// At is when: when the validation was made, or when the gate saw the tag moved by hand.
+	At metav1.Time
+	// By names who validated the commit. Empty for a tag that was moved by hand.
+	By string
+	// Source is Manual for a validation and External for a tag that was moved by hand.
+	Source promoterv1alpha1.ValidatedTagSource
+}
+
 // vcsTagPlan is what the gate decided about one environment's tag: what put the tag where it was found, and
 // where the tag should be.
 type vcsTagPlan struct {
@@ -133,6 +177,8 @@ type vcsTagPlan struct {
 	Held *promoterv1alpha1.ValidatedCommitStatusHeld
 	// MovedAt is when the tag came to be where it was found, as far as the gate knows.
 	MovedAt *metav1.Time
+	// Validation is the validation that asks for the move to To. Nil when the move is the controller's own.
+	Validation *vcsValidation
 	// Branch is the environment's active branch, and Tag the name of its tag.
 	Branch string
 	Tag    string
@@ -144,9 +190,14 @@ type vcsTagPlan struct {
 	Source promoterv1alpha1.ValidatedTagSource
 	// MoveSource says what puts the tag on To. Only set when To differs from From.
 	MoveSource promoterv1alpha1.ValidatedTagSource
+	// ValidatedBy names who validated the commit the tag was found on. Only set when Source is Manual.
+	ValidatedBy string
 	// Acknowledged is the target a person's placement of the tag acknowledged (see
 	// ValidatedCommitStatusTagStatus.AcknowledgedTarget). Empty for a tag the controller placed.
 	Acknowledged string
+	// MoveAcknowledged is the target the validation that moves the tag acknowledges. Only read with
+	// Validation.
+	MoveAcknowledged string
 	// Target is the commit an automatically validated tag is headed for: the dry branch HEAD for a root, the
 	// newest commit every direct upstream has qualified for any other environment. Empty while an upstream
 	// has qualified nothing.
@@ -168,12 +219,15 @@ func (p vcsTagPlan) tagStatus(moved bool, now metav1.Time) *promoterv1alpha1.Val
 		Sha:                p.From,
 		Source:             p.Source,
 		MovedAt:            p.MovedAt,
+		ValidatedBy:        p.ValidatedBy,
 		AcknowledgedTarget: p.Acknowledged,
 	}
 	if moved {
 		tag.Sha, tag.Source, tag.MovedAt = p.To, p.MoveSource, &now
-		if vcsControllerPlaced(p.MoveSource) {
-			tag.AcknowledgedTarget = ""
+		if p.Validation != nil {
+			tag.ValidatedBy, tag.AcknowledgedTarget = p.Validation.By, p.MoveAcknowledged
+		} else if vcsControllerPlaced(p.MoveSource) {
+			tag.ValidatedBy, tag.AcknowledgedTarget = "", ""
 		}
 	}
 	if tag.Sha == "" {
@@ -338,18 +392,54 @@ func vcsPlanTags(ctx context.Context, graph vcsCommitGraph, head string, envs []
 
 // vcsPlanTag decides about one environment's tag. target is where an automatically validated tag is headed
 // (see vcsTagTarget).
+//
+// What a person asked for comes first. A validation moves the tag to its commit, wherever that is, and the
+// controller moves the tag nowhere on its own in the same reconcile.
 func vcsPlanTag(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, target string, now metav1.Time) (vcsTagPlan, error) {
 	plan := vcsTagPlan{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: env.TagSha, Target: target}
+	validation := env.Validation
 	if env.TagSha == "" {
+		if validation != nil {
+			return vcsApplyValidation(plan, env, validation, now), nil
+		}
 		return vcsPlanMissingTag(ctx, graph, head, env, plan)
 	}
 	if err := vcsTagProvenance(ctx, graph, head, env, now, &plan); err != nil {
 		return vcsTagPlan{}, err
 	}
+	if validation != nil && validation.Pending && plan.MovedByHand {
+		// The tag was pushed by hand after the validation was made. The newer word counts.
+		validation = nil
+	}
+	if validation != nil {
+		return vcsApplyValidation(plan, env, validation, now), nil
+	}
 	if env.Manual || target == "" {
 		return plan, nil
 	}
 	return vcsAdvanceTag(ctx, graph, head, plan)
+}
+
+// vcsApplyValidation plans what a validation asks for: the tag on the validated commit, as placed by that
+// validation. The person who validated acknowledges what the controller has for the tag now, so the tag
+// stays until the controller has something newer.
+func vcsApplyValidation(plan vcsTagPlan, env vcsEnvironment, validation *vcsValidation, now metav1.Time) vcsTagPlan {
+	acknowledged := ""
+	if !env.Manual {
+		acknowledged = plan.Target
+	}
+	if validation.Sha != plan.From {
+		plan.To, plan.MoveSource, plan.Validation, plan.MoveAcknowledged = validation.Sha, promoterv1alpha1.ValidatedTagSourceManual, validation, acknowledged
+		return plan
+	}
+	// The tag is on the commit already: the controller put it there and did not get to record it, or a
+	// person validates the commit the tag is on. Either way it is a validated tag from here on.
+	plan.Source, plan.ValidatedBy, plan.Acknowledged = promoterv1alpha1.ValidatedTagSourceManual, validation.By, acknowledged
+	plan.MovedByHand = false
+	if plan.MovedAt == nil {
+		plan.MovedAt = &now
+	}
+	return plan
 }
 
 // vcsTagTarget returns the commit an automatically advanced tag wants to be at: the dry branch HEAD for a
@@ -385,6 +475,7 @@ func vcsPlanMissingTag(ctx context.Context, graph vcsCommitGraph, head string, e
 		}
 		if known {
 			plan.To, plan.MoveSource, plan.Acknowledged = recorded.Sha, recorded.Source, recorded.AcknowledgedTarget
+			plan.ValidatedBy = recorded.ValidatedBy
 			plan.MovedByHand = true
 			return plan, nil
 		}
@@ -439,12 +530,22 @@ func vcsNewTagSha(ctx context.Context, graph vcsCommitGraph, head string, env vc
 func vcsTagProvenance(ctx context.Context, graph vcsCommitGraph, head string, env vcsEnvironment, now metav1.Time, plan *vcsTagPlan) error {
 	recorded := env.Recorded
 	if recorded == nil || (recorded.Sha == env.TagSha && recorded.Source == "") {
-		// The gate has no record of the tag: it is new to the environment, or its status was lost.
+		// The gate has no record of the tag: it is new to the environment, or its status was lost. The
+		// validation notes may still say that a person put the tag here.
+		if noted := env.Noted; noted != nil && recorded == nil {
+			plan.Source, plan.ValidatedBy, plan.MovedAt = noted.Source, noted.By, &noted.At
+			if !env.Manual {
+				// What the controller had for the tag at the time is not known. Whatever it has now is
+				// not newer than the person's decision for certain, so the tag stays until that changes.
+				plan.Acknowledged = plan.Target
+			}
+			return nil
+		}
 		plan.Source = vcsUnrecordedSource(env)
 		return nil
 	}
 	if recorded.Sha == env.TagSha {
-		plan.Source, plan.MovedAt, plan.Acknowledged = recorded.Source, recorded.MovedAt, recorded.AcknowledgedTarget
+		plan.Source, plan.MovedAt, plan.Acknowledged, plan.ValidatedBy = recorded.Source, recorded.MovedAt, recorded.AcknowledgedTarget, recorded.ValidatedBy
 		return nil
 	}
 
@@ -460,6 +561,11 @@ func vcsTagProvenance(ctx context.Context, graph vcsCommitGraph, head string, en
 	}
 	plan.Source = promoterv1alpha1.ValidatedTagSourceExternal
 	plan.MovedByHand = true
+	if seen, again := env.HandMoves[env.TagSha]; again {
+		// The reconcile that first saw this move wrote it into the notes and did not get to write status.
+		// Taking over when it saw the move keeps the one record from becoming two.
+		plan.MovedAt = &seen
+	}
 	if !env.Manual {
 		// The tag stays where the person put it until the controller has something newer than this.
 		plan.Acknowledged = plan.Target
@@ -609,6 +715,19 @@ func vcsEvaluateGate(ctx context.Context, graph vcsCommitGraph, head, dryBranch 
 		return pending(fmt.Sprintf("Waiting for hydrator to process tag %q at %s (currently %s)", env.Tag, vcsShortSha(env.TagSha), vcsShortShaOrNone(hydrated))), nil
 	}
 
+	if env.TagSource == promoterv1alpha1.ValidatedTagSourceManual {
+		// A person validated this commit for this environment. That is enough on its own: the gate does not
+		// ask where the commit is, or what the upstream environments made of it.
+		by := utils.TruncateString(env.TagValidatedBy, vcsValidatedByLength)
+		if by == "" {
+			by = "a person"
+		}
+		return vcsGate{
+			Phase:       promoterv1alpha1.CommitPhaseSuccess,
+			Description: fmt.Sprintf("Tag %q at %s is hydrated and was validated by %s", env.Tag, vcsShortSha(env.TagSha), by),
+		}, nil
+	}
+
 	onBranch, err := graph.Contains(ctx, head, env.TagSha)
 	if err != nil {
 		return vcsGate{}, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
@@ -649,6 +768,112 @@ func vcsEvaluateGate(ctx context.Context, graph vcsCommitGraph, head, dryBranch 
 		}
 	}
 	return gate, nil
+}
+
+// vcsManualValidation reports whether a line of the validation notes is a person's validation: not the
+// record of a tag moved by hand, and not an automatic validation, which this controller never writes and
+// which must not pass for a person's.
+func vcsManualValidation(line validations.Line) bool {
+	return line.Validates() && !line.Automatic()
+}
+
+// vcsResumeAfter finds where to take up the validations of the tag that is on the given commit, in the lines
+// of the notes, which are in the order they were written. It is for a gate that no longer knows how far it
+// had applied the notes.
+//
+// The tag resumes after the newest line of its commit: the validation that moved the tag there, or the
+// record that it was moved there by hand. That line is returned as matched, and the validations written
+// after it as later. Whatever was written before it has been applied, or was passed over when the tag was
+// moved by hand, and is not applied again. With no line of its commit, the tag was last placed by the
+// controller, which writes no line for that, and the validations in the notes are older than that move:
+// nothing is returned.
+func vcsResumeAfter(lines []git.ValidationEvent, tag, commit string) (matched *git.ValidationEvent, later []git.ValidationEvent) {
+	for i := range lines {
+		line := &lines[i]
+		if line.Line.Target != tag || line.Line.Automatic() {
+			continue
+		}
+		if commit != "" && line.Sha == commit {
+			matched, later = line, nil
+			continue
+		}
+		// The record of a move by hand to another commit moves nothing, now or ever.
+		if line.Line.Validates() {
+			later = append(later, *line)
+		}
+	}
+	if matched == nil {
+		return nil, nil
+	}
+	return matched, later
+}
+
+// vcsNoted returns what a line of the validation notes says put the tag on the line's commit.
+func vcsNoted(line *git.ValidationEvent) *vcsNotedTag {
+	noted := &vcsNotedTag{At: metav1.NewTime(line.At()), Source: promoterv1alpha1.ValidatedTagSourceExternal}
+	if line.Line.Validates() {
+		noted.Source, noted.By = promoterv1alpha1.ValidatedTagSourceManual, line.By()
+	}
+	return noted
+}
+
+// vcsResumesFromHead reports whether a gate that lost its place in the validation notes takes none of the
+// validations in them for this tag: status still says that the tag is where a push by hand or the
+// controller's own move put it. Which validations were written before that can no longer be told, and
+// applying one of those would undo the move. A tag that a validation placed resumes after that validation
+// (see vcsResumeAfter).
+func vcsResumesFromHead(env vcsEnvironment) bool {
+	recorded := env.Recorded
+	return recorded != nil && recorded.Sha == env.TagSha && recorded.Source != "" && recorded.Source != promoterv1alpha1.ValidatedTagSourceManual
+}
+
+// vcsPushOutcome is what became of a push of a tag that reported an error.
+type vcsPushOutcome int
+
+const (
+	// vcsPushFailed means the tag is where it was.
+	vcsPushFailed vcsPushOutcome = iota
+	// vcsPushLanded means the tag is where the push put it: the push went through and its answer was lost.
+	vcsPushLanded
+	// vcsPushOvertaken means someone else moved the tag in the meantime.
+	vcsPushOvertaken
+)
+
+// vcsFailedPushOutcome says what became of a push of a tag to pushed that reported an error. before is the
+// tag as it was read before the push, and after as it was read after it, with the error of that read.
+func vcsFailedPushOutcome(before, after git.TagState, readErr error, pushed string) vcsPushOutcome {
+	switch {
+	case readErr != nil:
+		return vcsPushFailed
+	case after.Commit == pushed:
+		return vcsPushLanded
+	case after.Raw != before.Raw:
+		return vcsPushOvertaken
+	default:
+		return vcsPushFailed
+	}
+}
+
+// vcsHandMoveRecord returns the line that records, in the validation notes, that the gate found a tag on a
+// commit someone had pushed it to. The line validates nothing and never moves a tag. It is there so that
+// what happened to the tag can be told from git alone, by a gate that lost its status.
+func vcsHandMoveRecord(gate string, tag *promoterv1alpha1.ValidatedCommitStatusTagStatus) (git.ValidationEntry, bool) {
+	if tag == nil || tag.Source != promoterv1alpha1.ValidatedTagSourceExternal || tag.Sha == "" || tag.MovedAt == nil {
+		return git.ValidationEntry{}, false
+	}
+	return git.ValidationEntry{
+		Sha: tag.Sha,
+		Line: validations.Line{
+			Target: tag.Name,
+			Source: validations.SourceExternal,
+			By:     "ValidatedCommitStatus/" + gate,
+			Reason: vcsHandMoveReason,
+			At:     tag.MovedAt.Time,
+			// One record per move: the same move, seen again by a reconcile that has no record of the
+			// first, is not written twice.
+			ID: tag.Name + "@" + tag.MovedAt.UTC().Format(time.RFC3339),
+		},
+	}, true
 }
 
 // vcsNeedsNudge reports whether the environment's ChangeTransferPolicy should be woken to look at the proposed
@@ -1051,6 +1276,8 @@ type vcsDryState struct {
 	tags map[string]git.TagState
 	// head is the HEAD of the dry branch.
 	head string
+	// notesTip is the tip of the validation notes, "" when there are none.
+	notesTip string
 }
 
 // readDryRepository reads the dry branch HEAD and every environment tag from the remote. Tags are read on
@@ -1065,7 +1292,7 @@ func (r *ValidatedCommitStatusReconciler) readDryRepository(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dry branch %q and the environment tags: %w", vcs.Spec.DrySource.Branch, err)
 	}
-	return &vcsDryState{ops: ops, head: refs.Head, tags: refs.Tags}, nil
+	return &vcsDryState{ops: ops, head: refs.Head, tags: refs.Tags, notesTip: refs.NotesTip}, nil
 }
 
 // reconcileEnvironments does the work of one reconcile. It returns how soon to reconcile again when
@@ -1104,6 +1331,9 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 		return vcsSoftRetry, nil
 	}
 	graph := vcsGitGraph{ops: dry.ops}
+	// A gate with no status at all is new, or lost its status. It takes its place in the validation notes
+	// from where the tags are.
+	firstRun := vcs.Status.Dry == nil
 
 	// Observe.
 	envs, err := r.observeEnvironments(ctx, vcs, ps, dependencies, environmentSettings, dry, repos)
@@ -1140,6 +1370,11 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 		env.Qualified = qualified
 	}
 
+	// Validate. What people asked for since the notes were last applied.
+	if err := r.collectValidations(ctx, vcs, dry, graph, envs, firstRun); err != nil {
+		return 0, err
+	}
+
 	// Move tags.
 	vcs.Status.Dry = &promoterv1alpha1.ValidatedCommitStatusDryStatus{Sha: dry.head}
 	planEnvs, err := r.withLiveDryShasFromGit(ctx, repos, envs, activePaths)
@@ -1151,10 +1386,11 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 		return 0, err
 	}
 	r.reportHandMoves(ctx, vcs, envs, plans)
-	moved, pushErrs := r.pushTags(ctx, vcs, ps, graph, dry, plans, envs)
+	pushed := r.pushTags(ctx, vcs, ps, graph, dry, plans, envs)
 	// From here on status says where every tag is and what put it there, whatever else fails: the next
 	// reconcile goes by it.
-	vcsRecordEnvironments(vcs, envs, plans, moved, now)
+	vcsRecordEnvironments(vcs, envs, plans, pushed, dry.notesTip, now)
+	noteErr := r.noteHandMoves(ctx, vcs, dry.ops)
 
 	// Gate.
 	commitStatuses, err := r.writeGates(ctx, vcs, ps, graph, dry.head, envs)
@@ -1168,8 +1404,22 @@ func (r *ValidatedCommitStatusReconciler) reconcileEnvironments(ctx context.Cont
 
 	retryAfter := r.nudgeHydration(ctx, vcs, ps, envs)
 
+	var pushErrs []error
+	for _, result := range pushed {
+		if result.Err != nil {
+			pushErrs = append(pushErrs, result.Err)
+		}
+		if result.Overtaken {
+			// Someone moved the tag while the controller was about to. Look at it again soon.
+			retryAfter = vcsSooner(retryAfter, vcsNudgeBaseDelay)
+		}
+	}
 	if len(pushErrs) > 0 {
 		vcsSetNotReady(vcs, promoterConditions.TagPushFailed, errors.Join(pushErrs...).Error())
+		retryAfter = vcsSooner(retryAfter, vcsSoftRetry)
+	} else if noteErr != nil {
+		logger.Error(noteErr, "Failed to record tags moved by hand in the validation notes")
+		vcsSetNotReady(vcs, promoterConditions.ValidationNotRecorded, noteErr.Error())
 		retryAfter = vcsSooner(retryAfter, vcsSoftRetry)
 	}
 	if len(qualifyErrs) > 0 {
@@ -1555,13 +1805,16 @@ func (r *ValidatedCommitStatusReconciler) holdProposal(
 	graph vcsCommitGraph,
 	head string,
 	env vcsEnvironment,
-	to string,
+	plan vcsTagPlan,
 	byBranch map[string]vcsEnvironment,
 ) error {
 	if !vcsHasProposal(env) {
 		return nil
 	}
-	env.TagSha = to
+	env.TagSha, env.TagSource, env.TagValidatedBy = plan.To, plan.MoveSource, ""
+	if plan.Validation != nil {
+		env.TagValidatedBy = plan.Validation.By
+	}
 	gate, err := vcsEvaluateGate(ctx, graph, head, vcs.Spec.DrySource.Branch, env, byBranch)
 	if err != nil {
 		return err
@@ -1575,9 +1828,19 @@ func (r *ValidatedCommitStatusReconciler) holdProposal(
 	return nil
 }
 
+// vcsPushResult is what became of one environment's planned tag move.
+type vcsPushResult struct {
+	// Err is why the move was not made. Nil when it was made, when there was none to make, and when someone
+	// else moved the tag first.
+	Err error
+	// Moved is true when the tag is now where the plan wanted it.
+	Moved bool
+	// Overtaken is true when someone else moved the tag while the controller was about to.
+	Overtaken bool
+}
+
 // pushTags carries out the planned tag moves and updates envs with the tags' new positions. It returns, by
-// environment, whether the planned move was made. A failed push does not stop the others; the failures are
-// returned.
+// environment, what became of the planned move. A failed push does not stop the others.
 func (r *ValidatedCommitStatusReconciler) pushTags(
 	ctx context.Context,
 	vcs *promoterv1alpha1.ValidatedCommitStatus,
@@ -1586,15 +1849,14 @@ func (r *ValidatedCommitStatusReconciler) pushTags(
 	dry *vcsDryState,
 	plans []vcsTagPlan,
 	envs []vcsEnvironment,
-) ([]bool, []error) {
+) []vcsPushResult {
 	logger := logf.FromContext(ctx)
 	byBranch := make(map[string]vcsEnvironment, len(envs))
 	for _, env := range envs {
 		byBranch[env.Branch] = env
 	}
 
-	moved := make([]bool, len(plans))
-	var errs []error
+	results := make([]vcsPushResult, len(plans))
 	for i, plan := range plans {
 		if !plan.moves() {
 			continue
@@ -1604,22 +1866,35 @@ func (r *ValidatedCommitStatusReconciler) pushTags(
 			logger.Error(err, "Failed to push environment tag", "branch", plan.Branch, "tag", plan.Tag, "to", plan.To)
 			r.Recorder.Eventf(vcs, nil, "Warning", constants.EnvironmentTagPushFailedReason, "AdvancingTag",
 				constants.EnvironmentTagPushFailedMessage, plan.Tag, plan.Branch, err)
-			errs = append(errs, err)
+			results[i].Err = err
 		}
-		if err := r.holdProposal(ctx, vcs, ps, graph, dry.head, *env, plan.To, byBranch); err != nil {
+		if err := r.holdProposal(ctx, vcs, ps, graph, dry.head, *env, plan, byBranch); err != nil {
 			failed(err)
 			continue
 		}
 		// Tags are pushed one at a time: GitHub sends no push event when more than three tags are pushed
 		// at once, and one rejected tag must not hold back the others.
 		if err := dry.ops.MoveTag(ctx, plan.Tag, plan.To, env.TagRaw); err != nil {
-			failed(err)
-			continue
+			current, readErr := dry.ops.ReadTag(ctx, plan.Tag)
+			switch vcsFailedPushOutcome(git.TagState{Raw: env.TagRaw, Commit: env.TagSha}, current, readErr, plan.To) {
+			case vcsPushLanded:
+				// The push went through and only its answer was lost.
+			case vcsPushOvertaken:
+				// The lease held the push back: the tag is no longer where it was read. Whoever moved it
+				// has the newer word, and the next reconcile takes it from there.
+				logger.Info("Environment tag was moved by someone else before the controller could move it",
+					"branch", plan.Branch, "tag", plan.Tag, "wanted", plan.To, "now", current.Commit)
+				results[i].Overtaken = true
+				continue
+			default:
+				failed(err)
+				continue
+			}
 		}
 		// The controller pushes lightweight tags, so the ref now holds the commit itself.
 		env.TagSha, env.TagRaw = plan.To, plan.To
 		byBranch[env.Branch] = *env
-		moved[i] = true
+		results[i].Moved = true
 
 		from := plan.From
 		if from == "" {
@@ -1629,23 +1904,25 @@ func (r *ValidatedCommitStatusReconciler) pushTags(
 		r.Recorder.Eventf(vcs, nil, "Normal", constants.EnvironmentTagMovedReason, "AdvancingTag",
 			constants.EnvironmentTagMovedMessage, plan.Tag, plan.Branch, from, plan.To, plan.MoveSource)
 	}
-	return moved, errs
+	return results
 }
 
-// vcsRecordEnvironments writes what this reconcile found and did about every environment into status. Each
-// environment keeps its last gate report; writeGates replaces it where there is a proposed change.
-func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []vcsEnvironment, plans []vcsTagPlan, moved []bool, now metav1.Time) {
+// vcsRecordEnvironments writes what this reconcile found and did about every environment into status, and
+// into envs what put each tag where it is now, for the gate. Each environment keeps its last gate report;
+// writeGates replaces it where there is a proposed change. cursor is how far the validation notes have been
+// applied: every validation up to it has moved its tag, is waiting as pending, or was passed over.
+func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []vcsEnvironment, plans []vcsTagPlan, pushed []vcsPushResult, cursor string, now metav1.Time) {
 	previous := make(map[string]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, len(vcs.Status.Environments))
 	for _, entry := range vcs.Status.Environments {
 		previous[entry.Branch] = entry
 	}
 
 	entries := make([]promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus, 0, len(envs))
-	for i, env := range envs {
-		plan := plans[i]
+	for i := range envs {
+		env, plan, result := &envs[i], plans[i], pushed[i]
 		entry := promoterv1alpha1.ValidatedCommitStatusEnvironmentStatus{
 			Branch:                      env.Branch,
-			Tag:                         plan.tagStatus(moved[i], now),
+			Tag:                         plan.tagStatus(result.Moved, now),
 			Qualified:                   env.Qualified,
 			ActiveCommitStatuses:        env.Status.Active.CommitStatuses,
 			GateEnvironmentCommitStatus: previous[env.Branch].GateEnvironmentCommitStatus,
@@ -1654,12 +1931,175 @@ func vcsRecordEnvironments(vcs *promoterv1alpha1.ValidatedCommitStatus, envs []v
 		if plan.Target != "" {
 			entry.UpstreamCleared = &promoterv1alpha1.ValidatedCommitStatusUpstreamCleared{Sha: plan.Target}
 		}
-		if !moved[i] {
+		if !result.Moved {
 			entry.Held = plan.Held
 		}
+		if plan.Validation != nil && result.Err != nil {
+			// The validation is not lost with the reconcile: the move is tried again.
+			entry.Pending = &promoterv1alpha1.ValidatedCommitStatusPending{
+				Sha:         plan.To,
+				ValidatedBy: plan.Validation.By,
+				Message:     utils.TruncateString(result.Err.Error(), 1024),
+			}
+		}
+		env.TagSource, env.TagValidatedBy = entry.Tag.Source, entry.Tag.ValidatedBy
 		entries = append(entries, entry)
 	}
 	vcs.Status.Environments = entries
+	vcs.Status.ValidationsCursor = cursor
+}
+
+// collectValidations reads from the validation notes what people asked for since the notes were last
+// applied, and what the gate itself recorded there. It fills in, for every environment, the validation to
+// apply (Validation), the records of hand moves that status does not have (HandMoves), and what the notes
+// say about a tag that status has no record of (Noted).
+func (r *ValidatedCommitStatusReconciler) collectValidations(
+	ctx context.Context,
+	vcs *promoterv1alpha1.ValidatedCommitStatus,
+	dry *vcsDryState,
+	graph vcsCommitGraph,
+	envs []vcsEnvironment,
+	firstRun bool,
+) error {
+	logger := logf.FromContext(ctx)
+
+	var lines []git.ValidationEvent
+	resume := firstRun
+	if !firstRun {
+		listed, found, err := dry.ops.ListValidations(ctx, vcs.Status.ValidationsCursor, 0)
+		if err != nil {
+			return fmt.Errorf("failed to list validations: %w", err)
+		}
+		if found {
+			lines = listed
+		} else {
+			logger.Info("The validation notes no longer contain the commit the controller had applied them up to; resuming from the environment tags",
+				"validationsCursor", vcs.Status.ValidationsCursor)
+			resume = true
+		}
+	}
+	if resume {
+		recent, _, err := dry.ops.ListValidations(ctx, "", vcsLostCursorWalk)
+		if err != nil {
+			return fmt.Errorf("failed to list validations: %w", err)
+		}
+		for i := range envs {
+			env := &envs[i]
+			if vcsResumesFromHead(*env) {
+				continue
+			}
+			matched, later := vcsResumeAfter(recent, env.Tag, env.TagSha)
+			if matched == nil {
+				continue
+			}
+			if env.Recorded == nil {
+				env.Noted = vcsNoted(matched)
+			}
+			lines = append(lines, later...)
+		}
+	}
+
+	byTag := make(map[string]*vcsEnvironment, len(envs))
+	for i := range envs {
+		byTag[envs[i].Tag] = &envs[i]
+	}
+	for i := range lines {
+		line := &lines[i]
+		env, read := byTag[line.Line.Target]
+		if !read {
+			continue
+		}
+		if !line.Line.Validates() {
+			if env.HandMoves == nil {
+				env.HandMoves = map[string]metav1.Time{}
+			}
+			env.HandMoves[line.Sha] = metav1.NewTime(line.At())
+			continue
+		}
+		if !vcsManualValidation(line.Line) {
+			continue
+		}
+		ignored, err := r.unusableValidation(ctx, dry, graph, line.Sha)
+		if err != nil {
+			return err
+		}
+		if ignored != "" {
+			logger.Info("Ignored a validation", "tag", env.Tag, "sha", line.Sha, "reason", ignored)
+			r.Recorder.Eventf(vcs, nil, "Warning", constants.ValidationIgnoredReason, "ApplyingValidations",
+				constants.ValidationIgnoredMessage, line.Sha, env.Tag, ignored)
+			continue
+		}
+		// The lines are in the order they were written, and the newest validation is the one that counts.
+		env.Validation = &vcsValidation{Sha: line.Sha, By: line.By()}
+	}
+
+	// A move that could not be pushed is tried again, unless a newer validation asks for another.
+	previous := make(map[string]*promoterv1alpha1.ValidatedCommitStatusPending, len(vcs.Status.Environments))
+	for _, entry := range vcs.Status.Environments {
+		previous[entry.Branch] = entry.Pending
+	}
+	for i := range envs {
+		env := &envs[i]
+		pending := previous[env.Branch]
+		if env.Validation != nil || pending == nil {
+			continue
+		}
+		ignored, err := r.unusableValidation(ctx, dry, graph, pending.Sha)
+		if err != nil {
+			return err
+		}
+		if ignored == "" {
+			env.Validation = &vcsValidation{Sha: pending.Sha, By: pending.ValidatedBy, Pending: true}
+		}
+	}
+	return nil
+}
+
+// unusableValidation says why a validation of the given commit cannot be applied, "" when it can.
+func (r *ValidatedCommitStatusReconciler) unusableValidation(ctx context.Context, dry *vcsDryState, graph vcsCommitGraph, sha string) (string, error) {
+	found, err := dry.ops.EnsureCommit(ctx, sha)
+	if err != nil {
+		return "", fmt.Errorf("failed to look for validated commit %s: %w", sha, err)
+	}
+	if !found {
+		return "the commit is not in the repository", nil
+	}
+	// A hydrated commit is a commit of the repository too, when the environment branches live with the dry
+	// branch. Tagging one would have the hydrator hydrate manifests, and the gate pass the result unseen.
+	base, err := graph.MergeBase(ctx, dry.head, sha)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare validated commit %s with the dry branch: %w", sha, err)
+	}
+	if base == "" {
+		return "the commit shares no history with the dry branch", nil
+	}
+	return "", nil
+}
+
+// noteHandMoves writes, into the validation notes, the record of every tag that status says was pushed by
+// hand and that the notes do not have yet.
+func (r *ValidatedCommitStatusReconciler) noteHandMoves(ctx context.Context, vcs *promoterv1alpha1.ValidatedCommitStatus, ops *git.EnvironmentOperations) error {
+	var entries []git.ValidationEntry
+	for _, env := range vcs.Status.Environments {
+		entry, moved := vcsHandMoveRecord(vcs.Name, env.Tag)
+		if !moved {
+			continue
+		}
+		recorded, err := ops.ValidationRecorded(ctx, entry.Sha, entry.Line.ID)
+		if err != nil {
+			return fmt.Errorf("failed to look for the record of tag %q moved by hand: %w", entry.Line.Target, err)
+		}
+		if !recorded {
+			entries = append(entries, entry)
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	if _, err := ops.AppendValidations(ctx, entries); err != nil {
+		return fmt.Errorf("failed to record tags moved by hand: %w", err)
+	}
+	return nil
 }
 
 // writeGates writes the child CommitStatus of every environment that has a proposed change, and the gate's

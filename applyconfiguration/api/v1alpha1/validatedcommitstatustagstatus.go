@@ -36,6 +36,8 @@ type ValidatedCommitStatusTagStatusApplyConfiguration struct {
 	Source *apiv1alpha1.ValidatedTagSource `json:"source,omitempty"`
 	// MovedAt is when the controller moved the tag, or noticed that it had been moved.
 	MovedAt *v1.Time `json:"movedAt,omitempty"`
+	// ValidatedBy names who or what validated the commit the tag is on. Only set while source is Manual.
+	ValidatedBy *string `json:"validatedBy,omitempty"`
 	// AcknowledgedTarget is set while a person decided where the tag is, by hand or with a validation.
 	// It is the commit the controller would have moved the tag to at that moment (see upstreamCleared).
 	// The tag stays where the person put it until the controller has a newer commit than this one to move
@@ -78,6 +80,14 @@ func (b *ValidatedCommitStatusTagStatusApplyConfiguration) WithSource(value apiv
 // If called multiple times, the MovedAt field is set to the value of the last call.
 func (b *ValidatedCommitStatusTagStatusApplyConfiguration) WithMovedAt(value v1.Time) *ValidatedCommitStatusTagStatusApplyConfiguration {
 	b.MovedAt = &value
+	return b
+}
+
+// WithValidatedBy sets the ValidatedBy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ValidatedBy field is set to the value of the last call.
+func (b *ValidatedCommitStatusTagStatusApplyConfiguration) WithValidatedBy(value string) *ValidatedCommitStatusTagStatusApplyConfiguration {
+	b.ValidatedBy = &value
 	return b
 }
 

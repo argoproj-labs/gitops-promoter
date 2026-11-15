@@ -297,6 +297,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ValidatedCommitStatusEnvironmentStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusHeld"):
 		return &apiv1alpha1.ValidatedCommitStatusHeldApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusPending"):
+		return &apiv1alpha1.ValidatedCommitStatusPendingApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusSpec"):
 		return &apiv1alpha1.ValidatedCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ValidatedCommitStatusStatus"):

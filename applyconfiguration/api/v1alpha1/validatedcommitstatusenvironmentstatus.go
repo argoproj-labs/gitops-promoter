@@ -38,6 +38,10 @@ type ValidatedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	UpstreamCleared *ValidatedCommitStatusUpstreamClearedApplyConfiguration `json:"upstreamCleared,omitempty"`
 	// Held is set only while the controller has a commit to move the tag to and cannot move it there.
 	Held *ValidatedCommitStatusHeldApplyConfiguration `json:"held,omitempty"`
+	// Pending is set only while a validation asked for a move of the tag that could not be pushed. The
+	// controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of
+	// the tag by hand, takes its place.
+	Pending *ValidatedCommitStatusPendingApplyConfiguration `json:"pending,omitempty"`
 	// Branch is the environment branch name.
 	Branch *string `json:"branch,omitempty"`
 	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
@@ -85,6 +89,14 @@ func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithUpstreamC
 // If called multiple times, the Held field is set to the value of the last call.
 func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithHeld(value *ValidatedCommitStatusHeldApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Held = value
+	return b
+}
+
+// WithPending sets the Pending field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Pending field is set to the value of the last call.
+func (b *ValidatedCommitStatusEnvironmentStatusApplyConfiguration) WithPending(value *ValidatedCommitStatusPendingApplyConfiguration) *ValidatedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.Pending = value
 	return b
 }
 

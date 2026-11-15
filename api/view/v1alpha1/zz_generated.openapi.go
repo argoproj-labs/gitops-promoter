@@ -186,6 +186,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ValidatedCommitStatusEnvironmentStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvironmentStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusHeld(ref),
 		apiv1alpha1.ValidatedCommitStatusList{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusList(ref),
+		apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPending(ref),
 		apiv1alpha1.ValidatedCommitStatusSpec{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusSpec(ref),
 		apiv1alpha1.ValidatedCommitStatusStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusStatus(ref),
 		apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagStatus(ref),
@@ -7249,6 +7250,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName()),
 						},
 					},
+					"pending": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Pending is set only while a validation asked for a move of the tag that could not be pushed. The controller tries again, and moves the tag nowhere else meanwhile. A newer validation, or a push of the tag by hand, takes its place.",
+							Ref:         ref(apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName()),
+						},
+					},
 					"branch": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Branch is the environment branch name.",
@@ -7329,7 +7336,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusEnvi
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName()},
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusHeld{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusPending{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusTagStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamCleared{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.ValidatedCommitStatusWatermark{}.OpenAPIModelName()},
 	}
 }
 
@@ -7415,6 +7422,42 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusList
 		},
 		Dependencies: []string{
 			apiv1alpha1.ValidatedCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusPending(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ValidatedCommitStatusPending is a move of an environment's tag that a validation asked for and that could not be pushed yet.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the validated dry commit the tag should point at.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"validatedBy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedBy names who or what validated the commit.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is the error from the last attempt to push the tag.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha"},
+			},
+		},
 	}
 }
 
@@ -7523,6 +7566,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusStat
 							Ref:         ref(apiv1alpha1.ValidatedCommitStatusDryStatus{}.OpenAPIModelName()),
 						},
 					},
+					"validationsCursor": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidationsCursor is the last commit of refs/notes/promoter.validations in the dry repository whose validations the controller has applied. Omitted while that ref does not exist.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"conditions": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -7613,6 +7663,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ValidatedCommitStatusTagS
 						SchemaProps: spec.SchemaProps{
 							Description: "MovedAt is when the controller moved the tag, or noticed that it had been moved.",
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"validatedBy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ValidatedBy names who or what validated the commit the tag is on. Only set while source is Manual.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"acknowledgedTarget": {
