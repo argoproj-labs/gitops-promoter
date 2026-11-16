@@ -13,9 +13,12 @@ rules:
     disable: true
   # The cherry-pick workflow intentionally uses pull_request_target. It only
   # handles already-merged commits and never checks out or executes fork code.
+  # dependabot-auto-merge-revoke.yaml uses it so a PR can't edit away its own
+  # revocation; it only calls the API and never runs PR code.
   dangerous-triggers:
     ignore:
       - cherry-pick.yml
+      - dependabot-auto-merge-revoke.yaml
   dependabot-cooldown:
     disable: true
   dependabot-execution:

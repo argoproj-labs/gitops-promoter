@@ -6,9 +6,9 @@
 # by Dependabot, so someone pushing a modified copy of this workflow to a PR
 # branch can't mint an approving token.
 #
-# If anyone other than Dependabot pushes to a Dependabot PR, the revoke job
-# disables auto-merge and dismisses bot approvals, so the human change still
-# needs a human review.
+# If anyone other than Dependabot pushes to a Dependabot PR,
+# dependabot-auto-merge-revoke.yaml disables auto-merge and dismisses bot
+# approvals, so the human change still needs a human review.
 name: dependabot-auto-merge
 
 on:
@@ -46,8 +46,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          # The approval and auto-merge below are pinned to HEAD_SHA, so a later
+          # push can't inherit them. Bail out if the branch already moved.
+          current=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          if [[ "$current" != "$HEAD_SHA" ]]; then
+            echo "::notice::Head moved from $HEAD_SHA to $current; the run for the new head decides."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           others=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
             --jq '.[] | select(.author.login != "dependabot[bot]" or .committer.login != "web-flow" or .commit.verification.verified != true) | .sha')
           if [[ -n "$others" ]]; then
@@ -77,41 +86,24 @@ jobs:
           # An App token (not GITHUB_TOKEN) enables auto-merge so the merge
           # commit's push to main still triggers release-latest.yaml.
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         run: |
           set -euo pipefail
-          gh pr review "$PR_URL" --approve --body "Auto-approved: Dependabot $UPDATE_TYPE. Merges once required checks pass."
-          gh pr merge "$PR_URL" --auto --squash
-
-  revoke:
-    if: >-
-      github.repository == 'argoproj-labs/gitops-promoter' &&
-      github.event.action == 'synchronize' &&
-      github.actor != 'dependabot[bot]' &&
-      github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-    name: Revoke Auto-merge
-    steps:
-      - name: Disable auto-merge and dismiss bot approvals
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          set -euo pipefail
-          if [[ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
-            gh pr merge "$PR_URL" --disable-auto
-          fi
-          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" \
-            --jq '.[] | select(.state == "APPROVED" and .user.type == "Bot") | .id' |
-          while read -r review_id; do
-            gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
-              -f event=DISMISS \
-              -f message="Dismissed: $ACTOR pushed to this Dependabot PR, so it needs a human review."
-          done
+          # Both calls are bound to the commit that passed the checks above.
+          gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            -f commit_id="$HEAD_SHA" \
+            -f event=APPROVE \
+            -f body="Auto-approved: Dependabot $UPDATE_TYPE. Merges once required checks pass." \
+            --silent
+          # shellcheck disable=SC2016 # GraphQL variables, not shell expansions.
+          gh api graphql \
+            -f query='mutation($id: ID!, $oid: GitObjectID!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $oid}) { clientMutationId }
+            }' \
+            -f id="$PR_NODE_ID" \
+            -f oid="$HEAD_SHA" \
+            --silent

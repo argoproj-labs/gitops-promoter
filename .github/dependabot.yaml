@@ -17,7 +17,9 @@ updates:
     # Non-major version updates are auto-merged once CI passes (see
     # .github/workflows/dependabot-auto-merge.yaml). Waiting a week gives the
     # ecosystem time to catch a compromised or broken release before it lands.
-    # Security updates ignore cooldown.
+    # Security updates ignore cooldown. Best effort: Dependabot dates a release
+    # by its commit (Go module time, action tag commit), so a new tag on an old
+    # commit can skip the wait.
     cooldown:
       default-days: 7
     # By default Dependabot only bumps direct requires. Indirect modules listed in
@@ -74,7 +76,9 @@ updates:
     # Non-major version updates are auto-merged once CI passes (see
     # .github/workflows/dependabot-auto-merge.yaml). Waiting a week gives the
     # ecosystem time to catch a compromised or broken release before it lands.
-    # Security updates ignore cooldown.
+    # Security updates ignore cooldown. Best effort: Dependabot dates a release
+    # by its commit (Go module time, action tag commit), so a new tag on an old
+    # commit can skip the wait.
     cooldown:
       default-days: 7
     groups:
