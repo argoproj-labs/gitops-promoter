@@ -44,7 +44,7 @@ spec:
                 description: |-
                   Filters is a list of expressions evaluated using the expr library (github.com/expr-lang/expr). These expressions
                   can be used to filter which SCM checks will be used to create CommitStatuses. If the name of an SCM check matches
-                  one of the expressions it will not be included. The name can be accessed via the variable "Check.Name" that is passed
+                  one of the expressions it will be included. The name can be accessed via the variable "CheckName" that is passed
                   into the expression. Do note that some SCMs might not support a name per checks and if they don't then this will not work
                   with it. Check the docs for this CommitStatus for which SCMs support this.
                 items:
@@ -64,7 +64,7 @@ spec:
                 description: |-
                   PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
                   The controller will validate commits from ALL environments in the referenced PromotionStrategy
-                  where this GitCommitStatus.Spec.Key matches an entry in either:
+                  where this SCMCheckCommitStatus.Spec.Key matches an entry in either:
                     - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR
                     - Environment.ProposedCommitStatuses (applies to specific environment)
                 properties:
@@ -94,7 +94,6 @@ spec:
                 type: array
                 x-kubernetes-list-type: set
             required:
-            - filters
             - key
             - promotionStrategyRef
             type: object
@@ -187,7 +186,8 @@ spec:
                       type: string
                     phase:
                       description: |-
-                        Phase represents the current validation state of the commit.
+                        Phase represents the current validation state of the commit. It is aggregated between all of the
+                        checks. If the check was filtered it is not included in the aggregation.
                         - "pending": validation has not completed, commit data is not yet available, or SHAs are empty
                         - "success": expression evaluated to true, validation passed
                         - "failure": expression evaluated to false, validation failed, or expression compilation failed
@@ -212,9 +212,9 @@ spec:
                       description: SCMChecks holds the results of each SCM check.
                       items:
                         properties:
-                          filtered:
-                            description: Filtered is whether the check was filtered
-                              by the expression provided in the spec.
+                          matched:
+                            description: Matched is whether the check was included
+                              by a filter expression provided in the spec.
                             type: boolean
                           name:
                             description: Name represents the name of the check in
@@ -228,7 +228,7 @@ spec:
                               can be found in the SCM.
                             type: string
                         required:
-                        - filtered
+                        - matched
                         - name
                         - status
                         - url

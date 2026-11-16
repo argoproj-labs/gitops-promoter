@@ -69,6 +69,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return timedCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.DependentsSuccessfulCommitStatus:
 		return dependentsSuccessfulCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.SCMCheckCommitStatus:
+		return scmCheckCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.GitCommitStatus:
 		return gitCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ArgoCDCommitStatus:
@@ -180,6 +182,16 @@ func argoCDCommitStatusStatusApply(o *promoterv1alpha1.ArgoCDCommitStatus, condi
 		return nil, err
 	}
 	return acv1alpha1.ArgoCDCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func scmCheckCommitStatusStatusApply(o *promoterv1alpha1.SCMCheckCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.SCMCheckCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.SCMCheckCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func pullRequestStatusApply(o *promoterv1alpha1.PullRequest, conditionsOnly bool) (any, error) {

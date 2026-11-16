@@ -47,7 +47,7 @@ type SCMCheckCommitStatusSpecApplyConfiguration struct {
 	PublishTo *[]apiv1alpha1.CommitStatusPublishTo `json:"publishTo,omitempty"`
 	// Filters is a list of expressions evaluated using the expr library (github.com/expr-lang/expr). These expressions
 	// can be used to filter which SCM checks will be used to create CommitStatuses. If the name of an SCM check matches
-	// one of the expressions it will not be included. The name can be accessed via the variable "Check.Name" that is passed
+	// one of the expressions it will be included. The name can be accessed via the variable "CheckName" that is passed
 	// into the expression. Do note that some SCMs might not support a name per checks and if they don't then this will not work
 	// with it. Check the docs for this CommitStatus for which SCMs support this.
 	Filters []string `json:"filters,omitempty"`

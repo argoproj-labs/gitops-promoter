@@ -1795,7 +1795,7 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckResults
   map:
     fields:
-    - name: filtered
+    - name: matched
       type:
         scalar: boolean
     - name: name

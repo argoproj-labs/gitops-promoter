@@ -710,8 +710,11 @@ func CheckStatusToCommitStatusPhase(status scms.SCMCheckStatus) promoterv1alpha1
 // GetPullRequestIDForBranch gets the PullRequest ID from the status of a PromotionStrategy
 func GetPullRequestIDForBranch(ps promoterv1alpha1.PromotionStrategy, branch string) (string, error) {
 	for _, env := range ps.Status.Environments {
-		if env.Branch == branch {
+		isCorrectBranch := env.Branch == branch
+		if isCorrectBranch && env.PullRequest != nil {
 			return env.PullRequest.ID, nil
+		} else if isCorrectBranch && env.PullRequest == nil {
+			return "", fmt.Errorf("pull request in environment %s is nil", env.Branch)
 		}
 	}
 	return "", errors.New("environment is not in promotion strategy status")

@@ -76,6 +76,7 @@ type SCMCheckCommitStatusSpec struct {
 	// one of the expressions it will be included. The name can be accessed via the variable "CheckName" that is passed
 	// into the expression. Do note that some SCMs might not support a name per checks and if they don't then this will not work
 	// with it. Check the docs for this CommitStatus for which SCMs support this.
+	// +optional
 	Filters []string `json:"filters"`
 }
 

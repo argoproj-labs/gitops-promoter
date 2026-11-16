@@ -207,7 +207,14 @@ func (r *SCMCheckCommitStatusReconciler) processEnvironments(ctx context.Context
 			continue
 		}
 
-		checkResults, err := checkParser.Get(ctx, *ps, env.Branch)
+		var checkResults []scms.SCMCheckResult
+		// Only call the Get method for SCM Checks if the pull request is there if not just
+		// use an empty SCM check result
+		if envStatus.PullRequest != nil {
+			checkResults, err = checkParser.Get(ctx, *ps, env.Branch)
+		} else {
+			checkResults = []scms.SCMCheckResult{}
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get checks for environment %s: %w", env.Branch, err)
 		}
@@ -225,6 +232,11 @@ func (r *SCMCheckCommitStatusReconciler) processEnvironments(ctx context.Context
 		}
 
 		newEnvStatus := r.buildEnvironmentStatus(checkResults, filteredResults, env.Branch, proposedSha, len(scs.Spec.Filters) > 0)
+		// if the pull request is nil treat this as pending because we want no checks to mean success just not when the pull request
+		// is nil
+		if envStatus.PullRequest == nil {
+			newEnvStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+		}
 
 		// Check if the new status transitioned
 		var previousPhase string
@@ -416,9 +428,9 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 	pendingFound := false
 	for _, check := range checks {
 		scmCheck := promoterv1alpha1.SCMCheckResults{
-			Name:     check.Name,
-			Status:   promoterv1alpha1.SCMCheckStatus(check.Status),
-			URL:      check.URL,
+			Name:   check.Name,
+			Status: promoterv1alpha1.SCMCheckStatus(check.Status),
+			URL:    check.URL,
 		}
 
 		matched := true

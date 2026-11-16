@@ -30,8 +30,8 @@ type SCMCheckResultsApplyConfiguration struct {
 	Status *apiv1alpha1.SCMCheckStatus `json:"status,omitempty"`
 	// URL is a link to where details on the check can be found in the SCM.
 	URL *string `json:"url,omitempty"`
-	// Filtered is whether the check was filtered by the expression provided in the spec.
-	Filtered *bool `json:"filtered,omitempty"`
+	// Matched is whether the check was included by a filter expression provided in the spec.
+	Matched *bool `json:"matched,omitempty"`
 }
 
 // SCMCheckResultsApplyConfiguration constructs a declarative configuration of the SCMCheckResults type for use with
@@ -64,10 +64,10 @@ func (b *SCMCheckResultsApplyConfiguration) WithURL(value string) *SCMCheckResul
 	return b
 }
 
-// WithFiltered sets the Filtered field in the declarative configuration to the given value
+// WithMatched sets the Matched field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Filtered field is set to the value of the last call.
-func (b *SCMCheckResultsApplyConfiguration) WithFiltered(value bool) *SCMCheckResultsApplyConfiguration {
-	b.Filtered = &value
+// If called multiple times, the Matched field is set to the value of the last call.
+func (b *SCMCheckResultsApplyConfiguration) WithMatched(value bool) *SCMCheckResultsApplyConfiguration {
+	b.Matched = &value
 	return b
 }

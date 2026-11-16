@@ -31,7 +31,8 @@ type SCMCheckCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	ProposedHydratedSha *string `json:"proposedHydratedSha,omitempty"`
-	// Phase represents the current validation state of the commit.
+	// Phase represents the current validation state of the commit. It is aggregated between all of the
+	// checks. If the check was filtered it is not included in the aggregation.
 	// - "pending": validation has not completed, commit data is not yet available, or SHAs are empty
 	// - "success": expression evaluated to true, validation passed
 	// - "failure": expression evaluated to false, validation failed, or expression compilation failed
