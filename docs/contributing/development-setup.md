@@ -138,3 +138,28 @@ testing out changes easier.
 make run-dashboard
 make run-dashboard-dev
 ```
+
+## Clean Up
+
+When finished the following two commands can be used to clean up project related resources and CRDs from the cluster.
+
+The following command will remove just the CRDs from the cluster. Do be warned that running this command will also remove
+all instances of the CRD that were created so make sure to backup any resources that are needed.
+
+```
+make uninstall
+```
+
+The other command will remove the CRDs along with all deployment resources. Same warning here, if there are any resources that you
+need make sure they are backed up.
+
+```
+make undeploy
+```
+
+If you deployed the api server in cluster or did not unregister it, the API Service will need to be manually cleaned up which can be done
+by running the following command.
+
+```
+kubectl delete apiservice v1alpha1.view.promoter.argoproj.io
+```
