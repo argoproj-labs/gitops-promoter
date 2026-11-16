@@ -15,7 +15,9 @@ name: renovate-auto-merge
 
 on:
   pull_request_target:
-    types: [auto_merge_enabled]
+    # synchronize re-approves after Renovate rebases its own PR, so this keeps
+    # working if the rulesets require approval of the most recent push.
+    types: [auto_merge_enabled, synchronize]
 
 permissions: {}
 
@@ -32,7 +34,8 @@ jobs:
     if: >-
       github.repository == 'argoproj-labs/gitops-promoter' &&
       github.actor == 'gitops-promoter-renovate-bot[bot]' &&
-      github.event.pull_request.user.login == 'gitops-promoter-renovate-bot[bot]'
+      github.event.pull_request.user.login == 'gitops-promoter-renovate-bot[bot]' &&
+      github.event.pull_request.auto_merge != null
     runs-on: ubuntu-24.04
     environment: dependency-approver
     permissions:
