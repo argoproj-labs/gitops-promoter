@@ -1,7 +1,5 @@
 # This file must be kept in sync with release.yaml except for the trigger,
 # job name, and release section.
-#
-# SLSA Build L3: see the comment at the top of release.yaml.
 name: release-latest
 
 on:
@@ -28,8 +26,6 @@ jobs:
       id-token: write
       packages: write
     name: Push Latest Docker Image
-    outputs:
-      image-digest: ${{ steps.digest.outputs.image-digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,9 +42,6 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.2"
-          # SLSA Build L3 requires builds not be influenced by caches other
-          # workflows can write to.
-          cache: false
 
       - name: Docker Login to quay.io
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
@@ -86,30 +79,3 @@ jobs:
           cosign sign quay.io/argoprojlabs/gitops-promoter:latest-amd64 --yes
           cosign sign quay.io/argoprojlabs/gitops-promoter:latest-arm64 --yes
           cosign sign quay.io/argoprojlabs/gitops-promoter:latest --yes
-
-      - name: Get latest image digest
-        id: digest
-        run: |
-          set -euo pipefail
-          digest=$(docker buildx imagetools inspect quay.io/argoprojlabs/gitops-promoter:latest --format '{{json .Manifest}}' | jq -r .digest)
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::could not read the digest of the latest image (got '$digest')"
-            exit 1
-          fi
-          echo "image-digest=$digest" >> "$GITHUB_OUTPUT"
-
-  # The reusable workflow verifies its own ref, so it must be pinned to a tag
-  # rather than a commit SHA.
-  provenance-image:
-    needs: [release-latest]
-    permissions:
-      actions: read
-      id-token: write
-      packages: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0 # zizmor: ignore[unpinned-uses]
-    with:
-      image: quay.io/argoprojlabs/gitops-promoter
-      digest: ${{ needs.release-latest.outputs.image-digest }}
-    secrets:
-      registry-username: ${{ secrets.QUAY_USERNAME }}
-      registry-password: ${{ secrets.QUAY_TOKEN }}

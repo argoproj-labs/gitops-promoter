@@ -191,26 +191,6 @@ release:
     sha256sum -c gitops-promoter_{{ .Version }}_checksums.txt --ignore-missing
     ```
 
-    ### Verifying SLSA provenance
-
-    Release binaries, archives, install manifests, and the container image have [SLSA Build Level 3](https://slsa.dev/spec/v1.0/levels#build-l3) provenance. Install [slsa-verifier](https://github.com/slsa-framework/slsa-verifier), download `gitops-promoter.intoto.jsonl` from this release, then verify:
-
-    ```bash
-    slsa-verifier verify-artifact gitops-promoter_Linux_x86_64.tar.gz \
-      --provenance-path gitops-promoter.intoto.jsonl \
-      --source-uri github.com/argoproj-labs/gitops-promoter \
-      --source-tag {{ .Tag }}
-    ```
-
-    Container image provenance is stored in Quay next to the image. Verify it by digest:
-
-    ```bash
-    IMAGE=quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
-    slsa-verifier verify-image "$IMAGE@$(crane digest "$IMAGE")" \
-      --source-uri github.com/argoproj-labs/gitops-promoter \
-      --source-tag {{ .Tag }}
-    ```
-
     **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 changelog:
