@@ -7,7 +7,7 @@
 # branch can't mint an approving token.
 #
 # If anyone other than Dependabot pushes to a Dependabot PR,
-# dependabot-auto-merge-revoke.yaml disables auto-merge and dismisses bot
+# dependency-auto-merge-revoke.yaml disables auto-merge and dismisses bot
 # approvals, so the human change still needs a human review.
 name: dependabot-auto-merge
 

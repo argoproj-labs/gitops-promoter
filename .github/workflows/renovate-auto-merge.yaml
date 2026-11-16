@@ -1,0 +1,87 @@
+# Approves Renovate PRs that Renovate itself set to auto-merge. Which updates
+# qualify is decided by the `automerge` rules in renovate.json5. The required
+# status checks in the main/release rulesets still gate the merge.
+#
+# The approval comes from a dedicated GitHub App whose credentials are secrets of
+# the `dependency-approver` environment, which only `main` can deploy to. This
+# workflow uses pull_request_target, so the definition and secrets come from the
+# base branch. A PR can't change what this does, and a workflow pushed to a PR
+# branch can't read the secrets. It never checks out or runs PR code.
+#
+# If anyone other than Renovate pushes to a Renovate PR,
+# dependency-auto-merge-revoke.yaml disables auto-merge and dismisses bot
+# approvals, so the human change still needs a human review.
+name: renovate-auto-merge
+
+on:
+  pull_request_target:
+    types: [auto_merge_enabled]
+
+permissions: {}
+
+concurrency:
+  group: renovate-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  approve:
+    if: >-
+      github.repository == 'argoproj-labs/gitops-promoter' &&
+      github.actor == 'gitops-promoter-renovate-bot[bot]' &&
+      github.event.pull_request.user.login == 'gitops-promoter-renovate-bot[bot]'
+    runs-on: ubuntu-24.04
+    environment: dependency-approver
+    permissions:
+      pull-requests: read
+    name: Approve
+    steps:
+      - name: Verify every commit came from Renovate
+        id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          if [[ "$current" != "$HEAD_SHA" ]]; then
+            echo "::notice::Head moved from $HEAD_SHA to $current; not approving."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          others=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | select(.author.login != "gitops-promoter-renovate-bot[bot]" or .committer.login != "web-flow" or .commit.verification.verified != true) | .sha')
+          if [[ -n "$others" ]]; then
+            echo "::notice::Not approving: commits not authored by Renovate and signed by GitHub: $others"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get approver token
+        id: token
+        if: steps.commits.outputs.eligible == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DEPENDENCY_APPROVER_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APPROVER_PRIVATE_KEY }}
+          permission-pull-requests: write
+
+      - name: Approve
+        if: steps.token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            -f commit_id="$HEAD_SHA" \
+            -f event=APPROVE \
+            -f body="Auto-approved: Renovate enabled auto-merge per renovate.json5. Merges once required checks pass." \
+            --silent

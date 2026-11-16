@@ -1,11 +1,11 @@
-# Companion to dependabot-auto-merge.yaml. If anyone other than Dependabot pushes
-# to a Dependabot PR, disable auto-merge and dismiss bot approvals so the change
-# needs a human review.
+# Companion to dependabot-auto-merge.yaml and renovate-auto-merge.yaml. If anyone
+# other than the bot that opened a Dependabot or Renovate PR pushes to it, disable
+# auto-merge and dismiss bot approvals so the change needs a human review.
 #
 # This uses pull_request_target so the definition always comes from the base
 # branch: a pushed edit to this file can't skip its own revocation. It never
 # checks out or runs PR code.
-name: dependabot-auto-merge-revoke
+name: dependency-auto-merge-revoke
 
 on:
   pull_request_target:
@@ -14,7 +14,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: dependabot-auto-merge-revoke-${{ github.event.pull_request.number }}
+  group: dependency-auto-merge-revoke-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 defaults:
@@ -25,8 +25,8 @@ jobs:
   revoke:
     if: >-
       github.repository == 'argoproj-labs/gitops-promoter' &&
-      github.actor != 'dependabot[bot]' &&
-      github.event.pull_request.user.login == 'dependabot[bot]'
+      contains(fromJSON('["dependabot[bot]", "gitops-promoter-renovate-bot[bot]"]'), github.event.pull_request.user.login) &&
+      github.actor != github.event.pull_request.user.login
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -50,6 +50,6 @@ jobs:
           while read -r review_id; do
             gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
               -f event=DISMISS \
-              -f message="Dismissed: $ACTOR pushed to this Dependabot PR, so it needs a human review." \
+              -f message="Dismissed: $ACTOR pushed to this bot PR, so it needs a human review." \
               --silent
           done
