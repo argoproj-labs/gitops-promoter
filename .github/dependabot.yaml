@@ -14,6 +14,12 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    # Non-major version updates are auto-merged once CI passes (see
+    # .github/workflows/dependabot-auto-merge.yaml). Waiting a week gives the
+    # ecosystem time to catch a compromised or broken release before it lands.
+    # Security updates ignore cooldown.
+    cooldown:
+      default-days: 7
     # By default Dependabot only bumps direct requires. Indirect modules listed in
     # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
     allow:
@@ -65,6 +71,12 @@ updates:
       timezone: "UTC"
     # One grouped PR per week; action bumps here have been low-risk.
     open-pull-requests-limit: 1
+    # Non-major version updates are auto-merged once CI passes (see
+    # .github/workflows/dependabot-auto-merge.yaml). Waiting a week gives the
+    # ecosystem time to catch a compromised or broken release before it lands.
+    # Security updates ignore cooldown.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:

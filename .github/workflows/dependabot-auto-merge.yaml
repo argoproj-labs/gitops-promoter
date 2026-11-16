@@ -1,0 +1,117 @@
+# Approves and enables auto-merge for non-major Dependabot version updates. The
+# required status checks in the main/release rulesets still gate the merge.
+#
+# The approval comes from a dedicated GitHub App whose credentials are stored as
+# *Dependabot* secrets. GitHub only exposes Dependabot secrets to runs triggered
+# by Dependabot, so someone pushing a modified copy of this workflow to a PR
+# branch can't mint an approving token.
+#
+# If anyone other than Dependabot pushes to a Dependabot PR, the revoke job
+# disables auto-merge and dismisses bot approvals, so the human change still
+# needs a human review.
+name: dependabot-auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  approve:
+    if: >-
+      github.repository == 'argoproj-labs/gitops-promoter' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    name: Approve and Auto-merge
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Verify every commit came from Dependabot
+        id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          others=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | select(.author.login != "dependabot[bot]" or .committer.login != "web-flow" or .commit.verification.verified != true) | .sha')
+          if [[ -n "$others" ]]; then
+            echo "::notice::Not auto-merging: commits not authored and signed by Dependabot: $others"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get approver token
+        id: token
+        if: >-
+          steps.commits.outputs.eligible == 'true' &&
+          contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'), steps.metadata.outputs.update-type)
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DEPENDENCY_APPROVER_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APPROVER_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          # Merging the grouped github-actions PR edits workflow files.
+          permission-workflows: write
+
+      - name: Approve and enable auto-merge
+        if: steps.token.outcome == 'success'
+        env:
+          # An App token (not GITHUB_TOKEN) enables auto-merge so the merge
+          # commit's push to main still triggers release-latest.yaml.
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          set -euo pipefail
+          gh pr review "$PR_URL" --approve --body "Auto-approved: Dependabot $UPDATE_TYPE. Merges once required checks pass."
+          gh pr merge "$PR_URL" --auto --squash
+
+  revoke:
+    if: >-
+      github.repository == 'argoproj-labs/gitops-promoter' &&
+      github.event.action == 'synchronize' &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    name: Revoke Auto-merge
+    steps:
+      - name: Disable auto-merge and dismiss bot approvals
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
+            gh pr merge "$PR_URL" --disable-auto
+          fi
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            --jq '.[] | select(.state == "APPROVED" and .user.type == "Bot") | .id' |
+          while read -r review_id; do
+            gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
+              -f event=DISMISS \
+              -f message="Dismissed: $ACTOR pushed to this Dependabot PR, so it needs a human review."
+          done

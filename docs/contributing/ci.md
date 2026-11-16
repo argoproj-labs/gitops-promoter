@@ -42,3 +42,7 @@ The `zizmor` workflow checks all GitHub Actions workflow files for security issu
 - Overly broad permissions
 
 If the zizmor job fails on your PR, review the SARIF output attached to the run to see exactly which workflow file and line triggered the finding, then address the issue before merging.
+
+## Dependency auto-merge
+
+Non-major Dependabot version updates are approved and set to auto-merge by [`dependabot-auto-merge.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/dependabot-auto-merge.yaml). The required status checks still gate the merge. Dependabot waits seven days after an upstream release before opening a PR (security updates are not delayed). Major updates and all Renovate PRs still need a human review. If anyone other than Dependabot pushes to a Dependabot PR, the workflow disables auto-merge and dismisses the bot approval.
