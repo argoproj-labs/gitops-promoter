@@ -69,6 +69,15 @@ The "release latest" model has some drawbacks.
    used to a queue-based deployment. It may make it more difficult to diagnose which commit caused a problem in a given
    environment.
 
+If the first drawback matters to you, order the PromotionStrategy with a
+[ValidatedCommitStatus](gating-promotions/built-in-gates/validated-commit-status.md) instead of the default gate. Each
+environment's hydrator then reads its own git tag, and a tag moves only to a commit that has cleared the environments
+before it. A later environment keeps promoting the commit that was validated for it while newer commits work their way
+through the earlier ones. It is not a queue: an environment still skips to the newest validated commit, so the second
+drawback stays. It also changes who can deploy, because pushing a tag becomes a deploy; read
+[What to know before you use it](gating-promotions/built-in-gates/validated-commit-status.md#what-to-know-before-you-use-it)
+first.
+
 For most use cases, these tradeoffs are worth it.
 
 To mitigate the downsides, try to speed up active commit statuses (maybe by shifting more of those validations left) or

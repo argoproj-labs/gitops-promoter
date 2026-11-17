@@ -28,7 +28,10 @@ Upgrading from a release before 0.39? See [Upgrading](../upgrading.md#039-promot
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
 status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The controller injects that gate's
 `spec.key` onto every `ChangeTransferPolicy`; without a resolvable ref the PromotionStrategy fails reconcile.
-The built-in ordering gate is [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md).
+The default ordering gate is [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md).
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md) is an alternative for pipelines where a later
+environment should keep the commit that was validated for it while newer commits work their way through the earlier
+ones, or where a person approves a commit for an environment before it is hydrated.
 
 Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
@@ -223,6 +226,12 @@ Promotion ordering is required for every PromotionStrategy. Use
 or declare `dependsOn` on `PromotionStrategy.spec.environments[]` for fan-out and fan-in. Wire the gate with required
 `orderCommitStatusRef`; the controller injects `spec.key` onto every CTP. See that page and
 [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy) for wiring details.
+
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md) is the other ordering gate. Every environment's
+hydrator reads its own git tag, and the gate moves a tag only to a commit validated for that environment: by the
+controller once the earlier environments succeeded, or by a person. Use it to keep a later environment's pending
+promotion from being reset by newer commits, to approve a commit before it is hydrated, or to send a hotfix to one
+environment. It uses the same `dependsOn` graph and is wired with `orderCommitStatusRef` in the same way.
 
 ### Argo CD Health Status
 

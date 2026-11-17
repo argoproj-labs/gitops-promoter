@@ -76,6 +76,20 @@ function dependents(key: string, branches: string[]) {
   >[number];
 }
 
+function validated(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' }, dryBranch: 'main' },
+    status: {
+      environments: branches.map((branch) => ({
+        branch,
+        phase: 'pending',
+        tag: { name: `${branch}-tag`, sha: 'a'.repeat(40), source: 'Manual' },
+        held: { sha: 'b'.repeat(40), reason: 'Pinned' },
+      })),
+    },
+  } as unknown as NonNullable<CommitStatusManagerBundle['validatedCommitStatuses']>[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -111,6 +125,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
     ['DependentsSuccessfulCommitStatus', 'dependentsSuccessfulCommitStatuses', dependents],
+    ['ValidatedCommitStatus', 'validatedCommitStatuses', validated],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);
@@ -209,6 +224,18 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
       const matched = check.manager as typeof manager;
 
       expect(matched.status?.environments?.[0].upstreams?.[0].branch).toBe('environments/dev');
+    });
+
+    it('exposes the environment tag and what is held on a matched validated manager', () => {
+      const manager = validated('gate', [BRANCH]);
+      const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), {
+        validatedCommitStatuses: [manager],
+      });
+      const matched = check.manager as typeof manager;
+
+      expect(matched.status?.environments?.[0].tag?.name).toBe(`${BRANCH}-tag`);
+      expect(matched.status?.environments?.[0].tag?.source).toBe('Manual');
+      expect(matched.status?.environments?.[0].held?.reason).toBe('Pinned');
     });
 
     it('picks the first matching manager within a single kind', () => {

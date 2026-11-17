@@ -6338,6 +6338,32 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"convergence must cancel pending retry timers")
 		})
 
+		It("should leave the nudging to a ValidatedCommitStatus that orders the strategy", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ps := &promoterv1alpha1.PromotionStrategy{
+				UID: promotionStrategyUID,
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{Name: "demo"},
+				},
+			}
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{makeLaggingCTP("test-ctp"), makeTargetCTP()}
+
+			By("Nudging an environment that lags while a DependentsSuccessfulCommitStatus orders the strategy")
+			reconciler.nudgeOutOfSyncCTPs(ctx, ps, ctps)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
+
+			By("Switching the strategy to a ValidatedCommitStatus, where environments on different dry SHAs are expected")
+			ps.Spec.OrderCommitStatusRef.Kind = promoterv1alpha1.ValidatedOrderCommitStatusKind
+			reconciler.nudgeOutOfSyncCTPs(ctx, ps, ctps)
+
+			// Without stopping the chain armed above, it would keep enqueueing on the threshold.
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 3*time.Second, 100*time.Millisecond).Should(Equal([]string{"test-ctp"}),
+				"the switch must stop the retry chain, and must not start a new one")
+		})
+
 		It("should track disagreements per CTP independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 

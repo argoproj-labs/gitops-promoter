@@ -46,3 +46,22 @@ const (
 	// DependentsSuccessfulCommitStatusNotReady is the reason when owned CommitStatuses are not Ready.
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
+
+// Reasons that apply to ValidatedCommitStatus.
+const (
+	// EnvironmentTagPushFailed is the reason when a validated move of an environment tag could not be pushed.
+	EnvironmentTagPushFailed CommonReason = "EnvironmentTagPushFailed"
+	// ValidationNotRecorded is the reason when an automatic validation, or the record of a tag moved by
+	// hand, could not be written to git.
+	ValidationNotRecorded CommonReason = "ValidationNotRecorded"
+	// EnvironmentTagsOwnedByAnotherGate is the reason when another ValidatedCommitStatus already moves
+	// the environment tags of the same PromotionStrategy.
+	EnvironmentTagsOwnedByAnotherGate CommonReason = "EnvironmentTagsOwnedByAnotherGate"
+)
+
+// Reasons that apply to CommitValidation.
+const (
+	// ValidatedCommitStatusNotFound is the reason when a validation is requested for a PromotionStrategy
+	// that has no ValidatedCommitStatus to apply it.
+	ValidatedCommitStatusNotFound CommonReason = "ValidatedCommitStatusNotFound"
+)

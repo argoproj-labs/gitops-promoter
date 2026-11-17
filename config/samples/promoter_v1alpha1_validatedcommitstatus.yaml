@@ -1,0 +1,17 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ValidatedCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: validatedcommitstatus-sample
+spec:
+  key: validated
+  promotionStrategyRef:
+    name: promotionstrategy-sample
+  dryBranch: main
+  environments:
+    - branch: environment/staging
+      advance: WhenIdle
+    - branch: environment/production
+      validation: Manual

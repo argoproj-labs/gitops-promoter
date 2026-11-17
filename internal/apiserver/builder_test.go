@@ -150,6 +150,25 @@ func seedObjects() []client.Object {
 			ObjectMeta: objectMeta("scheduled-1"),
 			Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
 		},
+		&promoterv1alpha1.ValidatedCommitStatus{
+			ObjectMeta: objectMeta("validated-1"),
+			Spec:       promoterv1alpha1.ValidatedCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
+		},
+		&promoterv1alpha1.CommitValidation{
+			ObjectMeta: objectMeta("dev-validation"),
+			Spec: promoterv1alpha1.CommitValidationSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName},
+				Branch:               "environment/dev",
+			},
+		},
+		// A CommitValidation for a different PromotionStrategy; must be excluded.
+		&promoterv1alpha1.CommitValidation{
+			ObjectMeta: objectMeta("other-validation"),
+			Spec: promoterv1alpha1.CommitValidationSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other-ps"},
+				Branch:               "environment/dev",
+			},
+		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),
 			Spec: promoterv1alpha1.GitRepositorySpec{
@@ -213,6 +232,12 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.WebRequestCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses[0].Name).To(Equal("scheduled-1"))
+		Expect(bundle.ValidatedCommitStatuses).To(HaveLen(1))
+		Expect(bundle.ValidatedCommitStatuses[0].Name).To(Equal("validated-1"))
+
+		By("selecting CommitValidations by the PromotionStrategy they name")
+		Expect(bundle.CommitValidations).To(HaveLen(1))
+		Expect(bundle.CommitValidations[0].Name).To(Equal("dev-validation"))
 
 		By("resolving git config but never the Secret")
 		Expect(bundle.GitRepository).NotTo(BeNil())
