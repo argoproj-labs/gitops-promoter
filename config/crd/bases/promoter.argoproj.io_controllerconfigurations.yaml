@@ -1622,9 +1622,19 @@ spec:
                 properties:
                   template:
                     description: |-
-                      Template is the template configuration used to generate pull request titles and descriptions.
-                      Uses Go template syntax with Sprig functions available.
+                      Template is the template configuration used to generate pull request titles, descriptions,
+                      and merge commit messages. Uses Go template syntax with Sprig functions available.
                     properties:
+                      commitMessage:
+                        description: |-
+                          CommitMessage is the template used to generate the merge commit message for the pull request.
+                          The rendered template is the whole human-readable message; the title and description are never
+                          used in its place. Machine-read commit trailers used by the promoter to reconstruct promotion
+                          history are always appended after the rendered message; do not attempt to include them in the template.
+                          When the template renders empty and trailers are appended, a minimal "Promote to `<branch>`"
+                          subject is added, because git does not parse trailers from the first paragraph of a message.
+                          Uses Go template syntax with Sprig functions available for string manipulation.
+                        type: string
                       description:
                         description: |-
                           Description is the template used to generate the body/description of the pull request.
@@ -1636,6 +1646,7 @@ spec:
                           Uses Go template syntax with Sprig functions available for string manipulation.
                         type: string
                     required:
+                    - commitMessage
                     - description
                     - title
                     type: object
