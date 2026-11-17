@@ -1,0 +1,55 @@
+# Companion to dependabot-auto-merge.yaml and renovate-auto-merge.yaml. If anyone
+# other than the bot that opened a Dependabot or Renovate PR pushes to it, disable
+# auto-merge and dismiss bot approvals so the change needs a human review.
+#
+# This uses pull_request_target so the definition always comes from the base
+# branch: a pushed edit to this file can't skip its own revocation. It never
+# checks out or runs PR code.
+name: dependency-auto-merge-revoke
+
+on:
+  pull_request_target:
+    types: [synchronize]
+
+permissions: {}
+
+concurrency:
+  group: dependency-auto-merge-revoke-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  revoke:
+    if: >-
+      github.repository == 'argoproj-labs/gitops-promoter' &&
+      contains(fromJSON('["dependabot[bot]", "gitops-promoter-renovate-bot[bot]"]'), github.event.pull_request.user.login) &&
+      github.actor != github.event.pull_request.user.login
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    name: Revoke Auto-merge
+    steps:
+      - name: Disable auto-merge and dismiss bot approvals
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
+            gh pr merge "$PR_URL" --disable-auto
+          fi
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            --jq '.[] | select(.state == "APPROVED" and .user.type == "Bot") | .id' |
+          while read -r review_id; do
+            gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
+              -f event=DISMISS \
+              -f message="Dismissed: $ACTOR pushed to this bot PR, so it needs a human review." \
+              --silent
+          done

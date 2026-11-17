@@ -314,7 +314,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
     },
     // ----------------------------------------------------------------------
     // Delay Go language-minor bumps so contributors can upgrade before we
@@ -415,7 +418,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
     },
     // ----------------------------------------------------------------------
     // Group B3: Python runtime (CI, Read the Docs, local MkDocs docker)
@@ -437,7 +443,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
     },
     // ----------------------------------------------------------------------
     // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
@@ -478,7 +487,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.2',
@@ -498,7 +510,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.2',
@@ -526,7 +541,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.2',
@@ -569,7 +587,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
     },
     // ----------------------------------------------------------------------
     // Docker base images: full version tags only, never digest-only PRs.
@@ -624,7 +645,10 @@
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'docs',
-      automerge: false,
+      // Auto-merged once CI passes (major updates excluded below); the
+      // approval comes from .github/workflows/renovate-auto-merge.yaml.
+      automerge: true,
+      minimumReleaseAge: '7 days',
       postUpgradeTasks: {
         commands: [
           'pip-compile --generate-hashes -o docs/requirements-hashed.txt docs/requirements.txt',
@@ -638,6 +662,28 @@
         ],
         executionMode: 'branch',
       },
+    },
+    // ----------------------------------------------------------------------
+    // Auto-merge guards. Keep these last so they override the rules above.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Never auto-merge major updates',
+      matchUpdateTypes: [
+        'major',
+      ],
+      automerge: false,
+    },
+    {
+      description: 'Codegen tools auto-merge patch updates only; minors need review',
+      matchDepNames: [
+        'kubernetes-sigs/kustomize',
+        'kubernetes-sigs/controller-tools',
+        'quay.io/brancz/kube-rbac-proxy',
+      ],
+      matchUpdateTypes: [
+        'minor',
+      ],
+      automerge: false,
     },
   ],
   customManagers: [

@@ -42,3 +42,12 @@ The `zizmor` workflow checks all GitHub Actions workflow files for security issu
 - Overly broad permissions
 
 If the zizmor job fails on your PR, review the SARIF output attached to the run to see exactly which workflow file and line triggered the finding, then address the issue before merging.
+
+## Dependency auto-merge
+
+Some dependency updates merge automatically once the required status checks pass. Dedicated GitHub Apps approve them: one for Dependabot (its key is a Dependabot secret) and one for Renovate (its key lives in the `main`-only `dependency-approver` environment and can only approve). Nothing bypasses the rulesets.
+
+- **Dependabot**: patch and minor version updates are approved and set to auto-merge by [`dependabot-auto-merge.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/dependabot-auto-merge.yaml). Dependabot waits seven days after an upstream release before opening a PR. Security updates are not delayed.
+- **Renovate**: the `automerge` rules in [`renovate.json5`](https://github.com/argoproj-labs/gitops-promoter/blob/main/renovate.json5) decide which updates qualify. Today that's the docs dependencies, Argo CD, kindest/node, Node.js, and Python, plus patch updates of kustomize, controller-tools, and kube-rbac-proxy, after a seven-day `minimumReleaseAge`. Renovate enables auto-merge, and [`renovate-auto-merge.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/renovate-auto-merge.yaml) approves.
+- Major updates, and Renovate's Go toolchain, Kubernetes platform, and release-tooling groups, still need a human review.
+- Approval only happens when every commit on the PR was authored by the bot and signed by GitHub. A Dependabot PR that edits `dependabot-auto-merge.yaml` always needs a human review, so the Dependabot key never reaches unreviewed action versions. If anyone else pushes to a bot PR, [`dependency-auto-merge-revoke.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/dependency-auto-merge-revoke.yaml) disables auto-merge and dismisses the bot approval. It runs from `main`, so a PR can't edit it away.
