@@ -87,6 +87,7 @@ type fixture struct {
 	k8s         client.Client
 	prs         scms.PullRequestProvider
 	statuses    scms.CommitStatusProvider
+	checkParser scms.CheckParser
 	gitAuth     scms.GitOperationsProvider
 	scmProvider *v1alpha1.ScmProvider
 	secret      *corev1.Secret
@@ -186,51 +187,61 @@ func (f *fixture) buildObjects(ctx context.Context) {
 	f.k8s = fake.NewClientBuilder().WithScheme(utils.GetScheme()).
 		WithObjects(f.secret, f.scmProvider, f.gitRepo).Build()
 
-	f.prs, f.statuses = providersFor(ctx, f.k8s, f.scmProvider, *f.secret, f.gitRepo)
+	f.prs, f.statuses, f.checkParser = providersFor(ctx, f.k8s, f.scmProvider, *f.secret, f.gitRepo)
 	var err error
 	f.gitAuth, err = gitauth.CreateGitOperationsProvider(ctx, f.k8s, f.scmProvider, f.secret, client.ObjectKeyFromObject(f.gitRepo))
 	Expect(err).NotTo(HaveOccurred())
 }
 
 // providersFor builds the pull request and commit status providers exactly as the controllers do.
-func providersFor(ctx context.Context, k8s client.Client, scmProvider *v1alpha1.ScmProvider, secret corev1.Secret, gitRepo *v1alpha1.GitRepository) (scms.PullRequestProvider, scms.CommitStatusProvider) {
+func providersFor(ctx context.Context, k8s client.Client, scmProvider *v1alpha1.ScmProvider, secret corev1.Secret, gitRepo *v1alpha1.GitRepository) (scms.PullRequestProvider, scms.CommitStatusProvider, scms.CheckParser) {
 	GinkgoHelper()
 	var (
-		prs      scms.PullRequestProvider
-		statuses scms.CommitStatusProvider
-		prErr    error
-		csErr    error
+		prs         scms.PullRequestProvider
+		statuses    scms.CommitStatusProvider
+		checkParser scms.CheckParser
+		prErr       error
+		csErr       error
+		chErr       error
 	)
 	spec := scmProvider.Spec
 	switch {
 	case spec.GitHub != nil:
 		prs, prErr = github.NewGithubPullRequestProvider(ctx, k8s, scmProvider, secret, gitRepo.Spec.GitHub.Owner)
 		statuses, csErr = github.NewGithubCommitStatusProvider(ctx, k8s, scmProvider, secret, gitRepo.Spec.GitHub.Owner)
+		checkParser, chErr = github.NewGithubCheckParser(ctx, k8s, scmProvider, secret, gitRepo.Spec.GitHub.Owner)
 	case spec.GitLab != nil:
 		prs, prErr = gitlab.NewGitlabPullRequestProvider(k8s, secret, spec.GitLab.Domain)
 		statuses, csErr = gitlab.NewGitlabCommitStatusProvider(k8s, secret, spec.GitLab.Domain)
+		checkParser, chErr = gitlab.NewGitLabCheckParser(ctx, k8s, secret, spec.GitLab.Domain)
 	case spec.AzureDevOps != nil:
 		settingsMgr := settings.NewManager(k8s, k8s, settings.ManagerConfig{ControllerNamespace: secret.Namespace})
 		prs, prErr = azuredevops.NewAzdoPullRequestProvider(k8s, settingsMgr, secret, scmProvider, spec.AzureDevOps.Organization) //nolint:contextcheck // matches the controller's factory, which takes no context
 		statuses, csErr = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, k8s, settingsMgr, scmProvider, secret, spec.AzureDevOps.Organization)
+		checkParser, chErr = azuredevops.NewAzdoCheckParser(ctx, k8s, scmProvider, secret, spec.AzureDevOps.Organization)
 	case spec.BitbucketCloud != nil:
 		prs, prErr = bitbucket_cloud.NewBitbucketCloudPullRequestProvider(k8s, secret, spec.BitbucketCloud.Domain)
 		statuses, csErr = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(k8s, secret, spec.BitbucketCloud.Domain)
+		checkParser, chErr = bitbucket_cloud.NewBitbucketCloudCheckParser(ctx, k8s, secret, spec.BitbucketCloud.Domain)
 	case spec.Gitea != nil:
 		prs, prErr = gitea.NewGiteaPullRequestProvider(k8s, secret, spec.Gitea.Domain)
 		statuses, csErr = gitea.NewGiteaCommitStatusProvider(k8s, scmProvider, secret)
+		checkParser, chErr = gitea.NewGiteaCheckParser(ctx, k8s, secret, spec.Gitea.Domain)
 	case spec.Forgejo != nil:
 		prs, prErr = forgejo.NewForgejoPullRequestProvider(k8s, secret, spec.Forgejo.Domain)
 		statuses, csErr = forgejo.NewForgejoCommitStatusProvider(k8s, scmProvider, secret)
+		checkParser, chErr = forgejo.NewForgejoCheckParser(ctx, k8s, secret, spec.Forgejo.Domain)
 	case spec.BitbucketDataCenter != nil:
 		prs, prErr = bitbucket_datacenter.NewBitbucketDataCenterPullRequestProvider(k8s, scmProvider, secret)
 		statuses, csErr = bitbucket_datacenter.NewBitbucketDataCenterCommitStatusProvider(k8s, scmProvider, secret)
+		checkParser, chErr = bitbucket_datacenter.NewBitbucketDataCenterCheckParser(ctx, k8s, scmProvider, secret)
 	default:
 		Fail("unsupported provider " + scmProvider.Name)
 	}
 	Expect(prErr).NotTo(HaveOccurred())
 	Expect(csErr).NotTo(HaveOccurred())
-	return prs, statuses
+	Expect(chErr).NotTo(HaveOccurred())
+	return prs, statuses, checkParser
 }
 
 // pullRequest returns a PullRequest object for the fixture's branch pair.

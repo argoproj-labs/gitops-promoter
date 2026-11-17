@@ -80,20 +80,39 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
 
 	if azdoPR == nil {
-		return nil, errors.New("retrieved PR is empty")
+		return nil, errors.New("retrieved PR was nil")
 	}
 
-	if azdoPR.Commits == nil || len(*azdoPR.Commits) < 1 {
-		return nil, errors.New("pull request has no commits")
+	if azdoPR.LastMergeSourceCommit == nil && azdoPR.LastMergeSourceCommit.CommitId == nil {
+		return nil, errors.New("pull request had nil last merge source commit id")
 	}
 
 	// Azure DevOps returns commits in reverse chronological order
 	// https://learn.microsoft.com/en-us/rest/api/azure/devops/git/commits/get-commits
-	commits := azdoPR.Commits
-	latestCommit := (*commits)[0]
+
+	statuses, err := gitClient.GetStatuses(ctx, git.GetStatusesArgs{
+		Project:      &gitRepo.Spec.AzureDevOps.Project,
+		CommitId:     azdoPR.LastMergeSourceCommit.CommitId,
+		RepositoryId: &gitRepo.Spec.AzureDevOps.Name,
+	})
+	statusCode = http.StatusOK
+	if err != nil {
+		if isAzureDevOpsNotFound(err) {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationGet, http.StatusNotFound, time.Since(start), nil)
+			return nil, errors.New("pull request was not found")
+		}
+		statusCode = http.StatusInternalServerError
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+		return nil, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if statuses == nil {
+		return nil, errors.New("retrived statuses was nil")
+	}
 
 	var checks []scms.SCMCheckResult
-	for _, status := range *latestCommit.Statuses {
+	for _, status := range *statuses {
 		name := "Azure DevOps Check"
 		if status.Context.Name != nil {
 			name = *status.Context.Name
@@ -120,8 +139,6 @@ func determineCheckStatusFromAzDoStatus(status git.GitStatusState) scms.SCMCheck
 		return scms.SCMCheckStatusFailed
 	case git.GitStatusStateValues.Succeeded:
 		return scms.SCMCheckStatusSucceeded
-	case git.GitStatusStateValues.Pending, git.GitStatusStateValues.NotSet:
-		return scms.SCMCheckStatusPending
 	default:
 		return scms.SCMCheckStatusInProgress
 	}

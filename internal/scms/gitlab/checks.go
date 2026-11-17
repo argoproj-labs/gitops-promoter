@@ -27,7 +27,7 @@ type CheckParser struct {
 
 // The below constants represent the values status of merge checks can be through Gitlabs API
 const (
-	MergeStatusCheckPassed  string = "passed"
+	MergeStatusCheckPassed  string = "success"
 	MergeStatusCheckFailed  string = "failed"
 	MergeStatusCheckPending string = "pending"
 )
@@ -83,7 +83,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	}
 
 	start = time.Now()
-	commitCheckList, response, err := c.client.ExternalStatusChecks.ListProjectMergeRequestExternalStatusChecks(repo.Spec.GitLab.ProjectID, mrNumber, nil)
+	commitCheckList, response, err := c.client.Commits.GetCommitStatuses(repo.Spec.GitLab.ProjectID, mr.SHA, nil)
 	if response != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, response.StatusCode, time.Since(start), nil)
 	}
@@ -100,7 +100,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		checks = append(checks, scms.SCMCheckResult{
 			Name:   check.Name,
 			Status: determineCheckStatusFromGLMergeCheck(*check),
-			URL:    check.ExternalURL,
+			URL:    check.TargetURL,
 		})
 	}
 
@@ -109,13 +109,13 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 
 // determineCheckStatusFromGLMergeCheck is a helper function that determines the check status based on a merge
 // check's status
-func determineCheckStatusFromGLMergeCheck(check gitlab.MergeStatusCheck) scms.SCMCheckStatus {
+func determineCheckStatusFromGLMergeCheck(check gitlab.CommitStatus) scms.SCMCheckStatus {
 	switch check.Status {
 	case MergeStatusCheckPassed:
 		return scms.SCMCheckStatusSucceeded
 	case MergeStatusCheckFailed:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusPending
+		return scms.SCMCheckStatusInProgress
 	}
 }

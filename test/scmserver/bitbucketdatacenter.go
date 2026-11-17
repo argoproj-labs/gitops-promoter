@@ -64,6 +64,7 @@ func (s *Server) bitbucketDCRoutes(mux *http.ServeMux) {
 		// The deprecated build status resource is keyed by commit alone, not by repository.
 		mux.HandleFunc("POST /rest/build-status/"+version+"/commits/{commit}", s.apiHandler(BitbucketDataCenter, s.bitbucketDCSetLegacyBuild))
 		mux.HandleFunc("GET /rest/build-status/"+version+"/commits/{commit}", s.apiHandler(BitbucketDataCenter, s.bitbucketDCListLegacyBuilds))
+		mux.HandleFunc("GET /rest/build-status/"+version+"/commits/stats/{commit}", s.apiHandler(BitbucketDataCenter, s.bitbucketDCCommitStats))
 	}
 }
 
@@ -1100,4 +1101,37 @@ func (s *Server) bitbucketDCGetBuild(w http.ResponseWriter, r *http.Request, _ p
 		return
 	}
 	writeJSON(w, http.StatusOK, bitbucketDCBuildJSON(cs, rp))
+}
+
+// bitbucketDCCommitStats returns the stats of the build statuses for a commit
+func (s *Server) bitbucketDCCommitStats(w http.ResponseWriter, r *http.Request, _ principal) {
+	sha := strings.ToLower(r.PathValue("commit"))
+	seen := map[string]bool{}
+	statusStats := map[string]int{
+		"SUCCESSFUL": 0,
+		"FAILED":     0,
+		"INPROGRESS": 0,
+		"CANCELLED":  0,
+		"UNKNOWN":    0,
+	}
+
+	for _, rp := range s.bitbucketDCReposWithCommit(r, sha) {
+		s.store.mu.Lock()
+		for _, cs := range slices.Backward(s.store.statusesLocked(rp, sha)) {
+			if seen[cs.context] {
+				continue
+			}
+			seen[cs.context] = true
+			statusStats[cs.state]++
+		}
+		s.store.mu.Unlock()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"successful": statusStats["SUCCESSFUL"],
+		"failed":     statusStats["FAILED"],
+		"inProgress": statusStats["INPROGRESS"],
+		"cancelled":  statusStats["CANCELLED"],
+		"unknown":    statusStats["UNKNOWN"],
+	})
 }

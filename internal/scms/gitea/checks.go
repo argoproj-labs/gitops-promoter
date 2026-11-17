@@ -112,6 +112,6 @@ func determineCheckStatusFromGiteaStatus(check gitea.Status) scms.SCMCheckStatus
 	case gitea.StatusFailure, gitea.StatusError, gitea.StatusWarning:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusPending
+		return scms.SCMCheckStatusInProgress
 	}
 }

@@ -2,11 +2,9 @@ package bitbucket_cloud
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/ktrysmt/go-bitbucket"
@@ -20,39 +18,13 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// The below constants represent the values of Pipeline states
+// The below constants represent the values of Status states
 const (
-	PipelineStatePending     string = "PENDING"
-	PipelineStateInProgress  string = "IN_PROGRESS"
-	PipelineStateCompleted   string = "COMPLETED"
-	PipelineResultSuccessful string = "SUCCESSFUL"
-	PipelineResultFailed     string = "FAILED"
-	PipelineResultError      string = "ERROR"
-	PipelineResultStopped    string = "STOPPED"
-	PipelineResultExpired    string = "EXPIRED"
+	StatusStateSuccessful = "SUCCESSFUL"
+	StatusStateFailed     = "FAILED"
+	StatusStateInProgress = "INPROGRESS"
+	StatusStateStopped    = "STOPPED"
 )
-
-// pipelineListResponse represents the response of a pipeline list
-type pipelineListResponse struct {
-	Next   string              `json:"next"`
-	Values []bitbucketPipeline `json:"values"`
-}
-
-// bitbucketPipeline represents a BitBucket Pipeline
-type bitbucketPipeline struct {
-	State pipelineState `json:"state"`
-}
-
-// pipelineState represents the state field of a BitBucket pipeline
-type pipelineState struct {
-	Name   string         `json:"name"`
-	Result pipelineResult `json:"result"`
-}
-
-// pipelineResult represents the state.result field of a BitBucket pipeline
-type pipelineResult struct {
-	Name string `json:"name"`
-}
 
 // CheckParser implements the scms.SCMCheckParser interface for BitBucket Cloud.
 type CheckParser struct {
@@ -137,98 +109,75 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		return nil, errors.New("latest commit hash from PR is empty")
 	}
 
-	// Loop through all pages of pipelines listed
-	page := 1
-	successFound := false
-	failureFound := false
-	inProgressFound := false
-	for {
-		pipelineOptions := &bitbucket.PipelinesOptions{
-			Page:     page,
-			Owner:    repo.Spec.BitbucketCloud.Owner,
-			RepoSlug: repo.Spec.BitbucketCloud.Name,
-			Query:    "target.commit.hash=" + latestCommitHash,
-		}
+	statuses, err := c.client.Repositories.Commits.GetCommitStatuses(&bitbucket.CommitsOptions{
+		Owner:    repo.Spec.BitbucketCloud.Owner,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
+		Revision: latestCommitHash,
+	})
+	statusCode = parseErrorStatusCode(err, http.StatusOK)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
 
-		start = time.Now()
-		result, err = c.client.Repositories.Pipelines.List(pipelineOptions)
-		statusCode = parseErrorStatusCode(err, http.StatusOK)
-		metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, statusCode, time.Since(start), nil)
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to list SCM checks: %w", err)
-		}
-
-		jsonBytes, err := json.Marshal(result)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal pipeline list result: %w", err)
-		}
-
-		var pipelineList pipelineListResponse
-		err = json.Unmarshal(jsonBytes, &pipelineList)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal pipeline list result json data: %w", err)
-		}
-
-		phase := parsePipelines(pipelineList.Values)
-
-		switch phase {
-		case scms.SCMCheckStatusSucceeded:
-			successFound = true
-		case scms.SCMCheckStatusFailed:
-			failureFound = true
-		default:
-			inProgressFound = true
-		}
-
-		if pipelineList.Next == "" {
-			break
-		}
-		page++
+	statusMap, ok := statuses.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected status response type from BitBucket API: %T", statusMap)
 	}
 
-	var check scms.SCMCheckResult
-	check.Name = "Bitbucket Cloud Builds Aggregated Status"
-
-	// Only set success if no other status was found
-	if successFound && !failureFound && !inProgressFound {
-		check.Status = scms.SCMCheckStatusSucceeded
-	} else if failureFound {
-		check.Status = scms.SCMCheckStatusFailed
-	} else {
-		check.Status = scms.SCMCheckStatusInProgress
+	statusList, ok := statusMap["values"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("values in status response was unexpected type: %T", statusMap["values"])
 	}
-	return []scms.SCMCheckResult{check}, nil
+
+	checks := []scms.SCMCheckResult{}
+	for _, rawStatus := range statusList {
+		status, ok := rawStatus.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("status was unexpected type: %T", status)
+		}
+
+		check, err := parseStatus(status)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse status: %w", err)
+		}
+
+		checks = append(checks, check)
+	}
+
+	return checks, nil
 }
 
-// parsePipelines iterates over a list of pipelines and returns a status found.
-// If a failure is found it will automatically return
-func parsePipelines(pipelines []bitbucketPipeline) scms.SCMCheckStatus {
-	var result scms.SCMCheckStatus
-	inProgress := false
-	for _, p := range pipelines {
-		if p.State.Name != PipelineStateCompleted {
-			inProgress = true
-			continue
-		}
-
-		if isNegativeResult(p.State.Result.Name) {
-			return scms.SCMCheckStatusFailed
-		}
-
-		if p.State.Result.Name == PipelineResultSuccessful {
-			result = scms.SCMCheckStatusSucceeded
-		}
+// parseStatus parses a status for the result and returns an SCM check for that status.
+func parseStatus(status map[string]any) (scms.SCMCheckResult, error) {
+	key, ok := status["key"].(string)
+	if !ok {
+		return scms.SCMCheckResult{}, fmt.Errorf("key of status had unexpected type: %T", key)
 	}
 
-	if inProgress {
-		result = scms.SCMCheckStatusInProgress
+	state, ok := status["state"].(string)
+	if !ok {
+		return scms.SCMCheckResult{}, fmt.Errorf("state of status had unexpected type: %T", state)
 	}
-	return result
+
+	url, ok := status["url"].(string)
+	if !ok {
+		return scms.SCMCheckResult{}, fmt.Errorf("url of status had unexpected type: %T", url)
+	}
+
+	return scms.SCMCheckResult{
+		Name:   key,
+		Status: determineCheckStatusFromBitbucketCloudState(state),
+		URL:    url,
+	}, nil
 }
 
-// isNegativeResult is a helper function that returns if the result is negative
-func isNegativeResult(result string) bool {
-	negativeResults := []string{PipelineResultExpired, PipelineResultError, PipelineResultStopped, PipelineResultFailed}
-	return slices.Contains(negativeResults, result)
+// determineCheckStatusFromBitbucketCloudState determines what the check result is based on the values that
+// state can be.
+func determineCheckStatusFromBitbucketCloudState(state string) scms.SCMCheckStatus {
+	switch state {
+	case StatusStateSuccessful:
+		return scms.SCMCheckStatusSucceeded
+	case StatusStateFailed, StatusStateStopped:
+		return scms.SCMCheckStatusFailed
+	default:
+		return scms.SCMCheckStatusInProgress
+	}
 }
