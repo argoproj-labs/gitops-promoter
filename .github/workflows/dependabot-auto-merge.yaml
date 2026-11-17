@@ -4,7 +4,9 @@
 # The approval comes from a dedicated GitHub App whose credentials are stored as
 # *Dependabot* secrets. GitHub only exposes Dependabot secrets to runs triggered
 # by Dependabot, so someone pushing a modified copy of this workflow to a PR
-# branch can't mint an approving token.
+# branch can't mint an approving token. Dependabot secrets can't be scoped to
+# one workflow, so this workflow also refuses to mint the token when the PR
+# edits this file: the key only ever reaches the action versions on main.
 #
 # If anyone other than Dependabot pushes to a Dependabot PR,
 # dependency-auto-merge-revoke.yaml disables auto-merge and dismisses bot
@@ -40,7 +42,7 @@ jobs:
         id: metadata
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
-      - name: Verify every commit came from Dependabot
+      - name: Check eligibility
         id: commits
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,6 +56,14 @@ jobs:
           current=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
           if [[ "$current" != "$HEAD_SHA" ]]; then
             echo "::notice::Head moved from $HEAD_SHA to $current; the run for the new head decides."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # This run uses the PR's copy of this file. If Dependabot bumped an
+          # action in it, don't hand the App key to the unreviewed version.
+          if gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' |
+              grep -qx '.github/workflows/dependabot-auto-merge.yaml'; then
+            echo "::notice::Not auto-merging: this PR edits dependabot-auto-merge.yaml, so it needs a human review."
             echo "eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -73,8 +83,8 @@ jobs:
           contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'), steps.metadata.outputs.update-type)
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.DEPENDENCY_APPROVER_CLIENT_ID }}
-          private-key: ${{ secrets.DEPENDENCY_APPROVER_PRIVATE_KEY }}
+          client-id: ${{ secrets.DEPENDABOT_MERGER_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_MERGER_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
           # Merging the grouped github-actions PR edits workflow files.

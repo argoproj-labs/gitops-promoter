@@ -3,7 +3,8 @@
 # status checks in the main/release rulesets still gate the merge.
 #
 # The approval comes from a dedicated GitHub App whose credentials are secrets of
-# the `dependency-approver` environment, which only `main` can deploy to. This
+# the `dependency-approver` environment, which only `main` can deploy to. That
+# App has only Pull requests write, so its key can approve but never push. This
 # workflow uses pull_request_target, so the definition and secrets come from the
 # base branch. A PR can't change what this does, and a workflow pushed to a PR
 # branch can't read the secrets. It never checks out or runs PR code.
@@ -71,8 +72,8 @@ jobs:
         if: steps.commits.outputs.eligible == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.DEPENDENCY_APPROVER_CLIENT_ID }}
-          private-key: ${{ secrets.DEPENDENCY_APPROVER_PRIVATE_KEY }}
+          client-id: ${{ secrets.RENOVATE_APPROVER_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APPROVER_PRIVATE_KEY }}
           permission-pull-requests: write
 
       - name: Approve
