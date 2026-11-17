@@ -112,6 +112,6 @@ func determineCheckStatusFromForgejoStatus(check forgejo.Status) scms.SCMCheckSt
 	case forgejo.StatusFailure, forgejo.StatusError, forgejo.StatusWarning:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusInProgress
+		return scms.SCMCheckStatusPending
 	}
 }

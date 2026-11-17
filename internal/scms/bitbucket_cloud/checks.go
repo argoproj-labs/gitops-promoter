@@ -163,9 +163,10 @@ func parseStatus(status map[string]any) (scms.SCMCheckResult, error) {
 	}
 
 	return scms.SCMCheckResult{
-		Name:   key,
-		Status: determineCheckStatusFromBitbucketCloudState(state),
-		URL:    url,
+		Name:      key,
+		Status:    determineCheckStatusFromBitbucketCloudState(state),
+		SCMStatus: state,
+		URL:       url,
 	}, nil
 }
 
@@ -178,6 +179,6 @@ func determineCheckStatusFromBitbucketCloudState(state string) scms.SCMCheckStat
 	case StatusStateFailed, StatusStateStopped:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusInProgress
+		return scms.SCMCheckStatusPending
 	}
 }

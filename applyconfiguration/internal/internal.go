@@ -1801,6 +1801,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
+    - name: scmStatus
+      type:
+        scalar: string
     - name: status
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckStatus

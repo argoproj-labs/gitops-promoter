@@ -165,8 +165,10 @@ type SCMCheckCommitStatusEnvironmentStatus struct {
 type SCMCheckResults struct {
 	// Name represents the name of the check in the SCM.
 	Name string `json:"name"`
-	// Status represents the status of the check.
+	// Status represents the status of the check being used for aggregation to the CommitStatus phase.
 	Status SCMCheckStatus `json:"status"`
+	// SCMStatus is the status directly from the SCM.
+	SCMStatus string `json:"scmStatus"`
 	// URL is a link to where details on the check can be found in the SCM.
 	URL string `json:"url"`
 	// Matched is whether the check was included by a filter expression provided in the spec.

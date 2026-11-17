@@ -428,9 +428,10 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 	pendingFound := false
 	for _, check := range checks {
 		scmCheck := promoterv1alpha1.SCMCheckResults{
-			Name:   check.Name,
-			Status: promoterv1alpha1.SCMCheckStatus(check.Status),
-			URL:    check.URL,
+			Name:      check.Name,
+			Status:    promoterv1alpha1.SCMCheckStatus(check.Status),
+			SCMStatus: check.SCMStatus,
+			URL:       check.URL,
 		}
 
 		matched := true

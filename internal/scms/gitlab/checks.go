@@ -116,6 +116,6 @@ func determineCheckStatusFromGLMergeCheck(check gitlab.CommitStatus) scms.SCMChe
 	case MergeStatusCheckFailed:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusInProgress
+		return scms.SCMCheckStatusPending
 	}
 }

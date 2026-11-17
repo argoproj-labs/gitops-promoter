@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -104,7 +105,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 
 	var check scms.SCMCheckResult
 	check.Name = "Bitbucket DataCenter Builds Aggregated Status"
-	check.Status = scms.SCMCheckStatusInProgress
+	check.Status = scms.SCMCheckStatusPending
 
 	if buildStatusStats.Successful > 0 {
 		check.Status = scms.SCMCheckStatusSucceeded
@@ -113,6 +114,8 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	if buildStatusStats.Failed > 0 || buildStatusStats.Cancelled > 0 {
 		check.Status = scms.SCMCheckStatusFailed
 	}
+
+	check.SCMStatus = buildSCMStatusString(buildStatusStats)
 
 	return []scms.SCMCheckResult{check}, nil
 }
@@ -137,4 +140,16 @@ func (c *CheckParser) getBuilds(ctx context.Context, commitId string) (int, *bui
 		return statusCode, nil, fmt.Errorf("failed to parse build stats response: %w", err)
 	}
 	return statusCode, &result, nil
+}
+
+// buildSCMStatusString returns a string that has the information from the stats response to be
+// used in the SCM Status field
+func buildSCMStatusString(stats *buildStatusStatsResponse) string {
+	var statsStr strings.Builder
+	statsStr.WriteString(fmt.Sprintf("successful=%d\n", stats.Successful))
+	statsStr.WriteString(fmt.Sprintf("failed=%d\n", stats.Failed))
+	statsStr.WriteString(fmt.Sprintf("cancelled=%d\n", stats.Cancelled))
+	statsStr.WriteString(fmt.Sprintf("inProgress=%d\n", stats.InProgress))
+	statsStr.WriteString(fmt.Sprintf("unknown=%d", stats.Unknown))
+	return statsStr.String()
 }

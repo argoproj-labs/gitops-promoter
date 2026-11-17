@@ -700,7 +700,7 @@ func CheckStatusToCommitStatusPhase(status scms.SCMCheckStatus) promoterv1alpha1
 	switch status {
 	case scms.SCMCheckStatusSucceeded:
 		return promoterv1alpha1.CommitPhaseSuccess
-	case scms.SCMCheckStatusFailed, scms.SCMCheckStatusCancelled:
+	case scms.SCMCheckStatusFailed:
 		return promoterv1alpha1.CommitPhaseFailure
 	default:
 		return promoterv1alpha1.CommitPhasePending

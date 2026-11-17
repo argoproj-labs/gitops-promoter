@@ -116,16 +116,18 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		// if conclusion is null then the check is still running, so refer to the status
 		if check.Conclusion == nil {
 			checks = append(checks, scms.SCMCheckResult{
-				Name:   check.GetName(),
-				Status: determineCheckStatusFromGHStatus(*check),
-				URL:    check.GetURL(),
+				Name:      check.GetName(),
+				Status:    scms.SCMCheckStatusPending,
+				SCMStatus: check.GetStatus(),
+				URL:       check.GetURL(),
 			})
 			continue
 		}
 		checks = append(checks, scms.SCMCheckResult{
-			Name:   check.GetName(),
-			Status: determineCheckStatusFromGHConclusion(*check),
-			URL:    check.GetURL(),
+			Name:      check.GetName(),
+			Status:    determineCheckStatusFromGHConclusion(*check),
+			SCMStatus: check.GetConclusion(),
+			URL:       check.GetURL(),
 		})
 	}
 
@@ -136,25 +138,12 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 // conclusion.
 func determineCheckStatusFromGHConclusion(check github.CheckRun) scms.SCMCheckStatus {
 	switch check.GetConclusion() {
-	case CheckRunConclusionFailure, CheckRunConclusionStale:
+	case CheckRunConclusionFailure, CheckRunConclusionStale, CheckRunConclusionTimedOut, CheckRunConclusionCancelled:
 		return scms.SCMCheckStatusFailed
 	case CheckRunConclusionNeutral, CheckRunConclusionSuccess, CheckRunConclusionSkipped:
 		// GitHub's API defines skipped and neutral as a success for dependent checks
 		return scms.SCMCheckStatusSucceeded
-	case CheckRunConclusionTimedOut, CheckRunConclusionCancelled:
-		return scms.SCMCheckStatusCancelled
 	default:
-		return scms.SCMCheckStatusInProgress
-	}
-}
-
-// determineCheckStatusFromGHStatus is a helper function that determines the checks status based on the
-// status.
-func determineCheckStatusFromGHStatus(check github.CheckRun) scms.SCMCheckStatus {
-	switch check.GetStatus() {
-	case CheckRunStatusQueued, CheckRunStatusWaiting, CheckRunStatusPending, CheckRunStatusRequested:
 		return scms.SCMCheckStatusPending
-	default:
-		return scms.SCMCheckStatusInProgress
 	}
 }

@@ -26,8 +26,10 @@ import (
 type SCMCheckResultsApplyConfiguration struct {
 	// Name represents the name of the check in the SCM.
 	Name *string `json:"name,omitempty"`
-	// Status represents the status of the check.
+	// Status represents the status of the check being used for aggregation to the CommitStatus phase.
 	Status *apiv1alpha1.SCMCheckStatus `json:"status,omitempty"`
+	// SCMStatus is the status directly from the SCM.
+	SCMStatus *string `json:"scmStatus,omitempty"`
 	// URL is a link to where details on the check can be found in the SCM.
 	URL *string `json:"url,omitempty"`
 	// Matched is whether the check was included by a filter expression provided in the spec.
@@ -53,6 +55,14 @@ func (b *SCMCheckResultsApplyConfiguration) WithName(value string) *SCMCheckResu
 // If called multiple times, the Status field is set to the value of the last call.
 func (b *SCMCheckResultsApplyConfiguration) WithStatus(value apiv1alpha1.SCMCheckStatus) *SCMCheckResultsApplyConfiguration {
 	b.Status = &value
+	return b
+}
+
+// WithSCMStatus sets the SCMStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SCMStatus field is set to the value of the last call.
+func (b *SCMCheckResultsApplyConfiguration) WithSCMStatus(value string) *SCMCheckResultsApplyConfiguration {
+	b.SCMStatus = &value
 	return b
 }
 

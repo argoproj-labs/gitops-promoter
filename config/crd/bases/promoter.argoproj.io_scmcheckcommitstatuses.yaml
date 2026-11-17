@@ -220,8 +220,13 @@ spec:
                             description: Name represents the name of the check in
                               the SCM.
                             type: string
+                          scmStatus:
+                            description: SCMStatus is the status directly from the
+                              SCM.
+                            type: string
                           status:
-                            description: Status represents the status of the check.
+                            description: Status represents the status of the check
+                              being used for aggregation to the CommitStatus phase.
                             type: string
                           url:
                             description: URL is a link to where details on the check
@@ -230,6 +235,7 @@ spec:
                         required:
                         - matched
                         - name
+                        - scmStatus
                         - status
                         - url
                         type: object

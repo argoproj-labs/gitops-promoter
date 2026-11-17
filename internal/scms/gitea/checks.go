@@ -94,9 +94,10 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		}
 
 		checks = append(checks, scms.SCMCheckResult{
-			Name:   check.Context,
-			Status: determineCheckStatusFromGiteaStatus(*check),
-			URL:    check.TargetURL,
+			Name:      check.Context,
+			Status:    determineCheckStatusFromGiteaStatus(*check),
+			SCMStatus: string(check.State),
+			URL:       check.TargetURL,
 		})
 	}
 
@@ -112,6 +113,6 @@ func determineCheckStatusFromGiteaStatus(check gitea.Status) scms.SCMCheckStatus
 	case gitea.StatusFailure, gitea.StatusError, gitea.StatusWarning:
 		return scms.SCMCheckStatusFailed
 	default:
-		return scms.SCMCheckStatusInProgress
+		return scms.SCMCheckStatusPending
 	}
 }

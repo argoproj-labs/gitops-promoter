@@ -124,9 +124,10 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		}
 
 		checks = append(checks, scms.SCMCheckResult{
-			Name:   name,
-			Status: determineCheckStatusFromAzDoStatus(*status.State),
-			URL:    url,
+			Name:      name,
+			Status:    determineCheckStatusFromAzDoStatus(*status.State),
+			SCMStatus: string(*status.State),
+			URL:       url,
 		})
 	}
 	return checks, nil
@@ -140,6 +141,6 @@ func determineCheckStatusFromAzDoStatus(status git.GitStatusState) scms.SCMCheck
 	case git.GitStatusStateValues.Succeeded:
 		return scms.SCMCheckStatusSucceeded
 	default:
-		return scms.SCMCheckStatusInProgress
+		return scms.SCMCheckStatusPending
 	}
 }
