@@ -34,8 +34,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -56,6 +58,9 @@ type RestoreActiveCommitReconciler struct {
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
@@ -78,7 +83,9 @@ type RestoreActiveCommitReconciler struct {
 // stamps Promoter-restore-unblocked-at before the object can disappear. Deleting it while the field
 // is still true does not stamp the trailer, so deleting the PromotionStrategy cannot release the
 // hold. It does not by itself propose the blocked dry SHA again: see
-// ChangeTransferPolicyReconciler.skipPullRequestAfterRevert.
+// ChangeTransferPolicyReconciler.skipPullRequestAfterRevert. While blocking, a pending
+// restore-block/<branch> commit status is posted on the open promotion pull request's merge SHA;
+// releasing publishes it as success before the trailer is stamped.
 func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling RestoreActiveCommit")
@@ -98,8 +105,8 @@ func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to get RestoreActiveCommit: %w", err)
 	}
 
-	if deleted, err := r.handleFinalizer(ctx, &rc); err != nil || deleted {
-		return ctrl.Result{}, err
+	if stop, finalizerResult, err := r.handleFinalizer(ctx, &rc); err != nil || stop {
+		return finalizerResult, err
 	}
 
 	previousReady = utils.RemoveReadyCondition(&rc)
@@ -118,6 +125,20 @@ func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.applyOwnerReference(ctx, &rc, ctp); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// While blocking, explain the hold on the open promotion pull request, including while the
+	// restore has not been recorded yet or keeps failing (which also blocks). It is posted when this
+	// reconcile returns rather than here, so a target whose tip turns out to be already released
+	// (deleteAlreadyReleased) never sets the pull request back to pending.
+	postPending := rc.Spec.BlocksEnvironment()
+	defer func() {
+		if !postPending {
+			return
+		}
+		if _, csErr := r.applyRestoreBlockCommitStatus(ctx, &rc, ctp, promoterv1alpha1.CommitPhasePending); csErr != nil {
+			err = errors.Join(err, csErr)
+		}
+	}()
 
 	if rc.Status.RestoredFrom == rc.Spec.Sha {
 		if rc.Spec.BlocksEnvironment() {
@@ -157,7 +178,8 @@ func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.
 			// The tip was unblocked before this object recorded a restore. Deleting it (while
 			// spec.blockEnvironment is still true) leaves the existing stamp in place. A pending
 			// object would block promotion even though the note already released the gate.
-			return r.deleteAlreadyReleased(ctx, &rc, released.ActiveTip)
+			postPending = false
+			return r.deleteAlreadyReleased(ctx, &rc, ctp, released.ActiveTip)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to restore %q to %q: %w", ctp.Spec.ActiveBranch, rc.Spec.Sha, err)
 	}
@@ -178,9 +200,23 @@ func (r *RestoreActiveCommitReconciler) Reconcile(ctx context.Context, req ctrl.
 
 // deleteAlreadyReleased removes a RestoreActiveCommit whose target is already the active tip and
 // whose note already carries Promoter-restore-unblocked-at. spec.blockEnvironment is still true, so
-// the finalizer does not write the note again. The existing stamp stays.
-func (r *RestoreActiveCommitReconciler) deleteAlreadyReleased(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit, activeTip string) (ctrl.Result, error) {
-	log.FromContext(ctx).Info("Active tip already carries Promoter-restore-unblocked-at; deleting RestoreActiveCommit",
+// the finalizer does not write the note again. The existing stamp stays. The environment is not
+// blocked, so the released restore-block commit status is published on the open promotion pull
+// request first: a pending one left by an earlier reconcile or an earlier RestoreActiveCommit
+// would otherwise stay on it. Nothing is deleted until the SCM has been sent that status.
+func (r *RestoreActiveCommitReconciler) deleteAlreadyReleased(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit, ctp *promoterv1alpha1.ChangeTransferPolicy, activeTip string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	published, err := r.applyRestoreBlockCommitStatus(ctx, rc, ctp, promoterv1alpha1.CommitPhaseSuccess)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !published {
+		// The owned CommitStatus's status update wakes this once the released status is published.
+		logger.Info("Waiting for the released restore-block commit status to be published before deleting", "activeTip", activeTip)
+		return r.requeueResult(ctx)
+	}
+
+	logger.Info("Active tip already carries Promoter-restore-unblocked-at; deleting RestoreActiveCommit",
 		"activeTip", activeTip, "sha", rc.Spec.Sha)
 	r.Recorder.Eventf(rc, nil, "Normal", constants.RestoreAlreadyReleasedReason, "Deleting", constants.RestoreAlreadyReleasedMessage, rc.Name, activeTip)
 	if err := r.Delete(ctx, rc); err != nil && !k8s_errors.IsNotFound(err) {
@@ -189,13 +225,20 @@ func (r *RestoreActiveCommitReconciler) deleteAlreadyReleased(ctx context.Contex
 	return ctrl.Result{}, nil
 }
 
-// unblockAndSelfDelete stamps Promoter-restore-unblocked-at then deletes the RestoreActiveCommit.
-// Stamping first keeps a ChangeTransferPolicy reconcile in this window from adopting a second
-// object against a still-blocked note. The finalizer stamps again, idempotently, and will not
-// release until that write has succeeded.
+// unblockAndSelfDelete publishes the released restore-block commit status, stamps
+// Promoter-restore-unblocked-at, then deletes the RestoreActiveCommit. Stamping first keeps a
+// ChangeTransferPolicy reconcile in this window from adopting a second object against a
+// still-blocked note. The finalizer stamps again, idempotently, and will not release until that
+// write has succeeded. While the SCM has not yet been sent the released status, nothing is stamped
+// or deleted: the owned CommitStatus's status update wakes this reconcile once it is published,
+// and the standard requeue is a fallback.
 func (r *RestoreActiveCommitReconciler) unblockAndSelfDelete(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit) (ctrl.Result, error) {
-	if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
+	done, err := r.unblockRestoreOnDelete(ctx, rc)
+	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if !done {
+		return r.requeueResult(ctx)
 	}
 	if err := r.Delete(ctx, rc); err != nil && !k8s_errors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("failed to delete RestoreActiveCommit after blockEnvironment was set false: %w", err)
@@ -206,15 +249,17 @@ func (r *RestoreActiveCommitReconciler) unblockAndSelfDelete(ctx context.Context
 // handleFinalizer keeps RestoreActiveCommitFinalizer on the resource until deletion. When
 // spec.blockEnvironment is false the finalizer stamps Promoter-restore-unblocked-at before it
 // releases, so a self-delete cannot drop the object ahead of the note. A delete while the field
-// is still true releases without writing. The first bool is true when Reconcile should not run
-// the restore path (the resource is terminating).
-func (r *RestoreActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit) (bool, error) {
+// is still true releases without writing, so the restore-block commit status is left pending. The
+// bool is true when Reconcile should not run the restore path (the resource is terminating); the
+// result is what Reconcile returns then, a requeue while the released restore-block commit status
+// has not been published yet.
+func (r *RestoreActiveCommitReconciler) handleFinalizer(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit) (bool, ctrl.Result, error) {
 	finalizer := promoterv1alpha1.RestoreActiveCommitFinalizer
 
 	if rc.DeletionTimestamp.IsZero() {
 		if !controllerutil.AddFinalizer(rc, finalizer) {
 			// Already has the finalizer.
-			return false, nil
+			return false, ctrl.Result{}, nil
 		}
 
 		// A single attempt, not a Get-retry loop: on conflict Reconcile returns the error and the
@@ -223,56 +268,75 @@ func (r *RestoreActiveCommitReconciler) handleFinalizer(ctx context.Context, rc 
 		// already reset via RemoveReadyCondition -- with whatever was last persisted, silently
 		// reintroducing a stale Ready condition from an earlier failed reconcile.
 		if err := r.Update(ctx, rc); err != nil {
-			return false, fmt.Errorf("failed to add finalizer: %w", err)
+			return false, ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
-		return false, nil
+		return false, ctrl.Result{}, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(rc, finalizer) {
-		return true, nil
+		return true, ctrl.Result{}, nil
 	}
 
 	if !rc.Spec.BlocksEnvironment() {
-		if err := r.unblockRestoreOnDelete(ctx, rc); err != nil {
-			return false, err
+		done, err := r.unblockRestoreOnDelete(ctx, rc)
+		if err != nil {
+			return false, ctrl.Result{}, err
+		}
+		if !done {
+			// The owned CommitStatus's status update wakes this once the released status is published.
+			requeue, err := r.requeueResult(ctx)
+			return true, requeue, err
 		}
 	}
 
 	// A single attempt, not a Get-retry loop: see the add-finalizer path above.
 	if controllerutil.RemoveFinalizer(rc, finalizer) {
 		if err := r.Update(ctx, rc); err != nil {
-			return true, fmt.Errorf("failed to remove finalizer: %w", err)
+			return true, ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
 	}
-	return true, nil
+	return true, ctrl.Result{}, nil
 }
 
-// unblockRestoreOnDelete stamps Promoter-restore-unblocked-at on the restore commit when a
-// successful restore was recorded and spec.blockEnvironment is false. When the ChangeTransferPolicy
-// is already gone the git write is skipped so the finalizer can still release.
-func (r *RestoreActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit) error {
+// unblockRestoreOnDelete releases the environment once spec.blockEnvironment is false. It first
+// publishes the released restore-block commit status on the open promotion pull request, so the
+// check does not stay pending once this object is gone, then stamps Promoter-restore-unblocked-at
+// on the restore commit when a successful restore was recorded. done is false, with nothing
+// stamped, while the SCM has not yet been sent that status. When the ChangeTransferPolicy is
+// already gone both steps are skipped so the finalizer can still release.
+func (r *RestoreActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit) (bool, error) {
 	logger := log.FromContext(ctx)
-	if rc.Status.RestoredFrom != rc.Spec.Sha || rc.Status.ActiveSha == "" {
-		logger.Info("RestoreActiveCommit deleted before a restore was recorded; nothing to unblock")
-		return nil
-	}
 
 	ctp, err := r.changeTransferPolicyForUnblock(ctx, rc)
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ChangeTransferPolicy or PromotionStrategy gone; skipping Promoter-restore-unblocked-at", "error", err)
-			return nil
+			return true, nil
 		}
-		return fmt.Errorf("failed to resolve ChangeTransferPolicy for unblock: %w", err)
+		return false, fmt.Errorf("failed to resolve ChangeTransferPolicy for unblock: %w", err)
+	}
+
+	published, err := r.applyRestoreBlockCommitStatus(ctx, rc, ctp, promoterv1alpha1.CommitPhaseSuccess)
+	if err != nil {
+		return false, err
+	}
+	if !published {
+		logger.Info("Waiting for the released restore-block commit status to be published before unblocking")
+		return false, nil
+	}
+
+	if rc.Status.RestoredFrom != rc.Spec.Sha || rc.Status.ActiveSha == "" {
+		logger.Info("RestoreActiveCommit deleted before a restore was recorded; nothing to unblock")
+		return true, nil
 	}
 
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx, r.Client, r.SettingsMgr, ctp.Spec.RepositoryReference, ctp)
 	if err != nil {
-		return fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
+		return false, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
-		return fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
+		return false, fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
 	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, rc.Namespace+"/"+rc.Name+"-revert")
 	defer func() {
@@ -281,20 +345,113 @@ func (r *RestoreActiveCommitReconciler) unblockRestoreOnDelete(ctx context.Conte
 		}
 	}()
 	if err := gitOperations.CloneRepo(ctx); err != nil {
-		return fmt.Errorf("failed to clone repo %q for unblock: %w", ctp.Spec.RepositoryReference.Name, err)
+		return false, fmt.Errorf("failed to clone repo %q for unblock: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 	if err := gitOperations.FetchNotes(ctx); err != nil {
-		return fmt.Errorf("failed to fetch git notes for unblock: %w", err)
+		return false, fmt.Errorf("failed to fetch git notes for unblock: %w", err)
 	}
 
 	wrote, err := gitOperations.UnblockRestore(ctx, rc.Status.ActiveSha, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to stamp Promoter-restore-unblocked-at on %q: %w", rc.Status.ActiveSha, err)
+		return false, fmt.Errorf("failed to stamp Promoter-restore-unblocked-at on %q: %w", rc.Status.ActiveSha, err)
 	}
 	if wrote {
 		r.Recorder.Eventf(rc, nil, "Normal", "RestoreUnblocked", "Unblocking", "Stamped Promoter-restore-unblocked-at on %s so promotion may resume", rc.Status.ActiveSha)
 	}
-	return nil
+	return true, nil
+}
+
+// openPromotionPullRequest returns the policy's open promotion pull request, or nil when there is
+// none. A pull request that is terminating or whose spec.state is not open is ignored.
+func (r *RestoreActiveCommitReconciler) openPromotionPullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
+	prList := &promoterv1alpha1.PullRequestList{}
+	if err := r.List(ctx, prList, ctpPullRequestListOptions(ctp)); err != nil {
+		return nil, fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q: %w", ctp.Name, err)
+	}
+	return selectOpenPromotionPullRequest(prList)
+}
+
+// selectOpenPromotionPullRequest picks the single open, non-terminating pull request from prList.
+func selectOpenPromotionPullRequest(prList *promoterv1alpha1.PullRequestList) (*promoterv1alpha1.PullRequest, error) {
+	open := &promoterv1alpha1.PullRequestList{}
+	for i := range prList.Items {
+		pr := &prList.Items[i]
+		if pr.Spec.State != promoterv1alpha1.PullRequestOpen || !pr.DeletionTimestamp.IsZero() || pr.Spec.MergeSha == "" {
+			continue
+		}
+		open.Items = append(open.Items, *pr)
+	}
+	switch len(open.Items) {
+	case 0:
+		return nil, nil
+	case 1:
+		return &open.Items[0], nil
+	default:
+		return nil, tooManyPRsError(open)
+	}
+}
+
+// applyRestoreBlockCommitStatus posts the restore-block/<environment branch> commit status with
+// the given phase on the open promotion pull request's spec.mergeSha, following that SHA as the
+// pull request moves. The CommitStatus is owned by the RestoreActiveCommit. It is not a promotion
+// gate: auto-merge is held by the restore commit's note. With no open pull request no status is
+// created and one left from an earlier pull request is deleted. published reports whether the
+// CommitStatus controller has sent this phase for that SHA to the SCM; it is true when there is
+// no pull request.
+func (r *RestoreActiveCommitReconciler) applyRestoreBlockCommitStatus(ctx context.Context, rc *promoterv1alpha1.RestoreActiveCommit, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase) (bool, error) {
+	pr, err := r.openPromotionPullRequest(ctx, ctp)
+	if err != nil {
+		return false, err
+	}
+	if pr == nil {
+		if err := utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, rc, nil); err != nil {
+			return false, fmt.Errorf("failed to clean up restore-block CommitStatus: %w", err)
+		}
+		return true, nil
+	}
+
+	description := promoterv1alpha1.RestoreBlockPendingDescription
+	if phase == promoterv1alpha1.CommitPhaseSuccess {
+		description = promoterv1alpha1.RestoreBlockReleasedDescription
+	}
+	cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+		Parent:      rc,
+		RepoRefName: ctp.Spec.RepositoryReference.Name,
+		Branch:      ctp.Spec.ActiveBranch,
+		Sha:         pr.Spec.MergeSha,
+		Key:         promoterv1alpha1.RestoreBlockCommitStatusKey,
+		Description: description,
+		Phase:       phase,
+		FieldOwner:  constants.RestoreActiveCommitControllerFieldOwner,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to apply restore-block CommitStatus for pull request %q: %w", pr.Name, err)
+	}
+	return cs.Status.Phase == phase && cs.Status.Sha == pr.Spec.MergeSha, nil
+}
+
+// enqueueRestoreActiveCommitsForPullRequest maps a promotion PullRequest to the RestoreActiveCommits
+// that select its ChangeTransferPolicy, so the restore-block commit status follows the pull request.
+func (r *RestoreActiveCommitReconciler) enqueueRestoreActiveCommitsForPullRequest(ctx context.Context, obj client.Object) []reconcile.Request {
+	ctpLabel := obj.GetLabels()[promoterv1alpha1.ChangeTransferPolicyLabel]
+	if ctpLabel == "" {
+		return nil
+	}
+	list := &promoterv1alpha1.RestoreActiveCommitList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list RestoreActiveCommits for PullRequest", "pullRequest", obj.GetName())
+		return nil
+	}
+	var requests []reconcile.Request
+	for i := range list.Items {
+		rc := &list.Items[i]
+		name := changeTransferPolicyNameForRevert(rc)
+		if name == "" || utils.KubeSafeLabel(name) != ctpLabel {
+			continue
+		}
+		requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rc)})
+	}
+	return requests
 }
 
 // changeTransferPolicyForUnblock loads the ChangeTransferPolicy named for this RestoreActiveCommit's
@@ -406,6 +563,13 @@ func (r *RestoreActiveCommitReconciler) SetupWithManager(ctx context.Context, mg
 				},
 			},
 		))).
+		// A publish of the restore-block commit status (a status update) wakes a release that is
+		// waiting to stamp Promoter-restore-unblocked-at until the SCM has the released status.
+		Owns(&promoterv1alpha1.CommitStatus{}).
+		// The restore-block commit status follows the open promotion pull request's spec.mergeSha.
+		Watches(&promoterv1alpha1.PullRequest{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueRestoreActiveCommitsForPullRequest),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
