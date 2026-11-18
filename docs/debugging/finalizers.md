@@ -51,7 +51,6 @@ Check `status.history[].mergeCommitSnapshotMismatch` on the environment's Change
 | Field | Why |
 | --- | --- |
 | `status.history[].proposed.commitStatuses` | Gate phases read from the snapshot trailers; never reconstructed from the merge commit. |
-| `status.history[].active.commitStatuses` | Same snapshot trailers, same caveat. |
 | `status.history[].proposed.hydrated` | Reconstructed from the merge commit's second parent on a regular merge, but a squash commit has no second parent, so the snapshot trailer value is kept. |
 
 `status.history[].active.dry` and `status.history[].active.hydrated` are read back from the merge commit itself, so they describe what actually merged either way. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
@@ -79,7 +78,7 @@ What still differs is **what can be reconstructed from git at that commit**:
 | Promotion-history note written | Yes, when SCM reports merged + SHA | Yes, when SCM reports merged + SHA |
 | `status.history[].proposed.hydrated` recoverable from git | Yes — second parent of the merge commit | **No** — a squash commit has one parent, so the snapshot trailer value is kept |
 | `status.history[].active.dry` recoverable from git | Yes — `hydrator.metadata` on the merge commit | Yes — `hydrator.metadata` on the squash commit (when present) |
-| External merge + snapshot mismatch | Note on SCM SHA; the note's dry SHA corrected; `proposed.hydrated` corrected when a second parent exists; `mergeCommitSnapshotMismatch: true` when the dry SHA differed | Note on SCM SHA; the note's dry SHA corrected when metadata is readable; `proposed.hydrated` **not** corrected; `proposed.commitStatuses` and `active.commitStatuses` may still be stale |
+| External merge + snapshot mismatch | Note on SCM SHA; the note's dry SHA corrected; `proposed.hydrated` corrected when a second parent exists; `mergeCommitSnapshotMismatch: true` when the dry SHA differed | Note on SCM SHA; the note's dry SHA corrected when metadata is readable; `proposed.hydrated` **not** corrected; `proposed.commitStatuses` may still be stale |
 
 Squash commits on the SCM also typically carry **no promoter trailers** in the commit message itself — the git note (written at finalization using `mergedTargetSha`) is what preserves PR metadata and gate snapshots for history. A history entry is **missing** only when finalization never gets a merge SHA (for example `status.state=unknown` after the PR record is gone on the SCM, or the PR was closed without merging).
 
