@@ -208,8 +208,8 @@ func (e wrcsCommitUpserter) EmitCommitStatus(ctx context.Context, wrcs *promoter
 }
 
 // Execute implements webrequest.HTTPEXecutor by performing the real HTTP round-trip.
-func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
-	resp, err := r.makeHTTPRequest(ctx, wrcs, td)
+func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, rendered webrequest.RenderedHTTPRequest) (webrequest.HTTPResponse, error) {
+	resp, err := r.makeHTTPRequest(ctx, wrcs, rendered)
 	if err != nil {
 		// Edge-triggered rather than transition-gated: repeated identical failures are
 		// aggregated server-side into an EventSeries, and this event is what keeps HTTP
@@ -235,19 +235,13 @@ func wrcsPhasesByBranch(status *promoterv1alpha1.WebRequestCommitStatusStatus) m
 	return phases
 }
 
-// makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
-// URL, body, and headers from TemplateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
-// configured timeout, and parses the response body as JSON or plain text. The returned HTTPResponse is used
-// for validation and response expression evaluation.
+// makeHTTPRequest executes a pre-rendered HTTP request. It applies authentication (basic, bearer,
+// OAuth2, TLS, or SCM), uses the configured timeout, and parses the response body as JSON or plain
+// text. The returned HTTPResponse is used for validation and response expression evaluation.
 // When Scm is configured, the rendered URL host is validated against the SCM provider's allowed
 // domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
-func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData webrequest.TemplateData) (webrequest.HTTPResponse, error) {
+func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, rendered webrequest.RenderedHTTPRequest) (webrequest.HTTPResponse, error) {
 	logger := log.FromContext(ctx)
-
-	rendered, err := webrequest.BuildRenderedHTTPRequestFromTemplates(wrcs, templateData)
-	if err != nil {
-		return webrequest.HTTPResponse{}, fmt.Errorf("failed to render HTTP request templates: %w", err)
-	}
 
 	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.

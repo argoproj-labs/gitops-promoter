@@ -40,21 +40,17 @@ func newMockHTTPEXecutor(resolve func(branch string) (*webrequest.HTTPResponse, 
 	return &mockHTTPEXecutor{resolve: resolve}
 }
 
-func (e *mockHTTPEXecutor) Execute(_ context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
-	req, err := webrequest.BuildRenderedHTTPRequestFromTemplates(wrcs, td)
-	if err != nil {
-		return webrequest.HTTPResponse{}, fmt.Errorf("failed to render HTTP request templates: %w", err)
-	}
+func (e *mockHTTPEXecutor) Execute(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, rendered webrequest.RenderedHTTPRequest) (webrequest.HTTPResponse, error) {
 	e.rendered = append(e.rendered, simulatortypes.RenderedRequest{
-		Branch: req.Branch, Method: req.Method, URL: req.URL, Headers: req.Headers, Body: req.Body,
+		Branch: rendered.Branch, Method: rendered.Method, URL: rendered.URL, Headers: rendered.Headers, Body: rendered.Body,
 	})
 
-	resp, err := e.resolve(td.Branch)
+	resp, err := e.resolve(rendered.Branch)
 	if err != nil {
 		return webrequest.HTTPResponse{}, err
 	}
 	if resp == nil {
-		return webrequest.HTTPResponse{}, fmt.Errorf("branch %q: %w", td.Branch, webrequest.ErrHTTPResponseRequiredWhenTriggerFires)
+		return webrequest.HTTPResponse{}, fmt.Errorf("branch %q: %w", rendered.Branch, webrequest.ErrHTTPResponseRequiredWhenTriggerFires)
 	}
 	return *resp, nil
 }

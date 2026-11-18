@@ -28,7 +28,7 @@ import (
 //
 // Delivery semantics: the controller dedupes HTTP requests by comparing fresh state
 // against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile
-// (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas).
+// (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas).
 // That state is written via Server-Side Apply at the END of a reconcile and read from
 // the controller's informer cache at the START of the next reconcile. Under cache-
 // propagation lag, controller restarts, or status-write retries, a reconcile may not

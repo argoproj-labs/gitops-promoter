@@ -207,7 +207,7 @@ type OutputSpec struct {
 //
 // Delivery semantics: the controller dedupes HTTP requests by comparing fresh state
 // against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile
-// (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas).
+// (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas).
 // That state is written via Server-Side Apply at the END of a reconcile and read from
 // the controller's informer cache at the START of the next reconcile. Under cache-
 // propagation lag, controller restarts, or status-write retries, a reconcile may not
@@ -525,13 +525,10 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// +optional
 	PhasePerBranch []WebRequestCommitStatusPhasePerBranchItem `json:"phasePerBranch,omitempty"`
 
-	// LastRequestTime is when the last HTTP request was made.
+	// LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context.
+	// Populated on the first request; values carry forward on reconciles that skip the request.
 	// +optional
-	LastRequestTime *metav1.Time `json:"lastRequestTime,omitempty"`
-
-	// LastResponseStatusCode is the HTTP status code from the last request.
-	// +optional
-	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
+	LastRequest WebRequestCommitStatusLastRequest `json:"lastRequest,omitempty"`
 
 	// TriggerOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.TriggerOutput, one shared map for context=promotionstrategy.
 	// +optional
@@ -561,6 +558,32 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// +listMapKey=branch
 	// +optional
 	LastSuccessfulShas []WebRequestCommitStatusLastSuccessfulShaItem `json:"lastSuccessfulShas,omitempty"`
+}
+
+// WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made
+// by the controller for this environment or PromotionStrategy context.
+// It is populated the first time an HTTP request is sent and its values carry forward on every
+// reconcile that skips the request (polling interval not elapsed, trigger expression false, or
+// already-successful SHA fast path). All fields are empty until the first request is made.
+type WebRequestCommitStatusLastRequest struct {
+	// Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
+	// +optional
+	Method string `json:"method,omitempty"`
+
+	// URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+	// for the last HTTP request attempt (empty when no request has been made yet).
+	// It carries forward the previous value when a reconcile skips the HTTP request
+	// (polling interval, trigger false, or already-successful SHA fast path).
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// Time is when the last HTTP request was made.
+	// +optional
+	Time *metav1.Time `json:"time,omitempty"`
+
+	// ResponseStatusCode is the HTTP status code from the last request.
+	// +optional
+	ResponseStatusCode *int `json:"responseStatusCode,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
@@ -595,13 +618,10 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +required
 	Phase CommitStatusPhase `json:"phase"`
 
-	// LastRequestTime is when the last HTTP request was made.
+	// LastRequest captures metadata about the most recent HTTP request for this environment.
+	// Populated on the first request; values carry forward on reconciles that skip the request.
 	// +optional
-	LastRequestTime *metav1.Time `json:"lastRequestTime,omitempty"`
-
-	// LastResponseStatusCode is the HTTP status code from the last request.
-	// +optional
-	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
+	LastRequest WebRequestCommitStatusLastRequest `json:"lastRequest,omitempty"`
 
 	// TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys).
 	// +optional
