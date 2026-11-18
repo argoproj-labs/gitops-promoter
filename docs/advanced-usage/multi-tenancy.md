@@ -42,8 +42,12 @@ By default, GitOps Promoter watches all namespaces and requires a `ClusterRole`.
 | `spec.scope` | `Cluster` (default), `Namespace` | Which namespaces are watched. `Namespace` watches only the install namespace. |
 | `spec.clusterScmProvider.mode` | `Enabled` (default), `Disabled` | Whether `ClusterScmProvider` resources can be used. |
 | `spec.webRequestCommitStatus.namespaceMetadata` | `Enabled` (default), `Disabled` | Whether `NamespaceMetadata` is available to WebRequestCommitStatus templates and expressions. When disabled, it is empty. |
+| `spec.kubernetesResourceCommitStatus.resources` | list of `{group, version, kind}` | Kinds [KubernetesResourceCommitStatus](../gating-promotions/built-in-gates/kubernetes-resource-commit-status.md) gates may create. Each needs RBAC on the real kind and its wrapped template kind. |
+| `spec.kubernetesResourceCommitStatus.templateCRDs` | `Enabled` (default), `Disabled` | Whether the controller generates the wrapped template CRDs at startup. Requires `customresourcedefinitions` ClusterRole permissions when enabled. |
 
-Restart the controller after changing `spec.scope` or `spec.clusterScmProvider.mode`.
+Restart the controller after changing `spec.scope`, `spec.clusterScmProvider.mode`, or
+`spec.kubernetesResourceCommitStatus.templateCRDs`. Changing `spec.kubernetesResourceCommitStatus.resources` shuts the
+controller down so it restarts with the new informers.
 
 ### Cluster (default)
 
@@ -83,7 +87,12 @@ spec:
     mode: Disabled
   webRequestCommitStatus:
     namespaceMetadata: Disabled
+  kubernetesResourceCommitStatus:
+    templateCRDs: Disabled
 ```
+
+With `templateCRDs: Disabled` the wrapped template CRDs for `kubernetesResourceCommitStatus.resources` are not generated;
+a cluster administrator must create them for KubernetesResourceCommitStatus gates to work in this mode.
 
 The `-namespaced` release bundles use this mode. See [Installation](../getting-started.md#namespaced).
 

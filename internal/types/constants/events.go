@@ -118,8 +118,23 @@ const (
 	// Args: RestoreActiveCommit name, the Promoter-restored-from SHA, the active tip.
 	RestoreAdoptedMessage = "Created RestoreActiveCommit %s for restore of %s at tip %s"
 
+	// KubernetesResourceCreatedReason indicates that a KubernetesResourceCommitStatus created the real resource
+	// for an environment from its template.
+	KubernetesResourceCreatedReason = "KubernetesResourceCreated"
+	// KubernetesResourceCreatedMessage is the message for a created resource.
+	// Args: kind, name, environment branch, reported SHA.
+	KubernetesResourceCreatedMessage = "Created %s %s for environment branch %s at %s"
+
+	// KubernetesResourcePrunedReason indicates that a KubernetesResourceCommitStatus deleted a resource it created
+	// because it exceeded spec.lifecycle.historyLimit or its environment is no longer gated.
+	KubernetesResourcePrunedReason = "KubernetesResourcePruned"
+	// KubernetesResourcePrunedMessage is the message for a pruned resource.
+	// Args: kind, name, reason.
+	KubernetesResourcePrunedMessage = "Deleted %s %s: %s"
+
 	// CommitStatusPhaseChangedReason indicates that the phase computed by a commit status gate
-	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) changed for an environment.
+	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus, KubernetesResourceCommitStatus)
+	// changed for an environment.
 	CommitStatusPhaseChangedReason = "CommitStatusPhaseChanged"
 	// CommitStatusPhaseChangedMessage is the message for a changed commit status phase.
 	CommitStatusPhaseChangedMessage = "Commit status %q for environment branch %s changed from %s to %s"
