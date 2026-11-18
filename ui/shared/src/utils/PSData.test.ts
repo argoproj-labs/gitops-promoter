@@ -76,6 +76,26 @@ function dependents(key: string, branches: string[]) {
   >[number];
 }
 
+function validated(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' }, drySource: { branch: 'main' } },
+    status: {
+      environments: branches.map((branch) => ({
+        branch,
+        phase: 'pending',
+        tag: {
+          name: `${branch}-tag`,
+          sha: 'a'.repeat(40),
+          source: 'Manual',
+          validatedBy: 'jane@example.com',
+        },
+        upstreamCleared: { sha: 'b'.repeat(40) },
+        held: { sha: 'b'.repeat(40), reason: 'Pinned' },
+      })),
+    },
+  } as unknown as NonNullable<CommitStatusManagerBundle['validatedCommitStatuses']>[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -111,6 +131,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
     ['DependentsSuccessfulCommitStatus', 'dependentsSuccessfulCommitStatuses', dependents],
+    ['ValidatedCommitStatus', 'validatedCommitStatuses', validated],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);
@@ -199,6 +220,20 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
 
       expect(check.kind).toBe('ArgoCDCommitStatus');
       expect(check.manager).toBe(managers.argoCDCommitStatuses![0]);
+    });
+
+    it('exposes the environment tag, what put it there and what is held on a matched validated manager', () => {
+      const manager = validated('gate', [BRANCH]);
+      const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), {
+        validatedCommitStatuses: [manager],
+      });
+      const matched = check.manager as typeof manager;
+
+      expect(matched.status?.environments?.[0].tag?.name).toBe(`${BRANCH}-tag`);
+      expect(matched.status?.environments?.[0].tag?.source).toBe('Manual');
+      expect(matched.status?.environments?.[0].tag?.validatedBy).toBe('jane@example.com');
+      expect(matched.status?.environments?.[0].upstreamCleared?.sha).toBe('b'.repeat(40));
+      expect(matched.status?.environments?.[0].held?.reason).toBe('Pinned');
     });
 
     it('exposes upstreams on a matched dependentsSuccessful manager', () => {

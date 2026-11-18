@@ -30,6 +30,13 @@ const TimedCommitStatusDefaultKey = "timer"
 // dependent environments are promoted and successful.
 const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
+// ValidatedCommitStatusKey is the commit status key name used to indicate that an environment's
+// dependent environments have, at some point, run the dry SHA being promoted (or a descendant) successfully.
+const ValidatedCommitStatusKey = "validated"
+
+// ValidatedOrderCommitStatusKind is the orderCommitStatusRef kind for the history-based ordering gate.
+const ValidatedOrderCommitStatusKind = "ValidatedCommitStatus"
+
 // DefaultOrderCommitStatusGroup is the default API group for PromotionStrategy.spec.orderCommitStatusRef.
 const DefaultOrderCommitStatusGroup = "promoter.argoproj.io"
 

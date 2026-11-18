@@ -4,6 +4,12 @@ A [RestoreActiveCommit](../crd-specs.md#restoreactivecommit) puts one environmen
 promoted earlier, and stops the bad change from being promoted again until you say so. Use it when a change is already
 live and you need the previous version back now, before a fix can go through the normal promotion flow.
 
+> [!NOTE]
+> A PromotionStrategy ordered by a
+> [ValidatedCommitStatus](../gating-promotions/built-in-gates/validated-commit-status.md#rolling-back) can also be taken
+> back by validating an older commit for the environment. A RestoreActiveCommit is faster, and it also keeps the
+> environments after this one from taking the commits it took back.
+
 ## How it works
 
 1. **Restore.** The controller writes a new commit on top of the active branch whose content is the chosen hydrated

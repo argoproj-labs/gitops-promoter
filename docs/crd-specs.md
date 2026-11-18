@@ -132,6 +132,44 @@ which is only supported on ClusterScmProvider because it uses the controller's o
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
+### ValidatedCommitStatus
+
+A ValidatedCommitStatus is the ordering gate for
+[environment tags](advanced-usage/holding-back-environments.md). Every environment hydrates from its own tag in the DRY
+repository: `<environment branch>-tag`, or `<environment branch>-tag/<activePath>` when the environment has an
+`activePath`. The controller moves each tag to the newest DRY commit the environment's upstreams have run
+[successfully](gating-promotions/index.md#environment-success), or to a commit a person validated for the environment
+with a [CommitValidation](#commitvalidation) or a pushed git note. It gates each promotion on the hydrator having
+caught up to the tag, and on the upstreams having qualified the tagged commit unless a person validated it. It reads
+the environments and their `dependsOn` from the referenced PromotionStrategy, the same way
+DependentsSuccessfulCommitStatus does. Attach the gate with `PromotionStrategy.spec.orderCommitStatusRef`. See
+[Validated Commit Status](gating-promotions/built-in-gates/validated-commit-status.md).
+
+`status.dry.sha` is the DRY branch HEAD the controller last observed, and `status.validationsCursor` how far it has
+applied the validation notes. `status.environments[]` reports each environment's tag and what put it there, its newest
+qualified commit, what its upstreams have cleared, anything that is waiting (`held`, `pending`), per-upstream
+satisfaction, active commit statuses, and child CommitStatus mirror fields. See
+[`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus) and the gate doc for semantics.
+
+```yaml
+{!internal/controller/testdata/ValidatedCommitStatus.yaml!}
+```
+
+### CommitValidation
+
+A CommitValidation validates DRY commits for one environment of a PromotionStrategy that is ordered by a
+[ValidatedCommitStatus](#validatedcommitstatus), and shows that environment's history of validations. Setting
+`spec.sha` records that the commit may deploy to the environment, as a line in a git note under
+`refs/notes/promoter.validations` in the DRY repository. The ValidatedCommitStatus controller then moves the
+environment's tag to the commit, and passes its promotion without asking whether the upstream environments have
+qualified it. Create one per environment and grant `update` on it by name to the people who may approve that
+environment. See
+[Validating a commit](gating-promotions/built-in-gates/validated-commit-status.md#validating-a-commit).
+
+```yaml
+{!internal/controller/testdata/CommitValidation.yaml!}
+```
+
 ### DependentsSuccessfulCommitStatus
 
 A DependentsSuccessfulCommitStatus gates promotions based on whether dependent environments are promoted and
@@ -254,6 +292,22 @@ The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
 The `DependentsSuccessfulCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
+
+#### `ValidatedCommitStatus`
+
+The `ValidatedCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+* `DryRepositoryUnavailable`
+* `TagPushFailed`
+* `ValidationNotRecorded`
+* `EnvironmentTagsOwnedByAnotherGate`
+
+#### `CommitValidation`
+
+The `CommitValidation` CRD may also have the following condition reasons:
+
+* `ValidatedCommitStatusNotFound`
 
 #### `ChangeTransferPolicy`
 

@@ -11,6 +11,10 @@ var (
 	ParseNotesLogOutput  = parseNotesLogOutput
 	FullObjectID         = fullObjectID
 	RunCmdWithEnv        = runCmdWithEnv
+	AddedLines           = addedLines
+	PorcelainRejection   = porcelainRejection
+
+	IsRetryableNotesRejection = isRetryableNotesRejection
 )
 
 // Trailers exposes the parsed trailers of a commitObject to package git_test.

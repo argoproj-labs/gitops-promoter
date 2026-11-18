@@ -94,6 +94,8 @@ type DependentsSuccessfulCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
+//
+//nolint:dupl // Ordering gate controllers share the same Reconcile skeleton by design.
 func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
 	logger.Info("Reconciling DependentsSuccessfulCommitStatus")
@@ -466,6 +468,22 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	return false, ""
 }
 
+// renderGateURL renders an ordering gate's URL template and checks that the result is an http or https URL.
+func renderGateURL(template string, options []string, data any) (string, error) {
+	rendered, err := utils.RenderStringTemplate(template, data, options...)
+	if err != nil {
+		return "", fmt.Errorf("failed to render URL template: %w", err)
+	}
+	parsedURL, err := url.Parse(rendered)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+	}
+	return rendered, nil
+}
+
 func hydratorPendingReason(branch, targetDrySha, currentHydratedDrySha string) string {
 	current := utils.TruncateString(currentHydratedDrySha, 7)
 	if current == "" {
@@ -522,16 +540,9 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 			DependsOnQuery:                   buildDependsOnQuery(dependsOn),
 		}
 		var err error
-		renderedURL, err = utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
+		renderedURL, err = renderGateURL(dcs.Spec.URL.Template, dcs.Spec.URL.Options, data)
 		if err != nil {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL template: %w", err)
-		}
-		parsedURL, err := url.Parse(renderedURL)
-		if err != nil {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to parse URL: %w", err)
-		}
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, err
 		}
 		logf.FromContext(ctx).V(4).Info("Rendered URL template",
 			"url", renderedURL,
@@ -598,6 +609,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:dupl // Gate controllers share the same SetupWithManager skeleton by design.
 func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.

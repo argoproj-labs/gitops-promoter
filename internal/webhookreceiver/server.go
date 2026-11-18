@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -48,15 +49,20 @@ const (
 	maxPendingMissRetries = 256
 )
 
-// EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
-// without modifying the CTP object. This matches controller.CTPEnqueueFunc.
+// EnqueueFunc is a function type that can be used to enqueue a reconcile request for an object
+// without modifying the object. This matches controller.CTPEnqueueFunc.
 type EnqueueFunc func(namespace, name string)
 
-// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
+// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies
+// (for pushes to hydrated branches) and ValidatedCommitStatuses (for pushes to the dry branch
+// or the environment tags they read).
 type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
+	// enqueueDryGate enqueues a ValidatedCommitStatus. When nil, pushes are not matched
+	// against gates at all.
+	enqueueDryGate EnqueueFunc
 
 	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
 	// it so they are cancelled on shutdown without watching a separate signal.
@@ -74,12 +80,15 @@ type WebhookReceiver struct {
 	maxPendingRetries int
 }
 
-// NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *WebhookReceiver {
+// NewWebhookReceiver creates a new instance of WebhookReceiver. enqueueCTP is called for pushes to
+// hydrated branches; enqueueDryGate for pushes to a dry branch or environment tag that a
+// ValidatedCommitStatus reads (nil disables that routing).
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueueDryGate EnqueueFunc) *WebhookReceiver {
 	return &WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:            mgr,
+		k8sClient:      mgr.GetClient(),
+		enqueueCTP:     enqueueCTP,
+		enqueueDryGate: enqueueDryGate,
 	}
 }
 
@@ -222,6 +231,9 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
 		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
+	case lookupErr == nil:
+		// Nothing here reads the pushed ref, and no later attempt would find otherwise.
+		reqLogger.V(4).Info("nothing reads the pushed ref; ignoring webhook delivery", "ref", ref)
 	default:
 		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
 		// problems operators should see at default verbosity.
@@ -274,8 +286,10 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		// Retryable misses (no match yet, transient list failure) return (false, nil) to keep
 		// backing off until the outer timeout; terminal outcomes return an error to stop.
-		found, _, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
-		return found, err
+		// A lookup that worked and found that nothing reads the ref ends the retry as well: there is
+		// nothing left to wait for.
+		found, retryable, err := wr.tryLookupAndEnqueue(ctx, sha, ref, "deferred webhook retry")
+		return found || !retryable, err
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
@@ -323,13 +337,27 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 	return maxPendingMissRetries
 }
 
-// tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching
-// ChangeTransferPolicy when exactly one is found. via distinguishes the synchronous webhook
-// path from the deferred retry path in logs. found reports whether a CTP was enqueued;
-// retryable reports whether a later attempt could still succeed (no match yet, or a
-// transient list failure). err is non-nil only for terminal outcomes.
+// tryLookupAndEnqueue performs a single lookup for the pushed ref and enqueues what reads it:
+// the ValidatedCommitStatuses whose dry branch or environment tag was pushed, or
+// else the ChangeTransferPolicy whose hydrated branch was pushed when exactly one is found.
+// via distinguishes the synchronous webhook path from the deferred retry path in logs. found
+// reports whether anything was enqueued; retryable reports whether a later attempt could
+// still succeed (no match yet, or a transient list failure). err is non-nil only for
+// terminal outcomes.
 func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, via string) (found, retryable bool, err error) {
 	logger := log.FromContext(ctx)
+
+	gates, gateErr := wr.enqueueDryGates(ctx, sha, ref, via)
+	if gateErr != nil {
+		// Transient API/index failure. Carry on with the CTP lookup; a miss there is retried,
+		// and the retry looks for gates again.
+		logger.V(4).Info("transient ValidatedCommitStatus lookup failure", "error", gateErr)
+	}
+	if gates > 0 {
+		// A dry commit is never a hydrated commit, so there is no CTP to look for.
+		return true, false, nil
+	}
+
 	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
 	switch outcome {
 	case ctpLookupFound:
@@ -343,7 +371,13 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 		logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
 		return true, false, nil
 	case ctpLookupNotFound:
-		return false, true, nil
+		// A branch push that nothing reads yet may be read in a moment: the hydrated commit is not in
+		// a ChangeTransferPolicy's status yet, or the dry commit not in a gate's. A tag push that no gate
+		// reads is none of this receiver's business, and stays that way: release tags, and the pushes
+		// the gates themselves make, whose new position they have recorded by the time the webhook
+		// arrives. Retrying those would hold a retry slot until its timeout for nothing. A gate whose
+		// status was behind for a tag someone pushed finds the tag on its next reconcile.
+		return false, gateErr != nil || !strings.HasPrefix(ref, "refs/tags/"), nil
 	case ctpLookupListError:
 		// Transient API/index failures: a retry may succeed.
 		logger.V(4).Info("transient CTP lookup failure", "error", lookupErr)
@@ -353,6 +387,50 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 	default:
 		return false, false, fmt.Errorf("unexpected CTP lookup outcome: %v", outcome)
 	}
+}
+
+// enqueueDryGates enqueues every ValidatedCommitStatus that reads the pushed ref (its
+// dry branch or one of its environment tags) and last observed the ref's previous SHA. It
+// returns how many gates were enqueued.
+func (wr *WebhookReceiver) enqueueDryGates(ctx context.Context, sha, ref, via string) (int, error) {
+	if wr.enqueueDryGate == nil {
+		return 0, nil
+	}
+	var gates promoterv1alpha1.ValidatedCommitStatusList
+	err := wr.k8sClient.List(ctx, &gates, client.MatchingFields{promoterv1alpha1.ValidatedCommitStatusObservedDryShaField: sha})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list validatedcommitstatuses for webhook receiver: %w", err)
+	}
+
+	enqueued := 0
+	for i := range gates.Items {
+		gate := &gates.Items[i]
+		if !dryGateReadsRef(gate, ref) {
+			continue
+		}
+		wr.enqueueDryGate(gate.Namespace, gate.Name)
+		enqueued++
+		log.FromContext(ctx).Info("Triggered reconcile of ValidatedCommitStatus via "+via, "namespace", gate.Namespace, "name", gate.Name)
+	}
+	return enqueued, nil
+}
+
+// dryGateReadsRef reports whether ref is the gate's dry branch or one of its environment tags. The tag
+// names are taken from the gate's status: most are not in its spec, where only an override is written.
+func dryGateReadsRef(gate *promoterv1alpha1.ValidatedCommitStatus, ref string) bool {
+	if ref == "refs/heads/"+gate.Spec.DrySource.Branch {
+		return true
+	}
+	tag, isTag := strings.CutPrefix(ref, "refs/tags/")
+	if !isTag {
+		return false
+	}
+	for _, env := range gate.Status.Environments {
+		if env.Tag != nil && env.Tag.Name == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // ctpLookupOutcome is the result of a hydrated-SHA field-index lookup.
@@ -382,19 +460,8 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
 		}
 	case ProviderBitbucketCloud:
-		// Bitbucket Cloud webhook format
-		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
-			changes := gjson.GetBytes(jsonBytes, "push.changes")
-			if changes.IsArray() && len(changes.Array()) > 0 {
-				firstChange := changes.Array()[0]
-				beforeSha = firstChange.Get("old.target.hash").String()
-				if newName := firstChange.Get("new.name"); newName.Exists() {
-					ref = "refs/heads/" + newName.String()
-				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
-					ref = "refs/heads/" + oldName.String()
-				}
-			}
-		}
+		// Bitbucket Cloud webhook format (repo:push event)
+		beforeSha, ref = extractBitbucketCloudPayload(jsonBytes)
 	case ProviderBitbucketDataCenter:
 		// Bitbucket DataCenter/Server webhook format (repo:refs_changed event)
 		beforeSha, ref = extractBitbucketDCPayload(jsonBytes)
@@ -492,6 +559,35 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	return ""
+}
+
+// extractBitbucketCloudPayload parses a Bitbucket Cloud repo:push webhook payload and returns the
+// before-SHA and ref from the first entry in the "push.changes" array. Both values are empty
+// strings when the payload does not match the expected shape.
+func extractBitbucketCloudPayload(jsonBytes []byte) (sha, ref string) {
+	if !gjson.GetBytes(jsonBytes, "push.changes").Exists() || !gjson.GetBytes(jsonBytes, "actor").Exists() {
+		return "", ""
+	}
+	changes := gjson.GetBytes(jsonBytes, "push.changes")
+	if !changes.IsArray() || len(changes.Array()) == 0 {
+		return "", ""
+	}
+	firstChange := changes.Array()[0]
+	sha = firstChange.Get("old.target.hash").String()
+	// A deleted ref has no "new" side.
+	side := firstChange.Get("new")
+	if !side.Get("name").Exists() {
+		side = firstChange.Get("old")
+	}
+	name := side.Get("name")
+	if !name.Exists() {
+		return sha, ""
+	}
+	// Branch and tag changes have the same shape and differ only in "type".
+	if side.Get("type").String() == "tag" {
+		return sha, "refs/tags/" + name.String()
+	}
+	return sha, "refs/heads/" + name.String()
 }
 
 // extractBitbucketDCPayload parses a Bitbucket DataCenter/Server repo:refs_changed webhook

@@ -755,12 +755,18 @@ func giteaPushPayload(ev pushEvent) map[string]any {
 }
 
 func bitbucketPushPayload(ev pushEvent) map[string]any {
+	// https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Push: a change names a branch
+	// or a tag, and its name never carries the refs/heads/ or refs/tags/ prefix.
+	refType := "branch"
+	if strings.HasPrefix(ev.ref, "refs/tags/") {
+		refType = "tag"
+	}
 	branch := func(sha string) any {
 		if sha == zeroSHA {
 			return nil
 		}
 		return map[string]any{
-			"type": "branch",
+			"type": refType,
 			"name": refShortName(ev.ref),
 			"target": map[string]any{
 				"type": "commit", "hash": sha,

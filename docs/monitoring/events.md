@@ -114,6 +114,30 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
+## ValidatedCommitStatus
+
+[ValidatedCommitStatuses](../crd-specs.md#validatedcommitstatus) may produce the following events:
+
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal     | EnvironmentQualified        | An environment qualified a DRY commit, or a restore pulled the environment's newest qualified commit back to an older one. |
+| Normal     | EnvironmentTagMoved         | The controller created or moved an environment tag. The message gives the tag's previous and new commit, and what moved it: `Automatic`, `Seeded` or `Manual` (a validation). |
+| Normal     | EnvironmentTagMovedByHand   | The controller found an environment tag that someone else had pushed, created or deleted.                                |
+| Warning    | EnvironmentTagPushFailed    | The controller could not create or move an environment tag, for example because of tag protection or missing permission. |
+| Warning    | ValidationIgnored           | A validation in the notes of the DRY repository was not applied. The message says why: the commit is not in the repository, it shares no history with the DRY branch, or `spec.pushedValidations` is `Ignore` and the line is not what a CommitValidation asks for. |
+| Normal/Warning | CommitStatusPhaseChanged  | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                             |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this ValidatedCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
+
+## CommitValidation
+
+[CommitValidations](../crd-specs.md#commitvalidation) may produce the following events:
+
+| Event Type | Event Reason             | Description                                                                                       |
+|------------|--------------------------|---------------------------------------------------------------------------------------------------|
+| Normal     | CommitValidationRecorded | The validation asked for in `spec.sha` was written to the validation notes of the DRY repository. |
+| Warning    | CommitValidationRejected | The commit in `spec.sha` cannot be validated: the repository does not have it, or it shares no history with the DRY branch. |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:

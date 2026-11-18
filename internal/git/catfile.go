@@ -49,6 +49,12 @@ const (
 // Callers normalize revisions with strings.ToLower before matching; git emits %H lowercase.
 var fullObjectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
+// IsFullObjectID reports whether s is a complete lowercase SHA-1 or SHA-256 object ID, the only form
+// the status fields that hold a commit accept.
+func IsFullObjectID(s string) bool {
+	return fullObjectID.MatchString(s)
+}
+
 // LoadCommits prefetches commit metadata for the given SHAs into this instance's per-reconcile
 // cache, so that later per-SHA reads are served from memory instead of spawning a git process each.
 func (g *EnvironmentOperations) LoadCommits(ctx context.Context, shas ...string) error {

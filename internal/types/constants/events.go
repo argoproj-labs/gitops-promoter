@@ -130,4 +130,51 @@ const (
 	WebRequestFailedReason = "WebRequestFailed"
 	// WebRequestFailedMessage is the message for a failed web request.
 	WebRequestFailedMessage = "HTTP request for commit status %q failed: %v"
+
+	// EnvironmentQualifiedReason indicates that a ValidatedCommitStatus recorded that an environment
+	// qualified a dry commit (or that a restore pulled the environment's qualification back to one).
+	EnvironmentQualifiedReason = "EnvironmentQualified"
+	// EnvironmentQualifiedMessage is the message for a recorded qualification.
+	// Args: environment branch, dry SHA.
+	EnvironmentQualifiedMessage = "Environment branch %s qualified dry commit %s"
+
+	// EnvironmentTagMovedReason indicates that a ValidatedCommitStatus created or moved an environment tag.
+	EnvironmentTagMovedReason = "EnvironmentTagMoved"
+	// EnvironmentTagMovedMessage is the message for a created or moved environment tag.
+	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA, what
+	// moved it (Automatic, Seeded or Manual).
+	EnvironmentTagMovedMessage = "Moved tag %q for environment branch %s from %s to %s (%s)"
+	// EnvironmentTagNoPreviousSha is used in EnvironmentTagMoved messages when the tag did not exist.
+	EnvironmentTagNoPreviousSha = "<none>"
+
+	// EnvironmentTagMovedByHandReason indicates that an environment tag was moved, created or deleted
+	// outside the controller.
+	EnvironmentTagMovedByHandReason = "EnvironmentTagMovedByHand"
+	// EnvironmentTagMovedByHandMessage is the message for an environment tag moved outside the controller.
+	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA.
+	EnvironmentTagMovedByHandMessage = "Tag %q for environment branch %s was moved outside the controller from %s to %s"
+
+	// ValidationIgnoredReason indicates that a validation in the notes of the dry repository was not applied.
+	ValidationIgnoredReason = "ValidationIgnored"
+	// ValidationIgnoredMessage is the message for an ignored validation.
+	// Args: the validated SHA, tag, why it was ignored.
+	ValidationIgnoredMessage = "Ignored a validation of %s for tag %q: %s"
+
+	// CommitValidationRecordedReason indicates that a CommitValidation wrote the requested validation to git.
+	CommitValidationRecordedReason = "CommitValidationRecorded"
+	// CommitValidationRecordedMessage is the message for a recorded validation.
+	// Args: the validated SHA, environment branch.
+	CommitValidationRecordedMessage = "Recorded the validation of %s for environment branch %s"
+
+	// CommitValidationRejectedReason indicates that a CommitValidation asked for a commit that cannot be validated.
+	CommitValidationRejectedReason = "CommitValidationRejected"
+	// CommitValidationRejectedMessage is the message for a rejected validation.
+	// Args: the SHA that was asked for, environment branch, why it was rejected.
+	CommitValidationRejectedMessage = "Rejected the validation of %s for environment branch %s: %s"
+
+	// EnvironmentTagPushFailedReason indicates that a ValidatedCommitStatus could not push an environment tag.
+	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"
+	// EnvironmentTagPushFailedMessage is the message for a failed environment tag push.
+	// Args: tag, environment branch, error.
+	EnvironmentTagPushFailedMessage = "Failed to push tag %q for environment branch %s: %v"
 )

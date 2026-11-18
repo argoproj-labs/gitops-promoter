@@ -1,12 +1,16 @@
 package git_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -341,5 +345,152 @@ var _ = Describe("Promotion history notes", func() {
 
 		Expect(g.CommitExists(GinkgoT().Context(), mergeSha)).To(BeTrue())
 		Expect(g.CommitExists(GinkgoT().Context(), strings.Repeat("0", 40))).To(BeFalse())
+	})
+})
+
+var _ = Describe("Qualification notes", func() {
+	var (
+		ctx     context.Context
+		bareDir string
+		g       *git.EnvironmentOperations
+		shas    map[string]string
+	)
+
+	// otherClone returns a second clone of the same repository, as another controller replica or another
+	// gate sharing the repository would have.
+	otherClone := func(identity string) *git.EnvironmentOperations {
+		GinkgoHelper()
+		repo := &v1alpha1.GitRepository{
+			Name: "testrepo", Namespace: "default",
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+			},
+		}
+		other := git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: bareDir}, identity)
+		Expect(other.CloneRepo(ctx)).To(Succeed())
+		Expect(other.FetchBranch(ctx, "main")).To(Succeed())
+		return other
+	}
+	entry := func(drySha string) git.QualifiedNoteEntry {
+		return git.QualifiedNoteEntry{
+			DrySha:      drySha,
+			QualifiedAt: metav1.NewTime(time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)),
+			CommitStatuses: []git.QualifiedNoteCommitStatus{
+				{Key: "argocd-health", Phase: "success"},
+			},
+		}
+	}
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		bareDir, _, g, shas = newTagTestRepo()
+	})
+
+	It("reports no note for a commit that has none", func() {
+		Expect(g.FetchQualifiedNotes(ctx)).To(Succeed())
+		note, err := g.GetQualifiedNote(ctx, shas["c1"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note).To(BeNil())
+	})
+
+	It("writes an entry that another clone can read", func() {
+		Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environment/dev", entry("dry-1"))).To(Succeed())
+
+		other := otherClone("default/testrepo-reader")
+		Expect(other.FetchQualifiedNotes(ctx)).To(Succeed())
+		note, err := other.GetQualifiedNote(ctx, shas["c2"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note).NotTo(BeNil())
+		Expect(note.Environments).To(HaveKey("environment/dev"))
+		got := note.Environments["environment/dev"]
+		Expect(got.DrySha).To(Equal("dry-1"))
+		Expect(got.QualifiedAt.Time).To(BeTemporally("==", entry("").QualifiedAt.Time))
+		Expect(got.CommitStatuses).To(Equal(entry("").CommitStatuses))
+	})
+
+	It("keeps other environments' entries on a shared commit", func() {
+		// Environments that share an active branch (activePath) share its commits.
+		other := otherClone("default/testrepo-other-gate")
+		Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environments:apps/one", entry("dry-1"))).To(Succeed())
+		Expect(other.SetQualifiedNoteEntry(ctx, shas["c2"], "environments:apps/two", entry("dry-2"))).To(Succeed())
+
+		Expect(g.FetchQualifiedNotes(ctx)).To(Succeed())
+		note, err := g.GetQualifiedNote(ctx, shas["c2"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note.Environments).To(HaveLen(2))
+		Expect(note.Environments["environments:apps/one"].DrySha).To(Equal("dry-1"))
+		Expect(note.Environments["environments:apps/two"].DrySha).To(Equal("dry-2"))
+	})
+
+	It("replaces an environment's own entry", func() {
+		Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environment/dev", entry("dry-1"))).To(Succeed())
+		Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environment/dev", entry("dry-2"))).To(Succeed())
+		note, err := g.GetQualifiedNote(ctx, shas["c2"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note.Environments).To(HaveLen(1))
+		Expect(note.Environments["environment/dev"].DrySha).To(Equal("dry-2"))
+	})
+
+	It("loses no entry when several clones write at the same time", func() {
+		keys := []string{"environments:apps/one", "environments:apps/two", "environments:apps/three"}
+		clones := make([]*git.EnvironmentOperations, len(keys))
+		for i := range keys {
+			clones[i] = otherClone("default/testrepo-writer-" + keys[i])
+		}
+		errs := make([]error, len(keys))
+		var wg sync.WaitGroup
+		for i, key := range keys {
+			wg.Go(func() {
+				errs[i] = clones[i].SetQualifiedNoteEntry(ctx, shas["c2"], key, entry("dry-"+key))
+			})
+		}
+		wg.Wait()
+		for _, err := range errs {
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		Expect(g.FetchQualifiedNotes(ctx)).To(Succeed())
+		note, err := g.GetQualifiedNote(ctx, shas["c2"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note.Environments).To(HaveLen(len(keys)))
+	})
+
+	It("ignores a note that is not valid JSON", func() {
+		Expect(g.SetQualifiedNoteEntry(ctx, shas["c1"], "environment/dev", entry("dry-1"))).To(Succeed())
+		_, err := runGitCmd(bareDir, "-c", "user.name=t", "-c", "user.email=t@example.com",
+			"notes", "--ref="+git.PromoterQualifiedNotesRef, "add", "-f", "-m", "not json", shas["c1"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchQualifiedNotes(ctx)).To(Succeed())
+		note, err := g.GetQualifiedNote(ctx, shas["c1"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note).To(BeNil())
+	})
+
+	Describe("FindNewestQualifiedNoteEntry", func() {
+		It("finds nothing when no commit on the branch has an entry for the environment", func() {
+			Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environment/other", entry("dry-1"))).To(Succeed())
+			found, sha, err := g.FindNewestQualifiedNoteEntry(ctx, shas["c3"], "environment/dev", 50)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeNil())
+			Expect(sha).To(BeEmpty())
+		})
+
+		It("finds the entry on the newest commit that has one", func() {
+			Expect(g.SetQualifiedNoteEntry(ctx, shas["c1"], "environment/dev", entry("dry-1"))).To(Succeed())
+			Expect(g.SetQualifiedNoteEntry(ctx, shas["c2"], "environment/dev", entry("dry-2"))).To(Succeed())
+			found, sha, err := g.FindNewestQualifiedNoteEntry(ctx, shas["c3"], "environment/dev", 50)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).NotTo(BeNil())
+			Expect(found.DrySha).To(Equal("dry-2"))
+			Expect(sha).To(Equal(shas["c2"]))
+		})
+
+		It("does not look further back than the limit", func() {
+			Expect(g.SetQualifiedNoteEntry(ctx, shas["c1"], "environment/dev", entry("dry-1"))).To(Succeed())
+			found, _, err := g.FindNewestQualifiedNoteEntry(ctx, shas["c3"], "environment/dev", 2)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeNil())
+		})
 	})
 })

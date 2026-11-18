@@ -28,7 +28,10 @@ Upgrading from a release before 0.39? See [Upgrading](../upgrading.md#039-promot
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
 status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The controller injects that gate's
 `spec.key` onto every `ChangeTransferPolicy`; without a resolvable ref the PromotionStrategy fails reconcile.
-The built-in ordering gate is [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md).
+The built-in ordering gates are [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md),
+where every environment follows the DRY branch HEAD, and
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md), where every environment
+follows its own tag and a person can validate a commit for an environment.
 
 Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
@@ -157,8 +160,8 @@ publishTo: []
 
 Omitting the field is not an empty list. The default fills in `[scm]`. The controller posts to the SCM when `scm` is in the list. Promotion gates use the phase in every case.
 
-Every built-in gate (`ArgoCDCommitStatus`, `DependentsSuccessfulCommitStatus`, `GitCommitStatus`,
-`ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
+Every built-in gate (`ArgoCDCommitStatus`, `ValidatedCommitStatus`, `DependentsSuccessfulCommitStatus`,
+`GitCommitStatus`, `ScheduledCommitStatus`, `TimedCommitStatus`, and `WebRequestCommitStatus`) also has **`spec.publishTo`**. The gate
 copies the list to every CommitStatus it creates.
 
 Use `publishTo: []` when a status in the SCM would block the check it watches. For example, a GitLab "Pipelines must succeed" rule
@@ -223,6 +226,11 @@ Promotion ordering is required for every PromotionStrategy. Use
 or declare `dependsOn` on `PromotionStrategy.spec.environments[]` for fan-out and fan-in. Wire the gate with required
 `orderCommitStatusRef`; the controller injects `spec.key` onto every CTP. See that page and
 [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy) for wiring details.
+
+To let later environments lag behind the DRY branch HEAD, to approve a commit for an environment before it is
+hydrated, or to send a commit to one environment past the others, use
+[ValidatedCommitStatus](built-in-gates/validated-commit-status.md) instead. See
+[Holding Back Environments](../advanced-usage/holding-back-environments.md).
 
 ### Argo CD Health Status
 
