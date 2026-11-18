@@ -19,6 +19,11 @@ your own manifests, add the objects above and the Secret volume, or run it with 
 templates are then validated at reconcile only. See
 [Template validation](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#template-validation).
 
+The shipped manifests leave the Secret's `.data` and the webhook configuration's `caBundle` empty. The controller owns
+both under the field manager `promoter-webhook-cert-rotator`, so a client-side or server-side apply leaves the
+generated values in place. A sync with `Replace=true` clears them; the controller watches both objects and writes them
+again, generating a new certificate if the Secret was cleared.
+
 ## 0.51 — KubernetesResourceCommitStatus configuration section
 
 `ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller

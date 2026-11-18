@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -82,8 +83,21 @@ func Setup(
 	isConfiguredKind func(schema.GroupVersionKind) bool,
 ) (healthz.Checker, error) {
 	logger := ctrl.Log.WithName("webhook-setup")
+	// Direct client, not mgr.GetClient(): the controller's cache partitions Secrets by instance-id, strips their
+	// data and makes writes wait on it. cert-controller reads through its own cache and only needs a writer. The
+	// client-wide field owner attributes the Secret's data, like the caBundle, to FieldManager, so GitOps tools
+	// re-applying the shipped (empty) manifests leave the generated values alone. Same approach as the dashboard
+	// apiserver's rotation in internal/certrotation.
+	writer, err := client.New(mgr.GetConfig(), client.Options{
+		Scheme:     mgr.GetScheme(),
+		Mapper:     mgr.GetRESTMapper(),
+		FieldOwner: FieldManager,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the webhook certificate rotation client: %w", err)
+	}
 	certsReady := make(chan struct{})
-	if err := rotator.AddRotator(mgr, &rotator.CertRotator{
+	if err := rotator.AddRotator(writerManager{Manager: mgr, writer: writer}, &rotator.CertRotator{
 		SecretKey:      types.NamespacedName{Namespace: namespace, Name: opts.SecretName},
 		CertDir:        opts.CertDir,
 		CAName:         "gitops-promoter-webhook-ca",
@@ -94,7 +108,9 @@ func Setup(
 		Webhooks:       []rotator.WebhookInfo{{Name: opts.ConfigurationName, Type: rotator.Validating}},
 		// Every replica serves the webhook, so every replica needs the certificate on disk.
 		RequireLeaderElection: false,
-		FieldOwner:            "gitops-promoter-cert-rotator",
+		FieldOwner:            FieldManager,
+		// The controller also runs the dashboard apiserver's rotator; controller names must be unique.
+		ControllerName: FieldManager,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to add the webhook certificate rotator: %w", err)
 	}
@@ -128,3 +144,15 @@ func Setup(
 		}
 	}, nil
 }
+
+// FieldManager is the field manager of every field the webhook certificate rotator writes: the Secret's data and
+// the ValidatingWebhookConfiguration's caBundle.
+const FieldManager = "promoter-webhook-cert-rotator"
+
+// writerManager is a manager whose GetClient returns writer; cert-controller takes its writer from GetClient.
+type writerManager struct {
+	ctrl.Manager
+	writer client.Client
+}
+
+func (m writerManager) GetClient() client.Client { return m.writer }
