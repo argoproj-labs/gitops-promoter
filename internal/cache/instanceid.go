@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	argocd "github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/tekton"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -148,6 +149,39 @@ func applicationCRDInstalled(cfg *rest.Config) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("RESTMapping for Argo CD Application: %w", err)
+}
+
+// TektonCRDsInstalled checks to see if TaskRun and PipelineRun are installed in the cluster.
+func TektonCRDsInstalled(cfg *rest.Config) (bool, error) {
+	httpClient, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		return false, fmt.Errorf("create HTTP client to discover Tekton TaskRun and PipelineRun CRDs: %w", err)
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
+	if err != nil {
+		return false, fmt.Errorf("create RESTMapper to discover Tekton TaskRun and PipelineRun CRDs: %w", err)
+	}
+	_, err = mapper.RESTMapping(schema.GroupKind{
+		Group: tekton.SchemeGroupVersion.Group,
+		Kind:  "TaskRun",
+	}, tekton.SchemeGroupVersion.Version)
+	if meta.IsNoMatchError(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("RESTMapping for Tekton TaskRun: %w", err)
+	}
+
+	_, err = mapper.RESTMapping(schema.GroupKind{
+		Group: tekton.SchemeGroupVersion.Group,
+		Kind:  "PipelineRun",
+	}, tekton.SchemeGroupVersion.Version)
+	if meta.IsNoMatchError(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("RESTMapping for Tekton PipelineRun: %w", err)
+	}
+
+	return true, nil
 }
 
 func instanceIDSelector(instanceID *string) labels.Selector {

@@ -199,6 +199,17 @@ A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation.
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
 ```
 
+### TektonCommitStatus
+
+A TektonCommitStatus runs Tekton Pipelines and Tasks as promotion gates and evaluates the results based on completion or configured expressions. It can be used on a proposed or active commit
+making it suitable for health checks, security scans, testing, and more. See [Tekton Commit Status](gating-promotions/built-in-gates/tekton-commit-status.md) for configuration details
+and examples.
+
+
+```yaml
+{!internal/controller/testdata/TektonCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.

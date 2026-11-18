@@ -1,0 +1,22 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TektonCommitStatus
+metadata:
+  name: tekton-security-scan
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: my-app-strategy
+  key: security-scan
+  tektonResourceRef:
+    kind: Pipeline
+    name: security-scan-pipeline
+    serviceAccount: tekton-runner
+    params:
+      - name: gitUrl
+        value: "https://github.com/myorg/myrepo/commit/{{ .TargetedSha }}"
+        type: string
+  expectedResults:
+    - key: vulnerabilities
+      expression: "Result == '0'"
+  target: proposed
+  pruneRun: true
