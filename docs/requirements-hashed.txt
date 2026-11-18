@@ -306,9 +306,9 @@ mkdocs-get-deps==0.2.2 \
     # via
     #   -r docs/requirements.txt
     #   mkdocs
-mkdocs-github-admonitions-plugin==0.1.1 \
-    --hash=sha256:7f81520a0681b9955952d73b21ce99b923921830b6b6d1ace9b3fb95cd1fb61f \
-    --hash=sha256:824dc821764171943c1043c88218d4af0329693870ba9be657f890d484a0aa85
+mkdocs-github-admonitions-plugin==0.1.2 \
+    --hash=sha256:00c8705cc2782a57dfb1d7fe8ec184f591efd1d0d87f089d8dc6619049ff7674 \
+    --hash=sha256:8815244121e7c92611f82f5abf22f2fc70ee729f9ce59c71d11eba35f3c5aba2
     # via -r docs/requirements.txt
 mkdocs-material==9.8.0 \
     --hash=sha256:19304a7263c5700428227122b3b2699aa73f432c9de8816876adaec7d7293ce3 \

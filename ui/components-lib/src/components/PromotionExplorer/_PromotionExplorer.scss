@@ -304,7 +304,7 @@
 .hp-matrix__head {
   display: grid;
   gap: 8px;
-  padding: 16px 8px 10px;
+  padding: 16px 8px 10px calc(#{$day-gutter} + 8px);
 }
 
 // When the banner is present it already provides the top spacing, so the
@@ -319,11 +319,11 @@
   gap: 8px;
   align-self: stretch;
   position: sticky;
-  left: 0;
+  left: $day-gutter;
   z-index: 2;
   background: $bg-page;
-  box-shadow: -16px 0 0 0 $bg-page;
-  clip-path: inset(0 0 0 -16px);
+  box-shadow: calc(-16px - #{$day-gutter}) 0 0 0 $bg-page;
+  clip-path: inset(0 0 0 calc(-16px - #{$day-gutter}));
   padding-right: 8px;
   border-right: 1px solid $stroke;
 }
@@ -380,6 +380,87 @@
   border: 1px dashed $stroke;
   border-radius: $radius-lg;
   background: $bg-surface;
+}
+
+.hp-timeline {
+  min-width: max-content;
+}
+
+.hp-day {
+  display: grid;
+  grid-template-columns: $day-gutter minmax(max-content, 1fr);
+}
+
+.hp-day__rail {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: $bg-page;
+  box-shadow: -16px 0 0 0 $bg-page;
+  clip-path: inset(0 0 0 -16px);
+  padding-top: 8px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 9px;
+    width: 2px;
+    background: $stroke;
+  }
+}
+
+.hp-day:first-child .hp-day__rail::before {
+  top: 18px;
+}
+
+.hp-day__icon {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 20px;
+  color: $text-muted;
+  background: $bg-page;
+}
+
+.hp-day__title {
+  position: sticky;
+  left: $day-gutter;
+  width: max-content;
+  margin: 0;
+  padding: 8px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  color: $text-secondary;
+}
+
+.hp-day__rows {
+  margin-bottom: 16px;
+  background: $bg-surface;
+  border: 1px solid $row-border;
+  border-radius: $radius-md;
+  overflow: clip;
+
+  .hp-row {
+    border-color: transparent;
+    border-radius: 0;
+    &:hover {
+      border-color: $stroke-strong;
+    }
+    &--selected {
+      border-color: $accent;
+    }
+  }
+
+  .hp-row + .hp-row:not(:hover, .hp-row--selected) {
+    border-top-color: $row-border;
+  }
+}
+
+.hp-day:last-child .hp-day__rows {
+  margin-bottom: 0;
 }
 
 .hp-env-banner {
@@ -476,11 +557,9 @@
   padding: 4px 10px 4px 8px;
   min-width: 0;
   position: sticky;
-  left: 0;
+  left: $day-gutter;
   z-index: 2;
   background: $bg-surface;
-  box-shadow: -16px 0 0 0 $bg-surface;
-  clip-path: inset(0 0 0 -16px);
   margin: -6px 0 -6px -8px;
   padding: 8px 10px 8px 16px;
   border-right: 1px solid $stroke;
