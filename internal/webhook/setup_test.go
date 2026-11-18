@@ -118,5 +118,20 @@ var _ = Describe("Setup", func() {
 
 			g.Expect(probe(readyz)).To(Equal(http.StatusOK))
 		}, 60*time.Second, 200*time.Millisecond).Should(Succeed())
+
+		By("attributing the generated Secret data and caBundle to the rotator's field manager")
+		managers := func(fields []metav1.ManagedFieldsEntry) []string {
+			out := make([]string, 0, len(fields))
+			for _, f := range fields {
+				out = append(out, f.Manager)
+			}
+			return out
+		}
+		var secret corev1.Secret
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: opts.SecretName}, &secret)).To(Succeed())
+		Expect(managers(secret.ManagedFields)).To(ContainElement(FieldManager))
+		var vwc admissionregistrationv1.ValidatingWebhookConfiguration
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: opts.ConfigurationName}, &vwc)).To(Succeed())
+		Expect(managers(vwc.ManagedFields)).To(ContainElement(FieldManager))
 	})
 })
