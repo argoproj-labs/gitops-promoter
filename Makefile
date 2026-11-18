@@ -319,7 +319,7 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go controller
+	go run ./cmd/main.go controller --admission-webhook=false
 
 SCM_SERVER_ARGS = --ca-out $(LOCALBIN)/scm-server-ca.pem --token dev-token --log-level $(SCM_SERVER_LOG_LEVEL) \
 		--admin-addr 127.0.0.1:$(SCM_SERVER_PORT_BASE) --github-addr 127.0.0.1:$(shell echo $$(($(SCM_SERVER_PORT_BASE)+1))) \

@@ -43,6 +43,7 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 //   - WebRequestCommitStatusConfiguration
 //   - DependentsSuccessfulCommitStatusConfiguration
 //   - ScheduledCommitStatusConfiguration
+//   - KubernetesResourceCommitStatusConfiguration
 //   - RestoreActiveCommitConfiguration
 type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
@@ -56,6 +57,7 @@ type ControllerConfigurationTypes interface {
 		promoterv1alpha1.WebRequestCommitStatusConfiguration |
 		promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration |
 		promoterv1alpha1.ScheduledCommitStatusConfiguration |
+		promoterv1alpha1.KubernetesResourceCommitStatusConfiguration |
 		promoterv1alpha1.RestoreActiveCommitConfiguration
 }
 
@@ -300,6 +302,17 @@ func (m *Manager) GetWebRequestCommitStatusNamespaceMetadata(ctx context.Context
 	return cc.Spec.WebRequestCommitStatus.NamespaceMetadata, nil
 }
 
+// GetKubernetesResourceCommitStatusResourcesDirect returns spec.kubernetesResourceCommitStatus.resources using a
+// non-cached read, so it is safe to call before the manager cache starts. The list is a startup setting: the
+// controller builds informers for these kinds in SetupWithManager.
+func (m *Manager) GetKubernetesResourceCommitStatusResourcesDirect(ctx context.Context) ([]promoterv1alpha1.ResourceGroupVersionKind, error) {
+	cc, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return cc.Spec.KubernetesResourceCommitStatus.Resources, nil
+}
+
 // getWorkQueueForController retrieves the WorkQueue configuration for a specific controller type.
 // The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //
@@ -352,6 +365,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return config.Spec.DependentsSuccessfulCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
 		return config.Spec.ScheduledCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.KubernetesResourceCommitStatusConfiguration:
+		return config.Spec.KubernetesResourceCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.RestoreActiveCommitConfiguration:
 		return config.Spec.RestoreActiveCommit.WorkQueue, nil
 	default:
