@@ -74,6 +74,9 @@ type PromotionStrategyDetails struct {
 	// DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy.
 	DependentsSuccessfulCommitStatuses []promoterv1alpha1.DependentsSuccessfulCommitStatus `json:"dependentsSuccessfulCommitStatuses,omitempty"`
 
+	// DependentsQualifiedCommitStatuses are the DependentsQualifiedCommitStatus managers that reference the PromotionStrategy.
+	DependentsQualifiedCommitStatuses []promoterv1alpha1.DependentsQualifiedCommitStatus `json:"dependentsQualifiedCommitStatuses,omitempty"`
+
 	// ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.
 	ScheduledCommitStatuses []promoterv1alpha1.ScheduledCommitStatus `json:"scheduledCommitStatuses,omitempty"`
 

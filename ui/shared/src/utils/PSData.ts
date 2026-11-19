@@ -28,6 +28,7 @@ export interface CommitStatusManagerBundle {
   argoCDCommitStatuses?: components['schemas']['ArgoCDCommitStatus'][];
   webRequestCommitStatuses?: components['schemas']['WebRequestCommitStatus'][];
   dependentsSuccessfulCommitStatuses?: components['schemas']['DependentsSuccessfulCommitStatus'][];
+  dependentsQualifiedCommitStatuses?: components['schemas']['DependentsQualifiedCommitStatus'][];
 }
 
 function findManager(
@@ -63,6 +64,11 @@ function findManager(
   for (const dcs of managers.dependentsSuccessfulCommitStatuses ?? []) {
     if (dcs.spec.key === key && dcs.status?.environments?.some((e) => e.branch === branch)) {
       return { kind: 'DependentsSuccessfulCommitStatus', manager: dcs };
+    }
+  }
+  for (const dqcs of managers.dependentsQualifiedCommitStatuses ?? []) {
+    if (dqcs.spec.key === key && dqcs.status?.environments?.some((e) => e.branch === branch)) {
+      return { kind: 'DependentsQualifiedCommitStatus', manager: dqcs };
     }
   }
   return undefined;

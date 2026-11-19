@@ -115,6 +115,28 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
 		return &apiv1alpha1.CronWindowApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatus"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatusConfiguration"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatusSpec"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatusStatus"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedCommitStatusUpstreamStatus"):
+		return &apiv1alpha1.DependentsQualifiedCommitStatusUpstreamStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedDrySource"):
+		return &apiv1alpha1.DependentsQualifiedDrySourceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedDryStatus"):
+		return &apiv1alpha1.DependentsQualifiedDryStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedEnvironment"):
+		return &apiv1alpha1.DependentsQualifiedEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedTagStatus"):
+		return &apiv1alpha1.DependentsQualifiedTagStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedWatermark"):
+		return &apiv1alpha1.DependentsQualifiedWatermarkApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatus"):
 		return &apiv1alpha1.DependentsSuccessfulCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusConfiguration"):

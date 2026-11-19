@@ -130,4 +130,25 @@ const (
 	WebRequestFailedReason = "WebRequestFailed"
 	// WebRequestFailedMessage is the message for a failed web request.
 	WebRequestFailedMessage = "HTTP request for commit status %q failed: %v"
+
+	// EnvironmentQualifiedReason indicates that a DependentsQualifiedCommitStatus recorded that an environment
+	// qualified a dry commit (or that a restore pulled the environment's qualification back to one).
+	EnvironmentQualifiedReason = "EnvironmentQualified"
+	// EnvironmentQualifiedMessage is the message for a recorded qualification.
+	// Args: environment branch, dry SHA.
+	EnvironmentQualifiedMessage = "Environment branch %s qualified dry commit %s"
+
+	// EnvironmentTagMovedReason indicates that a DependentsQualifiedCommitStatus created or moved an environment tag.
+	EnvironmentTagMovedReason = "EnvironmentTagMoved"
+	// EnvironmentTagMovedMessage is the message for a created or moved environment tag.
+	// Args: tag, environment branch, previous dry SHA (or EnvironmentTagNoPreviousSha), new dry SHA.
+	EnvironmentTagMovedMessage = "Moved tag %q for environment branch %s from %s to %s"
+	// EnvironmentTagNoPreviousSha is used in EnvironmentTagMoved messages when the tag did not exist.
+	EnvironmentTagNoPreviousSha = "<none>"
+
+	// EnvironmentTagPushFailedReason indicates that a DependentsQualifiedCommitStatus could not push an environment tag.
+	EnvironmentTagPushFailedReason = "EnvironmentTagPushFailed"
+	// EnvironmentTagPushFailedMessage is the message for a failed environment tag push.
+	// Args: tag, environment branch, error.
+	EnvironmentTagPushFailedMessage = "Failed to push tag %q for environment branch %s: %v"
 )

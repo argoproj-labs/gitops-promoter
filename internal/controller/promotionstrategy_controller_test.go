@@ -6023,6 +6023,34 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
 		promotionStrategyUID := types.UID("11111111-1111-1111-1111-111111111111")
 
+		// Environments ordered by a DependentsQualifiedCommitStatus each hydrate from their own tag, so
+		// their proposed dry SHAs disagree on purpose and there is no shared batch target to nudge
+		// towards. That gate nudges its own ChangeTransferPolicies instead.
+		DescribeTable("skipping strategies whose environments hydrate from their own tags",
+			func(ref promoterv1alpha1.OrderCommitStatusRef, expected bool) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				ps.Spec.OrderCommitStatusRef = ref
+				Expect(isDependentsQualifiedOrdering(ps)).To(Equal(expected))
+			},
+			Entry("the default ordering gate", promoterv1alpha1.OrderCommitStatusRef{Name: "gate"}, false),
+			Entry("an explicit DependentsSuccessfulCommitStatus",
+				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.DefaultOrderCommitStatusKind}, false),
+			Entry("a DependentsQualifiedCommitStatus with the default group",
+				promoterv1alpha1.OrderCommitStatusRef{Name: "gate", Kind: promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind}, true),
+			Entry("a DependentsQualifiedCommitStatus with the group spelled out",
+				promoterv1alpha1.OrderCommitStatusRef{
+					Name:  "gate",
+					Group: promoterv1alpha1.DefaultOrderCommitStatusGroup,
+					Kind:  promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind,
+				}, true),
+			Entry("a kind of the same name in another group",
+				promoterv1alpha1.OrderCommitStatusRef{
+					Name:  "gate",
+					Group: "example.com",
+					Kind:  promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind,
+				}, false),
+		)
+
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one

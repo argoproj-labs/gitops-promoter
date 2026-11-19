@@ -214,7 +214,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
 	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
+	//
+	// Environments ordered by a DependentsQualifiedCommitStatus each hydrate from their own
+	// tag, so their proposed dry SHAs disagree on purpose; that gate nudges its own CTPs.
+	if !isDependentsQualifiedOrdering(&ps) {
+		r.enqueueOutOfSyncCTPs(ctx, ps.UID, ctps)
+	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -450,6 +455,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
+}
+
+// isDependentsQualifiedOrdering reports whether the strategy's ordering gate is a
+// DependentsQualifiedCommitStatus, which gives every environment its own dry tag to hydrate from.
+func isDependentsQualifiedOrdering(ps *promoterv1alpha1.PromotionStrategy) bool {
+	ref := ps.Spec.OrderCommitStatusRef.WithDefaults()
+	return ref.Group == promoterv1alpha1.DefaultOrderCommitStatusGroup &&
+		ref.Kind == promoterv1alpha1.DependentsQualifiedOrderCommitStatusKind
 }
 
 // enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA

@@ -492,6 +492,17 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "DependentsSuccessfulCommitStatus")
 		panic(fmt.Errorf("unable to create DependentsSuccessfulCommitStatus controller: %w", err))
 	}
+	dqcsReconciler := &controller.DependentsQualifiedCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("DependentsQualifiedCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}
+	if err := dqcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DependentsQualifiedCommitStatus")
+		panic(fmt.Errorf("unable to create DependentsQualifiedCommitStatus controller: %w", err))
+	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
@@ -510,7 +521,9 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(localManager,
+		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.EnqueueFunc(dqcsReconciler.GetEnqueueFunc()))
 
 	g, ctx := errgroup.WithContext(runCtx)
 

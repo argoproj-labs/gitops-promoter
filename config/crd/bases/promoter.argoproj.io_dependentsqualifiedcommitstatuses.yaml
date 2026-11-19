@@ -1,0 +1,472 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: dependentsqualifiedcommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: DependentsQualifiedCommitStatus
+    listKind: DependentsQualifiedCommitStatusList
+    plural: dependentsqualifiedcommitstatuses
+    singular: dependentsqualifiedcommitstatus
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DependentsQualifiedCommitStatus is the Schema for the dependentsqualifiedcommitstatuses
+          API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentsqualifiedcommitstatus
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of DependentsQualifiedCommitStatus
+            properties:
+              drySource:
+                description: DrySource is where the dry commits and the environment
+                  tags live.
+                properties:
+                  branch:
+                    description: |-
+                      Branch is the dry branch. Environments with no upstreams track its HEAD, and only commits reachable
+                      from its HEAD are qualified or promoted by this gate.
+                      Must not start with '-', contain ':', or contain '..'.
+                    maxLength: 255
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: branch must not start with '-'
+                      rule: '!self.startsWith(''-'')'
+                    - message: branch must not contain ':'
+                      rule: '!self.contains('':'')'
+                    - message: branch must not contain '..'
+                      rule: '!self.contains(''..'')'
+                  gitRepositoryRef:
+                    description: |-
+                      GitRepositoryRef is the GitRepository that holds the dry branch and the environment tags. Omit it when
+                      that is the PromotionStrategy's own repository, which is the usual case.
+                    properties:
+                      name:
+                        description: Name is the name of the object to refer to.
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - branch
+                type: object
+              environments:
+                description: |-
+                  Environments declares the tag each environment hydrates from. There must be exactly one entry for
+                  every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+                items:
+                  description: DependentsQualifiedEnvironment declares the tag one
+                    environment hydrates from.
+                  properties:
+                    advance:
+                      default: Auto
+                      description: |-
+                        Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
+                        still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+                      enum:
+                      - Auto
+                      - Manual
+                      type: string
+                    branch:
+                      description: |-
+                        Branch is the environment's active branch. It must match an environment of the referenced
+                        PromotionStrategy.
+                        Must not start with '-', contain ':', or contain '..'.
+                      maxLength: 100
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: branch must not start with '-'
+                        rule: '!self.startsWith(''-'')'
+                      - message: branch must not contain ':'
+                        rule: '!self.contains('':'')'
+                      - message: branch must not contain '..'
+                        rule: '!self.contains(''..'')'
+                    tag:
+                      description: |-
+                        Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
+                        refs/tags/ prefix). The controller creates the tag if it does not exist.
+                        Must not start with '-', contain ':', or contain '..'.
+                      maxLength: 100
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: tag must not start with '-'
+                        rule: '!self.startsWith(''-'')'
+                      - message: tag must not contain ':'
+                        rule: '!self.contains('':'')'
+                      - message: tag must not contain '..'
+                        rule: '!self.contains(''..'')'
+                  required:
+                  - branch
+                  - tag
+                  type: object
+                maxItems: 50
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+                x-kubernetes-validations:
+                - message: each environment must have its own tag
+                  rule: self.all(e, self.exists_one(o, o.tag == e.tag))
+              key:
+                description: |-
+                  Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
+                  The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses.
+                  Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy this gate orders. The environments and
+                  their dependencies (dependsOn) come from the PromotionStrategy.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              publishTo:
+                default:
+                - scm
+                description: |-
+                  PublishTo is copied to spec.publishTo on each CommitStatus this controller creates.
+                  - "scm": the CommitStatus controller posts them to the SCM provider
+                  The default is ["scm"]. An empty list keeps them in Kubernetes and does not post them to the SCM.
+                  Omitting the field uses the default. Promotion gates use the phase in every case.
+                items:
+                  description: CommitStatusPublishTo is one destination a commit status
+                    can be published to.
+                  enum:
+                  - scm
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
+              url:
+                description: |-
+                  URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
+                  empty, no URL is set on the child CommitStatus. The template receives .Environment,
+                  .DependentsQualifiedCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery.
+                properties:
+                  options:
+                    description: "Options sets options for the template. Options are
+                      described by\nstrings, either a simple string or \"key=value\".
+                      There can be at\nmost one equals sign in an option string. If
+                      the option string\nis unrecognized or otherwise invalid, Option
+                      panics.\n\nKnown options:\n\nmissingkey: Control the behavior
+                      during execution if a map is\nindexed with a key that is not
+                      present in the map.\n\n\t\"missingkey=default\" or \"missingkey=invalid\"\n\t\tThe
+                      default behavior: Do nothing and continue execution.\n\t\tIf
+                      printed, the result of the index operation is the string\n\t\t\"<no
+                      value>\".\n\t\"missingkey=zero\"\n\t\tThe operation returns
+                      the zero value for the map type's element.\n\t\"missingkey=error\"\n\t\tExecution
+                      stops immediately with an error."
+                    items:
+                      type: string
+                    type: array
+                  template:
+                    description: |-
+                      Template is a Go text template used to generate the CommitStatus URL. A function called
+                      urlQueryEscape is available to escape URL query parameters. The template can be configured
+                      with options (url.options) to control behavior when a variable is not present.
+
+                      Available template variables depend on the parent resource that embeds URLConfig
+                      (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
+                      corresponding gate documentation for the variable set and examples.
+                    type: string
+                type: object
+            required:
+            - drySource
+            - environments
+            - key
+            - promotionStrategyRef
+            type: object
+          status:
+            description: status defines the observed state of DependentsQualifiedCommitStatus
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              dry:
+                description: Dry is the observed state of the dry branch.
+                properties:
+                  sha:
+                    description: Sha is the HEAD of the dry branch when the controller
+                      last reconciled.
+                    maxLength: 64
+                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                    type: string
+                type: object
+              environments:
+                description: Environments reports the tag, qualification, and gate
+                  state of each environment.
+                items:
+                  description: DependentsQualifiedCommitStatusEnvironmentStatus defines
+                    observed state for one environment branch.
+                  properties:
+                    activeCommitStatuses:
+                      description: ActiveCommitStatuses is a verbatim copy of the
+                        PromotionStrategy environment's active commit statuses.
+                      items:
+                        description: ChangeRequestPolicyCommitStatusPhase defines
+                          the phase of a commit status in a ChangeTransferPolicy.
+                        properties:
+                          description:
+                            description: Description is the description of the commit
+                              status
+                            type: string
+                          key:
+                            description: Key staging hydrated branch
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                            type: string
+                          phase:
+                            description: Phase what phase is the status in
+                            enum:
+                            - pending
+                            - success
+                            - failure
+                            type: string
+                          url:
+                            description: Url is the URL of the commit status
+                            pattern: ^(https?://.*)?$
+                            type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid URL
+                              rule: self == '' || isURL(self)
+                        required:
+                        - key
+                        - phase
+                        type: object
+                      maxItems: 100
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
+                    branch:
+                      description: Branch is the environment branch name.
+                      minLength: 1
+                      type: string
+                    description:
+                      description: Description mirrors child CommitStatus.spec.description.
+                      type: string
+                    phase:
+                      description: Phase mirrors child CommitStatus.spec.phase.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      - ""
+                      type: string
+                    qualified:
+                      description: |-
+                        Qualified is the newest dry commit this environment has qualified. Omitted until the environment has
+                        qualified a commit.
+                      properties:
+                        drySha:
+                          description: DrySha is the newest qualified dry commit.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                        hydratedSha:
+                          description: HydratedSha is the commit on the environment's
+                            active branch that was live at the time.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                          type: string
+                        qualifiedAt:
+                          description: QualifiedAt is when the controller recorded
+                            the qualification.
+                          format: date-time
+                          type: string
+                      required:
+                      - drySha
+                      - qualifiedAt
+                      type: object
+                    reportedSha:
+                      description: |-
+                        ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+                        Semantics depend on the parent gate (proposed vs active hydrated SHA).
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                    tag:
+                      description: Tag is the environment's tag as last read from
+                        the dry repository.
+                      properties:
+                        name:
+                          description: Name is the tag name.
+                          minLength: 1
+                          type: string
+                        sha:
+                          description: Sha is the dry commit the tag points at. Empty
+                            when the tag does not exist.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    upstreams:
+                      description: Upstreams lists this environment's direct upstreams
+                        and whether each has qualified the tagged commit.
+                      items:
+                        description: |-
+                          DependentsQualifiedCommitStatusUpstreamStatus reports whether a direct upstream has qualified the commit
+                          this environment's tag points at.
+                        properties:
+                          branch:
+                            description: Branch is the upstream environment branch
+                              name.
+                            minLength: 1
+                            type: string
+                          reason:
+                            description: Reason explains why the upstream is not satisfied.
+                              Omitted when satisfied is true.
+                            type: string
+                          satisfied:
+                            description: Satisfied is true when the upstream has qualified
+                              the tagged commit or a newer commit that contains it.
+                            type: boolean
+                        required:
+                        - branch
+                        - satisfied
+                        type: object
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    url:
+                      description: Url mirrors child CommitStatus.spec.url.
+                      pattern: ^(https?://.*)?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid URL
+                        rule: self == '' || isURL(self)
+                  required:
+                  - branch
+                  type: object
+                maxItems: 500
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

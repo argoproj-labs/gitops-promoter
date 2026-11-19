@@ -42,6 +42,10 @@ const (
 	// performed by the DependentsSuccessfulCommitStatus controller.
 	DependentsSuccessfulCommitStatusControllerFieldOwner = "promoter.argoproj.io/dependentssuccessfulcommitstatus-controller"
 
+	// DependentsQualifiedCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the DependentsQualifiedCommitStatus controller.
+	DependentsQualifiedCommitStatusControllerFieldOwner = "promoter.argoproj.io/dependentsqualifiedcommitstatus-controller"
+
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
 	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"

@@ -1,0 +1,21 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsQualifiedCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: dependentsqualifiedcommitstatus-sample
+spec:
+  key: dependents-qualified
+  promotionStrategyRef:
+    name: promotionstrategy-sample
+  drySource:
+    branch: main
+  environments:
+    - branch: environment/development
+      tag: env/development
+    - branch: environment/staging
+      tag: env/staging
+    - branch: environment/production
+      tag: env/production
+      advance: Manual
