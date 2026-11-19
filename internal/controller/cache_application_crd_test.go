@@ -44,6 +44,7 @@ var _ = Describe("WithArgoCDApplicationIfInstalled", func() {
 		Expect(ok).To(BeTrue())
 		Expect(byObj.Label.String()).To(Equal(labels.Everything().String()),
 			"Applications never carry the instance-id label, so they must stay unfiltered")
+		Expect(byObj.Transform).NotTo(BeNil(), "host Applications strip managedFields like provider Applications")
 	})
 
 	It("omits Application and still builds a cache when the CRD is absent", func() {
