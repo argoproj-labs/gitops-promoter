@@ -36,7 +36,7 @@
     box-shadow:
       0 0 0 1px $bg-surface,
       0 0 0 4px $selection,
-      0 6px 16px rgba(15, 35, 60, 0.28);
+      0 6px 16px $shadow-lift;
     &:focus-visible {
       outline-offset: 5px;
     }
@@ -120,8 +120,8 @@
     45deg,
     transparent,
     transparent 5px,
-    rgba(15, 35, 60, 0.05) 5px,
-    rgba(15, 35, 60, 0.05) 10px
+    $cell-hatch 5px,
+    $cell-hatch 10px
   );
 }
 .cell__unknown-label {
