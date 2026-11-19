@@ -44,8 +44,12 @@ type CreateRepoRequest struct {
 	Name string `json:"name"`
 	// DefaultBranch defaults to "main".
 	DefaultBranch string `json:"defaultBranch,omitempty"`
-	// Init creates an initial commit with a README on the default branch.
+	// Init creates an initial commit with a README on the default branch. It cannot be combined with ForkOf.
 	Init bool `json:"init,omitempty"`
+	// ForkOf is the ID of the GitHub repository to fork. The fork starts with a copy of the parent's branches, and
+	// DefaultBranch defaults to the parent's. Forks share their parent's fork network, which changes how GitHub
+	// resolves "owner:branch" head filters; see the pulls list endpoint.
+	ForkOf int64 `json:"forkOf,omitempty"`
 }
 
 // RepoInfo describes a hosted repository.
@@ -66,6 +70,8 @@ type RepoInfo struct {
 	ProjectUUID string `json:"projectUUID,omitempty"`
 	// ID is the numeric repository ID; for GitLab it is the project ID.
 	ID int64 `json:"id"`
+	// ForkOf is the ID of the repository this one was forked from, or 0.
+	ForkOf int64 `json:"forkOf,omitempty"`
 }
 
 // CommitRequest writes a commit to a branch through the admin API, as if it had been pushed.
@@ -371,11 +377,28 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 	if err := validateRepoNames(req); err != nil {
 		return RepoInfo{}, err
 	}
-	if req.DefaultBranch == "" {
-		req.DefaultBranch = "main"
+	if req.ForkOf != 0 && req.Provider != GitHub {
+		return RepoInfo{}, errors.New("only GitHub repositories can be forked")
+	}
+	if req.ForkOf != 0 && req.Init {
+		return RepoInfo{}, errors.New("init cannot be combined with forkOf: a fork copies its parent's branches")
 	}
 
 	s.store.mu.Lock()
+	var parent *repo
+	if req.ForkOf != 0 {
+		var err error
+		if parent, err = s.store.findRepoByIDLocked(req.Provider, req.ForkOf); err != nil {
+			s.store.mu.Unlock()
+			return RepoInfo{}, fmt.Errorf("fork parent %d: %w", req.ForkOf, err)
+		}
+		if req.DefaultBranch == "" {
+			req.DefaultBranch = parent.defaultBranch
+		}
+	}
+	if req.DefaultBranch == "" {
+		req.DefaultBranch = "main"
+	}
 	if _, err := s.store.findRepoLocked(req.Provider, req.Owner, req.Project, req.Name); err == nil {
 		s.store.mu.Unlock()
 		return RepoInfo{}, fmt.Errorf("repository %s/%s already exists", req.Owner, req.Name)
@@ -389,6 +412,7 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 		defaultBranch: req.DefaultBranch,
 		createdAt:     s.now(),
 		protection:    map[string][]string{},
+		parent:        parent,
 	}
 	switch req.Provider {
 	case AzureDevOps:
@@ -407,10 +431,16 @@ func (s *Server) CreateRepo(ctx context.Context, req CreateRepoRequest) (RepoInf
 	s.store.repos[r.id] = r
 	s.store.mu.Unlock()
 
-	if err := s.git.initBare(ctx, r.dir, req.DefaultBranch); err != nil {
+	err := s.git.initBare(ctx, r.dir, req.DefaultBranch)
+	if err == nil && parent != nil {
+		// Copy the parent's branches, as a GitHub fork does. Its pull requests, statuses and labels stay behind.
+		_, err = s.git.run(ctx, r.dir, nil, nil, "fetch", "--no-tags", parent.dir, "+refs/heads/*:refs/heads/*")
+	}
+	if err != nil {
 		s.store.mu.Lock()
 		delete(s.store.repos, r.id)
 		s.store.mu.Unlock()
+		_ = os.RemoveAll(r.dir)
 		return RepoInfo{}, err
 	}
 	if req.Init {
@@ -488,11 +518,15 @@ func (s *Server) repoInfo(ctx context.Context, r *repo) (RepoInfo, error) {
 	}
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
-	return RepoInfo{
+	info := RepoInfo{
 		ID: r.id, Provider: r.provider, Owner: r.owner, Project: r.project, Name: r.name, FullName: r.fullName(),
 		DefaultBranch: r.defaultBranch, CloneURL: s.cloneURL(r), UUID: r.uuid, ProjectUUID: r.projectUUID,
 		CreatedAt: r.createdAt, Branches: branches,
-	}, nil
+	}
+	if r.parent != nil {
+		info.ForkOf = r.parent.id
+	}
+	return info, nil
 }
 
 func (s *Server) adminCreateRepo(w http.ResponseWriter, r *http.Request) {
@@ -559,6 +593,12 @@ func (s *Server) adminDeleteRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.store.mu.Lock()
+	// Forks of a deleted repository stay in its network, now under its parent (nil makes them the new roots).
+	for _, other := range s.store.repos {
+		if other.parent == rp {
+			other.parent = rp.parent
+		}
+	}
 	delete(s.store.repos, rp.id)
 	delete(s.store.prs, rp.id)
 	delete(s.store.statuses, rp.id)

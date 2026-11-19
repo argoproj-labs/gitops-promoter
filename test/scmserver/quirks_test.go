@@ -46,6 +46,49 @@ func (f *fixture) pushToSource(ctx context.Context, content string) string {
 	return res.SHA
 }
 
+// forkFixture forks parent's repository into a new repository of the same owner, as in issue #2371, and builds the
+// promoter's providers for the fork. The fork starts with the parent's branches.
+func forkFixture(ctx context.Context, parent *fixture) *fixture {
+	GinkgoHelper()
+	repo, err := srv.CreateRepo(ctx, scmserver.CreateRepoRequest{
+		Provider: parent.provider, Owner: parent.repo.Owner, Name: parent.repo.Name + "-fork", ForkOf: parent.repo.ID,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	f := &fixture{provider: parent.provider, repo: repo, baseSHA: parent.baseSHA, headSHA: parent.headSHA}
+	f.buildObjects(ctx)
+	return f
+}
+
+// githubGet sends an authenticated GET to the GitHub REST API at path (relative to /api/v3) and returns the status
+// code and body.
+func githubGet(ctx context.Context, path string) (int, []byte) {
+	GinkgoHelper()
+	url := "https://" + srv.Domain(scmserver.GitHub) + "/api/v3" + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "token "+testToken)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp.StatusCode, body
+}
+
+// githubListPullNumbers lists the pull requests of GitHub repository fullName with query and returns their numbers
+// as strings, the form the promoter stores in status.id.
+func githubListPullNumbers(ctx context.Context, fullName, query string) []string {
+	GinkgoHelper()
+	code, body := githubGet(ctx, "/repos/"+fullName+"/pulls?"+query)
+	Expect(code).To(Equal(http.StatusOK), string(body))
+	results := gjson.GetBytes(body, "#.number").Array()
+	numbers := make([]string, 0, len(results))
+	for _, n := range results {
+		numbers = append(numbers, n.String())
+	}
+	return numbers
+}
+
 // requestsMatching returns logged requests of provider p whose method matches and path contains fragment.
 func requestsMatching(p scmserver.Provider, method, fragment string) []scmserver.RequestRecord {
 	var out []scmserver.RequestRecord
@@ -671,6 +714,38 @@ var _ = Describe("provider quirks", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(res.Found).To(BeTrue())
 			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
+		})
+
+		It("resolves an owner:branch head filter to the owner's repository nearest the fork network root", func(ctx SpecContext) {
+			parent := newFixture(ctx, scmserver.GitHub)
+			fork := forkFixture(ctx, parent)
+			Expect(fork.branchSHA(ctx, sourceBranch)).To(Equal(parent.headSHA), "a fork starts with its parent's branches")
+			code, body := githubGet(ctx, "/repos/"+fork.repo.FullName)
+			Expect(code).To(Equal(http.StatusOK))
+			Expect(gjson.GetBytes(body, "fork").Bool()).To(BeTrue())
+
+			parentPR := parent.createPR(ctx, "parent")
+			forkPR := fork.pullRequest("fork")
+			forkID, err := fork.prs.Create(ctx, forkPR.Spec.Title, sourceBranch, targetBranch, forkPR.Spec.Description, forkPR)
+			Expect(err).NotTo(HaveOccurred())
+			forkPR.Status.ID = forkID
+			got, err := fork.prs.Get(ctx, forkPR)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.State).To(Equal(v1alpha1.PullRequestOpen), "the pull request is created on the fork")
+
+			qualified := "state=open&base=" + targetBranch + "&head=" + fork.repo.Owner + ":" + sourceBranch
+			Expect(githubListPullNumbers(ctx, fork.repo.FullName, qualified)).To(BeEmpty(),
+				"the owner owns both repositories, so the head names the parent's branch and the fork's pull request is not listed")
+			Expect(githubListPullNumbers(ctx, parent.repo.FullName, qualified)).To(ConsistOf(parentPR.Status.ID))
+			Expect(githubListPullNumbers(ctx, fork.repo.FullName, "state=open&base="+targetBranch)).To(ConsistOf(forkID))
+		})
+
+		It("ignores a head filter without an owner", func(ctx SpecContext) {
+			f := newFixture(ctx, scmserver.GitHub)
+			prObj := f.createPR(ctx, "bare-head")
+
+			Expect(githubListPullNumbers(ctx, f.repo.FullName, "state=open&head=no-such-branch")).To(ConsistOf(prObj.Status.ID))
+			Expect(githubListPullNumbers(ctx, f.repo.FullName, "state=open&head="+f.repo.Owner+":no-such-branch")).To(BeEmpty())
 		})
 
 		It("blocks merges on missing required statuses until they succeed", func(ctx SpecContext) {
