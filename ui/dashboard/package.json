@@ -32,7 +32,7 @@
     "prettier": "^3.5.3",
     "sass": "^1.89.2",
     "typescript": "^5.2.2",
-    "vite": "^7.3.2",
+    "vite": "^7.3.7",
     "vitest": "^4.1.11"
   },
   "dependencies": {
