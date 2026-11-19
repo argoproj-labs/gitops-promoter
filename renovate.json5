@@ -149,6 +149,8 @@
           'hack/celcost/report.md',
           'hack/celcost/go.mod',
           'hack/celcost/go.sum',
+          'hack/deadcode/go.mod',
+          'hack/deadcode/go.sum',
           'ui/extension/iconStyles.generated.ts',
           'api/view/**',
           'ui/shared/src/types/generated/**',
@@ -193,6 +195,8 @@
           'hack/celcost/report.md',
           'hack/celcost/go.mod',
           'hack/celcost/go.sum',
+          'hack/deadcode/go.mod',
+          'hack/deadcode/go.sum',
           'ui/extension/iconStyles.generated.ts',
           'api/view/**',
           'ui/shared/src/types/generated/**',
@@ -338,15 +342,15 @@
       prCreation: 'not-pending',
     },
     // ----------------------------------------------------------------------
-    // Group B: Go BUILD toolchain + golangci-lint + mockery + deadcode
+    // Group B: Go BUILD toolchain + golangci-lint + mockery + hack/deadcode's x/tools
     // (+ the golang image in Dockerfile and .oss-scanner/Dockerfile)
     // The go.mod go directive is not regex-managed. go-fix-maybe-bump may raise
     // it to X.Y.0 when a newer-language go fix pass rewrites source.
-    // mockery/deadcode must track the CI Go: both use golang.org/x/tools and break
-    // on new pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
+    // mockery and hack/deadcode must track the CI Go: both use golang.org/x/tools and
+    // break on new pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
     // ----------------------------------------------------------------------
     {
-      description: 'Group Go, golangci-lint, mockery, deadcode, and the golang base image together',
+      description: 'Group Go, golangci-lint, mockery, hack/deadcode x/tools, and the golang base image together',
       matchManagers: [
         'gomod',
         'custom.regex',
@@ -809,19 +813,6 @@
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
-    },
-    {
-      customType: 'regex',
-      description: 'Update deadcode (golang.org/x/tools) version in Makefile',
-      managerFilePatterns: [
-        '/^Makefile$/',
-      ],
-      matchStrings: [
-        'DEADCODE_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
-      ],
-      depNameTemplate: 'golang.org/x/tools',
-      datasourceTemplate: 'go',
-      versioningTemplate: 'semver',
     },
     {
       customType: 'regex',
