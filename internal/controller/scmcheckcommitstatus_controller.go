@@ -36,6 +36,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -58,7 +59,7 @@ type SCMCheckCommitStatusReconciler struct {
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object
 	EnqueueCTP CTPEnqueueFunc
 
-	// expressionCache caches compiled expressions for filters to avoid it being recompiled on every reconcilation.
+	// expressionCache caches compiled expressions for filters to avoid it being recompiled on every reconciliation.
 	// Key = expression string
 	// Value = compiled *vm.Program
 	expressionCache sync.Map
@@ -81,7 +82,7 @@ func (r *SCMCheckCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl
 	startTime := time.Now()
 
 	var scs promoterv1alpha1.SCMCheckCommitStatus
-	// This function applies the resource status via Server-Side Apply at the end of the reconcilation. Don't write status manually.
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
 	defer utils.HandleReconciliationResult(ctx, startTime, &scs, r.Client, r.Recorder, constants.SCMCheckCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
@@ -268,7 +269,6 @@ func (r *SCMCheckCommitStatusReconciler) processEnvironments(ctx context.Context
 			"proposedSha", proposedSha,
 			"phase", newEnvStatus.Phase,
 			"key", scs.Spec.Key)
-
 	}
 
 	return transitionedEnvs, commitStatuses, nil
@@ -285,19 +285,21 @@ func (r *SCMCheckCommitStatusReconciler) getCheckParser(ctx context.Context, ps 
 	// wrapcheck is ignored because factory methods return descriptive errors
 	switch {
 	case scmProvider.GetSpec().GitHub != nil:
-		return github.NewGithubCheckParser(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
+		return github.NewGithubCheckParser(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().GitLab != nil:
-		return gitlab.NewGitLabCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+		return gitlab.NewGitLabCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().BitbucketCloud != nil:
-		return bitbucket_cloud.NewBitbucketCloudCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().BitbucketCloud.Domain) //nolint:wrapcheck
+		return bitbucket_cloud.NewBitbucketCloudCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().BitbucketCloud.Domain) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().BitbucketDataCenter != nil:
-		return bitbucket_datacenter.NewBitbucketDataCenterCheckParser(ctx, r.Client, scmProvider, *secret) //nolint:wrapcheck
+		return bitbucket_datacenter.NewBitbucketDataCenterCheckParser(ctx, r.Client, scmProvider, *secret) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().Forgejo != nil:
-		return forgejo.NewForgejoCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+		return forgejo.NewForgejoCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().Gitea != nil:
-		return gitea.NewGiteaCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
+		return gitea.NewGiteaCheckParser(ctx, r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck // function returns wrapped error
 	case scmProvider.GetSpec().AzureDevOps != nil:
-		return azuredevops.NewAzdoCheckParser(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck
+		return azuredevops.NewAzdoCheckParser(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck // function returns wrapped error
+	case scmProvider.GetSpec().Fake != nil:
+		return fake.NewFakeCheckParser(r.Client), nil
 	default:
 		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.GetName())
 	}
@@ -323,7 +325,7 @@ func (r *SCMCheckCommitStatusReconciler) checkMatches(name string, filters []str
 	for _, filter := range filters {
 		matches, err := r.evaluateExpression(filter, name)
 		if err != nil {
-			return false, fmt.Errorf("failed to evaluate expression", err)
+			return false, fmt.Errorf("failed to evaluate expression: %w", err)
 		}
 		if matches {
 			return true, nil
@@ -336,7 +338,7 @@ func (r *SCMCheckCommitStatusReconciler) checkMatches(name string, filters []str
 func (r *SCMCheckCommitStatusReconciler) evaluateExpression(expression, checkName string) (bool, error) {
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
-		return false, fmt.Errorf("failed to get compiled expression", err)
+		return false, fmt.Errorf("failed to get compiled expression: %w", err)
 	}
 
 	env := map[string]any{
@@ -345,7 +347,7 @@ func (r *SCMCheckCommitStatusReconciler) evaluateExpression(expression, checkNam
 
 	output, err := expr.Run(program, env)
 	if err != nil {
-		return false, fmt.Errorf("failed to run expr program", err)
+		return false, fmt.Errorf("failed to run expr program: %w", err)
 	}
 
 	result, ok := output.(bool)
@@ -408,7 +410,7 @@ func (r *SCMCheckCommitStatusReconciler) upsertCheckCommitStatus(ctx context.Con
 	return cs, nil
 }
 
-// buildEnvironmentStatus builds the current status of the enviornment by building a list of all checks including ones
+// buildEnvironmentStatus builds the current status of the environment by building a list of all checks including ones
 // that did not match the filter to show what the values were for those.
 func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered []scms.SCMCheckResult, branch, sha string, includeFiltered bool) promoterv1alpha1.SCMCheckCommitStatusEnvironmentStatus {
 	// Make a map of filtered checks for effective lookup
@@ -424,7 +426,6 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 	}
 
 	failureFound := false
-	successFound := false
 	pendingFound := false
 	for _, check := range checks {
 		scmCheck := promoterv1alpha1.SCMCheckResults{
@@ -447,8 +448,6 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 		}
 
 		switch utils.CheckStatusToCommitStatusPhase(check.Status) {
-		case promoterv1alpha1.CommitPhaseSuccess:
-			successFound = true
 		case promoterv1alpha1.CommitPhaseFailure:
 			failureFound = true
 		default:
@@ -460,11 +459,7 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 		environmentStatus.Phase = string(promoterv1alpha1.CommitPhaseFailure)
 	} else if pendingFound {
 		environmentStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-	} else if successFound {
-		environmentStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 	} else {
-		// Put environment as success because if here that means there were no checks
-		// so this will be considered a success so it does not block
 		environmentStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 	}
 

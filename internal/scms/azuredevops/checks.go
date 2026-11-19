@@ -108,7 +108,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
 
 	if statuses == nil {
-		return nil, errors.New("retrived statuses was nil")
+		return nil, errors.New("retrieved statuses was nil")
 	}
 
 	var checks []scms.SCMCheckResult

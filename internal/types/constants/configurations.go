@@ -69,7 +69,7 @@ const (
 	// performed by the ScheduledCommitStatus controller.
 	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
 
-	// SCMCommitStatusControllerFieldOwner is the field manager owner for Server-Side Apply operations
+	// SCMCheckCommitStatusControllerFieldOwner is the field manager owner for Server-Side Apply operations
 	// performed by the SCMCheckCommitStatus controller.
 	SCMCheckCommitStatusControllerFieldOwner = "promoter.argoproj.io/scmcheckcommitstatus-controller"
 

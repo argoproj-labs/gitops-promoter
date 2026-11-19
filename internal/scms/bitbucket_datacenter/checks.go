@@ -146,10 +146,10 @@ func (c *CheckParser) getBuilds(ctx context.Context, commitId string) (int, *bui
 // used in the SCM Status field
 func buildSCMStatusString(stats *buildStatusStatsResponse) string {
 	var statsStr strings.Builder
-	statsStr.WriteString(fmt.Sprintf("successful=%d\n", stats.Successful))
-	statsStr.WriteString(fmt.Sprintf("failed=%d\n", stats.Failed))
-	statsStr.WriteString(fmt.Sprintf("cancelled=%d\n", stats.Cancelled))
-	statsStr.WriteString(fmt.Sprintf("inProgress=%d\n", stats.InProgress))
-	statsStr.WriteString(fmt.Sprintf("unknown=%d", stats.Unknown))
+	fmt.Fprintf(&statsStr, "successful=%d\n", stats.Successful)
+	fmt.Fprintf(&statsStr, "failed=%d\n", stats.Failed)
+	fmt.Fprintf(&statsStr, "cancelled=%d\n", stats.Cancelled)
+	fmt.Fprintf(&statsStr, "inProgress=%d\n", stats.InProgress)
+	fmt.Fprintf(&statsStr, "unknown=%d", stats.Unknown)
 	return statsStr.String()
 }

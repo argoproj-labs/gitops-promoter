@@ -7,7 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	. "github.com/onsi/gomega/gstruct"
+	"github.com/onsi/gomega/gstruct"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -299,17 +299,17 @@ var _ = Describe("provider contract", func() {
 			checks, err := f.checkParser.Get(ctx, ps, "environments/dev")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 				"Name":   Equal("ci/build"),
 				"Status": Equal(scms.SCMCheckStatusSucceeded),
 				"URL":    Not(BeEmpty()),
 			})))
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 				"Name":   Equal("ci/e2e-tests"),
-				"Status": Equal(scms.SCMCheckStatusInProgress),
+				"Status": Equal(scms.SCMCheckStatusPending),
 				"URL":    Not(BeEmpty()),
 			})))
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 				"Name":   Equal("ci/lint"),
 				"Status": Equal(scms.SCMCheckStatusFailed),
 				"URL":    Not(BeEmpty()),
@@ -355,8 +355,8 @@ var _ = Describe("provider contract", func() {
 			checks, err := f.checkParser.Get(ctx, ps, "environments/dev")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
-				"Status": Equal(scms.SCMCheckStatusInProgress),
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Status": Equal(scms.SCMCheckStatusPending),
 			})))
 
 			By("test that success shows up if a check passes")
@@ -366,7 +366,7 @@ var _ = Describe("provider contract", func() {
 			checks, err = f.checkParser.Get(ctx, ps, "environments/dev")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 				"Status": Equal(scms.SCMCheckStatusSucceeded),
 			})))
 
@@ -377,7 +377,7 @@ var _ = Describe("provider contract", func() {
 			checks, err = f.checkParser.Get(ctx, ps, "environments/dev")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(checks).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 				"Status": Equal(scms.SCMCheckStatusFailed),
 			})))
 		},

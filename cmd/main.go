@@ -509,7 +509,7 @@ func runController(
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "scmcheckcommitstatus")
-		os.Exit(1)
+		panic(fmt.Errorf("unable to create SCMCheckCommitStatus controller: %w", err))
 	}
 	//+kubebuilder:scaffold:builder
 

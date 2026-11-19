@@ -21,20 +21,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// SCMCheckStatus is the status of an SCM check used for aggregation in the phase for the environment.
 type SCMCheckStatus string
 
 // The following are constants for a SCM check's status
 const (
 	// SCMCheckStatusPending is set when a check has not started yet
 	SCMCheckStatusPending SCMCheckStatus = "pending"
-	// SCMCheckStatusInProgress is set when a check is running
-	SCMCheckStatusInProgress SCMCheckStatus = "in-progress"
-	// SCMCheckStatusSucceeded is set wehn a check has finished successfully
+	// SCMCheckStatusSucceeded is set when a check has finished successfully
 	SCMCheckStatusSucceeded SCMCheckStatus = "succeeded"
 	// SCMCheckStatusFailed is set when a check has finished and failed a reason.
 	SCMCheckStatusFailed SCMCheckStatus = "failed"
-	// SCMCheckStatusCancelled is set when a check was running but was cancelled.
-	SCMCheckStatusCancelled SCMCheckStatus = "cancelled"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -162,6 +159,7 @@ type SCMCheckCommitStatusEnvironmentStatus struct {
 	SCMChecks []SCMCheckResults `json:"scmCheckResults"`
 }
 
+// SCMCheckResults contains information about an individual SCM check.
 type SCMCheckResults struct {
 	// Name represents the name of the check in the SCM.
 	Name string `json:"name"`
