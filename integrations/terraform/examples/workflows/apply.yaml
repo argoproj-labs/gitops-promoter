@@ -1,0 +1,52 @@
+# Applies an environment whenever GitOps Promoter merges a change into its
+# active branch. The job's check run on the merged commit is what the
+# WebRequestCommitStatus in examples/promoter/webrequestcommitstatus.yaml
+# reads, so the job name below must match that manifest's check_name.
+#
+# Copy this file to .github/workflows/ in your Terraform configuration
+# repository and adjust the branch pattern and Terraform version.
+name: Apply Terraform
+
+on:
+  push:
+    branches:
+      - "environment/*"
+      - "!environment/*-next" # proposed branches are applied only after promotion
+  workflow_dispatch: # needed after the hydrator bootstraps an active branch (see hydrate.yaml)
+
+permissions:
+  contents: read
+  id-token: write # for cloud OIDC credentials; drop when using static secrets
+
+concurrency:
+  group: terraform-apply-${{ github.ref }}
+  cancel-in-progress: false # never interrupt a running apply
+
+jobs:
+  terraform-apply:
+    name: terraform-apply # must equal check_name in webrequestcommitstatus.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout active branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Uncomment and adapt for your cloud provider, for example with OIDC on AWS:
+      # - name: Configure cloud credentials
+      #   uses: aws-actions/configure-aws-credentials@<sha> # vX.Y.Z
+      #   with:
+      #     role-to-assume: arn:aws:iam::123456789012:role/terraform-apply
+      #     aws-region: us-east-1
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.13.3" # keep in sync with hydrate.yaml and required_version
+          terraform_wrapper: false
+
+      - name: Apply
+        # Pin to a commit SHA of argoproj-labs/gitops-promoter in production.
+        uses: argoproj-labs/gitops-promoter/integrations/terraform/actions/apply@main
+        # with:
+        #   tf-binary: tofu

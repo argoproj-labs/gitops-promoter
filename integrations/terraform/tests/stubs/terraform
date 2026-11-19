@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Recording stand-in for the terraform/tofu binary used by the script tests.
+# Every invocation is appended to $TF_STUB_LOG as "<cwd> <args>". Behaviour is
+# controlled with:
+#   TF_STUB_PLAN_EXIT     force the exit code of `plan` (default 0, or 2 when
+#                         -detailed-exitcode is passed and TF_STUB_CHANGES=1)
+#   TF_STUB_CHANGES       1 = `plan -detailed-exitcode` reports changes (exit 2)
+#   TF_STUB_PLAN_SUMMARY  the "Plan: ..." line printed by `plan` and `show`
+set -euo pipefail
+
+: "${TF_STUB_LOG:=/dev/null}"
+printf '%s %s\n' "${PWD}" "$*" >>"${TF_STUB_LOG}"
+
+cmd="${1:-}"
+shift || true
+summary="${TF_STUB_PLAN_SUMMARY:-Plan: 1 to add, 0 to change, 0 to destroy.}"
+
+case "${cmd}" in
+  init)
+    mkdir -p .terraform/providers
+    printf '# stub lock file\n' >.terraform.lock.hcl
+    echo "Terraform has been successfully initialized! (stub)"
+    ;;
+  validate)
+    echo "Success! The configuration is valid. (stub)"
+    ;;
+  plan)
+    out=""
+    detailed=false
+    for a in "$@"; do
+      case "${a}" in
+        -out=*) out="${a#-out=}" ;;
+        -detailed-exitcode) detailed=true ;;
+      esac
+    done
+    if [ -n "${out}" ]; then printf 'stub plan\n' >"${out}"; fi
+    if [ -n "${TF_STUB_PLAN_EXIT:-}" ]; then
+      if [ "${TF_STUB_PLAN_EXIT}" = "1" ]; then
+        echo "Error: stub plan failure" >&2
+      else
+        echo "${summary}"
+      fi
+      exit "${TF_STUB_PLAN_EXIT}"
+    fi
+    if [ "${detailed}" = true ] && [ "${TF_STUB_CHANGES:-0}" = "1" ]; then
+      echo "${summary}"
+      exit 2
+    fi
+    if [ "${detailed}" = true ]; then
+      echo "No changes. Your infrastructure matches the configuration."
+    else
+      echo "${summary}"
+    fi
+    ;;
+  show)
+    echo "# stub plan output"
+    echo
+    echo "${summary}"
+    ;;
+  apply)
+    echo "Apply complete! Resources: 1 added, 0 changed, 0 destroyed. (stub)"
+    ;;
+  providers)
+    echo "stub providers $*"
+    ;;
+  version)
+    echo "Terraform v0.0.0-stub"
+    ;;
+  *)
+    echo "stub: unsupported command '${cmd}'" >&2
+    exit 1
+    ;;
+esac

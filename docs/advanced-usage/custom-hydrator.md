@@ -347,6 +347,13 @@ management tools.
 See the [Argo CD tutorial](../integrating-with-argocd/tutorial.md) for an example of using Argo CD's Source Hydrator with GitOps
 Promoter.
 
+### Terraform (reference implementation)
+
+The [Terraform integration](../integrations/terraform.md) in the repository's `integrations/` directory is a
+shell-script hydrator and applier that implements this contract for Terraform and OpenTofu root modules. It is a
+good starting point for a custom hydrator of your own: it shows duplicate detection, git-notes handling, bootstrapping
+the active branch, and reporting an applier's result back as an active commit status.
+
 ## Best Practices
 
 1. **Idempotency**: Running hydration multiple times with the same input should produce the same output.

@@ -53,6 +53,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 | Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
 | Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
 | Test SCM server                 | [`test/scmserver/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/test/scmserver) (see [Test SCM Server](test-scm-server.md)) |
+| Community hydrators and appliers | [`integrations/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/integrations) (see [Integrations](../integrations/index.md)) |
 
 ## Design patterns
 

@@ -1,0 +1,90 @@
+name: GitOps Promoter Terraform hydrator
+description: >-
+  Renders a DRY Terraform commit into one hydrated commit per environment on the
+  environment's proposed (-next) branch, with hydrator.metadata and plan.txt.
+  The caller must check out the repository with push credentials and install
+  Terraform or OpenTofu first.
+
+inputs:
+  environments:
+    description: Space- or comma-separated environment names (directories under env-dir).
+    required: true
+  dry-sha:
+    description: DRY commit to hydrate. Defaults to HEAD of the checkout.
+    required: false
+    default: ""
+  repo-url:
+    description: Repository URL recorded in hydrator.metadata. Defaults to the GitHub repository URL.
+    required: false
+    default: ""
+  tf-binary:
+    description: Terraform-compatible binary to run (terraform or tofu).
+    required: false
+    default: terraform
+  remote:
+    description: Git remote to fetch from and push to.
+    required: false
+    default: origin
+  branch-prefix:
+    description: Prefix of the environment branches; the proposed branch is "<prefix><env>-next".
+    required: false
+    default: environment/
+  env-dir:
+    description: Directory holding one root module per environment.
+    required: false
+    default: environments
+  include-paths:
+    description: Space-separated extra paths copied into every hydrated commit (shared modules).
+    required: false
+    default: modules
+  plan:
+    description: Run init with the backend and commit the plan as plan.txt ("true"), or only validate ("false").
+    required: false
+    default: "true"
+  plan-args:
+    description: Extra arguments for "terraform plan".
+    required: false
+    default: -lock=false
+  backend-config:
+    description: File passed as -backend-config to "terraform init", relative to the root module.
+    required: false
+    default: ""
+  lock-platforms:
+    description: Space-separated platforms for "terraform providers lock" (e.g. "linux_amd64 darwin_arm64").
+    required: false
+    default: ""
+  bootstrap-active:
+    description: Create the active branch from the first hydrated commit when it does not exist yet.
+    required: false
+    default: "true"
+  git-author-name:
+    description: Author and committer name for hydrated commits.
+    required: false
+    default: github-actions[bot]
+  git-author-email:
+    description: Author and committer email for hydrated commits.
+    required: false
+    default: 41898282+github-actions[bot]@users.noreply.github.com
+
+runs:
+  using: composite
+  steps:
+    - name: Hydrate environments
+      shell: bash
+      env:
+        ENVIRONMENTS: ${{ inputs.environments }}
+        DRY_SHA: ${{ inputs.dry-sha }}
+        REPO_URL: ${{ inputs.repo-url }}
+        TF_BINARY: ${{ inputs.tf-binary }}
+        REMOTE: ${{ inputs.remote }}
+        BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+        ENV_DIR: ${{ inputs.env-dir }}
+        INCLUDE_PATHS: ${{ inputs.include-paths }}
+        PLAN: ${{ inputs.plan }}
+        PLAN_ARGS: ${{ inputs.plan-args }}
+        BACKEND_CONFIG: ${{ inputs.backend-config }}
+        LOCK_PLATFORMS: ${{ inputs.lock-platforms }}
+        BOOTSTRAP_ACTIVE: ${{ inputs.bootstrap-active }}
+        GIT_AUTHOR_NAME: ${{ inputs.git-author-name }}
+        GIT_AUTHOR_EMAIL: ${{ inputs.git-author-email }}
+      run: '"${GITHUB_ACTION_PATH}/../../hydrate.sh"'

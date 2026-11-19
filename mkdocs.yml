@@ -66,6 +66,9 @@ nav:
   - Integrating with Argo CD:
       - Overview: integrating-with-argocd/index.md
       - Tutorial: integrating-with-argocd/tutorial.md
+  - Integrations:
+      - Overview: integrations/index.md
+      - Terraform: integrations/terraform.md
   - Monitoring:
       - Overview: monitoring/index.md
       - Events: monitoring/events.md

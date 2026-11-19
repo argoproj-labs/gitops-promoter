@@ -1,0 +1,9 @@
+# Promotion ordering gate: staging waits for dev, prod waits for staging.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: terraform-example
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: terraform-example

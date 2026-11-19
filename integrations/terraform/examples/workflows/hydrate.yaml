@@ -1,0 +1,54 @@
+# Hydrates every environment whenever the DRY branch changes.
+#
+# Copy this file to .github/workflows/ in your Terraform configuration
+# repository and adjust the branch, environments and Terraform version.
+name: Hydrate Terraform environments
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # push the environment/*-next (and, on first run, environment/*) branches
+
+concurrency:
+  group: terraform-hydrate
+  cancel-in-progress: false
+
+jobs:
+  hydrate:
+    name: hydrate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout DRY branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The hydrator pushes with the token stored by checkout. Pushes made
+          # with GITHUB_TOKEN do not trigger other workflows, so the first
+          # (bootstrap) push of environment/<env> will not start apply.yaml;
+          # run it once with "workflow_dispatch", or check out with a GitHub
+          # App token instead (actions/create-github-app-token).
+          persist-credentials: true
+
+      # Uncomment and adapt when plan.txt needs read access to remote state,
+      # for example with OIDC on AWS:
+      # - name: Configure cloud credentials
+      #   uses: aws-actions/configure-aws-credentials@<sha> # vX.Y.Z
+      #   with:
+      #     role-to-assume: arn:aws:iam::123456789012:role/terraform-plan
+      #     aws-region: us-east-1
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.13.3" # keep in sync with apply.yaml and required_version
+          terraform_wrapper: false # the wrapper breaks capturing "terraform show" output
+
+      - name: Hydrate
+        # Pin to a commit SHA of argoproj-labs/gitops-promoter in production.
+        uses: argoproj-labs/gitops-promoter/integrations/terraform/actions/hydrate@main
+        with:
+          environments: dev staging prod
+          # tf-binary: tofu        # when using OpenTofu (install it with opentofu/setup-opentofu)
+          # plan: "false"          # when the hydrate job has no access to state
+          # lock-platforms: linux_amd64

@@ -1,0 +1,24 @@
+# PromotionStrategy for the example Terraform repository. The GitRepository
+# and ScmProvider it references are created as described in the getting
+# started guide: https://gitops-promoter.readthedocs.io/en/latest/getting-started/
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: terraform-example
+spec:
+  gitRepositoryRef:
+    name: terraform-example
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: terraform-example
+  activeCommitStatuses:
+    # Reported by the WebRequestCommitStatus in webrequestcommitstatus.yaml from
+    # the apply workflow's check run. An environment counts as successful only
+    # after "terraform apply" succeeded on its active commit.
+    - key: terraform-apply
+  environments:
+    - branch: environment/dev
+    - branch: environment/staging
+    - branch: environment/prod
+      autoMerge: false # a human merges the production pull request

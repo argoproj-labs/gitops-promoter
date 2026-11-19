@@ -1,0 +1,53 @@
+name: GitOps Promoter Terraform applier
+description: >-
+  Applies the hydrated Terraform root module checked out from an environment's
+  active branch: init with the reviewed lock file, plan, and apply when there
+  are changes. The job running this action is the health signal GitOps
+  Promoter reads through a WebRequestCommitStatus. The caller must check out
+  the repository, install Terraform or OpenTofu, and configure cloud
+  credentials first.
+
+inputs:
+  root-dir:
+    description: Root module directory. Defaults to the single directory under env-dir.
+    required: false
+    default: ""
+  env-dir:
+    description: Directory holding the root module when root-dir is not set.
+    required: false
+    default: environments
+  tf-binary:
+    description: Terraform-compatible binary to run (terraform or tofu).
+    required: false
+    default: terraform
+  apply:
+    description: Apply when the plan has changes ("true"), or stop after planning ("false").
+    required: false
+    default: "true"
+  plan-args:
+    description: Extra arguments for "terraform plan".
+    required: false
+    default: ""
+  backend-config:
+    description: File passed as -backend-config to "terraform init", relative to the root module.
+    required: false
+    default: ""
+  warn-on-stale-plan:
+    description: Emit a warning when the plan differs from the plan.txt reviewed in the pull request.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Apply hydrated root module
+      shell: bash
+      env:
+        ROOT_DIR: ${{ inputs.root-dir }}
+        ENV_DIR: ${{ inputs.env-dir }}
+        TF_BINARY: ${{ inputs.tf-binary }}
+        APPLY: ${{ inputs.apply }}
+        PLAN_ARGS: ${{ inputs.plan-args }}
+        BACKEND_CONFIG: ${{ inputs.backend-config }}
+        WARN_ON_STALE_PLAN: ${{ inputs.warn-on-stale-plan }}
+      run: '"${GITHUB_ACTION_PATH}/../../apply.sh"'
