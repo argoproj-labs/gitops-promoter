@@ -128,98 +128,119 @@ func taper(sc Scenario) (func(time.Time) float64, float64) {
 	}, seconds - edge
 }
 
+// routeKey identifies a row of the per-route table.
+type routeKey struct {
+	bucket Bucket
+	route  string
+	status int
+}
+
+// tally is the running count of a scenario's requests.
+type tally struct {
+	counts   map[routeKey]int
+	weighted map[routeKey]float64
+	minutes  peakTracker
+	sum      weights
+	totals   Totals
+	budgets  Budgets
+	// uploadPackPosts counts the upload-pack requests, which become GitFetchRounds once every command is known.
+	uploadPackPosts int
+}
+
+// add counts one request of the promoter, with the weight w it has in the scenario's rates.
+func (t *tally) add(rec scmserver.RequestRecord, bucket Bucket, w float64) {
+	key := routeKey{bucket, rec.Route, rec.StatusCode}
+	t.counts[key]++
+	t.weighted[key] += w
+	t.totals.Requests++
+	if bucket != BucketGitAuthChallenge {
+		switch {
+		case rec.StatusCode >= http.StatusInternalServerError:
+			t.totals.Status5xx++
+		case rec.StatusCode >= http.StatusBadRequest:
+			t.totals.Status4xx++
+		default:
+		}
+	}
+	switch bucket {
+	case BucketRESTRead:
+		t.totals.RESTRead++
+		t.sum.restOwn += w
+		t.addREST(rec, w, t.budgets.ReadPoints, false)
+	case BucketRESTWrite:
+		t.totals.RESTWrite++
+		t.sum.restOwn += w
+		t.sum.restWrite += w
+		t.addREST(rec, w, t.budgets.WritePoints, rec.Method == http.MethodPost)
+	case BucketWebRequest:
+		t.totals.WebRequest++
+		t.sum.webRequest += w
+		points := t.budgets.WritePoints
+		if rec.Method == http.MethodGet || rec.Method == http.MethodHead {
+			points = t.budgets.ReadPoints
+		}
+		t.addREST(rec, w, points, false)
+	case BucketApp:
+		t.totals.RESTApp++
+	case BucketGitAuthChallenge:
+		t.totals.GitAuthChallenges++
+		t.totals.GitHTTP++
+		t.sum.gitHTTP += w
+	case BucketGitRead, BucketGitWrite:
+		t.addGit(rec, w)
+	default:
+		t.totals.Other++
+	}
+}
+
+// addREST counts a request against the installation's budget.
+func (t *tally) addREST(rec scmserver.RequestRecord, w float64, points int, create bool) {
+	t.sum.rest += w
+	t.totals.Points += points
+	if create {
+		t.totals.RESTCreate++
+	}
+	t.minutes.add(rec.Time, points, create)
+}
+
+// addGit counts an authenticated git smart HTTP request, and the git command it belongs to.
+func (t *tally) addGit(rec scmserver.RequestRecord, w float64) {
+	t.totals.GitHTTP++
+	t.sum.gitHTTP += w
+	if rec.StatusCode >= http.StatusBadRequest {
+		return
+	}
+	switch rec.Route {
+	case routeGitAdvertiseUpload:
+		t.totals.GitReadCommands++
+		t.sum.gitCommands += w
+	case routeGitUploadPack:
+		t.uploadPackPosts++
+	case routeGitReceivePack:
+		t.totals.GitPushes++
+		t.sum.gitCommands += w
+	default:
+	}
+}
+
 // Analyze counts the requests of a scenario. recs must hold only the scenario's own requests (see Select), from its
 // start to its end.
 func Analyze(sc Scenario, recs []scmserver.RequestRecord, budgets Budgets) Result {
 	res := Result{Scenario: sc, Seconds: sc.End.Sub(sc.Start).Seconds(), Stable: true}
-	type routeKey struct {
-		bucket Bucket
-		route  string
-		status int
-	}
-	counts := map[routeKey]int{}
-	weighted := map[routeKey]float64{}
 	weigh, effectiveSeconds := taper(sc)
-	var sum weights
-	var minutes peakTracker
-	uploadPackPosts := 0
+	t := &tally{counts: map[routeKey]int{}, weighted: map[routeKey]float64{}, budgets: budgets}
 	for _, rec := range recs {
 		bucket := Classify(rec)
 		if bucket == BucketFixture {
-			res.Totals.Fixture++
+			t.totals.Fixture++
 			continue
 		}
-		w := weigh(rec.Time)
-		counts[routeKey{bucket, rec.Route, rec.StatusCode}]++
-		weighted[routeKey{bucket, rec.Route, rec.StatusCode}] += w
-		t := &res.Totals
-		t.Requests++
-		if bucket != BucketGitAuthChallenge {
-			switch {
-			case rec.StatusCode >= http.StatusInternalServerError:
-				t.Status5xx++
-			case rec.StatusCode >= http.StatusBadRequest:
-				t.Status4xx++
-			default:
-			}
-		}
-		points, create := 0, false
-		switch bucket {
-		case BucketRESTRead:
-			t.RESTRead++
-			sum.rest += w
-			sum.restOwn += w
-			points = budgets.ReadPoints
-		case BucketRESTWrite:
-			t.RESTWrite++
-			sum.rest += w
-			sum.restOwn += w
-			sum.restWrite += w
-			points = budgets.WritePoints
-			create = rec.Method == http.MethodPost
-		case BucketWebRequest:
-			t.WebRequest++
-			sum.rest += w
-			sum.webRequest += w
-			points = budgets.ReadPoints
-			if rec.Method != http.MethodGet && rec.Method != http.MethodHead {
-				points = budgets.WritePoints
-			}
-		case BucketApp:
-			t.RESTApp++
-		case BucketGitAuthChallenge:
-			t.GitHTTP++
-			t.GitAuthChallenges++
-			sum.gitHTTP += w
-		case BucketGitRead, BucketGitWrite:
-			t.GitHTTP++
-			sum.gitHTTP += w
-			ok := rec.StatusCode < http.StatusBadRequest
-			switch {
-			case rec.Route == routeGitAdvertiseUpload && ok:
-				t.GitReadCommands++
-				sum.gitCommands += w
-			case rec.Route == routeGitUploadPack && ok:
-				uploadPackPosts++
-			case rec.Route == routeGitReceivePack && ok:
-				t.GitPushes++
-				sum.gitCommands += w
-			default:
-			}
-		default:
-			t.Other++
-		}
-		if points > 0 {
-			t.Points += points
-			if create {
-				t.RESTCreate++
-			}
-			minutes.add(rec.Time, points, create)
-		}
+		t.add(rec, bucket, weigh(rec.Time))
 	}
+	res.Totals = t.totals
 	res.Totals.REST = res.Totals.RESTRead + res.Totals.RESTWrite + res.Totals.WebRequest
 	// With protocol v2 every fetch or ls-remote lists refs with one upload-pack request; the rest negotiate packs.
-	res.Totals.GitFetchRounds = max(uploadPackPosts-res.Totals.GitReadCommands, 0)
+	res.Totals.GitFetchRounds = max(t.uploadPackPosts-res.Totals.GitReadCommands, 0)
 
 	// perHour scales a weighted count of this scenario to an hour: at the shipped intervals for a steady scenario.
 	perHour := func(float64) float64 { return 0 }
@@ -237,7 +258,8 @@ func Analyze(sc Scenario, recs []scmserver.RequestRecord, budgets Budgets) Resul
 		return count / (effectiveSeconds / interval.Seconds())
 	}
 
-	for key, count := range counts {
+	res.Routes = make([]RouteCount, 0, len(t.counts))
+	for key, count := range t.counts {
 		rc := RouteCount{Bucket: key.bucket, Route: key.route, Status: key.status, Count: count}
 		// App calls follow the token lifetime and the installation cache, which are not compressed.
 		if key.bucket != BucketApp {
@@ -245,8 +267,8 @@ func Analyze(sc Scenario, recs []scmserver.RequestRecord, budgets Budgets) Resul
 			if key.bucket == BucketWebRequest {
 				interval = sc.Poll.Duration
 			}
-			rc.PerCycle = perInterval(weighted[key], interval)
-			rc.PerHour = perHour(weighted[key])
+			rc.PerCycle = perInterval(t.weighted[key], interval)
+			rc.PerHour = perHour(t.weighted[key])
 		}
 		res.Routes = append(res.Routes, rc)
 	}
@@ -255,11 +277,12 @@ func Analyze(sc Scenario, recs []scmserver.RequestRecord, budgets Budgets) Resul
 	})
 
 	if sc.Kind == KindEvent || sc.Kind == KindWindow {
-		res.Peaks = minutes.peaks()
+		res.Peaks = t.minutes.peaks()
 	}
 	if sc.Kind == KindEvent {
 		return res
 	}
+	sum := t.sum
 	strategies := float64(max(sc.Topology.PromotionStrategies, 1))
 	res.Rates = &Rates{
 		RESTPerHour:                   perHour(sum.rest),

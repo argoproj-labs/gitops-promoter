@@ -47,11 +47,12 @@ func gitCommand(fetchRounds int) []scmserver.RequestRecord {
 			Credential: credential, UserAgent: gitClient, StatusCode: status, Git: true,
 		}
 	}
-	recs := []scmserver.RequestRecord{
+	recs := make([]scmserver.RequestRecord, 0, 3+fetchRounds)
+	recs = append(recs,
 		git(http.MethodGet, routeAdvertise, "", http.StatusUnauthorized),
 		git(http.MethodGet, routeAdvertise, "installation:420", http.StatusOK),
 		git(http.MethodPost, routeUploadPack, "installation:420", http.StatusOK),
-	}
+	)
 	for range fetchRounds {
 		recs = append(recs, git(http.MethodPost, routeUploadPack, "installation:420", http.StatusOK))
 	}
@@ -59,15 +60,18 @@ func gitCommand(fetchRounds int) []scmserver.RequestRecord {
 }
 
 func repeat(n int, recs ...scmserver.RequestRecord) []scmserver.RequestRecord {
-	var out []scmserver.RequestRecord
+	out := make([]scmserver.RequestRecord, 0, n*len(recs))
 	for range n {
 		out = append(out, recs...)
 	}
 	return out
 }
 
-// every returns burst once per period, from offset after the start until the end of a window.
-func every(period, offset, window time.Duration, burst ...scmserver.RequestRecord) []scmserver.RequestRecord {
+// window is the length of the observation in these specs.
+const window = 300 * time.Second
+
+// every returns burst once per period, from offset after the start until the end of the window.
+func every(period, offset time.Duration, burst ...scmserver.RequestRecord) []scmserver.RequestRecord {
 	var out []scmserver.RequestRecord
 	for at := offset; at < window; at += period {
 		for _, rec := range burst {
@@ -127,7 +131,7 @@ var _ = Describe("Analyze", func() {
 	steady := func() loadreport.Scenario {
 		return loadreport.Scenario{
 			Name: "steady/held", Group: "Steady state", Kind: loadreport.KindSteady,
-			Start: start, End: start.Add(300 * time.Second),
+			Start: start, End: start.Add(window),
 			Compression: 10, Requeue: scmserver.D(30 * time.Second), Poll: scmserver.D(6 * time.Second),
 			Topology: loadreport.Topology{PromotionStrategies: 2, Environments: 3, OpenPullRequests: 3},
 		}
@@ -136,11 +140,9 @@ var _ = Describe("Analyze", func() {
 	It("extrapolates a steady scenario to the shipped intervals", func() {
 		// Ten compressed requeue cycles: three pull request lists and six ls-remotes per cycle, fifty polls of
 		// three WebRequestCommitStatus calls, and one token minted along the way.
-		const window = 300 * time.Second
-		var recs []scmserver.RequestRecord
-		recs = append(recs, every(30*time.Second, 7*time.Second, window, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...)...)
-		recs = append(recs, every(30*time.Second, 11*time.Second, window, repeat(6, gitCommand(0)...)...)...)
-		recs = append(recs, every(6*time.Second, 2*time.Second, window, repeat(3, rest(http.MethodGet, routeCheckRuns, plainClient, 200))...)...)
+		recs := every(30*time.Second, 7*time.Second, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...)
+		recs = append(recs, every(30*time.Second, 11*time.Second, repeat(6, gitCommand(0)...)...)...)
+		recs = append(recs, every(6*time.Second, 2*time.Second, repeat(3, rest(http.MethodGet, routeCheckRuns, plainClient, 200))...)...)
 		recs = append(recs, scmserver.RequestRecord{
 			Time: start.Add(100 * time.Second), Method: http.MethodPost, Route: routeMintToken, Credential: "app:42", StatusCode: 201,
 		})
@@ -189,7 +191,7 @@ var _ = Describe("Analyze", func() {
 
 	DescribeTable("measures the same rate wherever in the cycle the observation starts",
 		func(offset time.Duration) {
-			recs := every(30*time.Second, offset, 300*time.Second, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...)
+			recs := every(30*time.Second, offset, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...)
 			res := loadreport.Analyze(steady(), recs, loadreport.DefaultBudgets())
 			Expect(res.Rates.RESTPerCycle).To(BeNumerically("~", 3, 1e-9))
 			Expect(res.Rates.RESTPerHour).To(BeNumerically("~", 36, 1e-9))
@@ -201,7 +203,7 @@ var _ = Describe("Analyze", func() {
 	)
 
 	It("marks a steady scenario unstable when the promoter wrote or a request failed", func() {
-		recs := every(time.Hour, 100*time.Second, 300*time.Second,
+		recs := every(time.Hour, 100*time.Second,
 			rest(http.MethodGet, routePulls, goGitHub, 200),
 			rest(http.MethodPatch, routeUpdateCheck, goGitHub, 200),
 			rest(http.MethodGet, routePulls, goGitHub, 502),
@@ -263,9 +265,9 @@ var _ = Describe("Report", func() {
 		budgets := loadreport.DefaultBudgets()
 		steady := loadreport.Analyze(loadreport.Scenario{
 			Name: "steady/held", Group: "Steady state", Kind: loadreport.KindSteady, Description: "Three pull requests held.",
-			Start: start, End: start.Add(300 * time.Second), Compression: 10, Requeue: scmserver.D(30 * time.Second),
+			Start: start, End: start.Add(window), Compression: 10, Requeue: scmserver.D(30 * time.Second),
 			Topology: loadreport.Topology{PromotionStrategies: 1, Environments: 3, OpenPullRequests: 3, Gates: []string{"manual"}},
-		}, every(30*time.Second, 7*time.Second, 300*time.Second, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...), budgets)
+		}, every(30*time.Second, 7*time.Second, repeat(3, rest(http.MethodGet, routePulls, goGitHub, 200))...), budgets)
 		event := loadreport.Analyze(loadreport.Scenario{
 			Name: "event/promotion", Group: "Events", Kind: loadreport.KindEvent, Description: "One promotion.", Settled: true,
 			Start: start, End: start.Add(20 * time.Second), Compression: 1,

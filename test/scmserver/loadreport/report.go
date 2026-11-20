@@ -27,15 +27,15 @@ type Report struct {
 	Provider string `json:"provider"`
 	// Revision identifies the promoter source that was measured, when known.
 	Revision string `json:"revision,omitempty"`
-	// Limitations are what the numbers do not cover.
-	Limitations []string `json:"limitations,omitempty"`
-	Scenarios   []Result `json:"scenarios"`
-	Checks      []Check  `json:"checks,omitempty"`
-	Budgets     Budgets  `json:"budgets"`
 	// ShippedRequeue and ShippedPoll are the intervals steady scenarios are extrapolated to.
 	ShippedRequeue string `json:"shippedRequeue"`
 	ShippedPoll    string `json:"shippedPoll"`
-	SchemaVersion  int    `json:"schemaVersion"`
+	// Limitations are what the numbers do not cover.
+	Limitations   []string `json:"limitations,omitempty"`
+	Scenarios     []Result `json:"scenarios"`
+	Checks        []Check  `json:"checks,omitempty"`
+	Budgets       Budgets  `json:"budgets"`
+	SchemaVersion int      `json:"schemaVersion"`
 }
 
 // Agreement checks that the values agree within a relative tolerance, such as the same rate measured at two

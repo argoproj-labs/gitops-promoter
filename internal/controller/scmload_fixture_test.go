@@ -223,10 +223,10 @@ func (h *loadHarness) lastActivity(f *loadFixture, since time.Time, anyRequest b
 }
 
 // waitQuiet waits until the fixture's controllers have been quiet (see lastActivity) for the quiet period, and
-// reports whether that happened before the timeout.
-func (h *loadHarness) waitQuiet(ctx context.Context, f *loadFixture, since time.Time, quiet, timeout time.Duration, anyRequest bool) bool {
+// reports whether that happened in time.
+func (h *loadHarness) waitQuiet(ctx context.Context, f *loadFixture, since time.Time, quiet time.Duration, anyRequest bool) bool {
 	GinkgoHelper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(loadSetupTimeout)
 	for {
 		h.sync(ctx)
 		if time.Since(h.lastActivity(f, since, anyRequest)) >= quiet {
@@ -740,7 +740,7 @@ func (f *loadFixture) waitHeld(ctx context.Context, perStrategy int) {
 // pullRequests lists the PullRequest objects of the fixture's strategies.
 func (f *loadFixture) pullRequests(ctx context.Context) []promoterv1alpha1.PullRequest {
 	GinkgoHelper()
-	var out []promoterv1alpha1.PullRequest
+	out := make([]promoterv1alpha1.PullRequest, 0, len(f.repos)*len(f.envs))
 	for i := range f.repos {
 		var list promoterv1alpha1.PullRequestList
 		Expect(k8sClient.List(ctx, &list, client.InNamespace(loadNamespace),

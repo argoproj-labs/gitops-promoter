@@ -43,6 +43,8 @@ const (
 
 	// loadEventQuiet is how long the promoter must send nothing before an event counts as over.
 	loadEventQuiet = 10 * time.Second
+	// loadTolerance is how far apart rates that should be equal may be before a consistency check fails.
+	loadTolerance = 0.05
 )
 
 // steadyScenario is a state to hold and observe: prepare brings a new fixture into it.
@@ -480,7 +482,7 @@ func (h *loadHarness) runSteady(ctx context.Context, group string, scenarios []s
 	notes := map[string][]string{}
 	for _, r := range all {
 		quiet := max(2*requeue, 20*time.Second)
-		if !h.waitQuiet(ctx, r.fixture, r.fixture.created, quiet, loadSetupTimeout, false) {
+		if !h.waitQuiet(ctx, r.fixture, r.fixture.created, quiet, false) {
 			notes[r.scenario.name] = append(notes[r.scenario.name], "The fixture was still changing when the observation started.")
 		}
 	}
@@ -506,9 +508,9 @@ func (h *loadHarness) runSteady(ctx context.Context, group string, scenarios []s
 }
 
 // agree adds a consistency check over the results that were measured; a scenario left out by the focus is skipped.
-func (h *loadHarness) agree(name string, tolerance float64, results map[string]loadreport.Result, names []string, value func(loadreport.Result) float64) {
-	var labels []string
-	var values []float64
+func (h *loadHarness) agree(name string, results map[string]loadreport.Result, names []string, value func(loadreport.Result) float64) {
+	labels := make([]string, 0, len(names))
+	values := make([]float64, 0, len(names))
 	for _, scenario := range names {
 		if res, ok := results[scenario]; ok {
 			labels = append(labels, scenario)
@@ -516,7 +518,7 @@ func (h *loadHarness) agree(name string, tolerance float64, results map[string]l
 		}
 	}
 	if len(values) > 1 {
-		h.checks = append(h.checks, loadreport.Agreement(name, tolerance, labels, values))
+		h.checks = append(h.checks, loadreport.Agreement(name, loadTolerance, labels, values))
 	}
 }
 
@@ -579,18 +581,21 @@ var _ = Describe("SCM load", Label(scmLoadLabel), Serial, Ordered, func() {
 			}
 			labels := []string{fmt.Sprintf("%gx", compression), fmt.Sprintf("%gx", 2*compression)}
 			h.checks = append(h.checks,
-				loadreport.Agreement(once+": REST per hour at both compressions", 0.05, labels,
+				loadreport.Agreement(once+": REST per hour at both compressions", loadTolerance, labels,
 					[]float64{a.Rates.RESTPerHour, b.Rates.RESTPerHour}),
-				loadreport.Agreement(once+": git commands per hour at both compressions", 0.05, labels,
+				loadreport.Agreement(once+": git commands per hour at both compressions", loadTolerance, labels,
 					[]float64{a.Rates.GitCommandsPerHour, b.Rates.GitCommandsPerHour}))
 		}
 		h.writeReport()
 	}, SpecTimeout(45*time.Minute))
 
 	It("measures how steady-state load scales", func(ctx SpecContext) {
-		var scenarios []steadyScenario
-		var idle, held, byEnvironments []string
-		for _, n := range []int{1, 5, 20} {
+		strategies, environments := []int{1, 5, 20}, []int{1, 6}
+		scenarios := make([]steadyScenario, 0, 2*len(strategies)+len(environments))
+		idle := make([]string, 0, len(strategies))
+		held := make([]string, 0, len(strategies))
+		byEnvironments := make([]string, 0, len(environments)+1)
+		for _, n := range strategies {
 			idleName, heldName := fmt.Sprintf("scale/idle/strategies=%d", n), fmt.Sprintf("scale/held/strategies=%d", n)
 			idle, held = append(idle, idleName), append(held, heldName)
 			scenarios = append(scenarios,
@@ -601,7 +606,7 @@ var _ = Describe("SCM load", Label(scmLoadLabel), Serial, Ordered, func() {
 					fmt.Sprintf("As steady/held/manual, with %d PromotionStrategies on one App installation.", n),
 					3, fixed(loadFixtureOptions{strategies: n, manualGate: true})))
 		}
-		for _, e := range []int{1, 6} {
+		for _, e := range environments {
 			name := fmt.Sprintf("scale/held/environments=%d", e)
 			byEnvironments = append(byEnvironments, name)
 			scenarios = append(scenarios, heldScenario(name,
@@ -624,12 +629,12 @@ var _ = Describe("SCM load", Label(scmLoadLabel), Serial, Ordered, func() {
 		}
 		rest := func(r *loadreport.Rates) float64 { return r.RESTPerHour }
 		git := func(r *loadreport.Rates) float64 { return r.GitCommandsPerHour }
-		h.agree("idle: git commands per hour per strategy, by number of strategies", 0.05, results, idle, perStrategy(git))
-		h.agree("held: git commands per hour per strategy, by number of strategies", 0.05, results, held, perStrategy(git))
-		h.agree("held: REST per hour per strategy, by number of strategies", 0.05, results, held, perStrategy(rest))
+		h.agree("idle: git commands per hour per strategy, by number of strategies", results, idle, perStrategy(git))
+		h.agree("held: git commands per hour per strategy, by number of strategies", results, held, perStrategy(git))
+		h.agree("held: REST per hour per strategy, by number of strategies", results, held, perStrategy(rest))
 		byEnvironments = append(byEnvironments, "scale/held/strategies=1")
-		h.agree("held: REST per hour per environment, by number of environments", 0.05, results, byEnvironments, perEnvironment(rest))
-		h.agree("held: git commands per hour per environment, by number of environments", 0.05, results, byEnvironments, perEnvironment(git))
+		h.agree("held: REST per hour per environment, by number of environments", results, byEnvironments, perEnvironment(rest))
+		h.agree("held: git commands per hour per environment, by number of environments", results, byEnvironments, perEnvironment(git))
 		h.writeReport()
 	}, SpecTimeout(45*time.Minute))
 
@@ -651,14 +656,14 @@ var _ = Describe("SCM load", Label(scmLoadLabel), Serial, Ordered, func() {
 			f := sc.prepare(ctx, h)
 			// The event starts from rest: whatever creating the fixture set off has to be over.
 			var notes []string
-			if !h.waitQuiet(ctx, f, f.created, loadEventQuiet, loadSetupTimeout, true) {
+			if !h.waitQuiet(ctx, f, f.created, loadEventQuiet, true) {
 				notes = append(notes, "The fixture was still busy when the event started.")
 			}
 
 			By("triggering " + sc.name)
 			start := time.Now()
 			sc.trigger(ctx, h, f)
-			settled := h.waitQuiet(ctx, f, start, loadEventQuiet, loadSetupTimeout, true)
+			settled := h.waitQuiet(ctx, f, start, loadEventQuiet, true)
 			// The event ends with the promoter's last request, not with the quiet period that proves it.
 			end := h.lastActivity(f, start, true)
 			h.add(loadreport.Scenario{
@@ -694,7 +699,7 @@ var _ = Describe("SCM load", Label(scmLoadLabel), Serial, Ordered, func() {
 				}
 			}
 			f := heldFixture(ctx, h, opts)
-			h.waitQuiet(ctx, f, f.created, loadEventQuiet, loadSetupTimeout, !sc.webRequest)
+			h.waitQuiet(ctx, f, f.created, loadEventQuiet, !sc.webRequest)
 
 			By("refusing the REST requests of " + sc.name)
 			until := time.Now().Add(sc.window)
