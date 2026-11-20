@@ -64,8 +64,9 @@ status:
       mergeCommitSnapshotMismatch: true
     # A manual restore of the active branch rather than a merged promotion. The tree (and so active.dry)
     # repeats the version named by restoredFrom; the pull request (including prMergeTime) and commit statuses
-    # are copied from that version and describe the original promotion, not the restore. active.hydrated is the
-    # restore commit itself, so its commitTime is when the restore was written.
+    # are copied from that version and describe the original promotion, not the restore. The exception is
+    # pullRequest.mergedTargetSha, which is the restore commit. active.hydrated is the restore commit itself, so
+    # its commitTime is when the restore was written.
     - active:
         dry:
           sha: "1111111111111111111111111111111111111111"
