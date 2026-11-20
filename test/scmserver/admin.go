@@ -224,8 +224,16 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("GET /api/pulls", s.adminListPulls)
 	mux.HandleFunc("GET /api/statuses", s.adminListStatuses)
 
-	mux.HandleFunc("GET /api/requests", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, s.requests.list())
+	mux.HandleFunc("GET /api/requests", func(w http.ResponseWriter, r *http.Request) {
+		var after int64
+		if raw := r.URL.Query().Get("after"); raw != "" {
+			var err error
+			if after, err = strconv.ParseInt(raw, 10, 64); err != nil {
+				http.Error(w, "after must be a sequence number", http.StatusBadRequest)
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, s.requests.after(after))
 	})
 	mux.HandleFunc("DELETE /api/requests", func(w http.ResponseWriter, _ *http.Request) {
 		s.requests.reset()

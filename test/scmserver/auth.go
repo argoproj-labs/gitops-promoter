@@ -32,6 +32,15 @@ type principal struct {
 	installationID int64
 }
 
+// credential identifies the caller's credential in the request log. It is the rate limiting key, without the secret
+// of an access token.
+func (p principal) credential() string {
+	if strings.HasPrefix(p.key, "token:") {
+		return "token"
+	}
+	return p.key
+}
+
 // userID derives a stable numeric user ID from the credential, for messages that name one.
 func (p principal) userID() uint32 {
 	h := fnv.New32a()

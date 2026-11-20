@@ -186,6 +186,14 @@ func (c *AdminClient) Requests(ctx context.Context) ([]RequestRecord, error) {
 	return out, c.do(ctx, http.MethodGet, "/api/requests", nil, &out)
 }
 
+// RequestsAfter returns the requests logged after the one numbered seq (RequestRecord.Seq), oldest first. Passing
+// the Seq of the last record a caller has seen pages through the log without clearing it. The log keeps the most
+// recent 20000 requests: when the first record returned is not seq+1, the ones in between were dropped.
+func (c *AdminClient) RequestsAfter(ctx context.Context, seq int64) ([]RequestRecord, error) {
+	var out []RequestRecord
+	return out, c.do(ctx, http.MethodGet, "/api/requests?after="+strconv.FormatInt(seq, 10), nil, &out)
+}
+
 // ClearRequests clears the request log.
 func (c *AdminClient) ClearRequests(ctx context.Context) error {
 	return c.do(ctx, http.MethodDelete, "/api/requests", nil, nil)

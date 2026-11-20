@@ -214,6 +214,97 @@ var _ = Describe("admin API", func() {
 		}(),
 	)
 
+	It("logs each request with its route, credential, user agent and sequence number", func(ctx SpecContext) {
+		lastSeq := func() int64 {
+			recs := srv.Requests()
+			if len(recs) == 0 {
+				return 0
+			}
+			return recs[len(recs)-1].Seq
+		}
+		cursor := lastSeq()
+
+		By("calling the GitHub API and git as the promoter does")
+		f := newFixture(ctx, scmserver.GitHub)
+		appID := f.scmProvider.Spec.GitHub.AppID
+		app := "app:" + strconv.FormatInt(appID, 10)
+		installation := "installation:" + strconv.FormatInt(appID*10, 10)
+		_, err := f.prs.FindOpen(ctx, f.pullRequest("request-log"))
+		Expect(err).NotTo(HaveOccurred())
+		out, err := f.git(ctx, "", "ls-remote", f.authenticatedCloneURL(ctx))
+		Expect(err).NotTo(HaveOccurred(), out)
+
+		recs, err := admin.RequestsAfter(ctx, cursor)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recs).NotTo(BeEmpty())
+		for i, rec := range recs {
+			Expect(rec.Seq).To(Equal(cursor+int64(i)+1), "sequence numbers are consecutive")
+		}
+		Expect(recs).To(ContainElement(And(
+			HaveField("Route", "GET /api/v3/orgs/{account}/installation"), HaveField("Credential", app))))
+		Expect(recs).To(ContainElement(And(
+			HaveField("Route", "POST /api/v3/app/installations/{id}/access_tokens"), HaveField("Credential", app))))
+		Expect(recs).To(ContainElement(And(
+			HaveField("Route", "GET /api/v3/repos/{owner}/{repo}/pulls"),
+			HaveField("Credential", installation),
+			HaveField("UserAgent", ContainSubstring("go-github")),
+			HaveField("Git", false))))
+		Expect(recs).To(ContainElement(And(
+			HaveField("Route", "GIT GET /info/refs?service=git-upload-pack"),
+			HaveField("Credential", installation),
+			HaveField("UserAgent", HavePrefix("git/")),
+			HaveField("StatusCode", http.StatusOK),
+			HaveField("Git", true))))
+		Expect(recs).To(ContainElement(And(
+			HaveField("Route", "GIT GET /info/refs?service=git-upload-pack"),
+			HaveField("Credential", BeEmpty()),
+			HaveField("StatusCode", http.StatusUnauthorized))), "git asks without credentials first")
+
+		By("paging from the last record seen")
+		cursor = recs[len(recs)-1].Seq
+		Expect(admin.RequestsAfter(ctx, cursor)).To(BeEmpty())
+
+		By("naming the route of a request a fault answered")
+		_, err = admin.AddFault(ctx, scmserver.FaultRule{
+			Provider: scmserver.GitHub, Method: http.MethodGet, Path: "/pulls$", Status: http.StatusBadGateway, Times: 1,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func(ctx SpecContext) { Expect(admin.ClearFaults(ctx)).To(Succeed()) })
+		_, err = f.prs.FindOpen(ctx, f.pullRequest("request-log"))
+		Expect(err).To(HaveOccurred())
+		recs, err = admin.RequestsAfter(ctx, cursor)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recs).To(ConsistOf(And(
+			HaveField("Route", "GET /api/v3/repos/{owner}/{repo}/pulls"),
+			HaveField("Fault", true),
+			HaveField("StatusCode", http.StatusBadGateway))))
+
+		By("keeping the secret of an access token out of the log")
+		cursor = recs[len(recs)-1].Seq
+		gitlab := newFixture(ctx, scmserver.GitLab)
+		_, err = gitlab.prs.FindOpen(ctx, gitlab.pullRequest("request-log"))
+		Expect(err).NotTo(HaveOccurred())
+		recs, err = admin.RequestsAfter(ctx, cursor)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recs).NotTo(BeEmpty())
+		Expect(recs).To(HaveEach(HaveField("Credential", "token")))
+
+		By("marking fixture requests, and counting on after the log is cleared")
+		cursor = recs[len(recs)-1].Seq
+		Expect(admin.ClearRequests(ctx)).To(Succeed())
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+srv.Domain(scmserver.GitHub)+"/api/v3/no-such-route", nil)
+		Expect(err).NotTo(HaveOccurred())
+		req.Header.Set(scmserver.NoFaultHeader, "1")
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.Body.Close()).To(Succeed())
+		Expect(admin.Requests(ctx)).To(ConsistOf(And(
+			HaveField("Seq", cursor+1),
+			HaveField("Route", "/"),
+			HaveField("NoFault", true),
+			HaveField("Credential", BeEmpty()))))
+	})
+
 	It("manages fault rules and records their hits", func(ctx SpecContext) {
 		f := newFixture(ctx, scmserver.GitLab)
 		rule, err := admin.AddFault(ctx, scmserver.FaultRule{

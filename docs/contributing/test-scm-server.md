@@ -77,7 +77,7 @@ The admin API is plain HTTP. `scmserver.AdminClient` wraps it for Go tests.
 | `GET /api/pulls`, `GET /api/repos/{id}/pulls/{n}`       | Server-side pull request state, including merge commits and completion queues   |
 | `POST /api/repos/{id}/pulls/{n}/actions`                | `merge` (with `"squash": true` for a squash merge, which on GitLab squashes and then merges), `close`, `reopen`, `set-labels`, `hide`, `show`, `delete`, and for Azure DevOps `complete-now` and `fail-completion` |
 | `GET /api/statuses?repo=&sha=`                          | Commit statuses, build statuses and check runs                                  |
-| `GET/DELETE /api/requests`                              | The request log                                                                 |
+| `GET/DELETE /api/requests`                              | The request log. `?after=<seq>` returns only the requests logged after that sequence number |
 | `GET /api/behavior`, `PUT /api/behavior/{provider}`     | Read or change provider behavior (see below)                                    |
 | `GET/POST/DELETE /api/faults`                           | Fault injection rules                                                           |
 | `GET/POST /api/webhooks`, `GET /api/webhooks/deliveries` | Webhook subscriptions and the delivery log                                      |
@@ -189,6 +189,15 @@ make test-scm-provider SCM_PROVIDER=gitea SCM_SERVER_PORT_BASE=9100
 ```
 
 `make run-scm-server` logs every provider API request (provider, method, path, status, duration and principal) at the `debug` level. Set `SCM_SERVER_LOG_LEVEL=info` to log only startup and errors. Git clone, fetch and push requests and admin API calls are not logged; `GET /api/requests` returns every provider request, git included, as JSON.
+
+Each record in the request log carries, besides the method, path, status and duration:
+
+- `route`: the pattern of the route that served it, such as `GET /api/v3/repos/{owner}/{repo}/pulls`, or a synthetic route for git smart HTTP, such as `GIT POST /git-upload-pack`. Count by route rather than parsing paths.
+- `credential`: what authenticated it, without the secret: `app:<id>` (GitHub App JWT), `installation:<id>` (GitHub App installation token), `user:<name>` or `token`. This is the unit the provider rate limits.
+- `userAgent`, and `noFault` for requests that carry the `X-Scmserver-No-Fault` header.
+- `seq`: a sequence number that keeps counting when the log is cleared. The log holds the most recent 20000 requests, so a long measurement should page through it with `?after=<seq>` (`AdminClient.RequestsAfter`).
+
+The [SCM API load harness](scm-load.md) builds its reports from this log.
 
 ## The e2e suite
 

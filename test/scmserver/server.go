@@ -283,11 +283,14 @@ func (s *Server) providerHandler(p Provider) http.Handler {
 		rec := &recorder{ResponseWriter: w}
 		gitReq, isGit := parseGitRequest(r.URL.Path)
 		rec.git = isGit
+		// Resolved here, not read from r.Pattern afterwards: a fault can answer the request before the mux sees it.
+		route := requestRoute(mux, r, gitReq, isGit)
 		defer func() {
 			record := RequestRecord{
 				Time: start.UTC(), Provider: p, Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery,
-				Principal: rec.principal, Duration: D(time.Since(start)), StatusCode: rec.status, Fault: rec.fault,
-				Git: rec.git,
+				Route: route, Principal: rec.principal, Credential: rec.credential, UserAgent: r.UserAgent(),
+				Duration: D(time.Since(start)), StatusCode: rec.status, Fault: rec.fault,
+				Git: rec.git, NoFault: r.Header.Get(NoFaultHeader) != "",
 			}
 			s.requests.add(record)
 			if !record.Git {
@@ -313,6 +316,21 @@ func (s *Server) providerHandler(p Provider) http.Handler {
 		}
 		mux.ServeHTTP(rec, r)
 	})
+}
+
+// requestRoute returns the route a request is counted under in the request log: the pattern of the REST API route
+// that serves it, or a synthetic route for git smart HTTP ("GIT POST /git-upload-pack").
+func requestRoute(mux *http.ServeMux, r *http.Request, gitReq gitRequest, isGit bool) string {
+	if !isGit {
+		_, pattern := mux.Handler(r)
+		return pattern
+	}
+	route := "GIT " + r.Method + " " + gitReq.rest
+	// The ref advertisement is one URL for fetches and pushes; the service parameter tells them apart.
+	if service := r.URL.Query().Get("service"); service != "" && gitReq.rest == "/info/refs" {
+		route += "?service=" + service
+	}
+	return route
 }
 
 // applyFault applies a matched fault rule. It returns true when the request was answered by the fault.
@@ -394,7 +412,7 @@ func (s *Server) serveGit(rec *recorder, r *http.Request, p Provider, gitReq git
 		http.Error(rec, "authentication required", http.StatusUnauthorized)
 		return
 	}
-	rec.principal = who.name
+	rec.authenticatedAs(who)
 	target, err := s.gitRepoFromPath(p, gitReq.repoPath)
 	if err != nil {
 		http.Error(rec, "repository not found", http.StatusNotFound)
@@ -438,7 +456,7 @@ func (s *Server) apiHandler(p Provider, h func(http.ResponseWriter, *http.Reques
 			return
 		}
 		if rec, ok := w.(*recorder); ok {
-			rec.principal = who.name
+			rec.authenticatedAs(who)
 		}
 		if !s.rateLimit(w, p, who) {
 			return

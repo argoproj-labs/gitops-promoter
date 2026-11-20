@@ -79,7 +79,7 @@ func (s *Server) githubAppHandler(h func(http.ResponseWriter, *http.Request, *gi
 		}
 		who := principal{name: "app:" + strconv.FormatInt(app.id, 10), key: "app:" + strconv.FormatInt(app.id, 10)}
 		if rec, ok := w.(*recorder); ok {
-			rec.principal = who.name
+			rec.authenticatedAs(who)
 		}
 		if !s.rateLimit(w, GitHub, who) {
 			return
