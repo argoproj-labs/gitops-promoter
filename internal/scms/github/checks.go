@@ -119,7 +119,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 				Name:      check.GetName(),
 				Status:    scms.SCMCheckStatusPending,
 				SCMStatus: check.GetStatus(),
-				URL:       check.GetURL(),
+				URL:       check.GetDetailsURL(),
 			})
 			continue
 		}
@@ -127,7 +127,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 			Name:      check.GetName(),
 			Status:    determineCheckStatusFromGHConclusion(*check),
 			SCMStatus: check.GetConclusion(),
-			URL:       check.GetURL(),
+			URL:       check.GetDetailsURL(),
 		})
 	}
 
@@ -138,7 +138,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 // conclusion.
 func determineCheckStatusFromGHConclusion(check github.CheckRun) scms.SCMCheckStatus {
 	switch check.GetConclusion() {
-	case CheckRunConclusionFailure, CheckRunConclusionStale, CheckRunConclusionTimedOut, CheckRunConclusionCancelled:
+	case CheckRunConclusionFailure, CheckRunConclusionStale, CheckRunConclusionTimedOut, CheckRunConclusionCancelled, CheckRunConclusionActionRequired:
 		return scms.SCMCheckStatusFailed
 	case CheckRunConclusionNeutral, CheckRunConclusionSuccess, CheckRunConclusionSkipped:
 		// GitHub's API defines skipped and neutral as a success for dependent checks

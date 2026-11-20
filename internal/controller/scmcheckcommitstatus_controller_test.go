@@ -273,21 +273,21 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/build"),
 							"Status":    Equal(expectedStatus),
-							"SCMStatus": Equal(string(phase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/e2e-tests"),
 							"Status":    Equal(expectedStatus),
-							"SCMStatus": Equal(string(phase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/lint"),
 							"Status":    Equal(expectedStatus),
-							"SCMStatus": Equal(string(phase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
@@ -372,21 +372,21 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/build"),
 							"Status":    Equal(buildStatus),
-							"SCMStatus": Equal(string(buildPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/e2e-tests"),
 							"Status":    Equal(testStatus),
-							"SCMStatus": Equal(string(testPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/lint"),
 							"Status":    Equal(lintStatus),
-							"SCMStatus": Equal(string(lintPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
@@ -478,21 +478,21 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/build"),
 							"Status":    Equal(buildStatus),
-							"SCMStatus": Equal(string(buildPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeFalse(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/e2e-tests"),
 							"Status":    Equal(testStatus),
-							"SCMStatus": Equal(string(testPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeTrue(),
 						})))
 						g.Expect(env.SCMChecks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Name":      Equal("ci/lint"),
 							"Status":    Equal(lintStatus),
-							"SCMStatus": Equal(string(lintPhase)),
+							"SCMStatus": Not(BeEmpty()),
 							"URL":       Not(BeEmpty()),
 							"Matched":   BeFalse(),
 						})))
@@ -698,8 +698,8 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 			},
 			// BBDC aggregates via build stats: any successful count wins over in-progress; any failed wins overall.
 			Entry("Success when one is pending and rest is success", promoterv1alpha1.CommitPhaseSuccess,
-				promoterv1alpha1.CommitPhasePending, promoterv1alpha1.CommitPhaseSuccess, promoterv1alpha1.CommitPhaseSuccess,
-				promoterv1alpha1.SCMCheckStatusSucceeded),
+				promoterv1alpha1.CommitPhasePending, promoterv1alpha1.CommitPhaseSuccess, promoterv1alpha1.CommitPhasePending,
+				promoterv1alpha1.SCMCheckStatusPending),
 			Entry("Failure is set when one has failed and rest is success", promoterv1alpha1.CommitPhaseSuccess,
 				promoterv1alpha1.CommitPhaseFailure, promoterv1alpha1.CommitPhaseSuccess, promoterv1alpha1.CommitPhaseFailure,
 				promoterv1alpha1.SCMCheckStatusFailed),

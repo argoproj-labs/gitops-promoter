@@ -373,7 +373,7 @@ var _ = Describe("provider contract", func() {
 				"Status": Equal(scms.SCMCheckStatusSucceeded),
 			})))
 
-			By("test that failure overides a success")
+			By("test that failure overrides a success")
 			_, err = f.statuses.Set(ctx, f.commitStatus("ci/lint", v1alpha1.CommitPhaseFailure))
 			Expect(err).NotTo(HaveOccurred())
 

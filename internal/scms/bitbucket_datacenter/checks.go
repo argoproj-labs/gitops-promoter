@@ -105,8 +105,12 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	check.Name = "Bitbucket DataCenter Builds Combined Status"
 	check.Status = scms.SCMCheckStatusPending
 
-	if buildStatusStats.Successful > 0 && buildStatusStats.InProgress == 0 {
+	if buildStatusStats.Successful > 0 {
 		check.Status = scms.SCMCheckStatusSucceeded
+	}
+
+	if buildStatusStats.InProgress > 0 {
+		check.Status = scms.SCMCheckStatusPending
 	}
 
 	if buildStatusStats.Failed > 0 || buildStatusStats.Cancelled > 0 {

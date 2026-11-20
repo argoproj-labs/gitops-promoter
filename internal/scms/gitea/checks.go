@@ -87,8 +87,10 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		return nil, fmt.Errorf("failed to list SCM checks: %w", err)
 	}
 
+	// Gitea stores all attempts of a check so filter out newest
+	filteredChecks := filterCommitCheckListToNewestCheck(commitCheckList)
 	var checks []scms.SCMCheckResult
-	for _, check := range commitCheckList {
+	for _, check := range filteredChecks {
 		if check == nil {
 			return nil, errors.New("received null check from list")
 		}
@@ -102,6 +104,37 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	}
 
 	return checks, nil
+}
+
+// filterCommitCheckListToNewestCheck filters out older versions of a check.
+func filterCommitCheckListToNewestCheck(list []*gitea.Status) []*gitea.Status {
+	times := make(map[string]time.Time)
+	statuses := make(map[string]*gitea.Status)
+
+	for _, check := range list {
+		if check == nil {
+			continue
+		}
+
+		storedTime, ok := times[check.Context]
+		if !ok {
+			times[check.Context] = check.Created
+			statuses[check.Context] = check
+			continue
+		}
+
+		if check.Created.After(storedTime) {
+			times[check.Context] = check.Created
+			statuses[check.Context] = check
+			continue
+		}
+	}
+
+	checks := []*gitea.Status{}
+	for _, status := range statuses {
+		checks = append(checks, status)
+	}
+	return checks
 }
 
 // determineCheckStatusFromGiteaStatus is a helper function that determines the check status based on a merge

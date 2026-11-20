@@ -15,6 +15,7 @@ import (
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -92,6 +93,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		Project:      &gitRepo.Spec.AzureDevOps.Project,
 		CommitId:     azdoPR.LastMergeSourceCommit.CommitId,
 		RepositoryId: &gitRepo.Spec.AzureDevOps.Name,
+		LatestOnly:   ptr.To(true),
 	})
 	statusCode = http.StatusOK
 	if err != nil {

@@ -27,9 +27,11 @@ type CheckParser struct {
 
 // The below constants represent the values status of merge checks can be through Gitlabs API
 const (
-	MergeStatusCheckPassed  string = "success"
-	MergeStatusCheckFailed  string = "failed"
-	MergeStatusCheckPending string = "pending"
+	MergeStatusCheckPassed   string = "success"
+	MergeStatusCheckFailed   string = "failed"
+	MergeStatusCheckCanceled string = "canceled"
+	MergeStatusCheckPending  string = "pending"
+	MergeStatusCheckSkipped  string = "skipped"
 )
 
 // NewGitLabCheckParser creates a new CheckParser for Gitlab
@@ -112,9 +114,9 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 // check's status
 func determineCheckStatusFromGLMergeCheck(check gitlab.CommitStatus) scms.SCMCheckStatus {
 	switch check.Status {
-	case MergeStatusCheckPassed:
+	case MergeStatusCheckPassed, MergeStatusCheckSkipped:
 		return scms.SCMCheckStatusSucceeded
-	case MergeStatusCheckFailed:
+	case MergeStatusCheckFailed, MergeStatusCheckCanceled:
 		return scms.SCMCheckStatusFailed
 	default:
 		return scms.SCMCheckStatusPending
