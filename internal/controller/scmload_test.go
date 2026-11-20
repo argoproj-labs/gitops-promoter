@@ -243,11 +243,14 @@ func loadEventScenarios() []eventScenario {
 			trigger: func(ctx context.Context, _ *loadHarness, f *loadFixture) { f.create(ctx) },
 		}
 	}
-	// At shipped intervals a WebRequestCommitStatus polls once a minute.
-	shippedWebRequest := func(*loadHarness) loadFixtureOptions {
+	// A change usually arrives long after the previous one's last poll, so the first reconcile that sees it sends
+	// a request. An event starts seconds after its fixture's last poll, and a polling interval that had not yet
+	// elapsed would carry the previous commit's success over to the new one without a request. A short interval
+	// reproduces the usual case.
+	elapsedWebRequest := func(*loadHarness) loadFixtureOptions {
 		return loadFixtureOptions{webRequest: &loadWebRequest{
 			reportOn: constants.CommitRefProposed, context: promoterv1alpha1.ContextEnvironments,
-			expression: loadWebRequestPassing, interval: loadShippedPoll,
+			expression: loadWebRequestPassing, interval: loadEventQuiet / 2,
 		}}
 	}
 	return []eventScenario{
@@ -287,8 +290,10 @@ func loadEventScenarios() []eventScenario {
 				"shortly after its merge.",
 			fixed(loadFixtureOptions{argoCD: true})),
 		promotionEvent("event/promotion/wrcs-gate",
-			"As event/promotion, with a WebRequestCommitStatus that polls the GitHub API once a minute and passes.",
-			shippedWebRequest),
+			"As event/promotion, with a WebRequestCommitStatus that asks the GitHub API about each proposed commit "+
+				"and passes. Its previous poll is older than its polling interval, as it is when changes are more "+
+				"than a minute apart.",
+			elapsedWebRequest),
 		func() eventScenario {
 			sc := promotionEvent("event/promotion/mergeability-delay",
 				"As event/promotion, with GitHub taking half a second to compute whether each new pull request "+
