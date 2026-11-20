@@ -46,8 +46,9 @@ type HistoryApplyConfiguration struct {
 	// pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
 	// tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
 	// pull request and proposed commit status fields, including pullRequest.prMergeTime, are copied from the
-	// restored version and describe the original promotion, not the restore. active.hydrated is the restore commit
-	// itself, so active.hydrated.commitTime is when the restore was written.
+	// restored version and describe the original promotion, not the restore. The exception is
+	// pullRequest.mergedTargetSha, which is always the entry's own commit: for a restore entry, the restore commit.
+	// active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.
 	RestoredFrom *string `json:"restoredFrom,omitempty"`
 	// RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller
 	// has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339).

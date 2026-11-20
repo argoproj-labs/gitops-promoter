@@ -71,28 +71,29 @@ spec:
         | SHA | {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} | {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} |
         | Subject | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
 
-        {{- $repo := "" -}}
+        {{- $baseRepo := "" -}}
+        {{- $headRepo := "" -}}
         {{- $base := "" -}}
         {{- $head := "" -}}
         {{- $activeSubject := "" -}}
         {{- $proposedSubject := "" -}}
         {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
-        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- $baseRepo = trimSuffix "/" .RepoURL -}}
         {{- end -}}{{- end -}}{{- end -}}
         {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
-        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- $headRepo = trimSuffix "/" .RepoURL -}}
         {{- end -}}{{- end -}}{{- end -}}
         {{- if or $base $head }}
 
         ### Code reference
         {{- if $base }}
-        **Active:** {{ if and $repo $base }}[{{ trunc 7 $base }}]({{ trimSuffix "/" $repo }}/commit/{{ $base }}){{ else }}{{ trunc 7 $base }}{{ end }} — {{ $activeSubject }}
+        **Active:** {{ if $baseRepo }}[{{ trunc 7 $base }}]({{ $baseRepo }}/commit/{{ $base }}){{ else }}{{ trunc 7 $base }}{{ end }} — {{ $activeSubject }}
         {{- end }}
         {{- if $head }}
-        **Proposed:** {{ if and $repo $head }}[{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/commit/{{ $head }}){{ else }}{{ trunc 7 $head }}{{ end }} — {{ $proposedSubject }}
+        **Proposed:** {{ if $headRepo }}[{{ trunc 7 $head }}]({{ $headRepo }}/commit/{{ $head }}){{ else }}{{ trunc 7 $head }}{{ end }} — {{ $proposedSubject }}
         {{- end }}
-        {{- if and $repo $base $head }}
-        **Diff:** [{{ trunc 7 $base }}...{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }})
+        {{- if and $base $head $baseRepo (eq $baseRepo $headRepo) }}
+        **Diff:** [{{ trunc 7 $base }}...{{ trunc 7 $head }}]({{ $baseRepo }}/compare/{{ $base }}...{{ $head }})
         {{- end }}
         {{- end }}
 
@@ -124,30 +125,31 @@ spec:
           Proposed: {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ trunc 7 .Sha }}{{ end }}{{ with .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
             {{ . }}{{ end }}
 
-        {{- $repo := "" -}}
+        {{- $baseRepo := "" -}}
+        {{- $headRepo := "" -}}
         {{- $base := "" -}}
         {{- $head := "" -}}
         {{- $activeSubject := "" -}}
         {{- $proposedSubject := "" -}}
         {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
-        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- $baseRepo = trimSuffix "/" .RepoURL -}}
         {{- end -}}{{- end -}}{{- end -}}
         {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
-        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- $headRepo = trimSuffix "/" .RepoURL -}}
         {{- end -}}{{- end -}}{{- end -}}
         {{- if or $base $head }}
 
         Code reference
         {{- if $base }}
-          Active: {{ if and $repo $base }}{{ trimSuffix "/" $repo }}/commit/{{ $base }}{{ else }}{{ trunc 7 $base }}{{ end }}{{ if $activeSubject }}
+          Active: {{ if $baseRepo }}{{ $baseRepo }}/commit/{{ $base }}{{ else }}{{ trunc 7 $base }}{{ end }}{{ if $activeSubject }}
             {{ $activeSubject }}{{ end }}
         {{- end }}
         {{- if $head }}
-          Proposed: {{ if and $repo $head }}{{ trimSuffix "/" $repo }}/commit/{{ $head }}{{ else }}{{ trunc 7 $head }}{{ end }}{{ if $proposedSubject }}
+          Proposed: {{ if $headRepo }}{{ $headRepo }}/commit/{{ $head }}{{ else }}{{ trunc 7 $head }}{{ end }}{{ if $proposedSubject }}
             {{ $proposedSubject }}{{ end }}
         {{- end }}
-        {{- if and $repo $base $head }}
-          Diff: {{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }}
+        {{- if and $base $head $baseRepo (eq $baseRepo $headRepo) }}
+          Diff: {{ $baseRepo }}/compare/{{ $base }}...{{ $head }}
         {{- end }}
         {{- end }}
   commitStatus:

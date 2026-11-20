@@ -2768,6 +2768,52 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(commitMessage).NotTo(ContainSubstring("https://github.com/example/gitops/pull/42"))
 		})
 
+		It("links each code reference to its own repository and omits the diff across repositories", func() {
+			cc, err := loadShippedControllerConfigurationForTests("shipped-pr-template-cross-repo-test")
+			Expect(err).NotTo(HaveOccurred())
+
+			const otherCodeRepoURL = "https://github.com/example/other-app"
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: activeDrySha,
+							References: []promoterv1alpha1.RevisionReference{
+								makeRevisionReference(baseRefSha, "chore(deps): bump foo", codeRepoURL),
+							},
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: proposedDrySha,
+							References: []promoterv1alpha1.RevisionReference{
+								makeRevisionReference(headRefSha, "chore(deps): bump bar", otherCodeRepoURL),
+							},
+						},
+					},
+				},
+			}
+			data := map[string]any{"ChangeTransferPolicy": ctp}
+
+			_, description, err := TemplatePullRequest(cc.Spec.PullRequest.Template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", baseRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), baseRefSha)))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", headRefSha[:7], otherCodeRepoURL, headRefSha)))
+			Expect(description).NotTo(ContainSubstring("**Diff:**"))
+			Expect(description).NotTo(ContainSubstring("/compare/"))
+
+			commitMessage, err := TemplateCommitMessage(cc.Spec.PullRequest.Template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("Active: %s/commit/%s", strings.TrimSuffix(codeRepoURL, "/"), baseRefSha)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("Proposed: %s/commit/%s", otherCodeRepoURL, headRefSha)))
+			Expect(commitMessage).NotTo(ContainSubstring("Diff:"))
+			Expect(commitMessage).NotTo(ContainSubstring("/compare/"))
+		})
+
 		It("omits optional sections when PromotionStrategy and code references are absent", func() {
 			cc, err := loadShippedControllerConfigurationForTests("shipped-pr-template-minimal-test")
 			Expect(err).NotTo(HaveOccurred())
