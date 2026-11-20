@@ -224,7 +224,36 @@ test-scm-provider: test-deps ## Run controller tests against scmserver (see docs
 	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \
 	PROMOTER_TEST_SCM_TOKEN="$${PROMOTER_TEST_SCM_TOKEN:-dev-token}" \
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-	go tool ginkgo -p -procs=4 -r -v --label-filter='!fake-scm-only' --timeout $(SCM_PROVIDER_TEST_TIMEOUT) --junit-report=junit.xml internal/controller/
+	go tool ginkgo -p -procs=4 -r -v --label-filter='!fake-scm-only && !scm-load' --timeout $(SCM_PROVIDER_TEST_TIMEOUT) --junit-report=junit.xml internal/controller/
+
+# Measure the SCM API load the controllers generate, against the test SCM server's GitHub listener (see
+# docs/contributing/scm-load.md). Starts the server unless one is already listening, and leaves it running.
+# SCM_LOAD_OUT receives report.json and report.md. SCM_LOAD_FOCUS runs only the scenarios whose name matches the
+# regular expression, SCM_LOAD_COMPRESSION sets how much faster than shipped the periodic timers run, and
+# SCM_LOAD_WINDOW how long steady states are observed.
+SCM_LOAD_OUT ?= $(LOCALBIN)/scm-load
+SCM_LOAD_FOCUS ?=
+SCM_LOAD_COMPRESSION ?=
+SCM_LOAD_WINDOW ?=
+SCM_LOAD_TIMEOUT ?= 2h
+.PHONY: test-scm-load
+test-scm-load: test-deps ## Measure the GitHub API load the controllers generate and write a report to SCM_LOAD_OUT (see docs/contributing/scm-load.md).
+	@if ! curl -fsS http://127.0.0.1:$(SCM_SERVER_PORT_BASE)/healthz > /dev/null 2>&1; then \
+		$(MAKE) start-scm-server SCM_SERVER_LOG_LEVEL=info; \
+	fi
+	PATH="$(CURDIR)/hack/git:$$PATH" \
+	PROMOTER_SCM_LOAD=1 \
+	PROMOTER_SCM_LOAD_OUT="$(abspath $(SCM_LOAD_OUT))" \
+	PROMOTER_SCM_LOAD_FOCUS="$(SCM_LOAD_FOCUS)" \
+	PROMOTER_SCM_LOAD_COMPRESSION="$(SCM_LOAD_COMPRESSION)" \
+	PROMOTER_SCM_LOAD_WINDOW="$(SCM_LOAD_WINDOW)" \
+	PROMOTER_SCM_LOAD_REVISION="$$(git describe --always --dirty 2>/dev/null)" \
+	PROMOTER_TEST_SCM_PROVIDER=github \
+	PROMOTER_TEST_SCM_ADMIN_URL="$${PROMOTER_TEST_SCM_ADMIN_URL:-http://127.0.0.1:$(SCM_SERVER_PORT_BASE)}" \
+	PROMOTER_TEST_SCM_CA_FILE="$${PROMOTER_TEST_SCM_CA_FILE:-$(LOCALBIN)/scm-server-ca.pem}" \
+	PROMOTER_TEST_SCM_TOKEN="$${PROMOTER_TEST_SCM_TOKEN:-dev-token}" \
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
+	go tool ginkgo -v --label-filter='scm-load' --timeout $(SCM_LOAD_TIMEOUT) internal/controller/
 
 ##@ Fuzzing
 
