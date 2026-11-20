@@ -104,7 +104,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	}
 
 	var check scms.SCMCheckResult
-	check.Name = "Bitbucket DataCenter Builds Aggregated Status"
+	check.Name = "Bitbucket DataCenter Builds Combined Status"
 	check.Status = scms.SCMCheckStatusPending
 
 	if buildStatusStats.Successful > 0 {

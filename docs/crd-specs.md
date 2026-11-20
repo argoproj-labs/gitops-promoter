@@ -199,6 +199,16 @@ A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation.
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
 ```
 
+### SCMCheckCommitStatus
+
+A SCMCommitStatus gates promotions based on checks run on PRs in the SCM. It will pull checks based on the SCM configured in the Promotion Strategy. By default the status created
+is not published to the SCM as this would duplicate information. The phase of the CommitStatus is determined by an aggregation of the checks from the SCM. See
+[SCM Check Commit Status](gating-promotions/built-in-gates/scm-check-commit-status.md) for configuration.
+
+```yaml
+{!internal/controller/testdata/SCMCheckCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.

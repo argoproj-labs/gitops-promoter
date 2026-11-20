@@ -1,0 +1,16 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: SCMCheckCommitStatus
+metadata:
+  name: scs-commit-status
+spec:
+  promotionStrategyRef:
+    name: "promotion-strategy"
+  key: "scs-commit-status-test"
+  # Filters let you select which checks will be aggregated to the CommitStatus phase.
+  # If a check does not match the filter it will still appear in the status of the object.
+  filters:
+    - 'CheckName == "ci/lint"'
+    - 'CheckName contains "e2e"'
+  # To publish the results to the scm use the publishTo field
+# publishTo:
+#  - scm
