@@ -96,9 +96,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 
 	start = time.Now()
 	statusCode, buildStatusStats, err := c.getBuilds(ctx, pr.FromRef.LatestCommit)
-	if buildStatusStats != nil {
-		metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, statusCode, time.Since(start), nil)
-	}
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list SCM checks: %w", err)
 	}
@@ -107,7 +105,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	check.Name = "Bitbucket DataCenter Builds Combined Status"
 	check.Status = scms.SCMCheckStatusPending
 
-	if buildStatusStats.Successful > 0 {
+	if buildStatusStats.Successful > 0 && buildStatusStats.InProgress == 0 {
 		check.Status = scms.SCMCheckStatusSucceeded
 	}
 

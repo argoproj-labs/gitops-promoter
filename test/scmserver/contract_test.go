@@ -300,19 +300,22 @@ var _ = Describe("provider contract", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-				"Name":   Equal("ci/build"),
-				"Status": Equal(scms.SCMCheckStatusSucceeded),
-				"URL":    Not(BeEmpty()),
+				"Name":      Equal("ci/build"),
+				"Status":    Equal(scms.SCMCheckStatusSucceeded),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
 			})))
 			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-				"Name":   Equal("ci/e2e-tests"),
-				"Status": Equal(scms.SCMCheckStatusPending),
-				"URL":    Not(BeEmpty()),
+				"Name":      Equal("ci/e2e-tests"),
+				"Status":    Equal(scms.SCMCheckStatusPending),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
 			})))
 			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-				"Name":   Equal("ci/lint"),
-				"Status": Equal(scms.SCMCheckStatusFailed),
-				"URL":    Not(BeEmpty()),
+				"Name":      Equal("ci/lint"),
+				"Status":    Equal(scms.SCMCheckStatusFailed),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
 			})))
 		},
 		Entry("GitHub", scmserver.GitHub),

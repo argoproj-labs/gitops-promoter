@@ -79,7 +79,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	}
 
 	start = time.Now()
-	commitCheckList, response, err := c.client.ListStatuses(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, pr.Head.Ref, forgejo.ListStatusesOption{})
+	commitCheckList, response, err := c.client.ListStatuses(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, pr.Head.Sha, forgejo.ListStatusesOption{})
 	if response != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, response.StatusCode, time.Since(start), nil)
 	}
@@ -94,9 +94,10 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		}
 
 		checks = append(checks, scms.SCMCheckResult{
-			Name:   check.Context,
-			Status: determineCheckStatusFromForgejoStatus(*check),
-			URL:    check.TargetURL,
+			Name:      check.Context,
+			Status:    determineCheckStatusFromForgejoStatus(*check),
+			SCMStatus: string(check.State),
+			URL:       check.TargetURL,
 		})
 	}
 

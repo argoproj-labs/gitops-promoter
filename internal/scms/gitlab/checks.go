@@ -98,9 +98,10 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		}
 
 		checks = append(checks, scms.SCMCheckResult{
-			Name:   check.Name,
-			Status: determineCheckStatusFromGLMergeCheck(*check),
-			URL:    check.TargetURL,
+			Name:      check.Name,
+			Status:    determineCheckStatusFromGLMergeCheck(*check),
+			SCMStatus: check.Status,
+			URL:       check.TargetURL,
 		})
 	}
 

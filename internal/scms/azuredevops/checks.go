@@ -83,13 +83,11 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		return nil, errors.New("retrieved PR was nil")
 	}
 
-	if azdoPR.LastMergeSourceCommit == nil && azdoPR.LastMergeSourceCommit.CommitId == nil {
+	if azdoPR.LastMergeSourceCommit == nil || (azdoPR.LastMergeSourceCommit != nil && azdoPR.LastMergeSourceCommit.CommitId == nil) {
 		return nil, errors.New("pull request had nil last merge source commit id")
 	}
 
-	// Azure DevOps returns commits in reverse chronological order
-	// https://learn.microsoft.com/en-us/rest/api/azure/devops/git/commits/get-commits
-
+	start = time.Now()
 	statuses, err := gitClient.GetStatuses(ctx, git.GetStatusesArgs{
 		Project:      &gitRepo.Spec.AzureDevOps.Project,
 		CommitId:     azdoPR.LastMergeSourceCommit.CommitId,
@@ -114,13 +112,18 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	var checks []scms.SCMCheckResult
 	for _, status := range *statuses {
 		name := "Azure DevOps Check"
-		if status.Context.Name != nil {
+		if status.Context != nil && status.Context.Name != nil {
 			name = *status.Context.Name
 		}
 
 		url := ""
 		if status.TargetUrl != nil {
 			url = *status.TargetUrl
+		}
+
+		// if a check does not have a state skip it.
+		if status.State == nil {
+			continue
 		}
 
 		checks = append(checks, scms.SCMCheckResult{

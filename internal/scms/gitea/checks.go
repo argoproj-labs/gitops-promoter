@@ -79,7 +79,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	}
 
 	start = time.Now()
-	commitCheckList, response, err := c.client.ListStatuses(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, pr.Head.Ref, gitea.ListStatusesOption{})
+	commitCheckList, response, err := c.client.ListStatuses(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, pr.Head.Sha, gitea.ListStatusesOption{})
 	if response != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationList, response.StatusCode, time.Since(start), nil)
 	}

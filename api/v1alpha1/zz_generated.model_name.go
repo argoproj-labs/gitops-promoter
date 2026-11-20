@@ -606,6 +606,41 @@ func (in RevisionReference) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatusEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatusEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in SCMCheckResults) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.SCMCheckResults"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ScheduledCommitStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatus"
 }

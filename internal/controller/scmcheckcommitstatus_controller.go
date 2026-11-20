@@ -233,11 +233,6 @@ func (r *SCMCheckCommitStatusReconciler) processEnvironments(ctx context.Context
 		}
 
 		newEnvStatus := r.buildEnvironmentStatus(checkResults, filteredResults, env.Branch, proposedSha, len(scs.Spec.Filters) > 0)
-		// if the pull request is nil treat this as pending because we want no checks to mean success just not when the pull request
-		// is nil
-		if envStatus.PullRequest == nil {
-			newEnvStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		}
 
 		// Check if the new status transitioned
 		var previousPhase string
@@ -255,7 +250,7 @@ func (r *SCMCheckCommitStatusReconciler) processEnvironments(ctx context.Context
 
 		scs.Status.Environments = append(scs.Status.Environments, newEnvStatus)
 
-		cs, err := r.upsertCheckCommitStatus(ctx, scs, ps, env.Branch, proposedSha, checksToUse, promoterv1alpha1.CommitStatusPhase(newEnvStatus.Phase))
+		cs, err := r.upsertCheckCommitStatus(ctx, scs, ps, env.Branch, proposedSha, checksToUse, envStatus, promoterv1alpha1.CommitStatusPhase(newEnvStatus.Phase))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed upserting commit statuses: %w", err)
 		}
@@ -382,11 +377,15 @@ func (r *SCMCheckCommitStatusReconciler) getCompiledExpression(expression string
 
 // upsertCheckCommitStatus upserts the aggregated commit status for all of the checks.
 func (r *SCMCheckCommitStatusReconciler) upsertCheckCommitStatus(ctx context.Context, scs *promoterv1alpha1.SCMCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy,
-	branch, sha string, checks []scms.SCMCheckResult, aggregatedPhase promoterv1alpha1.CommitStatusPhase,
+	branch, sha string, checks []scms.SCMCheckResult, envStatus *promoterv1alpha1.EnvironmentStatus, aggregatedPhase promoterv1alpha1.CommitStatusPhase,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	phaseToUse := aggregatedPhase
 	description := "Aggregated SCM Checks Commit Status, see status of parent SCMCheckCommitStatus for individual check states."
-	if len(checks) == 0 {
+	// if the pull request is empty we want to treat that as pending and no checks is treated as passing.
+	if envStatus.PullRequest == nil {
+		phaseToUse = promoterv1alpha1.CommitPhasePending
+		description = "Pull Request is empty, waiting for checks"
+	} else if len(checks) == 0 {
 		phaseToUse = promoterv1alpha1.CommitPhaseSuccess
 		description = "No checks exist or were matched"
 	}
@@ -447,10 +446,11 @@ func (r *SCMCheckCommitStatusReconciler) buildEnvironmentStatus(checks, filtered
 			continue
 		}
 
+		//nolint:revive // these are the only cases that matter if no pending or failure it is success
 		switch utils.CheckStatusToCommitStatusPhase(check.Status) {
 		case promoterv1alpha1.CommitPhaseFailure:
 			failureFound = true
-		default:
+		case promoterv1alpha1.CommitPhasePending:
 			pendingFound = true
 		}
 	}

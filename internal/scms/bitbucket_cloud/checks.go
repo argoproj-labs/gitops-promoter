@@ -109,6 +109,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		return nil, errors.New("latest commit hash from PR is empty")
 	}
 
+	start = time.Now()
 	statuses, err := c.client.Repositories.Commits.GetCommitStatuses(&bitbucket.CommitsOptions{
 		Owner:    repo.Spec.BitbucketCloud.Owner,
 		RepoSlug: repo.Spec.BitbucketCloud.Name,
@@ -116,6 +117,9 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 	})
 	statusCode = parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMChecks, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SCM Check from BitBucket Cloud: %w", err)
+	}
 
 	statusMap, ok := statuses.(map[string]any)
 	if !ok {

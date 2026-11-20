@@ -105,7 +105,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMChecks, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return nil, errors.New("failed to get list of github checks")
+		return nil, fmt.Errorf("failed to get list of github checks: %w", err)
 	}
 
 	for _, check := range commitCheckList.GetCheckRuns() {

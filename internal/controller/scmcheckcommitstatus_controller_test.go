@@ -636,7 +636,7 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 					for _, env := range updated.Status.Environments {
 						g.Expect(env.Phase).To(Equal(string(phase)))
 						g.Expect(env.SCMChecks).To(ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-							"Name":      Equal("Bitbucket DataCenter Builds Aggregated Status"),
+							"Name":      Equal("Bitbucket DataCenter Builds Combined Status"),
 							"Status":    Equal(expectedStatus),
 							"SCMStatus": Not(BeEmpty()),
 							"Matched":   BeTrue(),
@@ -688,7 +688,7 @@ var _ = Describe("SCMCheckCommitStatus Controller", Ordered, func() {
 					for _, env := range updated.Status.Environments {
 						g.Expect(env.Phase).To(Equal(string(envPhase)))
 						g.Expect(env.SCMChecks).To(ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-							"Name":      Equal("Bitbucket DataCenter Builds Aggregated Status"),
+							"Name":      Equal("Bitbucket DataCenter Builds Combined Status"),
 							"Status":    Equal(expectedStatus),
 							"SCMStatus": Not(BeEmpty()),
 							"Matched":   BeTrue(),

@@ -154,9 +154,9 @@ type SCMCheckCommitStatusEnvironmentStatus struct {
 	// +required
 	Phase string `json:"phase"`
 
-	// SCMChecks holds the results of each SCM check.
-	// +required
-	SCMChecks []SCMCheckResults `json:"scmCheckResults"`
+	// SCMChecks holds the results of each SCM check. This allows for visibility into the SCM checks
+	// from the resource.
+	SCMChecks []SCMCheckResults `json:"scmCheckResults,omitempty"`
 }
 
 // SCMCheckResults contains information about an individual SCM check.

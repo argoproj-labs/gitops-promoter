@@ -37,7 +37,8 @@ type SCMCheckCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// - "success": expression evaluated to true, validation passed
 	// - "failure": expression evaluated to false, validation failed, or expression compilation failed
 	Phase *string `json:"phase,omitempty"`
-	// SCMChecks holds the results of each SCM check.
+	// SCMChecks holds the results of each SCM check. This allows for visibility into the SCM checks
+	// from the resource.
 	SCMChecks []SCMCheckResultsApplyConfiguration `json:"scmCheckResults,omitempty"`
 }
 

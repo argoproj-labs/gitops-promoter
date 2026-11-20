@@ -23,6 +23,8 @@ import (
 
 // SCMCheckResultsApplyConfiguration represents a declarative configuration of the SCMCheckResults type for use
 // with apply.
+//
+// SCMCheckResults contains information about an individual SCM check.
 type SCMCheckResultsApplyConfiguration struct {
 	// Name represents the name of the check in the SCM.
 	Name *string `json:"name,omitempty"`

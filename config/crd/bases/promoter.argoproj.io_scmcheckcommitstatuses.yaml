@@ -209,8 +209,12 @@ spec:
                       pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                     scmCheckResults:
-                      description: SCMChecks holds the results of each SCM check.
+                      description: |-
+                        SCMChecks holds the results of each SCM check. This allows for visibility into the SCM checks
+                        from the resource.
                       items:
+                        description: SCMCheckResults contains information about an
+                          individual SCM check.
                         properties:
                           matched:
                             description: Matched is whether the check was included
@@ -244,7 +248,6 @@ spec:
                   - branch
                   - phase
                   - proposedHydratedSha
-                  - scmCheckResults
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
