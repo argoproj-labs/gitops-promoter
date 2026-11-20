@@ -264,7 +264,7 @@ var _ = Describe("admin API", func() {
 		cursor = recs[len(recs)-1].Seq
 		Expect(admin.RequestsAfter(ctx, cursor)).To(BeEmpty())
 
-		By("naming the route of a request a fault answered")
+		By("naming the route and the caller of a request a fault answered")
 		_, err = admin.AddFault(ctx, scmserver.FaultRule{
 			Provider: scmserver.GitHub, Method: http.MethodGet, Path: "/pulls$", Status: http.StatusBadGateway, Times: 1,
 		})
@@ -276,6 +276,7 @@ var _ = Describe("admin API", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(recs).To(ConsistOf(And(
 			HaveField("Route", "GET /api/v3/repos/{owner}/{repo}/pulls"),
+			HaveField("Credential", installation),
 			HaveField("Fault", true),
 			HaveField("StatusCode", http.StatusBadGateway))))
 

@@ -193,7 +193,7 @@ make test-scm-provider SCM_PROVIDER=gitea SCM_SERVER_PORT_BASE=9100
 Each record in the request log carries, besides the method, path, status and duration:
 
 - `route`: the pattern of the route that served it, such as `GET /api/v3/repos/{owner}/{repo}/pulls`, or a synthetic route for git smart HTTP, such as `GIT POST /git-upload-pack`. Count by route rather than parsing paths.
-- `credential`: what authenticated it, without the secret: `app:<id>` (GitHub App JWT), `installation:<id>` (GitHub App installation token), `user:<name>` or `token`. This is the unit the provider rate limits.
+- `credential`: what authenticated it, without the secret: `app:<id>` (GitHub App JWT), `installation:<id>` (GitHub App installation token), `user:<name>` or `token`. This is the unit the provider rate limits. A request answered by a fault rule is logged with the credential it carried.
 - `userAgent`, and `noFault` for requests that carry the `X-Scmserver-No-Fault` header.
 - `seq`: a sequence number that keeps counting when the log is cleared. The log holds the most recent 20000 requests, so a long measurement should page through it with `?after=<seq>` (`AdminClient.RequestsAfter`).
 

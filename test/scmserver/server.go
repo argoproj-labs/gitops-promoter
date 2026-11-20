@@ -306,6 +306,8 @@ func (s *Server) providerHandler(p Provider) http.Handler {
 			}
 		}
 		if rule := s.faults.match(p, r); rule != nil {
+			// A fault answers before any route authenticates the caller, so name the caller for the log here.
+			s.identifyCaller(rec, p, r, isGit)
 			if s.applyFault(rec, w, r, p, rule) {
 				return
 			}
@@ -331,6 +333,29 @@ func requestRoute(mux *http.ServeMux, r *http.Request, gitReq gitRequest, isGit 
 		route += "?service=" + service
 	}
 	return route
+}
+
+// identifyCaller records who sent a request, from the credentials it carries, without handling it. A request with
+// missing or invalid credentials stays anonymous.
+func (s *Server) identifyCaller(rec *recorder, p Provider, r *http.Request, isGit bool) {
+	authenticate := s.authenticateAPI
+	if isGit {
+		authenticate = s.authenticateGit
+	}
+	if who, err := authenticate(p, r); err == nil {
+		rec.authenticatedAs(who)
+		return
+	}
+	if p != GitHub || isGit {
+		return
+	}
+	// A GitHub App authenticates as itself with a JWT instead of a token.
+	if scheme, token, _ := strings.Cut(r.Header.Get("Authorization"), " "); strings.EqualFold(scheme, "bearer") {
+		if app, _ := s.verifyGitHubJWT(token); app != nil {
+			id := "app:" + strconv.FormatInt(app.id, 10)
+			rec.authenticatedAs(principal{name: id, key: id})
+		}
+	}
 }
 
 // applyFault applies a matched fault rule. It returns true when the request was answered by the fault.
