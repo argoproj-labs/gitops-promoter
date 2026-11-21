@@ -108,7 +108,7 @@ func (c *CheckParser) Get(ctx context.Context, ps v1alpha1.PromotionStrategy, br
 
 // filterCommitCheckListToNewestCheck filters out older versions of a check.
 func filterCommitCheckListToNewestCheck(list []*gitea.Status) []*gitea.Status {
-	times := make(map[string]time.Time)
+	ids := make(map[string]int64)
 	statuses := make(map[string]*gitea.Status)
 
 	for _, check := range list {
@@ -116,21 +116,21 @@ func filterCommitCheckListToNewestCheck(list []*gitea.Status) []*gitea.Status {
 			continue
 		}
 
-		storedTime, ok := times[check.Context]
+		storedID, ok := ids[check.Context]
 		if !ok {
-			times[check.Context] = check.Created
+			ids[check.Context] = check.ID
 			statuses[check.Context] = check
 			continue
 		}
 
-		if check.Created.After(storedTime) {
-			times[check.Context] = check.Created
+		if check.ID > storedID {
+			ids[check.Context] = check.ID
 			statuses[check.Context] = check
 			continue
 		}
 	}
 
-	checks := []*gitea.Status{}
+	checks := make([]*gitea.Status, 0, len(statuses))
 	for _, status := range statuses {
 		checks = append(checks, status)
 	}

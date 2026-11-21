@@ -10793,6 +10793,7 @@ rules:
   - timedcommitstatuses
   - webrequestcommitstatuses
   - scheduledcommitstatuses
+  - scmcheckcommitstatuses
   - dependentssuccessfulcommitstatuses
   - gitrepositories
   - scmproviders
