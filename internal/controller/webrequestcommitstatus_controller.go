@@ -169,6 +169,11 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 // PromotionStrategy so reconciles are triggered when strategy or environment SHAs change), and applies
 // rate limiting and max concurrent reconciles from ControllerConfiguration.
 func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// CleanupOrphanedCommitStatuses lists CommitStatuses by their controller owner.
+	if err := utils.RegisterControllerOwnerUIDFieldIndex(ctx, mgr.GetFieldIndexer(), &promoterv1alpha1.CommitStatus{}); err != nil {
+		return fmt.Errorf("WebRequestCommitStatus controller: %w", err)
+	}
+
 	// Initialize the HTTP client
 	r.httpClient = &http.Client{
 		Timeout: 60 * time.Second, // Default timeout, can be overridden per-request
