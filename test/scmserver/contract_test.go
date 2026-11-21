@@ -7,6 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -259,5 +260,130 @@ var _ = Describe("provider contract", func() {
 			Expect(f.serverPR(ctx, prObj.Status.ID).State).To(Equal("open"))
 		},
 		allProviderEntries,
+	)
+
+	DescribeTable("get check results from the head commit on a pr",
+		func(ctx SpecContext, p scmserver.Provider) {
+			f := newFixture(ctx, p)
+			prObj := f.createPR(ctx, "checks")
+
+			By("creating check statuses for the PR")
+			_, err := f.statuses.Set(ctx, f.commitStatus("ci/build", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = f.statuses.Set(ctx, f.commitStatus("ci/e2e-tests", v1alpha1.CommitPhasePending))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = f.statuses.Set(ctx, f.commitStatus("ci/lint", v1alpha1.CommitPhaseFailure))
+			Expect(err).NotTo(HaveOccurred())
+
+			ps := v1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-ps",
+				},
+				Spec: v1alpha1.PromotionStrategySpec{
+					RepositoryReference: v1alpha1.ObjectReference{
+						Name: f.gitRepo.Name,
+					},
+				},
+				Status: v1alpha1.PromotionStrategyStatus{
+					Environments: []v1alpha1.EnvironmentStatus{{
+						Branch: "environments/dev",
+						PullRequest: &v1alpha1.PullRequestCommonStatus{
+							ID: prObj.Status.ID,
+						},
+					}},
+				},
+			}
+
+			By("getting scm checks and making sure they have the correct data")
+			checks, err := f.checkParser.Get(ctx, ps, "environments/dev")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Name":      Equal("ci/build"),
+				"Status":    Equal(scms.SCMCheckStatusSucceeded),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
+			})))
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Name":      Equal("ci/e2e-tests"),
+				"Status":    Equal(scms.SCMCheckStatusPending),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
+			})))
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Name":      Equal("ci/lint"),
+				"Status":    Equal(scms.SCMCheckStatusFailed),
+				"SCMStatus": Not(BeEmpty()),
+				"URL":       Not(BeEmpty()),
+			})))
+		},
+		Entry("GitHub", scmserver.GitHub),
+		Entry("GitLab", scmserver.GitLab),
+		Entry("Azure DevOps", scmserver.AzureDevOps),
+		Entry("Bitbucket Cloud", scmserver.BitbucketCloud),
+		Entry("Gitea", scmserver.Gitea),
+		Entry("Forgejo", scmserver.Forgejo),
+	)
+
+	DescribeTable("get check result stats from the head commit on a pr",
+		func(ctx SpecContext, p scmserver.Provider) {
+			f := newFixture(ctx, p)
+			prObj := f.createPR(ctx, "checks")
+
+			ps := v1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-ps",
+				},
+				Spec: v1alpha1.PromotionStrategySpec{
+					RepositoryReference: v1alpha1.ObjectReference{
+						Name: f.gitRepo.Name,
+					},
+				},
+				Status: v1alpha1.PromotionStrategyStatus{
+					Environments: []v1alpha1.EnvironmentStatus{{
+						Branch: "environments/dev",
+						PullRequest: &v1alpha1.PullRequestCommonStatus{
+							ID: prObj.Status.ID,
+						},
+					}},
+				},
+			}
+
+			By("test that pending is set when there is only a pending check")
+			_, err := f.statuses.Set(ctx, f.commitStatus("ci/build", v1alpha1.CommitPhasePending))
+			Expect(err).NotTo(HaveOccurred())
+
+			checks, err := f.checkParser.Get(ctx, ps, "environments/dev")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Status": Equal(scms.SCMCheckStatusPending),
+			})))
+
+			By("test that success shows up if a check passes")
+			_, err = f.statuses.Set(ctx, f.commitStatus("ci/build", v1alpha1.CommitPhaseSuccess))
+			Expect(err).NotTo(HaveOccurred())
+
+			checks, err = f.checkParser.Get(ctx, ps, "environments/dev")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Status": Equal(scms.SCMCheckStatusSucceeded),
+			})))
+
+			By("test that failure overrides a success")
+			_, err = f.statuses.Set(ctx, f.commitStatus("ci/lint", v1alpha1.CommitPhaseFailure))
+			Expect(err).NotTo(HaveOccurred())
+
+			checks, err = f.checkParser.Get(ctx, ps, "environments/dev")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(checks).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"Status": Equal(scms.SCMCheckStatusFailed),
+			})))
+		},
+		Entry("Bitbucket Data Center", scmserver.BitbucketDataCenter),
 	)
 })

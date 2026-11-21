@@ -108,6 +108,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.SCMCheckCommitStatuses != nil {
+		in, out := &in.SCMCheckCommitStatuses, &out.SCMCheckCommitStatuses
+		*out = make([]apiv1alpha1.SCMCheckCommitStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.GitRepository != nil {
 		in, out := &in.GitRepository, &out.GitRepository
 		*out = new(apiv1alpha1.GitRepository)

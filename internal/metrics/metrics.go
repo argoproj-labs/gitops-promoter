@@ -65,6 +65,9 @@ const (
 	// (pull requests, commit statuses, and similar). Listing GitHub App
 	// installations is one example.
 	SCMAPIProvider SCMAPI = "Provider"
+	// SCMChecks is used for operations related to pulling information about CI checks
+	// from an SCM.
+	SCMChecks SCMAPI = "Checks"
 )
 
 // SCMOperation represents the type of operation being performed on the SCM API.

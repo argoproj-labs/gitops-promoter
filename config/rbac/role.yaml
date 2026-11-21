@@ -64,6 +64,7 @@ rules:
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - scheduledcommitstatuses/finalizers
+  - scmcheckcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
@@ -84,6 +85,7 @@ rules:
   - pullrequests/status
   - restoreactivecommits/status
   - scheduledcommitstatuses/status
+  - scmcheckcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
   - webrequestcommitstatuses/status
@@ -98,6 +100,7 @@ rules:
   - commitstatuses
   - pullrequests
   - restoreactivecommits
+  - scmcheckcommitstatuses
   verbs:
   - create
   - delete
