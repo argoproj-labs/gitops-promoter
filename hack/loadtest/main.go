@@ -92,6 +92,7 @@ type config struct {
 	repoRoot        string
 	kubebuilderPath string
 	timedDuration   time.Duration
+	stallTimeout    time.Duration
 }
 
 func main() {
@@ -124,6 +125,7 @@ func parseFlags() config {
 	flag.IntVar(&c.concurrency, "max-concurrent-reconciles", 0, "Override every maxConcurrentReconciles. 0 keeps the shipped values.")
 	flag.IntVar(&c.createWorkers, "create-workers", 16, "Parallel workers used by the harness to create repos and objects.")
 	flag.DurationVar(&c.timedDuration, "timed-duration", 5*time.Second, "Soak duration for the TimedCommitStatus gate.")
+	flag.DurationVar(&c.stallTimeout, "stall-timeout", 10*time.Minute, "Give up on a level or wave if no environment is promoted for this long.")
 	flag.BoolVar(&c.keep, "keep", false, "Leave the controller and apiserver running at the end until Ctrl-C.")
 	flag.Parse()
 
@@ -739,35 +741,35 @@ func (h *harness) createObjects(ctx context.Context, r *repoState) error {
 }
 
 // countPromoted returns how many of the first n PromotionStrategies have every environment's active
-// dry SHA equal to the repo's latest dry SHA.
-func (h *harness) countPromoted(ctx context.Context, n int) (int, error) {
+// dry SHA equal to the repo's latest dry SHA, and how many individual environments have.
+func (h *harness) countPromoted(ctx context.Context, n int) (int, int, error) {
 	list := &promoterv1alpha1.PromotionStrategyList{}
 	if err := h.k8s.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{labelKey: "true"}); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	want := map[string]string{}
 	for _, r := range h.repos[:n] {
 		want[r.name] = r.drySha
 	}
-	done := 0
+	done, envs := 0, 0
 	for i := range list.Items {
 		ps := &list.Items[i]
 		dry, ok := want[ps.Name]
-		if !ok || len(ps.Status.Environments) != len(h.branches) {
+		if !ok {
 			continue
 		}
-		all := true
+		n := 0
 		for _, e := range ps.Status.Environments {
-			if e.Active.Dry.Sha != dry || e.Proposed.Dry.Sha != dry {
-				all = false
-				break
+			if e.Active.Dry.Sha == dry && e.Proposed.Dry.Sha == dry {
+				n++
 			}
 		}
-		if all {
+		envs += n
+		if n == len(h.branches) {
 			done++
 		}
 	}
-	return done, nil
+	return done, envs, nil
 }
 
 func (h *harness) objectCounts(ctx context.Context) map[string]int {
@@ -958,6 +960,8 @@ func (h *harness) scrapeMetrics() (map[string]float64, error) {
 			out["reconcile_total/"+labelValue(labels, "controller")] += v
 		case "controller_runtime_reconcile_time_seconds_sum":
 			out["reconcile_time/"+labelValue(labels, "controller")] += v
+		case "workqueue_depth":
+			out["queue_depth/"+labelValue(labels, "controller")] += v
 		}
 	}
 	return out, nil
@@ -1040,6 +1044,8 @@ type waveResult struct {
 	Burst       snapshot `json:"burst"`
 	PeakRSSMiB  float64  `json:"peak_rss_mib"`
 	PeakHeapMiB float64  `json:"peak_heap_inuse_mib"`
+	// PeakQueueDepth is the largest work queue depth seen per controller during the wave.
+	PeakQueueDepth map[string]float64 `json:"peak_queue_depth"`
 }
 
 func (h *harness) runLevel(ctx context.Context, level int) error {
@@ -1157,8 +1163,14 @@ func (h *harness) runWave(ctx context.Context, level, w int, dir string) (waveRe
 	}()
 
 	peakRSS, peakHeap := 0.0, 0.0
+	peakQueue := map[string]float64{}
 	var heapTaken bool
 	track := func(s sample) {
+		for k, v := range s.metrics {
+			if c, ok := strings.CutPrefix(k, "queue_depth/"); ok && v > peakQueue[c] {
+				peakQueue[c] = v
+			}
+		}
 		peakRSS = max(peakRSS, s.rssBytes)
 		if s.heapInuse > peakHeap {
 			peakHeap = s.heapInuse
@@ -1179,20 +1191,20 @@ func (h *harness) runWave(ctx context.Context, level, w int, dir string) (waveRe
 		log.Printf("  WARN wave cpu profile: %v", profErr)
 	}
 	wr := waveResult{Wave: w, Seconds: time.Since(t0).Seconds(), Completed: done, Burst: window(a, b),
-		PeakRSSMiB: peakRSS / (1 << 20), PeakHeapMiB: peakHeap / (1 << 20)}
-	log.Printf("  wave %d: %d/%d promoted through %d envs in %.1fs; cpu %.2f cores (+git %.2f), peak rss %.0fMiB, peak heap %.0fMiB",
-		w, done, level, len(h.branches), wr.Seconds, wr.Burst.CPUCores, wr.Burst.GitCPUCores, wr.PeakRSSMiB, wr.PeakHeapMiB)
+		PeakRSSMiB: peakRSS / (1 << 20), PeakHeapMiB: peakHeap / (1 << 20), PeakQueueDepth: peakQueue}
+	log.Printf("  wave %d: %d/%d promoted through %d envs in %.1fs; cpu %.2f cores (+git %.2f), peak rss %.0fMiB, peak heap %.0fMiB, peak queue depth %s",
+		w, done, level, len(h.branches), wr.Seconds, wr.Burst.CPUCores, wr.Burst.GitCPUCores, wr.PeakRSSMiB, wr.PeakHeapMiB, fmtMap(peakQueue))
 	return wr, nil
 }
 
-// waitPromoted polls until all n PromotionStrategies are fully promoted or timeout. It stops early if
-// progress stalls for 5 minutes. onTick, if set, gets a process sample every poll.
+// waitPromoted polls until all n PromotionStrategies are fully promoted or timeout. It stops early if no
+// environment makes progress for -stall-timeout. onTick, if set, gets a process sample every poll.
 func (h *harness) waitPromoted(ctx context.Context, n int, timeout time.Duration, onTick func(sample)) (int, error) {
 	deadline := time.Now().Add(timeout)
 	last, lastChange := -1, time.Now()
 	lastLog := time.Now()
 	for {
-		done, err := h.countPromoted(ctx, n)
+		done, envs, err := h.countPromoted(ctx, n)
 		if err != nil {
 			return 0, err
 		}
@@ -1204,20 +1216,21 @@ func (h *harness) waitPromoted(ctx context.Context, n int, timeout time.Duration
 		if done >= n {
 			return done, nil
 		}
-		if done != last {
-			last, lastChange = done, time.Now()
+		if envs != last {
+			last, lastChange = envs, time.Now()
 		}
-		if time.Since(lastLog) > 15*time.Second {
-			log.Printf("    progress %d/%d", done, n)
+		if time.Since(lastLog) > 30*time.Second {
+			log.Printf("    progress %d/%d PS, %d/%d envs", done, n, envs, n*len(h.branches))
 			lastLog = time.Now()
 		}
-		if time.Now().After(deadline) || time.Since(lastChange) > 5*time.Minute {
+		if time.Now().After(deadline) || time.Since(lastChange) > h.cfg.stallTimeout {
 			return done, nil
 		}
 		if h.controllerExited() {
 			return done, errors.New("controller exited; see controller.log")
 		}
-		time.Sleep(2 * time.Second)
+		// Listing every PromotionStrategy is not free for the apiserver, which shares the machine.
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -1252,12 +1265,13 @@ func (h *harness) writeResults() {
 	}
 	if h.cfg.waves > 0 {
 		b.WriteString("\n## Promotion waves (every PS gets a new dry commit at once)\n\n")
-		b.WriteString("| PS | Wave | Seconds to promote all envs | Completed | CPU cores | git CPU cores | Peak RSS MiB | Peak heap MiB |\n")
-		b.WriteString("|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		b.WriteString("| PS | Wave | Seconds to promote all envs | Completed | CPU cores | git CPU cores | Peak RSS MiB | Peak heap MiB | Peak CTP queue |\n")
+		b.WriteString("|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, r := range h.results {
 			for _, w := range r.Waves {
-				fmt.Fprintf(&b, "| %d | %d | %.0f | %d | %.2f | %.2f | %.0f | %.0f |\n",
-					r.Level, w.Wave, w.Seconds, w.Completed, w.Burst.CPUCores, w.Burst.GitCPUCores, w.PeakRSSMiB, w.PeakHeapMiB)
+				fmt.Fprintf(&b, "| %d | %d | %.0f | %d | %.2f | %.2f | %.0f | %.0f | %.0f |\n",
+					r.Level, w.Wave, w.Seconds, w.Completed, w.Burst.CPUCores, w.Burst.GitCPUCores, w.PeakRSSMiB, w.PeakHeapMiB,
+					w.PeakQueueDepth["changetransferpolicy"])
 			}
 		}
 	}
