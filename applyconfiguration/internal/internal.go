@@ -1583,6 +1583,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestTemplate
   map:
     fields:
+    - name: commitMessage
+      type:
+        scalar: string
     - name: description
       type:
         scalar: string
