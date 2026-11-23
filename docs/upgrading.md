@@ -2,7 +2,7 @@
 
 This page documents breaking changes and migration steps between releases.
 
-## 0.50 — WebRequestCommitStatus request metadata moves under `lastRequest`
+## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
 
 `lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from
 `status.promotionStrategyContext`. Those values, plus the HTTP method and the rendered URL, are now
