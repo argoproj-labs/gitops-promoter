@@ -1465,6 +1465,8 @@ export type components = {
             restoreActiveCommits?: components["schemas"]["RestoreActiveCommit"][];
             /** @description ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy. */
             scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
+            /** @description SCMCheckCommitStatuses are the SCMCheckCommitStatus managers that reference the PromotionStrategy. */
+            scmCheckCommitStatuses?: components["schemas"]["SCMCheckCommitStatus"][];
             /** @description ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
             scmProvider?: components["schemas"]["ScmProvider"];
             /** @description TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy. */
@@ -1705,6 +1707,119 @@ export type components = {
         RevisionReference: {
             /** @description Commit contains metadata about the commit that is related in some way to another commit. */
             commit?: components["schemas"]["CommitMetadata"];
+        };
+        /** @description SCMCheckCommitStatus is the Schema for the scmcheckcommitstatuses API */
+        SCMCheckCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of SCMCheckCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["SCMCheckCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of SCMCheckCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["SCMCheckCommitStatusStatus"];
+        };
+        /** @description SCMCheckCommitStatusEnvironmentStatus defines the observed validation status for a specific environment. */
+        SCMCheckCommitStatusEnvironmentStatus: {
+            /**
+             * @description Branch is the environment branch name being validated.
+             * @default
+             */
+            branch: string;
+            /**
+             * @description Phase represents the current validation state of the commit. It is aggregated between all of the checks. If the check was filtered it is not included in the aggregation. - "pending": validation has not completed, commit data is not yet available, or SHAs are empty - "success": expression evaluated to true, validation passed - "failure": expression evaluated to false, validation failed, or expression compilation failed
+             * @default
+             */
+            phase: string;
+            /**
+             * @description ProposedHydratedSha is the proposed hydrated commit SHA where the validation result is reported. This comes from the PromotionStrategy's environment status. The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate promotions based on the validation of the ACTIVE commit. May be empty if the PromotionStrategy hasn't reconciled yet. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+             * @default
+             */
+            proposedHydratedSha: string;
+            /** @description SCMChecks holds the results of each SCM check. This allows for visibility into the SCM checks from the resource. */
+            scmCheckResults?: components["schemas"]["SCMCheckResults"][];
+        };
+        /** @description SCMCheckCommitStatusSpec defines the desired state of SCMCheckCommitStatus */
+        SCMCheckCommitStatusSpec: {
+            /** @description Filters is a list of expressions evaluated using the expr library (github.com/expr-lang/expr). These expressions can be used to filter which SCM checks will be used to create CommitStatuses. If the name of an SCM check matches one of the expressions it will be included. The name can be accessed via the variable "CheckName" that is passed into the expression. Do note that some SCMs might not support a name per checks and if they don't then this will not work with it. Check the docs for this CommitStatus for which SCMs support this. */
+            filters?: string[];
+            /**
+             * @description Key is the unique identifier for this validation rule. It is used as the commit status key and in status messages. This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses to determine which environments this validation applies to.
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to. The controller will validate commits from ALL environments in the referenced PromotionStrategy where this SCMCheckCommitStatus.Spec.Key matches an entry in either:
+             *       - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR
+             *       - Environment.ProposedCommitStatuses (applies to specific environment)
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description PublishTo is copied to spec.publishTo on each CommitStatus this controller creates. - "scm": the CommitStatus controller posts them to the SCM provider The default is empty as posting SCM checks would be a duplicate. An empty list keeps them in Kubernetes and does not post them to the SCM. Omitting the field uses the default. Promotion gates use the phase in every case. */
+            publishTo?: string[];
+        };
+        /** @description SCMCheckCommitStatusStatus defines the observed state of SCMCheckCommitStatus. */
+        SCMCheckCommitStatusStatus: {
+            /**
+             * @description conditions represent the current state of the SCMCheckCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.
+             *
+             *     Standard condition types include: - "Available": the resource is fully functional - "Progressing": the resource is being created or updated - "Degraded": the resource failed to reach or maintain its desired state
+             *
+             *     The status of each condition is one of True, False, or Unknown.
+             */
+            conditions?: components["schemas"]["Condition"][];
+            /**
+             * @description Environments holds the validation results for each environment where this validation applies. Each entry corresponds to an environment from the PromotionStrategy where the Key matches either global or environment-specific proposedCommitStatuses.
+             *
+             *     The controller always validates the proposed commit and is always reported to the proposed commit for gating.
+             */
+            environments?: components["schemas"]["SCMCheckCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description SCMCheckResults contains information about an individual SCM check. */
+        SCMCheckResults: {
+            /**
+             * @description Matched is whether the check was included by a filter expression provided in the spec.
+             * @default false
+             */
+            matched: boolean;
+            /**
+             * @description Name represents the name of the check in the SCM.
+             * @default
+             */
+            name: string;
+            /**
+             * @description SCMStatus is the status directly from the SCM.
+             * @default
+             */
+            scmStatus: string;
+            /**
+             * @description Status represents the status of the check being used for aggregation to the CommitStatus phase.
+             * @default
+             */
+            status: string;
+            /**
+             * @description URL is a link to where details on the check can be found in the SCM.
+             * @default
+             */
+            url: string;
         };
         /** @description ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API. */
         ScheduledCommitStatus: {

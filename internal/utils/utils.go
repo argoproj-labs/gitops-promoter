@@ -13,6 +13,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	v1 "k8s.io/api/core/v1"
@@ -692,4 +693,29 @@ func InheritNotReadyConditionFromObjects[T PromoterResource](parent PromoterReso
 			return
 		}
 	}
+}
+
+// CheckStatusToCommitStatusPhase converts an SCMCheckStatus to a CommitStatusPhase
+func CheckStatusToCommitStatusPhase(status scms.SCMCheckStatus) promoterv1alpha1.CommitStatusPhase {
+	switch status {
+	case scms.SCMCheckStatusSucceeded:
+		return promoterv1alpha1.CommitPhaseSuccess
+	case scms.SCMCheckStatusFailed:
+		return promoterv1alpha1.CommitPhaseFailure
+	default:
+		return promoterv1alpha1.CommitPhasePending
+	}
+}
+
+// GetPullRequestIDForBranch gets the PullRequest ID from the status of a PromotionStrategy
+func GetPullRequestIDForBranch(ps promoterv1alpha1.PromotionStrategy, branch string) (string, error) {
+	for _, env := range ps.Status.Environments {
+		isCorrectBranch := env.Branch == branch
+		if isCorrectBranch && env.PullRequest != nil {
+			return env.PullRequest.ID, nil
+		} else if isCorrectBranch && env.PullRequest == nil {
+			return "", fmt.Errorf("pull request in environment %s is nil", env.Branch)
+		}
+	}
+	return "", errors.New("environment is not in promotion strategy status")
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -998,5 +999,71 @@ var _ = Describe("UpsertChangeTransferPolicyList", func() {
 		)
 		Expect(merged).To(HaveLen(1))
 		Expect(merged[0].Status.Active.Hydrated.Sha).To(Equal("new"))
+	})
+})
+
+var _ = Describe("CheckStatusToCommitStatusPhase", func() {
+	DescribeTable("test mapping of check status to commit status phase",
+		func(checkStatus scms.SCMCheckStatus, expectedPhase promoterv1alpha1.CommitStatusPhase) {
+			status := utils.CheckStatusToCommitStatusPhase(checkStatus)
+			Expect(status).To(Equal(expectedPhase))
+		},
+		Entry("Success", scms.SCMCheckStatusSucceeded, promoterv1alpha1.CommitPhaseSuccess),
+		Entry("Failed", scms.SCMCheckStatusFailed, promoterv1alpha1.CommitPhaseFailure),
+		Entry("Pending", scms.SCMCheckStatusPending, promoterv1alpha1.CommitPhasePending),
+	)
+})
+
+var _ = Describe("GetPullRequestIDForBranch", func() {
+	It("gets pull request id from branch in promotion strategy", func() {
+		ps := promoterv1alpha1.PromotionStrategy{
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{
+					{
+						Branch: "environments/dev",
+						PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+							ID: "1",
+						},
+					},
+				},
+			},
+		}
+
+		id, err := utils.GetPullRequestIDForBranch(ps, "environments/dev")
+		Expect(id).To(Equal("1"))
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("errors when branch is not in promotion strategy", func() {
+		ps := promoterv1alpha1.PromotionStrategy{
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{
+					{
+						Branch: "environments/dev",
+						PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+							ID: "1",
+						},
+					},
+				},
+			},
+		}
+
+		_, err := utils.GetPullRequestIDForBranch(ps, "environments/prod")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("if pull request is nil returns an error", func() {
+		ps := promoterv1alpha1.PromotionStrategy{
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{
+					{
+						Branch: "environments/dev",
+					},
+				},
+			},
+		}
+
+		_, err := utils.GetPullRequestIDForBranch(ps, "environments/dev")
+		Expect(err).To(HaveOccurred())
 	})
 })

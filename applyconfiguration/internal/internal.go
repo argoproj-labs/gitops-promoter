@@ -685,6 +685,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: scheduledCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatusConfiguration
+    - name: scmCheckCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusConfiguration
     - name: scope
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerScope
@@ -1700,6 +1703,115 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commit
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitMetadata
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: phase
+      type:
+        scalar: string
+    - name: proposedHydratedSha
+      type:
+        scalar: string
+    - name: scmCheckResults
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckResults
+          elementRelationship: atomic
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusSpec
+  map:
+    fields:
+    - name: filters
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default: []
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckResults
+  map:
+    fields:
+    - name: matched
+      type:
+        scalar: boolean
+    - name: name
+      type:
+        scalar: string
+    - name: scmStatus
+      type:
+        scalar: string
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckStatus
+    - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SCMCheckStatus
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatus
   map:
     fields:

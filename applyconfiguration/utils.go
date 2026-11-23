@@ -251,6 +251,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScheduledEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledEnvironmentStatus"):
 		return &apiv1alpha1.ScheduledEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckCommitStatus"):
+		return &apiv1alpha1.SCMCheckCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckCommitStatusConfiguration"):
+		return &apiv1alpha1.SCMCheckCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.SCMCheckCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckCommitStatusSpec"):
+		return &apiv1alpha1.SCMCheckCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckCommitStatusStatus"):
+		return &apiv1alpha1.SCMCheckCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SCMCheckResults"):
+		return &apiv1alpha1.SCMCheckResultsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmLabelsSpec"):
 		return &apiv1alpha1.ScmLabelsSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProvider"):
