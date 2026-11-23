@@ -382,8 +382,9 @@ run-apiserver: ## Run the dashboard aggregation apiserver locally. Set APISERVER
 
 # Register/unregister the APIService so a kind/Docker-Desktop cluster routes the
 # aggregated PromotionStrategyDetails resource to your locally-running `make
-# run-apiserver`. Auto-detects the host IP via host.docker.internal; override with
-# HOST_IP=... (and KIND_NODE=..., PORT=...). Local-dev only (insecureSkipTLSVerify).
+# run-apiserver`. Auto-detects the kind node from the kubectl context and the host IP
+# (host.docker.internal on Docker Desktop, the node's network gateway on Linux); override
+# with HOST_IP=... (and KIND_NODE=..., PORT=...). Local-dev only (insecureSkipTLSVerify).
 .PHONY: apiserver-register-local
 apiserver-register-local: ## Point the cluster aggregator at your local run-apiserver (kind/Docker Desktop).
 	PORT=$(APISERVER_SECURE_PORT) ./hack/apiserver-local-register.sh register

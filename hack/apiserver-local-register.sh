@@ -7,8 +7,7 @@
 # How it works: APIService can only target an in-cluster Service, so we create a
 # selector-less Service + a hand-written EndpointSlice whose address is a host IP the
 # cluster can reach. This only works when the cluster can route back to your host
-# (kind / Docker Desktop via host.docker.internal). Remote clusters can't reach your
-# laptop without a tunnel.
+# (kind or Docker Desktop). Remote clusters can't reach your laptop without a tunnel.
 #
 # Usage:
 #   hack/apiserver-local-register.sh [register|unregister]
@@ -16,9 +15,11 @@
 # Environment overrides:
 #   NAMESPACE   target namespace (default: promoter-system)
 #   KIND_NODE   docker container of the cluster node used to resolve the host IP
-#               (default: kind-control-plane)
-#   HOST_IP     host IP reachable from the cluster (default: auto-detected from
-#               host.docker.internal inside KIND_NODE)
+#               (default: <name>-control-plane for a kind-<name> kubectl context,
+#               otherwise kind-control-plane)
+#   HOST_IP     host IP reachable from the cluster (default: host.docker.internal
+#               inside KIND_NODE, which Docker Desktop provides, else the gateway of
+#               KIND_NODE's docker network, which is the host on Linux)
 #   PORT        local apiserver --secure-port (default: 6443)
 #
 # Requires: kubectl, and (for auto HOST_IP detection) docker.
@@ -26,7 +27,13 @@ set -euo pipefail
 
 ACTION="${1:-register}"
 NAMESPACE="${NAMESPACE:-promoter-system}"
-KIND_NODE="${KIND_NODE:-kind-control-plane}"
+if [ -z "${KIND_NODE:-}" ]; then
+  CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
+  case "$CONTEXT" in
+    kind-*) KIND_NODE="${CONTEXT#kind-}-control-plane" ;;
+    *) KIND_NODE="kind-control-plane" ;;
+  esac
+fi
 PORT="${PORT:-6443}"
 
 SRCROOT="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd -P)"
@@ -55,12 +62,26 @@ if [ -z "${HOST_IP:-}" ]; then
   HOST_IP="$(docker exec "$KIND_NODE" getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -n1 || true)"
 fi
 if [ -z "${HOST_IP:-}" ]; then
+  # Linux Docker has no host.docker.internal; the node's network gateway is the host.
+  echo ">> host.docker.internal not found; using the gateway of ${KIND_NODE}'s docker network"
+  HOST_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$KIND_NODE" 2>/dev/null | awk '{print $1}' || true)"
+fi
+if [ -z "${HOST_IP:-}" ]; then
   echo "ERROR: could not determine HOST_IP. Set HOST_IP=<ip reachable from the cluster> explicitly." >&2
-  echo "       (On Docker Desktop: docker exec ${KIND_NODE} getent hosts host.docker.internal)" >&2
+  echo "       (Docker Desktop: docker exec ${KIND_NODE} getent hosts host.docker.internal;" >&2
+  echo "        Linux: docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}' ${KIND_NODE})" >&2
   exit 1
 fi
 
 echo ">> Registering local apiserver: namespace=${NAMESPACE} host=${HOST_IP} port=${PORT}"
+
+# An APIService may not set insecureSkipTLSVerify while it has a caBundle, and apply would
+# keep a caBundle written by an in-cluster cert path (make apiserver-certs, cert-manager, the
+# built-in cert-controller). Remove it first.
+if [ -n "$(kubectl get apiservice "$APISERVICE_NAME" -o jsonpath='{.spec.caBundle}' 2>/dev/null || true)" ]; then
+  echo ">> Removing the existing caBundle from APIService ${APISERVICE_NAME}"
+  kubectl patch apiservice "$APISERVICE_NAME" --type json -p '[{"op":"remove","path":"/spec/caBundle"},{"op":"add","path":"/spec/insecureSkipTLSVerify","value":true}]'
+fi
 
 render() {
   sed -e "s/__HOST_IP__/${HOST_IP}/g" -e "s/__PORT__/${PORT}/g" "$1"

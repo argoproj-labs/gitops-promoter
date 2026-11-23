@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Encode a recording to docs/assets/demo.gif. See .agents/skills/record-ui-demo-gif/SKILL.md.
-# Usage: make-gif.sh [recording-dir] [output.gif]
+# Usage: make-gif.sh [recording-dir] [output.gif|output.mp4]
 # Env: GIF_WIDTH (1300), GIF_FPS (10), GIF_TIMELAPSE_FPS (8), GIF_COLORS (128), GIF_LOSSY (40)
+# An .mp4 output is H.264 at the recording's full width, 30 fps (15 in time-lapse), for PR
+# descriptions; the GIF_* settings other than GIF_TIMELAPSE_FPS do not apply to it.
 set -euo pipefail
 
 REC="${1:-/tmp/promoter-ui-demo/recording}"
@@ -18,6 +20,11 @@ MARKS="${REC}/marks.json"
 [ -f "${MARKS}" ] || { echo "missing ${MARKS}" >&2; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg is required" >&2; exit 1; }
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
+
+if [[ "${OUT}" == *.mp4 ]]; then
+  FPS=30
+  TIMELAPSE_FPS="${GIF_TIMELAPSE_FPS:-15}"
+fi
 
 # One trim+setpts chain per segment, then concat. Sped-up segments are sampled
 # at a lower frame rate: nearly every frame changes in a time-lapse, and those
@@ -37,6 +44,16 @@ FILTER="$(jq -r --argjson fps "${FPS}" --argjson tlfps "${TIMELAPSE_FPS}" '
 echo ">> segments:" >&2
 jq -r '.segments[] | select(.end > .start and .maxDuration > 0)
   | "   \(.name): \((.end - .start) * 10 | round / 10)s -> \((if (.end - .start) < .maxDuration then (.end - .start) else .maxDuration end) * 10 | round / 10)s"' "${MARKS}" >&2
+
+if [[ "${OUT}" == *.mp4 ]]; then
+  ffmpeg -v error -y -f concat -safe 0 -i "${LIST}" \
+    -filter_complex "${FILTER};[cat]fps=${FPS},format=yuv420p[out]" \
+    -map '[out]' -c:v libx264 -preset slow -crf 24 -tune stillimage -movflags +faststart "${OUT}"
+  echo ">> wrote ${OUT}" >&2
+  ffprobe -v error -show_entries stream=width,height,nb_frames,r_frame_rate:format=duration -of default=nw=1 "${OUT}" >&2
+  ls -la "${OUT}" >&2
+  exit 0
+fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT

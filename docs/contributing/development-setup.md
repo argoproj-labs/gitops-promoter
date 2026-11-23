@@ -110,9 +110,10 @@ make run
 
 To run the API Server locally you first must register it with the following make target. The port can be set with the
 `APISERVER_SECURE_PORT` environment variable. This routes the in-cluster APIService to your locally running instance of
-the api server. The environment variable `KIND_NODE` sets the docker container of the cluster node used to resolve the host IP. 
-There is also the `HOST_IP` variable which defaults to auto-detecting from host. docker.internal inside the node set with
-`KIND_NODE`.
+the api server. The environment variable `KIND_NODE` sets the docker container of the cluster node used to resolve the host IP.
+It defaults to `<name>-control-plane` for a `kind-<name>` kubectl context. `HOST_IP` defaults to `host.docker.internal` inside
+that node on Docker Desktop, or to the gateway of the node's docker network on Linux. Registering also removes any
+`caBundle` already on the APIService, which can't be combined with the `insecureSkipTLSVerify` that local registration uses.
 
 ```bash
 make apiserver-register-local
