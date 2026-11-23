@@ -223,11 +223,11 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 // triggerReconcileChangeTransferPolicy enqueues every ChangeTransferPolicy whose active or proposed hydrated
 // SHA is the CommitStatus's previous or current SHA, so the policy re-reads the gate's phase.
 //
-// An empty SHA is never looked up. The hydrated-SHA field indexes also contain policies whose status has not
-// been computed yet (their indexed value is ""), so before this guard a CommitStatus's first reconcile, when
-// status.sha is still empty, enqueued every such policy. On a fresh install, with hundreds of CommitStatuses
-// starting at once, that fanned out into thousands of needless ChangeTransferPolicy reconciles, each with git
-// network calls, and the resulting status writes re-triggered the PromotionStrategy and gate controllers.
+// An empty SHA is never looked up. The previous SHA is empty on a CommitStatus's first publish, and the
+// hydrated-SHA field indexes file every policy that has not recorded a hydrated SHA yet (new, or failing
+// early) under "", across all namespaces. Looking up "" would make each new CommitStatus enqueue all of those
+// policies, each reconcile with git network calls: thousands when many PromotionStrategies are created
+// together, and a policy stuck failing early would be reconciled again by every new CommitStatus.
 func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx context.Context, cs promoterv1alpha1.CommitStatus, oldSha, newSha string) error {
 	logger := log.FromContext(ctx)
 
