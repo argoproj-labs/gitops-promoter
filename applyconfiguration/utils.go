@@ -311,6 +311,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebRequestCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusEnvironmentStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusLastRequest"):
+		return &apiv1alpha1.WebRequestCommitStatusLastRequestApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusLastSuccessfulShaItem"):
 		return &apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItemApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusPhasePerBranchItem"):

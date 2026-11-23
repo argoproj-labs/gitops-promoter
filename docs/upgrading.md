@@ -31,6 +31,29 @@ The controller ClusterRole gains `get`, `list`, `watch`, `create`, and `update` 
 generate the wrapped template CRDs for the kinds you list. Nothing is generated while `resources` is empty. The
 namespaced install bundle sets `templateCRDs: Disabled`. RBAC for the kinds you list (and their template kinds) is not
 generated; see [Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#rbac).
+
+## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
+
+`lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from
+`status.promotionStrategyContext`. Those values, plus the HTTP method and the rendered URL, are now
+fields of `lastRequest`:
+
+| Before | After |
+| --- | --- |
+| `lastRequestTime` | `lastRequest.time` |
+| `lastResponseStatusCode` | `lastRequest.responseStatusCode` |
+
+No spec change is required. Update anything that reads the old status fields (scripts, dashboards, other
+controllers) to use `lastRequest`.
+
+On the first reconcile after upgrade, the controller reads `lastRequest.time`. That field is empty on
+existing resources, so each polling WebRequestCommitStatus sends one request even when its interval has
+not elapsed. The status write from that request stores `lastRequest`, and later reconciles follow the
+configured interval. Trigger mode still decides whether to fire from its trigger expression.
+
+Headers and body are not stored. See
+[Last Request](gating-promotions/built-in-gates/web-request-commit-status/index.md#last-request-lastrequest).
+
 ## 0.49 — Controller-only install bundles are removed
 
 > [!IMPORTANT]
@@ -85,7 +108,6 @@ the mistake surfaces at `kubectl apply` instead of as a crash loop.
 The shipped ControllerConfiguration sets a strategy for every controller, so an install that uses it is unaffected. A
 custom configuration with an empty rate limiter was already failing to start and needs a strategy added; there is no
 in-code default, by design.
-
 
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 

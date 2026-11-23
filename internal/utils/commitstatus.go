@@ -78,6 +78,9 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 
 // CleanupOrphanedCommitStatuses deletes CommitStatus resources labeled for the parent gate
 // that are not in validCommitStatuses. The parent gate label key is derived from the owner's Kind.
+//
+// c must be backed by a cache with ControllerOwnerUIDField registered for CommitStatus
+// (see RegisterControllerOwnerUIDFieldIndex).
 func CleanupOrphanedCommitStatuses(
 	ctx context.Context,
 	c client.Client,
@@ -95,10 +98,14 @@ func CleanupOrphanedCommitStatuses(
 		}
 	}
 
+	// Only CommitStatuses this owner controls can be deleted below, so list by the controller-owner
+	// index rather than scanning every CommitStatus in the namespace for the label.
 	var commitStatusList promoterv1alpha1.CommitStatusList
-	err := c.List(ctx, &commitStatusList, client.InNamespace(owner.GetNamespace()), client.MatchingLabels{
-		parentLabelKey: KubeSafeLabel(owner.GetName()),
-	})
+	err := c.List(ctx, &commitStatusList,
+		client.InNamespace(owner.GetNamespace()),
+		client.MatchingFields{ControllerOwnerUIDField: string(owner.GetUID())},
+		client.MatchingLabels{parentLabelKey: KubeSafeLabel(owner.GetName())},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
 	}
