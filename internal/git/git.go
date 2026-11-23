@@ -128,6 +128,12 @@ const HydratorNotesRef = "refs/notes/hydrator.metadata"
 // or merges performed directly on the SCM).
 const PromoterHistoryNotesRef = "refs/notes/promoter.history"
 
+// PromoterQualifiedNotesRef is the git notes reference the ValidatedCommitStatus controller uses to
+// record, on an environment's active hydrated commit, which dry SHA the environment ran successfully. It is
+// separate from PromoterHistoryNotesRef because the ChangeTransferPolicy controller treats an existing
+// promotion-history note as "already written".
+const PromoterQualifiedNotesRef = "refs/notes/promoter.qualified"
+
 // MaxHydratorNoteFirstParentWalk bounds how many first-parent commits are inspected when the
 // proposed branch tip has no hydrator note. Ours-merge conflict resolution adds one commit on
 // top of the hydrated tip; a modest limit covers that without scanning deep history.
@@ -2151,4 +2157,64 @@ func (g *EnvironmentOperations) pushCommitWithLease(ctx context.Context, commitS
 		return fmt.Errorf("failed to push %s to %q: %w (stderr: %s)", commitSha, branch, err, stderr)
 	}
 	return nil
+}
+
+// MergeBase returns the newest commit that every one of the given commits contains, or "" when they have
+// nothing in common (or no commits are given). For commits on one line of history that is the oldest of them.
+//
+// Read-only. The commits must already be present in the clone.
+func (g *EnvironmentOperations) MergeBase(ctx context.Context, shas ...string) (string, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	unique := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		if !slices.Contains(unique, sha) {
+			unique = append(unique, sha)
+		}
+	}
+	switch len(unique) {
+	case 0:
+		return "", nil
+	case 1:
+		return unique[0], nil
+	}
+	args := append([]string{"merge-base", "--octopus"}, unique...)
+	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to find the merge base of %v: %w (stderr: %s)", unique, err, stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// TreeSha returns the tree object ID at dir in the given commit, or the commit's root tree when dir is
+// empty. It returns "" when the commit has no directory at dir. Two commits with the same tree ID at a directory
+// have identical content there.
+//
+// Read-only. The commit must already be present in the clone.
+func (g *EnvironmentOperations) TreeSha(ctx context.Context, commit, dir string) (string, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	dir = strings.Trim(dir, "/")
+	if dir == "" || dir == "." {
+		return g.revParse(ctx, commit+"^{tree}")
+	}
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", "-d", commit, "--", dir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read tree %q of commit %q: %w (stderr: %s)", dir, commit, err, stderr)
+	}
+	// "<mode> tree <sha>\t<path>", or nothing when the path is absent.
+	meta, _, found := strings.Cut(strings.TrimSpace(stdout), "\t")
+	fields := strings.Fields(meta)
+	if !found || len(fields) != 3 {
+		return "", nil
+	}
+	return fields[2], nil
 }

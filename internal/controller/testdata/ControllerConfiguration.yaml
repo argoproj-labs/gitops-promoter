@@ -180,6 +180,28 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # ValidatedCommitStatus controller moves per-environment tags in the dry repository and gates
+  # promotions on what upstream environments have qualified, or a person has validated.
+  # requeueDuration is also how often it looks for validations pushed directly as git notes.
+  validatedCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # CommitValidation controller records validations as git notes
+  commitValidation:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

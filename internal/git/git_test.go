@@ -1493,3 +1493,145 @@ var _ = Describe("git HTTP header auth", func() {
 		Expect(headers).To(Receive(BeEmpty()))
 	})
 })
+
+// newTagTestRepo creates a bare repository with a linear history c1 ← c2 ← c3 on main plus a side commit
+// (child of c1) on a feature branch, and returns a work clone and an EnvironmentOperations clone.
+func newTagTestRepo() (bareDir, workDir string, g *git.EnvironmentOperations, shas map[string]string) {
+	GinkgoHelper()
+	var err error
+	bareDir, err = os.MkdirTemp("", "git-tags-*")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(bareDir) })
+	_, err = runGitCmd(bareDir, "init", "--bare", "--initial-branch=main")
+	Expect(err).NotTo(HaveOccurred())
+
+	workDir, err = os.MkdirTemp("", "git-tags-work-*")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(workDir) })
+	_, err = runGitCmd(workDir, "clone", bareDir, ".")
+	Expect(err).NotTo(HaveOccurred())
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "commit.gpgsign", "false"},
+		{"config", "tag.gpgsign", "false"},
+		{"checkout", "-B", "main"},
+	} {
+		_, err = runGitCmd(workDir, cfg...)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	shas = map[string]string{}
+	commit := func(name, dir string) {
+		GinkgoHelper()
+		Expect(os.MkdirAll(filepath.Join(workDir, dir), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, dir, "manifest.yaml"), []byte(name), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", name)
+		Expect(err).NotTo(HaveOccurred())
+		out, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		shas[name] = strings.TrimSpace(out)
+	}
+	commit("c1", "app")
+	commit("c2", "app")
+	commit("c3", "other")
+	_, err = runGitCmd(workDir, "checkout", "-b", "feature", shas["c1"])
+	Expect(err).NotTo(HaveOccurred())
+	commit("side", "app")
+	_, err = runGitCmd(workDir, "checkout", "main")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(workDir, "push", "origin", "main", "feature")
+	Expect(err).NotTo(HaveOccurred())
+
+	repo := &v1alpha1.GitRepository{
+		Name: "testrepo", Namespace: "default",
+		Spec: v1alpha1.GitRepositorySpec{
+			GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+			ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},
+		},
+	}
+	g = git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: bareDir}, "default/testrepo-tags")
+	Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+	Expect(g.FetchBranch(GinkgoT().Context(), "main")).To(Succeed())
+	Expect(g.FetchBranch(GinkgoT().Context(), "feature")).To(Succeed())
+	return bareDir, workDir, g, shas
+}
+
+var _ = Describe("Dry commit graph", func() {
+	var (
+		ctx     context.Context
+		workDir string
+		g       *git.EnvironmentOperations
+		shas    map[string]string
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		_, workDir, g, shas = newTagTestRepo()
+	})
+
+	Describe("MergeBase", func() {
+		It("is the older commit when the commits are on one line of history", func() {
+			Expect(g.MergeBase(ctx, shas["c3"], shas["c2"])).To(Equal(shas["c2"]))
+			Expect(g.MergeBase(ctx, shas["c2"], shas["c3"], shas["c3"])).To(Equal(shas["c2"]))
+		})
+
+		It("is the fork point when the commits diverged", func() {
+			Expect(g.MergeBase(ctx, shas["c3"], shas["side"])).To(Equal(shas["c1"]))
+		})
+
+		It("is the commit itself for a single commit", func() {
+			Expect(g.MergeBase(ctx, shas["c2"])).To(Equal(shas["c2"]))
+		})
+
+		It("is empty when there is nothing in common", func() {
+			_, err := runGitCmd(workDir, "checkout", "--orphan", "unrelated")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "commit", "--allow-empty", "-m", "unrelated root")
+			Expect(err).NotTo(HaveOccurred())
+			out, err := runGitCmd(workDir, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "push", "origin", "unrelated")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.FetchBranch(ctx, "unrelated")).To(Succeed())
+
+			Expect(g.MergeBase(ctx, shas["c3"], strings.TrimSpace(out))).To(BeEmpty())
+			Expect(g.MergeBase(ctx)).To(BeEmpty())
+		})
+	})
+
+	Describe("TreeSha", func() {
+		It("is equal for commits with the same content at a path and different otherwise", func() {
+			// c3 changed only other/, so app/ is identical in c2 and c3.
+			appC2, err := g.TreeSha(ctx, shas["c2"], "app")
+			Expect(err).NotTo(HaveOccurred())
+			appC3, err := g.TreeSha(ctx, shas["c3"], "app")
+			Expect(err).NotTo(HaveOccurred())
+			appC1, err := g.TreeSha(ctx, shas["c1"], "app")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(appC2).NotTo(BeEmpty())
+			Expect(appC3).To(Equal(appC2))
+			Expect(appC1).NotTo(Equal(appC2))
+		})
+
+		It("is the root tree for an empty path", func() {
+			rootC2, err := g.TreeSha(ctx, shas["c2"], "")
+			Expect(err).NotTo(HaveOccurred())
+			rootC3, err := g.TreeSha(ctx, shas["c3"], "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rootC2).NotTo(BeEmpty())
+			Expect(rootC3).NotTo(Equal(rootC2))
+		})
+
+		It("is empty for a path the commit does not have", func() {
+			Expect(g.TreeSha(ctx, shas["c1"], "other")).To(BeEmpty())
+		})
+
+		It("fails for a commit the clone does not have", func() {
+			_, err := g.TreeSha(ctx, "0123456789abcdef0123456789abcdef01234567", "")
+			Expect(err).To(HaveOccurred())
+		})
+	})
+})

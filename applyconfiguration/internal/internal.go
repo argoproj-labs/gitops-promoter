@@ -38,6 +38,8 @@ func Parser() *typed.Parser {
 var parserOnce sync.Once
 var parser *typed.Parser
 var schemaYAML = typed.YAMLObject(`types:
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AdvancePolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ApplicationsSelected
   map:
     fields:
@@ -621,6 +623,108 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: sha
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidation
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationHistoryEntry
+  map:
+    fields:
+    - name: reason
+      type:
+        scalar: string
+    - name: sha
+      type:
+        scalar: string
+    - name: source
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationSource
+    - name: validatedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: validatedBy
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationPhase
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationRequestStatus
+  map:
+    fields:
+    - name: handledAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: message
+      type:
+        scalar: string
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationPhase
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationSource
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationSpec
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: reason
+      type:
+        scalar: string
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: history
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationHistoryEntry
+          elementRelationship: atomic
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: request
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationRequestStatus
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ContextMode
   scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ControllerConfiguration
@@ -660,6 +764,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
+    - name: commitValidation
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitValidationConfiguration
     - name: dependentsSuccessfulCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
@@ -692,6 +799,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timedCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TimedCommitStatusConfiguration
+    - name: validatedCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusConfiguration
     - name: webRequestCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusConfiguration
@@ -1592,6 +1702,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: title
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PushedValidationsPolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.RateLimiter
   map:
     fields:
@@ -2059,6 +2171,259 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: template
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusDrySource
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: gitRepositoryRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusDryStatus
+  map:
+    fields:
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironment
+  map:
+    fields:
+    - name: advance
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.AdvancePolicy
+      default: Immediately
+    - name: branch
+      type:
+        scalar: string
+    - name: tag
+      type:
+        scalar: string
+    - name: validation
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidationPolicy
+      default: Automatic
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: activeCommitStatuses
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeRequestPolicyCommitStatusPhase
+          elementRelationship: associative
+          keys:
+          - key
+    - name: appliedRequest
+      type:
+        scalar: string
+    - name: branch
+      type:
+        scalar: string
+    - name: description
+      type:
+        scalar: string
+    - name: held
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusHeld
+    - name: pending
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusPending
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: qualified
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusWatermark
+    - name: reportedSha
+      type:
+        scalar: string
+    - name: tag
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusTagStatus
+    - name: upstreamCleared
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamCleared
+    - name: upstreams
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamStatus
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusHeld
+  map:
+    fields:
+    - name: message
+      type:
+        scalar: string
+    - name: reason
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedHeldReason
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusPending
+  map:
+    fields:
+    - name: message
+      type:
+        scalar: string
+    - name: sha
+      type:
+        scalar: string
+    - name: validatedBy
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusSpec
+  map:
+    fields:
+    - name: drySource
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusDrySource
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironment
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: publishTo
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPublishTo
+          elementRelationship: associative
+      default:
+      - scm
+    - name: pushedValidations
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PushedValidationsPolicy
+      default: Accept
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: dry
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusDryStatus
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: validationsCursor
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusTagStatus
+  map:
+    fields:
+    - name: acknowledgedTarget
+      type:
+        scalar: string
+    - name: movedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: name
+      type:
+        scalar: string
+    - name: sha
+      type:
+        scalar: string
+    - name: source
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedTagSource
+    - name: validatedBy
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamCleared
+  map:
+    fields:
+    - name: sha
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusUpstreamStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: reason
+      type:
+        scalar: string
+    - name: satisfied
+      type:
+        scalar: boolean
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedCommitStatusWatermark
+  map:
+    fields:
+    - name: drySha
+      type:
+        scalar: string
+    - name: hydratedSha
+      type:
+        scalar: string
+    - name: qualifiedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedHeldReason
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidatedTagSource
+  scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ValidationPolicy
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatus
   map:
     fields:

@@ -46,3 +46,24 @@ const (
 	// DependentsSuccessfulCommitStatusNotReady is the reason when owned CommitStatuses are not Ready.
 	DependentsSuccessfulCommitStatusNotReady CommonReason = "DependentsSuccessfulCommitStatusNotReady"
 )
+
+// Reasons that apply to CommitValidation.
+const (
+	// ValidatedCommitStatusNotFound is the reason when a validation is requested for a PromotionStrategy
+	// that has no ValidatedCommitStatus to apply it.
+	ValidatedCommitStatusNotFound CommonReason = "ValidatedCommitStatusNotFound"
+)
+
+// Reasons that apply to ValidatedCommitStatus.
+const (
+	// DryRepositoryUnavailable is the reason when the dry branch or the environment tags could not be read.
+	DryRepositoryUnavailable CommonReason = "DryRepositoryUnavailable"
+	// TagPushFailed is the reason when an environment tag could not be created or moved.
+	TagPushFailed CommonReason = "TagPushFailed"
+	// ValidationNotRecorded is the reason when the record of a tag moved by hand could not be written to
+	// the validation notes of the dry repository.
+	ValidationNotRecorded CommonReason = "ValidationNotRecorded"
+	// EnvironmentTagsOwnedByAnotherGate is the reason when another ValidatedCommitStatus moves the
+	// environment tags of the same PromotionStrategy. Only one may.
+	EnvironmentTagsOwnedByAnotherGate CommonReason = "EnvironmentTagsOwnedByAnotherGate"
+)
