@@ -1758,6 +1758,11 @@ func validatedCommitStatusRefShas(obj client.Object) []string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ValidatedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// CleanupOrphanedCommitStatuses lists CommitStatuses by their controller owner.
+	if err := utils.RegisterControllerOwnerUIDFieldIndex(ctx, mgr.GetFieldIndexer(), &promoterv1alpha1.CommitStatus{}); err != nil {
+		return fmt.Errorf("ValidatedCommitStatus controller: %w", err)
+	}
+
 	// This index is used by the webhook receiver to find the gates that read a pushed dry branch or tag.
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ValidatedCommitStatus{}, constants.ValidatedCommitStatusRefShaField, validatedCommitStatusRefShas); err != nil {
 		return fmt.Errorf("failed to set field index for %s: %w", constants.ValidatedCommitStatusRefShaField, err)
