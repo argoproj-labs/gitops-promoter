@@ -4710,9 +4710,19 @@ spec:
                 properties:
                   template:
                     description: |-
-                      Template is the template configuration used to generate pull request titles and descriptions.
-                      Uses Go template syntax with Sprig functions available.
+                      Template is the template configuration used to generate pull request titles, descriptions,
+                      and merge commit messages. Uses Go template syntax with Sprig functions available.
                     properties:
+                      commitMessage:
+                        description: |-
+                          CommitMessage is the template used to generate the merge commit message for the pull request.
+                          The rendered template is the whole human-readable message; the title and description are never
+                          used in its place. Machine-read commit trailers used by the promoter to reconstruct promotion
+                          history are always appended after the rendered message; do not attempt to include them in the template.
+                          When the template renders empty and trailers are appended, a minimal "Promote to `<branch>`"
+                          subject is added, because git does not parse trailers from the first paragraph of a message.
+                          Uses Go template syntax with Sprig functions available for string manipulation.
+                        type: string
                       description:
                         description: |-
                           Description is the template used to generate the body/description of the pull request.
@@ -4724,6 +4734,7 @@ spec:
                           Uses Go template syntax with Sprig functions available for string manipulation.
                         type: string
                     required:
+                    - commitMessage
                     - description
                     - title
                     type: object
@@ -11107,15 +11118,31 @@ spec:
                       description: Branch is the name of the branch/environment.
                       minLength: 1
                       type: string
-                    lastRequestTime:
-                      description: LastRequestTime is when the last HTTP request was
-                        made.
-                      format: date-time
-                      type: string
-                    lastResponseStatusCode:
-                      description: LastResponseStatusCode is the HTTP status code
-                        from the last request.
-                      type: integer
+                    lastRequest:
+                      description: |-
+                        LastRequest captures metadata about the most recent HTTP request for this environment.
+                        Populated on the first request; values carry forward on reconciles that skip the request.
+                      properties:
+                        method:
+                          description: Method is the resolved HTTP method (rendered
+                            from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
+                          type: string
+                        responseStatusCode:
+                          description: ResponseStatusCode is the HTTP status code
+                            from the last request.
+                          type: integer
+                        time:
+                          description: Time is when the last HTTP request was made.
+                          format: date-time
+                          type: string
+                        url:
+                          description: |-
+                            URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                            for the last HTTP request attempt (empty when no request has been made yet).
+                            It carries forward the previous value when a reconcile skips the HTTP request
+                            (polling interval, trigger false, or already-successful SHA fast path).
+                          type: string
+                      type: object
                     lastSuccessfulSha:
                       description: |-
                         LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
@@ -11188,15 +11215,31 @@ spec:
                   PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
                   At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
                 properties:
-                  lastRequestTime:
-                    description: LastRequestTime is when the last HTTP request was
-                      made.
-                    format: date-time
-                    type: string
-                  lastResponseStatusCode:
-                    description: LastResponseStatusCode is the HTTP status code from
-                      the last request.
-                    type: integer
+                  lastRequest:
+                    description: |-
+                      LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context.
+                      Populated on the first request; values carry forward on reconciles that skip the request.
+                    properties:
+                      method:
+                        description: Method is the resolved HTTP method (rendered
+                          from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
+                        type: string
+                      responseStatusCode:
+                        description: ResponseStatusCode is the HTTP status code from
+                          the last request.
+                        type: integer
+                      time:
+                        description: Time is when the last HTTP request was made.
+                        format: date-time
+                        type: string
+                      url:
+                        description: |-
+                          URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                          for the last HTTP request attempt (empty when no request has been made yet).
+                          It carries forward the previous value when a reconcile skips the HTTP request
+                          (polling interval, trigger false, or already-successful SHA fast path).
+                        type: string
+                    type: object
                   lastSuccessfulShas:
                     description: |-
                       LastSuccessfulShas tracks the last SHA that achieved success for each branch.
@@ -13334,6 +13377,43 @@ spec:
       requeueDuration: 5m
   pullRequest:
     template:
+      commitMessage: |
+        Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}{{ . }} {{ end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}
+
+        This commit promotes changes to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} (PromotionStrategy {{ .PromotionStrategy.Name }}){{ end }}.
+
+        Deployment commit
+          Active (deployed): {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ trunc 7 .Sha }}{{ end }}{{ with .ChangeTransferPolicy.Status.Active.Dry.Subject }}
+            {{ . }}{{ end }}
+          Proposed: {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ trunc 7 .Sha }}{{ end }}{{ with .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+            {{ . }}{{ end }}
+
+        {{- $repo := "" -}}
+        {{- $base := "" -}}
+        {{- $head := "" -}}
+        {{- $activeSubject := "" -}}
+        {{- $proposedSubject := "" -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- if or $base $head }}
+
+        Code reference
+        {{- if $base }}
+          Active: {{ if and $repo $base }}{{ trimSuffix "/" $repo }}/commit/{{ $base }}{{ else }}{{ trunc 7 $base }}{{ end }}{{ if $activeSubject }}
+            {{ $activeSubject }}{{ end }}
+        {{- end }}
+        {{- if $head }}
+          Proposed: {{ if and $repo $head }}{{ trimSuffix "/" $repo }}/commit/{{ $head }}{{ else }}{{ trunc 7 $head }}{{ end }}{{ if $proposedSubject }}
+            {{ $proposedSubject }}{{ end }}
+        {{- end }}
+        {{- if and $repo $base $head }}
+          Diff: {{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }}
+        {{- end }}
+        {{- end }}
       description: |
         This PR promotes changes to **`{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`**{{ if .PromotionStrategy }} (PromotionStrategy `{{ .PromotionStrategy.Name }}`){{ end }}.
 

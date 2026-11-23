@@ -2,14 +2,14 @@
 
 This page documents breaking changes and migration steps between releases.
 
-## 0.50 — ControllerConfiguration needs `validatedCommitStatus` and `commitValidation`
+## 0.51 — ControllerConfiguration needs `validatedCommitStatus` and `commitValidation`
 
 > [!IMPORTANT]
 > If you maintain your own `ControllerConfiguration`, add the two blocks below **before** upgrading. They are required
 > whether or not you use the new kinds, as the block of every other controller is. Without them the controller
 > rejects the configuration at startup.
 
-0.50 adds two kinds, [ValidatedCommitStatus](crd-specs.md#validatedcommitstatus) and
+0.51 adds two kinds, [ValidatedCommitStatus](crd-specs.md#validatedcommitstatus) and
 [CommitValidation](crd-specs.md#commitvalidation), and a controller for each. Each controller reads its work queue
 settings from the ControllerConfiguration:
 
@@ -59,6 +59,28 @@ Also in this release:
   tags is pushed. If your SCM webhook only sends branch pushes, add tag pushes to pick up tags moved by hand without
   waiting for the next poll.
 - The webhook receiver read every Bitbucket Cloud push as a branch push. A tag push is now read as a tag push.
+
+## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
+
+`lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from
+`status.promotionStrategyContext`. Those values, plus the HTTP method and the rendered URL, are now
+fields of `lastRequest`:
+
+| Before | After |
+| --- | --- |
+| `lastRequestTime` | `lastRequest.time` |
+| `lastResponseStatusCode` | `lastRequest.responseStatusCode` |
+
+No spec change is required. Update anything that reads the old status fields (scripts, dashboards, other
+controllers) to use `lastRequest`.
+
+On the first reconcile after upgrade, the controller reads `lastRequest.time`. That field is empty on
+existing resources, so each polling WebRequestCommitStatus sends one request even when its interval has
+not elapsed. The status write from that request stores `lastRequest`, and later reconciles follow the
+configured interval. Trigger mode still decides whether to fire from its trigger expression.
+
+Headers and body are not stored. See
+[Last Request](gating-promotions/built-in-gates/web-request-commit-status/index.md#last-request-lastrequest).
 
 ## 0.49 — Controller-only install bundles are removed
 
@@ -114,7 +136,6 @@ the mistake surfaces at `kubectl apply` instead of as a crash loop.
 The shipped ControllerConfiguration sets a strategy for every controller, so an install that uses it is unaffected. A
 custom configuration with an empty rate limiter was already failing to start and needs a strategy added; there is no
 in-code default, by design.
-
 
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 
