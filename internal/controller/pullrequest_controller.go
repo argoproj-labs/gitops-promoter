@@ -188,6 +188,8 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //		  if the PR is open:
 //		    if status.state is 'merged' (the SCM hasn't completed the merge yet):
 //		      Return an error.
+//		    if status.state is 'merged-or-closed' (FindOpen missed a PR that is in fact open):
+//		      Return an error.
 //		    Call Close, set status.state to 'closed', and return.
 //		  if the PR is merged:
 //		    Set status.state to 'merged'.
@@ -307,6 +309,14 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				// We merged the PR, but SCMs that complete merges asynchronously (Azure DevOps) can still report it open.
 				// Closing it now would abandon the pending merge; standard retry re-runs Get until the SCM reports it merged.
 				return ctrl.Result{}, fmt.Errorf("pull request %q was merged, but the SCM still reports it open, waiting for the SCM to complete the merge", pr.Status.ID)
+			}
+			if pr.Status.State == promoterv1alpha1.PullRequestMergedOrClosed {
+				// FindOpen did not find the PR, but Get says it is open: one of the two SCM reads is wrong. Closing the PR
+				// on that basis lets the owner open a replacement that FindOpen misses the same way, a create/close loop
+				// (issue #2371). Report the contradiction instead and leave the PR alone.
+				return ctrl.Result{}, fmt.Errorf("pull request %q is open on the SCM, but the open pull request lookup did not find it; "+
+					"refusing to close it, since that would start a create/close loop. This is a bug in the SCM provider or the "+
+					"promoter: please report it. To clear it, close the pull request on the SCM", pr.Status.ID)
 			}
 			// Still open on the SCM; closing discharges the finalizer's obligation.
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {

@@ -268,6 +268,7 @@ func (s *Server) githubRepoJSON(r *repo, base string) map[string]any {
 		"clone_url":      base + "/" + r.fullName() + ".git",
 		"default_branch": r.defaultBranch,
 		"visibility":     "private",
+		"fork":           r.parent != nil,
 		"created_at":     formatTime(r.createdAt, githubTimeFormat),
 	}
 }
@@ -394,15 +395,19 @@ func (s *Server) githubListPulls(w http.ResponseWriter, r *http.Request, who pri
 	if state == "" {
 		state = "open"
 	}
-	headOwner, headBranch, hasOwner := strings.Cut(q.Get("head"), ":")
-	if !hasOwner {
-		headBranch, headOwner = headOwner, ""
-	}
+	// GitHub silently ignores a head filter without an owner and lists every pull request.
+	headOwner, headBranch, filterHead := strings.Cut(q.Get("head"), ":")
 	base := q.Get("base")
 	now := s.now()
 
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
+	// Pull requests here are never cross-repository, so a head that resolves to another repository of the fork
+	// network, or to none, matches nothing.
+	var headRepo *repo
+	if filterHead {
+		headRepo = s.store.githubHeadRepoLocked(rp, headOwner)
+	}
 	prs := s.store.prs[rp.id]
 	matches := make([]*pullRequest, 0, len(prs))
 	for _, pr := range slices.Backward(prs) { // newest first, GitHub's default sort
@@ -412,7 +417,7 @@ func (s *Server) githubListPulls(w http.ResponseWriter, r *http.Request, who pri
 		if state != "all" && (state == "open") != (pr.state == prOpen) {
 			continue
 		}
-		if q.Get("head") != "" && (pr.source != headBranch || (headOwner != "" && !strings.EqualFold(headOwner, rp.owner))) {
+		if filterHead && (headRepo != pr.repo || pr.source != headBranch) {
 			continue
 		}
 		if base != "" && pr.target != base {

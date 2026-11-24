@@ -34,6 +34,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/test/scmserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
@@ -2554,6 +2555,110 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(secondDrySha),
 						"the next ordinary promotion should succeed after the unrelated histories are repaired")
 				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		// Issue #2371: on GitHub, a repository forked from a parent with the same owner and the same environment branch
+		// names. GitHub resolves an "owner:branch" head filter to the parent's branch, so when FindOpen used that filter
+		// the promoter never found the pull request it opened on the fork. It treated the pull request as externally
+		// merged or closed, closed it, and the ChangeTransferPolicy opened another one, until GitHub refused more than 100
+		// pull requests for the head SHA.
+		Context("When the repository is a GitHub fork owned by its parent's owner", func() {
+			var (
+				scmSecret            *v1.Secret
+				scmProvider          *promoterv1alpha1.ScmProvider
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				fork                 testRepo
+			)
+
+			BeforeEach(func() {
+				if scmTarget.provider != scmserver.GitHub {
+					Skip("needs the GitHub scmserver, the only provider that models fork networks")
+				}
+
+				name := "gh-fork-" + utils.KubeSafeUniqueName(randomString(15))
+				parent := scmTarget.newRepo(ctx, name)
+				By("giving the parent the environment branches the fork will also use")
+				setupInitialTestGitRepoOnServer(ctx, &promoterv1alpha1.GitRepository{
+					Spec: scmTarget.gitRepositorySpec(parent, promoterv1alpha1.ScmProviderObjectReference{}),
+				})
+				fork = scmTarget.newFork(ctx, parent)
+
+				scmSecret = &v1.Secret{Name: name, Namespace: "default", Data: scmTarget.secretData(fork)}
+				scmProvider = &promoterv1alpha1.ScmProvider{
+					Name:      name,
+					Namespace: "default",
+					Spec:      scmTarget.scmProviderSpec(fork, name),
+				}
+				gitRepo = &promoterv1alpha1.GitRepository{
+					Name:      name,
+					Namespace: "default",
+					Spec: scmTarget.gitRepositorySpec(fork, promoterv1alpha1.ScmProviderObjectReference{
+						Kind: promoterv1alpha1.ScmProviderKind,
+						Name: name,
+					}),
+				}
+				changeTransferPolicy = &promoterv1alpha1.ChangeTransferPolicy{
+					Name:      name,
+					Namespace: "default",
+					Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+						RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
+						ProposedBranch:      testBranchDevelopmentNext,
+						ActiveBranch:        testBranchDevelopment,
+						AutoMerge:           new(false),
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				if scmTarget.provider != scmserver.GitHub {
+					return
+				}
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("keeps the pull request it opened instead of closing and recreating it", func() {
+				// Any FindOpen after the create starts the loop. Nothing in this spec changes the PullRequest after it is
+				// opened, so make the periodic resync (5m by default) come around within the Consistently window.
+				setPullRequestRequeueDuration(ctx, time.Second)
+				gitPath := GinkgoT().TempDir()
+				By("hydrating a change on the fork")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, testBranchDevelopmentNext, testBranchDevelopment)),
+					Namespace: "default",
+				}
+				By("waiting for the promoter to open a pull request on the fork")
+				var firstID string
+				Eventually(func(g Gomega) {
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pr.Status.ID).NotTo(BeEmpty())
+					firstID = pr.Status.ID
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("checking that the promoter keeps that pull request open and opens no other")
+				Consistently(func(g Gomega) {
+					prs, err := scmTarget.admin.PullRequests(ctx, fork.ID, "")
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(prs).To(HaveLen(1), "the promoter closed its pull request and opened another")
+					g.Expect(prs[0].State).To(Equal("open"))
+
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.ID).To(Equal(firstID))
+				}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
 			})
 		})
 	})
