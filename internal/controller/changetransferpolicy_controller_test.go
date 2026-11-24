@@ -3056,6 +3056,29 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
 
+	It("enqueues when the Ready condition catches up to the current generation", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Generation = 2
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].ObservedGeneration = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores Ready observedGeneration changes while the condition is still behind", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Generation = 3
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].ObservedGeneration = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("ignores Ready updates when the condition was already current", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
 			Generation: 1,
