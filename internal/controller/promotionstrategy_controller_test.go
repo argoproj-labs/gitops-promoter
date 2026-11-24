@@ -5469,6 +5469,261 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// And it should be different from the initial SHA
 			Expect(ctpDev.Status.Active.Dry.Sha).NotTo(Equal(initialDevActiveSha))
 		})
+
+		// A hydrator may push a new hydrated commit whose hydrator.metadata still names the dry SHA
+		// it already hydrated (re-hydration: for example the Argo CD 3.7+ source hydrator after an
+		// upgrade or a remote Helm chart change), and then, for later dry commits that do not change
+		// this environment's manifests, advance only the git note while hydrator.metadata keeps the
+		// old dry SHA. GitOps Promoter's stance (docs/advanced-usage/custom-hydrator.md): promotions
+		// are driven by the dry SHA in hydrator.metadata, so neither event opens a PR. The
+		// re-hydrated manifests wait on the proposed branch until a dry commit changes this
+		// environment's manifests, and that PR carries them out. These specs lock that in.
+		Context("re-hydration without a new dry SHA", func() {
+			const rehydratedPath = "rehydrated.yaml"
+			const rehydratedContent = "rendered-by: hydrator-v2"
+
+			refreshCTP := func(g Gomega, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ctp), ctp)).To(Succeed())
+			}
+
+			pullRequestKey := func(ctp *promoterv1alpha1.ChangeTransferPolicy) types.NamespacedName {
+				return types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(scmTarget.prName(gitRepo, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)),
+					Namespace: ctp.Namespace,
+				}
+			}
+
+			expectNoPullRequest := func(g Gomega, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+				err := k8sClient.Get(ctx, pullRequestKey(ctp), &promoterv1alpha1.PullRequest{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "expected no PullRequest for %s, got err=%v", ctp.Spec.ActiveBranch, err)
+			}
+
+			waitForCTPs := func() {
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpDev)).To(Succeed())
+					g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpStaging)).To(Succeed())
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			// markActiveHealthy reports the health check as successful on the active branch tip.
+			markActiveHealthy := func(gitPath string, cs *promoterv1alpha1.CommitStatus, activeBranch string) {
+				GinkgoHelper()
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				activeSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, cs, func() error {
+					cs.Spec.Sha = strings.TrimSpace(activeSha)
+					cs.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
+				Expect(err).To(Succeed())
+			}
+
+			expectActiveBranchHasRehydratedManifests := func(gitPath, activeBranch string) {
+				GinkgoHelper()
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				content, err := gitShowPathAtRef(ctx, gitPath, "origin/"+activeBranch, rehydratedPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(content).To(ContainSubstring(rehydratedContent))
+			}
+
+			It("should hold re-hydrated manifests and note-only advances on the proposed branch until a manifest-changing dry commit promotes them", func() {
+				waitForCTPs()
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				By("Promoting dry commit A to dev normally")
+				drySha1, err := makeDryCommit(ctx, gitPath, "dry commit A")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha1, "hydrate dev for A")).To(Succeed())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha1))
+					expectNoPullRequest(g, &ctpDev)
+				}, constants.EventuallyTimeout).Should(Succeed())
+				activeHydratedSha := ctpDev.Status.Active.Hydrated.Sha
+
+				By("Re-hydrating dev for the same dry commit A with changed manifests")
+				rehydratedSha, err := rehydrateEnvironmentWithoutDryChange(ctx, gitPath, testBranchDevelopmentNext, rehydratedPath, rehydratedContent)
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(rehydratedSha))
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha1))
+					g.Expect(ctpDev.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(drySha1))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the re-hydration opens no PR and leaves the active branch alone")
+				Consistently(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(activeHydratedSha))
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+					expectNoPullRequest(g, &ctpDev)
+				}, "3s", "500ms").Should(Succeed())
+
+				By("Advancing only dev's git note for dry commit B, which does not change dev's manifests")
+				drySha2, err := makeDryCommit(ctx, gitPath, "dry commit B")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(addNoteToEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha2)).To(Succeed())
+				// SCMs don't send webhooks for git notes.
+				enqueueCTP(ctpDev.Namespace, ctpDev.Name)
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(drySha2))
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha1), "hydrator.metadata keeps the re-hydrated dry SHA")
+					g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(rehydratedSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the note-only advance opens no PR either")
+				Consistently(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(activeHydratedSha))
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+					expectNoPullRequest(g, &ctpDev)
+				}, "3s", "500ms").Should(Succeed())
+
+				By("Pushing dry commit C that changes dev's manifests (e.g. a bumped kustomize commonLabel)")
+				drySha3, err := makeDryCommit(ctx, gitPath, "dry commit C: bump commonLabel")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha3, "hydrate dev for C")).To(Succeed())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha3))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the promotion carried the held re-hydrated manifests to dev's active branch")
+				expectActiveBranchHasRehydratedManifests(gitPath, testBranchDevelopment)
+			})
+
+			It("should not block downstream environments while an upstream holds re-hydrated manifests", func() {
+				waitForCTPs()
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				By("Promoting dry commit A to dev and staging")
+				drySha1, err := makeDryCommit(ctx, gitPath, "dry commit A")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha1, "hydrate dev for A")).To(Succeed())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchStagingNext, drySha1, "hydrate staging for A")).To(Succeed())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				markActiveHealthy(gitPath, activeCommitStatusDevelopment, testBranchDevelopment)
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha1))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				refreshCTP(Default, &ctpDev)
+				devActiveHydratedSha := ctpDev.Status.Active.Hydrated.Sha
+
+				By("Re-hydrating dev for the same dry commit A with changed manifests")
+				rehydratedSha, err := rehydrateEnvironmentWithoutDryChange(ctx, gitPath, testBranchDevelopmentNext, rehydratedPath, rehydratedContent)
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(rehydratedSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Pushing dry commit B that changes staging's manifests but only advances dev's git note")
+				drySha2, err := makeDryCommit(ctx, gitPath, "dry commit B: staging only")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(addNoteToEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha2)).To(Succeed())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchStagingNext, drySha2, "hydrate staging for B")).To(Succeed())
+				enqueueCTP(ctpDev.Namespace, ctpDev.Name)
+
+				By("Verifying staging promotes B: dev's held re-hydration is not a pending promotion")
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha2))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying dev still holds its re-hydrated manifests without a PR")
+				Consistently(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(rehydratedSha))
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha1))
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+					g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(devActiveHydratedSha))
+					expectNoPullRequest(g, &ctpDev)
+				}, "3s", "500ms").Should(Succeed())
+			})
+
+			It("should carry a re-hydration of an in-flight dry SHA in the already-open PR", func() {
+				waitForCTPs()
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				By("Promoting dry commit A to dev and staging")
+				drySha1, err := makeDryCommit(ctx, gitPath, "dry commit A")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha1, "hydrate dev for A")).To(Succeed())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchStagingNext, drySha1, "hydrate staging for A")).To(Succeed())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha1))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				markActiveHealthy(gitPath, activeCommitStatusDevelopment, testBranchDevelopment)
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha1))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Hydrating dry commit B for dev and staging; staging's PR waits on dev's health")
+				drySha2, err := makeDryCommit(ctx, gitPath, "dry commit B")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha2, "hydrate dev for B")).To(Succeed())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchStagingNext, drySha2, "hydrate staging for B")).To(Succeed())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpDev)
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha2))
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(drySha2))
+					g.Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &promoterv1alpha1.PullRequest{})).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				var stagingPR promoterv1alpha1.PullRequest
+				Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &stagingPR)).To(Succeed())
+
+				By("Re-hydrating staging for the in-flight dry commit B")
+				rehydratedSha, err := rehydrateEnvironmentWithoutDryChange(ctx, gitPath, testBranchStagingNext, rehydratedPath, rehydratedContent)
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Equal(rehydratedSha))
+					g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(drySha2))
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha1))
+					var pr promoterv1alpha1.PullRequest
+					g.Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &pr)).To(Succeed())
+					g.Expect(pr.UID).To(Equal(stagingPR.UID), "the open PR should be reused, not replaced")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Marking dev healthy so staging's PR merges")
+				markActiveHealthy(gitPath, activeCommitStatusDevelopment, testBranchDevelopment)
+				Eventually(func(g Gomega) {
+					refreshCTP(g, &ctpStaging)
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(drySha2))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the merge included the re-hydrated manifests")
+				expectActiveBranchHasRehydratedManifests(gitPath, testBranchStaging)
+			})
+		})
 	})
 
 	// Changing DependentsSuccessfulCommitStatusKey is a breaking change for users who reference it
