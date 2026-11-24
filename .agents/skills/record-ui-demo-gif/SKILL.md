@@ -1,6 +1,6 @@
 ---
 name: record-ui-demo-gif
-description: Re-record the GitOps Promoter dashboard demo GIF (docs/assets/demo.gif, embedded in README.md and docs/getting-started.md) with dummy data. Use when the dashboard UI changes and the README or docs animation needs refreshing, or when asked to record, update, regenerate, or shrink the UI demo GIF.
+description: Re-record the GitOps Promoter dashboard demo GIF (docs/assets/demo.gif, embedded in README.md and docs/getting-started.md) with dummy data. Use when the dashboard UI changes and the README or docs animation needs refreshing, or when asked to record, update, regenerate, or shrink the UI demo GIF. Also use it to record a short dashboard demo video for a pull request, including in dark mode.
 ---
 
 # Record the dashboard demo GIF
@@ -19,7 +19,7 @@ scripts/
   gitserver/      gitkit on 127.0.0.1:5001
   manifests/demo.yaml
   record.mjs      Playwright storyboard; lossless frames + marks.json
-  make-gif.sh     ffmpeg time-lapse, scale, palette -> docs/assets/demo.gif
+  make-gif.sh     ffmpeg time-lapse, scale, palette -> docs/assets/demo.gif (or an .mp4)
 ```
 
 ## Architecture
@@ -73,9 +73,10 @@ Each long-lived process gets its own terminal. In agent sessions, start them as 
 4. `make build-dashboard && go run ./cmd dashboard --port 8080` so the GIF matches the current tree. `build-dashboard-ui` alone fails on a fresh checkout because `ui/components-lib` dependencies are not installed.
 5. `$S/demo.sh seed`, then `kubectl -n promoter-demo get promotionstrategy shop` is `READY True`.
 6. `$S/demo.sh promote 1 --wait` (about 40 seconds) so the Explorer has an older row.
-7. `cd "$S" && npm install && npx playwright install chromium && node record.mjs --change 2` (about a minute; one timestamp per mark).
+7. `cd "$S" && npm install && npx playwright install chromium && node record.mjs --change 2` (about a minute; one timestamp per mark). Add `--color-scheme dark` to record with the browser set to dark mode.
 8. Before encoding, look at frames from the middle of each segment (`marks.json` has the times; `frames.txt` maps times to PNGs). Check that the production column is not clipped and that the map shows the diamond.
 9. `$S/make-gif.sh` writes `docs/assets/demo.gif`. Spot-check a frame: `ffmpeg -y -ss 10 -i docs/assets/demo.gif -frames:v 1 /tmp/frame.png`
+   For a pull request demo, write an MP4 elsewhere instead, for example `$S/make-gif.sh /tmp/promoter-ui-demo/recording /tmp/demo.mp4` (full width, about 500 KB). GitHub plays a video inline only when it is uploaded through the web editor, which `gh` and the API cannot do, so hand the file to the person to drag into the description.
 10. Another take: `$S/demo.sh reset`, then step 7 again. Use `--change 3` to skip the reset.
 11. Stop the three processes, then `$S/cluster.sh down`. `--all` also removes the apiserver, ControllerConfiguration, namespace, and CRDs.
 
@@ -101,7 +102,7 @@ Target about 500 KB and 30 seconds. Defaults are 1300 px, 10 fps, 128 colours, r
 
 ## Troubleshooting
 
-- Dashboard stays on "Loading promotion strategies": `kubectl get apiservice v1alpha1.view.promoter.argoproj.io` must be `Available True`. Re-run `$S/cluster.sh up`. If the released `:latest` apiserver image lags the view API on main, use `make run-apiserver` and `hack/apiserver-local-register.sh` instead.
+- Dashboard stays on "Loading promotion strategies": `kubectl get apiservice v1alpha1.view.promoter.argoproj.io` must be `Available True`. Re-run `$S/cluster.sh up`. If the in-cluster apiserver is in CrashLoopBackOff, the released `:latest` image and this branch's manifests disagree: either the image lags the view API on main, or the branch is older than the RBAC the image needs (`cannot get resource "controllerconfigurations"` in the pod log). Either way, run it on the host instead: `make apiserver-register-local`, then `APISERVER_NAMESPACE=promoter-system make run-apiserver`. Registration finds the kind node and host IP itself, on Linux as well as Docker Desktop, and removes the `caBundle` that `cluster.sh up` set.
 - No PullRequest after `demo.sh promote`: controller log shows `localhost:5001` clone errors (git server down), or the 3s requeue patch did not apply.
 - `promote --wait` times out: `kubectl -n promoter-demo get ctp,pr,commitstatus`. The `soak` TimedCommitStatus must succeed in every upstream before a downstream environment merges. `kubectl -n promoter-demo get dependentssuccessfulcommitstatus shop -o yaml` lists each environment's unsatisfied upstreams.
 - The controller exits with `no matches for kind "Application"`: the Argo CD CRD is missing. Re-run `$S/cluster.sh up`.

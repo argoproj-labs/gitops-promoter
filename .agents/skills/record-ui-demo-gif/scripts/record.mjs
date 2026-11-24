@@ -1,5 +1,6 @@
 // Records the dashboard demo GIF. Storyboard, capture, and encode: see SKILL.md.
 // Usage: node record.mjs [--change 2] [--base http://localhost:8080] [--out /tmp/promoter-ui-demo/recording]
+//                        [--color-scheme light|dark]
 
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -21,6 +22,9 @@ const BASE = args.base ?? 'http://localhost:8080';
 const OUT = args.out ?? '/tmp/promoter-ui-demo/recording';
 const NAMESPACE = args.namespace ?? 'promoter-demo';
 const STRATEGY = args.strategy ?? 'shop';
+// The dashboard follows the browser's color scheme until the user picks a theme.
+const COLOR_SCHEME = args['color-scheme'] ?? 'light';
+if (!['light', 'dark'].includes(COLOR_SCHEME)) throw new Error(`--color-scheme must be light or dark, got ${COLOR_SCHEME}`);
 const changes = JSON.parse(readFileSync(path.join(here, 'changes.json'), 'utf8'));
 const SUBJECT = args.subject ?? changes[Number(CHANGE)]?.subject;
 if (!SUBJECT) throw new Error(`no subject for change ${CHANGE} in changes.json`);
@@ -43,6 +47,7 @@ const context = await browser.newContext({
   // Disables the pulsing "pushing to active" animations, so frames are only
   // produced when something meaningful changes.
   reducedMotion: 'reduce',
+  colorScheme: COLOR_SCHEME,
 });
 
 // Zoom the page and draw a fake cursor (headless video has none).
