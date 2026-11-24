@@ -107,7 +107,7 @@ func (v *KubernetesResourceCommitStatusValidator) validate(ctx context.Context, 
 		return nil, apierrors.NewInternalError(fmt.Errorf("failed to resolve the schema of %s: %w", gvk, err)) //nolint:wrapcheck // a StatusError sets the admission response code
 	}
 
-	warnings, errs := resourcetemplate.ValidateSpec(ctx, v.Compiler, gvk, ks, template, &krcs.Spec, specPath)
+	warnings, errs := resourcetemplate.ValidateSpecWithRefresh(ctx, v.Compiler, gvk, ks, template, &krcs.Spec, specPath)
 	if len(errs) > 0 {
 		return warnings, invalid(errs)
 	}

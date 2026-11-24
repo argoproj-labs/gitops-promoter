@@ -75,6 +75,9 @@ const (
 	// KindSchemaErrorTTL is how long a failed resolution is remembered: short enough that a kind whose CRD is being
 	// installed is retried promptly, long enough that repeated reconciles of a broken gate do not hammer discovery.
 	KindSchemaErrorTTL = 5 * time.Second
+	// KindSchemaRefreshMinAge is how old a cached schema must be before a validation failure re-resolves it (see
+	// RefreshKindSchema). It bounds the extra discovery calls a gate that stays invalid can cause.
+	KindSchemaRefreshMinAge = 10 * time.Second
 )
 
 // ErrNoSchemaResolver is returned by ResolveKindSchema when the Compiler was built without a resolver.
@@ -118,9 +121,10 @@ func (ks *KindSchema) hashOrEmpty() string {
 }
 
 type kindSchemaEntry struct {
-	schema  *KindSchema
-	err     error
-	expires time.Time
+	schema   *KindSchema
+	err      error
+	expires  time.Time
+	resolved time.Time
 }
 
 // Compiler builds typed CEL environments for KubernetesResourceCommitStatus expressions and caches the compiled
@@ -252,8 +256,32 @@ func (c *Compiler) resolveKindSchemaLocked(gvk schema.GroupVersionKind) (*KindSc
 			}
 		}
 	}
-	c.kindSchemas[gvk] = kindSchemaEntry{schema: ks, expires: now.Add(KindSchemaTTL)}
+	c.kindSchemas[gvk] = kindSchemaEntry{schema: ks, expires: now.Add(KindSchemaTTL), resolved: now}
 	return ks, nil
+}
+
+// RefreshKindSchema re-resolves gvk's schema ahead of KindSchemaTTL unless the cached copy is younger than minAge,
+// and reports whether the returned schema differs from the cached one. Validation calls it once after finding
+// errors, so a gate written right after its CRD gained a field is not judged by the CRD's previous schema.
+// Adapted from the schema refresh in PR #2343.
+func (c *Compiler) RefreshKindSchema(gvk schema.GroupVersionKind, minAge time.Duration) (*KindSchema, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	prev, cached := c.kindSchemas[gvk]
+	if cached && prev.schema != nil && c.now().Sub(prev.resolved) < minAge {
+		return prev.schema, false, nil
+	}
+	if cached {
+		// Expire the entry so resolveKindSchemaLocked fetches again; on failure the previous schema is not kept,
+		// as with any other resolution error.
+		prev.expires = time.Time{}
+		c.kindSchemas[gvk] = prev
+	}
+	ks, err := c.resolveKindSchemaLocked(gvk)
+	if err != nil {
+		return nil, false, err
+	}
+	return ks, ks != prev.schema, nil
 }
 
 // buildKindSchema resolves gvk and converts it; prev is returned unchanged when the schema has not changed, so

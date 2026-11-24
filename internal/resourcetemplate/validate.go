@@ -116,6 +116,22 @@ func ValidateSpec(ctx context.Context, compiler *Compiler, gvk schema.GroupVersi
 	return warnings, errs
 }
 
+// ValidateSpecWithRefresh is ValidateSpec, except that when it finds errors against a cached schema older than
+// KindSchemaRefreshMinAge it re-resolves the schema once and validates again: a CRD may have just gained the field
+// (or a CEL rule may have just changed), and the cached schema would otherwise reject the gate until KindSchemaTTL
+// expires. The verdict against the cached schema stands when the schema cannot be re-resolved or is unchanged.
+func ValidateSpecWithRefresh(ctx context.Context, compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchema, template map[string]any, krcsSpec *promoterv1alpha1.KubernetesResourceCommitStatusSpec, fldPath *field.Path) (warnings []string, errs field.ErrorList) {
+	warnings, errs = ValidateSpec(ctx, compiler, gvk, ks, template, krcsSpec, fldPath)
+	if len(errs) == 0 || ks == nil {
+		return warnings, errs
+	}
+	fresh, changed, err := compiler.RefreshKindSchema(gvk, KindSchemaRefreshMinAge)
+	if err != nil || !changed {
+		return warnings, errs
+	}
+	return ValidateSpec(ctx, compiler, gvk, fresh, template, krcsSpec, fldPath)
+}
+
 // checkMetadata validates template metadata the way BuildObject consumes it: labels and annotations are rendered
 // as text, everything else is replaced by the controller.
 func checkMetadata(in *Interpolator, value any, path *field.Path) (warnings []string, errs field.ErrorList) {

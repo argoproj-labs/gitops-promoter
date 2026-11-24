@@ -202,6 +202,51 @@ func (r *mutableResolver) ResolveSchema(gvk schema.GroupVersionKind) (*spec.Sche
 }
 
 var _ = Describe("Compiler kind schema cache", func() {
+	It("re-resolves a schema on validation errors once it is older than KindSchemaRefreshMinAge", func() {
+		res := &mutableResolver{schemas: map[schema.GroupVersionKind]*spec.Schema{jobGVK: jobSchema()}}
+		c, err := NewCompiler(res, log.Log)
+		Expect(err).NotTo(HaveOccurred())
+		now := time.Now()
+		c.now = func() time.Time { return now }
+		ks, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.calls).To(Equal(1))
+
+		template := map[string]any{"apiVersion": "batch/v1", "kind": "Job", "spec": map[string]any{"podFailurePolicy": map[string]any{}}}
+		krcsSpec := &promoterv1alpha1.KubernetesResourceCommitStatusSpec{Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"}}
+		validate := func() field.ErrorList {
+			GinkgoHelper()
+			current, err := c.ResolveKindSchema(jobGVK)
+			Expect(err).NotTo(HaveOccurred())
+			_, errs := ValidateSpecWithRefresh(context.Background(), c, jobGVK, current, template, krcsSpec, field.NewPath("spec"))
+			return errs
+		}
+
+		By("the CRD gains the field while the old schema is cached")
+		updated := jobSchema()
+		jobSpec := updated.Properties["spec"]
+		jobSpec.Properties["podFailurePolicy"] = spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}}}
+		updated.Properties["spec"] = jobSpec
+		res.schemas[jobGVK] = updated
+
+		By("not re-resolving a schema younger than the minimum age")
+		Expect(validate()).To(ContainElement(HaveField("Field", "spec.template.spec.podFailurePolicy")))
+		Expect(res.calls).To(Equal(1))
+
+		By("re-resolving once the schema is old enough, and accepting the gate")
+		now = now.Add(KindSchemaRefreshMinAge)
+		Expect(validate()).To(BeEmpty())
+		Expect(res.calls).To(Equal(2))
+		fresh, err := c.ResolveKindSchema(jobGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fresh).NotTo(BeIdenticalTo(ks), "the refreshed schema replaces the cached one")
+
+		By("not re-resolving again while the refreshed schema is young")
+		template["spec"] = map[string]any{"nope": 1}
+		Expect(validate()).NotTo(BeEmpty())
+		Expect(res.calls).To(Equal(2))
+	})
+
 	It("retries a failed resolution after KindSchemaErrorTTL and picks up schema changes after KindSchemaTTL", func() {
 		res := &mutableResolver{schemas: map[schema.GroupVersionKind]*spec.Schema{}}
 		c, err := NewCompiler(res, log.Log)

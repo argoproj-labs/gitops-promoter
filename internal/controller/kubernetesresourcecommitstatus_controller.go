@@ -388,7 +388,7 @@ func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(ctx context.Con
 	if err != nil {
 		ks = nil
 	}
-	if _, errs := resourcetemplate.ValidateSpec(ctx, r.compiler, sourceGVK, ks, template, &krcs.Spec, field.NewPath("spec")); len(errs) > 0 {
+	if _, errs := resourcetemplate.ValidateSpecWithRefresh(ctx, r.compiler, sourceGVK, ks, template, &krcs.Spec, field.NewPath("spec")); len(errs) > 0 {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec: %w", errs.ToAggregate())
 	}
 	return template, sourceGVK, nil

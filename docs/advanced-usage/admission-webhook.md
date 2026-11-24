@@ -107,9 +107,10 @@ updating a `KubernetesResourceCommitStatus` fails with a message naming the webh
 gates' own `CommitStatus` objects, is unaffected. Status updates bypass the webhook.
 
 Schema resolution goes through API discovery (`/openapi/v3`, readable through `system:discovery`). A kind's schema is
-cached for a minute, so a CRD change can take up to a minute to be reflected; a failed lookup is retried after five
-seconds, so a gate applied right after its CRD is accepted on retry (Argo CD and `kubectl apply` of a directory both
-retry).
+cached for a minute. When a gate fails validation against a cached schema that is at least ten seconds old, the
+schema is fetched again and the gate re-checked, so a gate that uses a field its CRD just gained is not rejected
+until the cache expires. A failed lookup is retried after five seconds, so a gate applied right after its CRD is
+accepted on retry (Argo CD and `kubectl apply` of a directory both retry).
 
 To turn the webhook off, delete the `ValidatingWebhookConfiguration` and pass `--admission-webhook=false`. The
 controller keeps validating gates in their status.
