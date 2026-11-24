@@ -240,6 +240,10 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return err
 	}
 
+	if err := utils.RegisterControllerOwnerUIDFieldIndex(ctx, mgr.GetFieldIndexer(), &promoterv1alpha1.ChangeTransferPolicy{}); err != nil {
+		return fmt.Errorf("PromotionStrategy controller: %w", err)
+	}
+
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
@@ -372,11 +376,14 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 		validCtpNames[ctp.Name] = true
 	}
 
-	// List all CTPs in the namespace with the PromotionStrategy label
+	// List the CTPs this PromotionStrategy controls and labels. Only controlled CTPs can be deleted
+	// below, so use the controller-owner index rather than scanning every CTP in the namespace.
 	var ctpList promoterv1alpha1.ChangeTransferPolicyList
-	err := r.List(ctx, &ctpList, client.InNamespace(ps.Namespace), client.MatchingLabels{
-		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
-	})
+	err := r.List(ctx, &ctpList,
+		client.InNamespace(ps.Namespace),
+		client.MatchingFields{utils.ControllerOwnerUIDField: string(ps.GetUID())},
+		client.MatchingLabels{promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name)},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
 	}

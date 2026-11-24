@@ -127,6 +127,11 @@ func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 //
 //nolint:dupl // Gate controllers share the same SetupWithManager skeleton by design.
 func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// CleanupOrphanedCommitStatuses lists CommitStatuses by their controller owner.
+	if err := utils.RegisterControllerOwnerUIDFieldIndex(ctx, mgr.GetFieldIndexer(), &promoterv1alpha1.CommitStatus{}); err != nil {
+		return fmt.Errorf("ScheduledCommitStatus controller: %w", err)
+	}
+
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ScheduledCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
 		return fmt.Errorf("failed to get ScheduledCommitStatus rate limiter: %w", err)

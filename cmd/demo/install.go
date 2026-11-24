@@ -21,8 +21,8 @@ import (
 const ARGOCDURL = "https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install-with-hydrator.yaml"
 
 // PROMOTERURL is the GitOps Promoter release URL template. The demo installs the
-// controller-only bundle (the dashboard UI is surfaced via the Argo CD extension).
-const PROMOTERURL = "https://github.com/argoproj-labs/gitops-promoter/releases/download/%s/install-without-ui.yaml"
+// default bundle: the controller plus the dashboard aggregation API with built-in serving certs.
+const PROMOTERURL = "https://github.com/argoproj-labs/gitops-promoter/releases/download/%s/install-with-dashboard.yaml"
 
 //go:embed app/app.yaml
 var appYAML []byte

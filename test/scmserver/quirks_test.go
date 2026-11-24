@@ -964,20 +964,23 @@ var _ = Describe("pull request webhooks", func() {
 			Expect(actions).To(ConsistOf(want.actions()))
 			Expect(merged).To(Equal(1), "exactly one event carries the merged pull request")
 
-			// The server's delivery log records the pull request events alongside the pushes.
-			var logged []string
-			for _, d := range srv.WebhookDeliveries() {
-				if d.Repo == f.repo.FullName && d.Event == "pull_request" {
-					Expect(d.Number).To(Equal(number))
-					Expect(d.StatusCode).To(Equal(http.StatusNoContent))
-					logged = append(logged, d.Action)
-				}
-			}
+			// The server's delivery log records the pull request events alongside the pushes. A delivery is logged
+			// only after the sink's response is read, so the sink can see an event before the log does.
 			wantLogged := []string{"opened", "closed", "merged"}
 			if want.reopened != "" {
 				wantLogged = append(wantLogged, "reopened")
 			}
-			Expect(logged).To(ConsistOf(wantLogged))
+			Eventually(func(g Gomega) {
+				var logged []string
+				for _, d := range srv.WebhookDeliveries() {
+					if d.Repo == f.repo.FullName && d.Event == "pull_request" {
+						g.Expect(d.Number).To(Equal(number))
+						g.Expect(d.StatusCode).To(Equal(http.StatusNoContent))
+						logged = append(logged, d.Action)
+					}
+				}
+				g.Expect(logged).To(ConsistOf(wantLogged))
+			}).WithContext(ctx).WithTimeout(eventuallyTimeout).WithPolling(pollInterval).Should(Succeed())
 		},
 		// https://docs.github.com/webhooks/webhook-events-and-payloads#pull_request
 		Entry("GitHub", scmserver.GitHub, webhookreceiver.ProviderGitHub,

@@ -207,6 +207,8 @@ func reconcileOutcomeWithoutNewResponse(
 		ResponseDataJSON:       lastState.ResponseOutput,
 		SuccessDataJSON:        successDataJSON,
 		SuccessVariables:       successVars,
+		RenderedURL:            lastState.RenderedURL,
+		Method:                 lastState.Method,
 	}, nil
 }
 
@@ -255,11 +257,23 @@ func applyHTTPExecutionDecision(
 	}
 	td.HTTPRequestVariables = httpReqVars
 
-	resp, err := exec.Execute(ctx, wrcs, td)
+	rendered, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to render HTTP request: %w", err)
+	}
+
+	resp, err := exec.Execute(ctx, wrcs, rendered)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)
 	}
-	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+
+	outcome, err := reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate httpResponse for status: %w", err)
+	}
+	outcome.RenderedURL = rendered.URL
+	outcome.Method = rendered.Method
+	return outcome, nil
 }
 
 // resolvePhaseFromSuccessWhen evaluates spec.success.when.expression for the current mode.context.
@@ -448,16 +462,25 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
 
+		// result.RenderedURL and result.Method are already the correct values: the fire path sets
+		// them from the freshly rendered request; the no-fire path carries forward the last values
+		// via reconcileOutcomeWithoutNewResponse. No ShouldFire guard needed here.
+		lastRequest := promoterv1alpha1.WebRequestCommitStatusLastRequest{
+			Method:             result.Method,
+			URL:                result.RenderedURL,
+			Time:               result.LastRequestTime,
+			ResponseStatusCode: result.LastResponseStatusCode,
+		}
+
 		wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-			Branch:                 branch,
-			ReportedSha:            reportedSha,
-			LastSuccessfulSha:      lastSuccessfulSha,
-			Phase:                  result.Phase,
-			LastRequestTime:        result.LastRequestTime,
-			LastResponseStatusCode: result.LastResponseStatusCode,
-			TriggerOutput:          triggerDataJSON,
-			ResponseOutput:         result.ResponseDataJSON,
-			SuccessOutput:          result.SuccessDataJSON,
+			Branch:            branch,
+			ReportedSha:       reportedSha,
+			LastSuccessfulSha: lastSuccessfulSha,
+			Phase:             result.Phase,
+			LastRequest:       lastRequest,
+			TriggerOutput:     triggerDataJSON,
+			ResponseOutput:    result.ResponseDataJSON,
+			SuccessOutput:     result.SuccessDataJSON,
 		})
 
 		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
@@ -589,14 +612,23 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 
 	resolvedPhases := getPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)
 
+	// result.RenderedURL and result.Method are already the correct values: the fire path sets
+	// them from the freshly rendered request; the no-fire path carries forward the last values
+	// via reconcileOutcomeWithoutNewResponse. No ShouldFire guard needed here.
+	lastRequest := promoterv1alpha1.WebRequestCommitStatusLastRequest{
+		Method:             result.Method,
+		URL:                result.RenderedURL,
+		Time:               result.LastRequestTime,
+		ResponseStatusCode: result.LastResponseStatusCode,
+	}
+
 	psc := &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
-		PhasePerBranch:         phasePerBranchSliceFromMap(resolvedPhases),
-		LastRequestTime:        result.LastRequestTime,
-		LastResponseStatusCode: result.LastResponseStatusCode,
-		TriggerOutput:          triggerDataJSON,
-		ResponseOutput:         result.ResponseDataJSON,
-		SuccessOutput:          result.SuccessDataJSON,
-		LastSuccessfulShas:     lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
+		PhasePerBranch:     phasePerBranchSliceFromMap(resolvedPhases),
+		LastRequest:        lastRequest,
+		TriggerOutput:      triggerDataJSON,
+		ResponseOutput:     result.ResponseDataJSON,
+		SuccessOutput:      result.SuccessDataJSON,
+		LastSuccessfulShas: lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
 	}
 
 	// Record the result before emitting CommitStatuses: the status is written even when an emit fails, and
