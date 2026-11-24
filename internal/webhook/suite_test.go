@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	goruntime "runtime"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
@@ -40,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/yaml"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/resourcetemplate"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -96,7 +99,14 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.Background())
 
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			// Argo Workflows' full (typed) Workflow CRD and Tekton's PipelineRun CRD.
+			filepath.Join("..", "..", "test", "external_crds"),
+		},
+		// Argo Workflows' minimal (loose) Workflow CRD has the same name as the full one, so it is installed
+		// under a test-only group.
+		CRDs:                    []*apiextensionsv1.CustomResourceDefinition{minimalWorkflowCRD()},
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: time.Minute,
 		WebhookInstallOptions: envtest.WebhookInstallOptions{
@@ -135,9 +145,19 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	compiler, err := resourcetemplate.NewCompiler(&resourcetemplate.DiscoveryResolver{Discovery: discoveryClient}, logf.Log)
 	Expect(err).NotTo(HaveOccurred())
+	// The API server publishes a newly installed CRD's OpenAPI schema shortly after the CRD is established (the
+	// 2.8 MB full Workflow schema takes longest). Until then the webhook rejects gates for that kind, so wait.
+	for _, gvk := range []schema.GroupVersionKind{workflowGVK, minimalWorkflowGVK, pipelineRunGVK} {
+		Eventually(func() error {
+			_, err := compiler.ResolveKindSchema(gvk)
+			return err //nolint:wrapcheck // test helper
+		}, 60*time.Second, 250*time.Millisecond).Should(Succeed(), "OpenAPI schema of %s not published", gvk)
+	}
 	validator = &KubernetesResourceCommitStatusValidator{
-		Compiler:   compiler,
-		Configured: map[schema.GroupVersionKind]struct{}{jobGVK: {}, configMapGVK: {}, widgetGVK: {}},
+		Compiler: compiler,
+		Configured: map[schema.GroupVersionKind]struct{}{
+			jobGVK: {}, configMapGVK: {}, widgetGVK: {}, workflowGVK: {}, minimalWorkflowGVK: {}, pipelineRunGVK: {},
+		},
 	}
 	Expect(validator.SetupWithManager(mgr)).To(Succeed())
 
@@ -155,6 +175,26 @@ var _ = BeforeSuite(func() {
 		return conn.Close()
 	}, 30*time.Second).Should(Succeed())
 })
+
+// minimalWorkflowGroup is the test-only group Argo Workflows' minimal Workflow CRD is installed under.
+const minimalWorkflowGroup = "minimal.workflows.test"
+
+var (
+	workflowGVK        = schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"}
+	minimalWorkflowGVK = schema.GroupVersionKind{Group: minimalWorkflowGroup, Version: "v1alpha1", Kind: "Workflow"}
+	pipelineRunGVK     = schema.GroupVersionKind{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"}
+)
+
+// minimalWorkflowCRD reads Argo Workflows' minimal Workflow CRD and moves it to minimalWorkflowGroup.
+func minimalWorkflowCRD() *apiextensionsv1.CustomResourceDefinition {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "test", "crd_variants", "argoproj.io_workflows_minimal.yaml"))
+	Expect(err).NotTo(HaveOccurred())
+	var crd apiextensionsv1.CustomResourceDefinition
+	Expect(yaml.Unmarshal(raw, &crd)).To(Succeed())
+	crd.Spec.Group = minimalWorkflowGroup
+	crd.Name = crd.Spec.Names.Plural + "." + minimalWorkflowGroup
+	return &crd
+}
 
 var _ = AfterSuite(func() {
 	cancel()

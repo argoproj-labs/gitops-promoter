@@ -236,3 +236,115 @@ status: {}
 		Expect(k8sClient.Delete(ctx, gate)).To(Succeed())
 	})
 })
+
+// These specs run the webhook against real third-party CRDs (see test/external_crds and test/crd_variants): Argo
+// Workflows' Workflow in both its full (typed) and minimal (loose) variants, and Tekton's PipelineRun. Adapted from
+// PR #2343.
+var _ = Describe("KubernetesResourceCommitStatus validating webhook with third-party kinds", func() {
+	// workflowTemplate is a Workflow as a gate would create it; apiVersion is filled in per variant.
+	const workflowTemplate = `
+apiVersion: %s
+kind: Workflow
+metadata:
+  labels: {sha: "${ ShortSha }"}
+spec:
+  entrypoint: smoke
+  activeDeadlineSeconds: 600
+  arguments:
+    parameters:
+      - name: sha
+        value: "${ Sha }"
+      - name: branch
+        value: "${ Branch }"
+  templates:
+    - name: smoke
+      container:
+        image: ghcr.io/acme/smoke:latest
+        args: ["--sha", "{{workflow.parameters.sha}}"]
+`
+	workflow := func(apiVersion string, replacements ...string) string {
+		out := strings.Replace(workflowTemplate, "%s", apiVersion, 1)
+		for i := 0; i+1 < len(replacements); i += 2 {
+			out = strings.Replace(out, replacements[i], replacements[i+1], 1)
+		}
+		return out
+	}
+	typos := []string{"entrypoint:", "entrypont:", "container:", "cntainer:", "activeDeadlineSeconds: 600", "activeDeadlineSeconds: soon"}
+
+	// pipelineRun and tektonPhase are the PipelineRun gate from the gate's documentation.
+	const pipelineRun = `
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+spec:
+  pipelineRef:
+    name: security-scan
+  taskRunTemplate:
+    serviceAccountName: tekton-runner
+  params:
+    - name: gitUrl
+      value: "https://github.com/myorg/myrepo/commit/${ Sha }"
+    - name: branch
+      value: ${ Branch }
+    - name: endpoints
+      value: ["api/health", "api/users"]
+`
+	const tektonPhase = `cel.bind(conditions, Resource.?status.?conditions.orValue([]),
+  cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
+    conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
+      ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
+      : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
+      : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
+      : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
+      : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))`
+	const workflowPhase = "Resource.?status.?phase.orValue('') == 'Succeeded'"
+
+	create := func(name, template, phase string) error {
+		gate := newGate(name, template, phase)
+		err := k8sClient.Create(ctx, gate)
+		if err == nil {
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
+		}
+		return err //nolint:wrapcheck // the spec inspects the API server's error
+	}
+
+	Context("Argo Workflows, full (typed) CRD", func() {
+		It("admits a Workflow", func() {
+			Expect(create("wf-full", workflow("argoproj.io/v1alpha1"), workflowPhase)).To(Succeed())
+		})
+
+		It("rejects unknown fields and invalid literal values with their paths", func() {
+			err := create("wf-full-typo", workflow("argoproj.io/v1alpha1", typos...), workflowPhase)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
+			Expect(err.Error()).To(ContainSubstring(`spec.template.spec.entrypont: Invalid value: "entrypont": unknown field`))
+			Expect(err.Error()).To(ContainSubstring(`(did you mean "entrypoint"?)`))
+			Expect(err.Error()).To(ContainSubstring(`spec.template.spec.templates[0].cntainer: Invalid value: "cntainer": unknown field`))
+			Expect(err.Error()).To(ContainSubstring(`spec.template.spec.activeDeadlineSeconds`))
+		})
+
+		It("types Resource from the CRD's schema in the phase expression", func() {
+			err := create("wf-full-phase", workflow("argoproj.io/v1alpha1"), "Resource.?status.?phse.orValue('') == 'Succeeded'")
+			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
+			Expect(err.Error()).To(ContainSubstring("spec.phase.expression"))
+		})
+	})
+
+	Context("Argo Workflows, minimal (loose) CRD", func() {
+		It("admits the same typos, because its spec preserves unknown fields", func() {
+			Expect(create("wf-minimal", workflow(minimalWorkflowGroup+"/v1alpha1"), workflowPhase)).To(Succeed())
+			Expect(create("wf-minimal-typo", workflow(minimalWorkflowGroup+"/v1alpha1", typos...), workflowPhase)).To(Succeed())
+		})
+	})
+
+	Context("Tekton PipelineRun", func() {
+		It("admits the PipelineRun and phase expression from the documentation", func() {
+			Expect(create("tekton", pipelineRun, tektonPhase)).To(Succeed())
+		})
+
+		It("rejects unknown fields where the CRD's schema declares the object", func() {
+			err := create("tekton-typo", strings.Replace(pipelineRun, "taskRunTemplate:", "taskRunTemplates:", 1), tektonPhase)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
+			Expect(err.Error()).To(ContainSubstring(`spec.template.spec.taskRunTemplates: Invalid value: "taskRunTemplates": unknown field`))
+			Expect(err.Error()).To(ContainSubstring(`(did you mean "taskRunTemplate"?)`))
+		})
+	})
+})

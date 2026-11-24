@@ -381,6 +381,57 @@ Resource.?status.?succeeded.orValue(0) > 0 ? {'phase': 'success'}
   : (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure'} : {'phase': 'pending'})
 ```
 
+## Example: a Tekton Pipeline
+
+Tekton `PipelineRun` and `TaskRun` are ordinary kinds, so gating on a Pipeline needs no Tekton-specific support. List
+`tekton.dev/v1 PipelineRun` in the ControllerConfiguration, grant the controller RBAC on `pipelineruns`, and write the
+run you would write by hand, with the SHA and branch as parameters. Tekton results are a name/value list on
+`status.results`; `transformMapEntry` turns it into a map.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: security-scan
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: security-scan
+  reportOn: proposed
+  template:
+    apiVersion: tekton.dev/v1
+    kind: PipelineRun
+    spec:
+      pipelineRef:
+        name: security-scan
+      taskRunTemplate:
+        serviceAccountName: tekton-runner
+      params:
+        - name: gitUrl
+          value: "https://github.com/myorg/myrepo/commit/${ Sha }"
+        - name: branch
+          value: ${ Branch }
+        - name: endpoints
+          value: ["api/health", "api/users"]
+  lifecycle:
+    pruneOnSuccess: true
+    retryOnDelete: true
+  phase:
+    expression: |
+      cel.bind(conditions, Resource.?status.?conditions.orValue([]),
+        cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
+          conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
+            ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
+            : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
+            : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
+            : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
+            : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))
+```
+
+`reportOn: proposed` runs the pipeline against the proposed commit and gates it; `reportOn: active` runs it against
+what is live and gates the environments after it. To run against the active commit while gating the proposed one,
+keep `reportOn: proposed` and pass `${ Environment.active.hydrated.sha }` as the parameter.
+
 ## Description and URL
 
 `spec.description` and `spec.url` use the same `${ }` expressions as the template and see the template variables plus:
