@@ -157,7 +157,7 @@ Key configuration options:
 - **Schedule**: Updates are checked on the workflow schedule (Sun/Wed/Sat); see workflow file
 - **Labels**: PRs are labeled with `dependencies`
 - **Concurrent limit**: See `prConcurrentLimit` in `renovate.json5`
-- **Automerge**: Disabled (requires manual review)
+- **Automerge**: Non-major updates for docs deps, Argo CD, kindest/node, Node.js, Python, and patch updates for kustomize, controller-tools, and kube-rbac-proxy auto-merge once CI passes, after a 7-day `minimumReleaseAge`. Renovate enables auto-merge and `.github/workflows/renovate-auto-merge.yaml` approves. Everything else needs manual review.
 - **Kubernetes platform group**: Anchor bumps (controller-runtime, tagged `k8s.io/*`); follower deps (`kube-openapi`, structured-merge-diff) disabled—see [Kubernetes platform alignment](#kubernetes-platform-alignment)
 - **Post-upgrade tasks**: Platform PRs run `make mod-tidy`, `make build-installer`, codegen; Go/linter group runs `go mod tidy`, `make go-fix-maybe-bump`, `make lint-fix`
   - These only work because we're using self-hosted Renovate

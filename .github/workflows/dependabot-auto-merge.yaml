@@ -1,0 +1,119 @@
+# Approves and enables auto-merge for non-major Dependabot version updates. The
+# required status checks in the main/release rulesets still gate the merge.
+#
+# The approval comes from a dedicated GitHub App whose credentials are stored as
+# *Dependabot* secrets. GitHub only exposes Dependabot secrets to runs triggered
+# by Dependabot, so someone pushing a modified copy of this workflow to a PR
+# branch can't mint an approving token. Dependabot secrets can't be scoped to
+# one workflow, so this workflow also refuses to mint the token when the PR
+# edits this file: the key only ever reaches the action versions on main.
+#
+# If anyone other than Dependabot pushes to a Dependabot PR,
+# dependency-auto-merge-revoke.yaml disables auto-merge and dismisses bot
+# approvals, so the human change still needs a human review.
+name: dependabot-auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  approve:
+    if: >-
+      github.repository == 'argoproj-labs/gitops-promoter' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    name: Approve and Auto-merge
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Check eligibility
+        id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # The approval and auto-merge below are pinned to HEAD_SHA, so a later
+          # push can't inherit them. Bail out if the branch already moved.
+          current=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          if [[ "$current" != "$HEAD_SHA" ]]; then
+            echo "::notice::Head moved from $HEAD_SHA to $current; the run for the new head decides."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # This run uses the PR's copy of this file. If Dependabot bumped an
+          # action in it, don't hand the App key to the unreviewed version.
+          if gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' |
+              grep -qx '.github/workflows/dependabot-auto-merge.yaml'; then
+            echo "::notice::Not auto-merging: this PR edits dependabot-auto-merge.yaml, so it needs a human review."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          others=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | select(.author.login != "dependabot[bot]" or .committer.login != "web-flow" or .commit.verification.verified != true) | .sha')
+          if [[ -n "$others" ]]; then
+            echo "::notice::Not auto-merging: commits not authored and signed by Dependabot: $others"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get approver token
+        id: token
+        if: >-
+          steps.commits.outputs.eligible == 'true' &&
+          contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'), steps.metadata.outputs.update-type)
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DEPENDABOT_MERGER_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_MERGER_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          # Merging the grouped github-actions PR edits workflow files.
+          permission-workflows: write
+
+      - name: Approve and enable auto-merge
+        if: steps.token.outcome == 'success'
+        env:
+          # An App token (not GITHUB_TOKEN) enables auto-merge so the merge
+          # commit's push to main still triggers release-latest.yaml.
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          set -euo pipefail
+          # Both calls are bound to the commit that passed the checks above.
+          gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            -f commit_id="$HEAD_SHA" \
+            -f event=APPROVE \
+            -f body="Auto-approved: Dependabot $UPDATE_TYPE. Merges once required checks pass." \
+            --silent
+          # shellcheck disable=SC2016 # GraphQL variables, not shell expansions.
+          gh api graphql \
+            -f query='mutation($id: ID!, $oid: GitObjectID!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $oid}) { clientMutationId }
+            }' \
+            -f id="$PR_NODE_ID" \
+            -f oid="$HEAD_SHA" \
+            --silent
