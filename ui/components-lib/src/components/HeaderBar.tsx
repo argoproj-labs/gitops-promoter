@@ -16,7 +16,8 @@ const HeaderBar: React.FC<Props> = ({ name, link }) => {
         justifyContent: 'center',
         alignItems: 'center',
         padding: '16px 0',
-        backgroundColor: 'white',
+        backgroundColor: 'var(--hp-bg-surface)',
+        color: 'var(--hp-text-primary)',
         cursor: link ? 'pointer' : 'default',
       }}
     >
