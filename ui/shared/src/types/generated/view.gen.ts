@@ -1131,11 +1131,11 @@ export type components = {
         /** @description History describes a particular change that was promoted into an environment's active branch. */
         History: {
             /**
-             * @description Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
+             * @description Active is the state of the active branch after the PR merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses are the active commit statuses last recorded for that commit, taken from the snapshot trailers of the commit that replaced it; they are empty for the current active commit, whose live statuses are on the ChangeTransferPolicy.
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
-            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from its snapshot trailers — proposed.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
             mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
@@ -1146,7 +1146,7 @@ export type components = {
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
             /** @description RestoreUnblockedAt is set on a restore entry once spec.blockEnvironment is false and the controller has stamped Promoter-restore-unblocked-at on the restore commit's promotion-history note (RFC 3339). While restoredFrom is set and this field is empty, auto-merge is blocked and the dry SHA the restore moved off of is blocked from opening a pull request. */
             restoreUnblockedAt?: components["schemas"]["Time"];
-            /** @description RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written. */
+            /** @description RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and proposed commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written. */
             restoredFrom?: string;
         };
         /** @description HydratorMetadata contains metadata about the hydrated commit. This is extracted from the git note or metadata file. */
@@ -2198,7 +2198,7 @@ export type components = {
         /**
          * @description TriggerModeSpec defines expression-based trigger configuration.
          *
-         *     Delivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.
+         *     Delivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.
          *
          *     Treat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).
          */
@@ -2272,13 +2272,11 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this environment. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulSha is the last commit SHA that achieved success status for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             lastSuccessfulSha?: string;
             /**
@@ -2294,6 +2292,20 @@ export type components = {
             successOutput?: components["schemas"]["JSON"];
             /** @description TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys). */
             triggerOutput?: components["schemas"]["JSON"];
+        };
+        /** @description WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made. */
+        WebRequestCommitStatusLastRequest: {
+            /** @description Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method). */
+            method?: string;
+            /**
+             * Format: int32
+             * @description ResponseStatusCode is the HTTP status code from the last request.
+             */
+            responseStatusCode?: number;
+            /** @description Time is when the last HTTP request was made. */
+            time?: components["schemas"]["Time"];
+            /** @description URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path). */
+            url?: string;
         };
         /** @description WebRequestCommitStatusLastSuccessfulShaItem records the last successful SHA for one branch in promotionstrategy context status. */
         WebRequestCommitStatusLastSuccessfulShaItem: {
@@ -2320,13 +2332,11 @@ export type components = {
         };
         /** @description WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus). */
         WebRequestCommitStatusPromotionStrategyContextStatus: {
-            /** @description LastRequestTime is when the last HTTP request was made. */
-            lastRequestTime?: components["schemas"]["Time"];
             /**
-             * Format: int32
-             * @description LastResponseStatusCode is the HTTP status code from the last request.
+             * @description LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context. Populated on the first request; values carry forward on reconciles that skip the request.
+             * @default {}
              */
-            lastResponseStatusCode?: number;
+            lastRequest?: components["schemas"]["WebRequestCommitStatusLastRequest"];
             /** @description LastSuccessfulShas tracks the last SHA that achieved success for each branch. Used with reportOn "proposed" + polling to skip HTTP requests when all environments have already succeeded for their current SHAs. */
             lastSuccessfulShas?: components["schemas"]["WebRequestCommitStatusLastSuccessfulShaItem"][];
             /** @description PhasePerBranch holds the resolved phase for each applicable branch. Every applicable branch is always present after reconciliation. */

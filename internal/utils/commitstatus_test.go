@@ -169,7 +169,17 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 			}},
 		}
 
-		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(valid, orphan, otherOwner).Build()
+		// Controlled by owner but missing the gate label: still matched by the owner index, but the
+		// label selector keeps it, as before the index was used.
+		unlabeled := &promoterv1alpha1.CommitStatus{
+			Name:            "unlabeled-cs",
+			Namespace:       "default",
+			OwnerReferences: valid.OwnerReferences,
+		}
+
+		cl := fake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&promoterv1alpha1.CommitStatus{}, utils.ControllerOwnerUIDField, utils.ControllerOwnerUIDIndexValues).
+			WithObjects(valid, orphan, otherOwner, unlabeled).Build()
 		err := utils.CleanupOrphanedCommitStatuses(ctx, cl, recorder, owner, []*promoterv1alpha1.CommitStatus{valid})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -179,6 +189,6 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		for i := range remaining.Items {
 			names[i] = remaining.Items[i].Name
 		}
-		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs"))
+		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs", "unlabeled-cs"))
 	})
 })

@@ -1455,9 +1455,9 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		"ChangeTransferPolicy": ctp,
 		"PromotionStrategy":    ps,
 	}
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
+	title, description, baseCommitMessage, err := templatePullRequestAndCommitMessage(templatePullRequestTemplate, templateData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request: %w", err)
+		return nil, err
 	}
 
 	// Check if the PR already exists to determine the commit message
@@ -1487,11 +1487,13 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Determine the commit message based on whether this is a new or existing PR
+	// Determine the commit message based on whether this is a new or existing PR.
+	// The rendered commitMessage template is the whole human-readable message; there is no fallback
+	// to title or description. An empty template stays empty.
 	var commitMessage string
 	if !prExists {
 		// New PR
-		commitMessage = fmt.Sprintf("%s\n\n%s", title, description)
+		commitMessage = baseCommitMessage
 	} else {
 		// Update existing PR - add trailers
 		commitTrailers := trailers{}
@@ -1512,7 +1514,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
+		commitMessage = assembleCommitMessageWithTrailers(baseCommitMessage, commitTrailers)
 	}
 
 	// Determine the state: preserve existing state if PR exists, otherwise default to open
@@ -2105,6 +2107,54 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	return title, description, nil
 }
 
+// TemplateCommitMessage renders the commit message template of a pull request template using the
+// provided data map. Returns an empty string if the commit message template is empty.
+func TemplateCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (string, error) {
+	if prt.CommitMessage == "" {
+		return "", nil
+	}
+	commitMessage, err := utils.RenderStringTemplate(prt.CommitMessage, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to render pull request commit message template: %w", err)
+	}
+	return commitMessage, nil
+}
+
+// templatePullRequestAndCommitMessage renders the title, description and merge commit message of a
+// pull request template. Trailing newlines are trimmed from the commit message so the trailer block
+// appended later remains its final paragraph.
+func templatePullRequestAndCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (title, description, commitMessage string, err error) {
+	title, description, err = TemplatePullRequest(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request: %w", err)
+	}
+	commitMessage, err = TemplateCommitMessage(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request commit message: %w", err)
+	}
+	return title, description, strings.TrimRight(commitMessage, "\n"), nil
+}
+
+// assembleCommitMessageWithTrailers joins a human-readable base message with promoter trailers.
+// The title and description are never substituted for an empty base.
+func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) string {
+	if len(commitTrailers) == 0 {
+		return base
+	}
+	if base == "" {
+		// git treats the first paragraph of a message as the subject and never parses it as trailers,
+		// so a message made only of the trailer block yields no trailers from git interpret-trailers
+		// (ParseTrailersFromMessage), and the promotion history note would be silently skipped. A
+		// leading blank line is not enough: git strips leading blank lines when it creates the merge
+		// commit. Use a minimal subject so the trailers always form a separate, final paragraph.
+		base = "Promote"
+		if target := commitTrailers[constants.TrailerPullRequestTargetBranch]; target != "" {
+			base = fmt.Sprintf("Promote to `%s`", target)
+		}
+	}
+	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
+}
+
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
 // PullRequests. Without it, bare Owns(PullRequest) re-enqueues CTP on every PR status write and can
 // drive a CTP→PR→CTP feedback loop (PR SCM sync → status churn → CTP SSA → PR generation bump → repeat).
@@ -2114,16 +2164,21 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 //   - Update when metadata.generation changes (spec was patched — title, commit.message, state, etc.)
 //   - Update when the CTP pull-request finalizer is added or removed
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
-//   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
 //   - Update when the Ready condition's status changes (including appearing or disappearing). The CTP
 //     inherits a not-Ready PR's condition, so without this a CTP whose PR recovers from a transient
 //     failure would stay not-Ready until its periodic requeue.
+//   - Update when the Ready condition catches up to the current generation (its observedGeneration was
+//     behind metadata.generation and now matches it). A CTP reconcile that runs between a PR spec patch
+//     and the PR controller's next reconcile records "Ready condition is not up to date"; the catch-up
+//     usually leaves the Ready status unchanged, so without this the CTP would stay not-Ready until its
+//     periodic requeue.
 //
 // Does not enqueue CTP on status-only updates, including:
 //   - status.url (stable or changed)
 //   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
-//   - other status.conditions changes (Ready message, reason, lastTransitionTime)
+//   - other status.conditions changes (Ready message, reason, lastTransitionTime, or observedGeneration
+//     when the condition was already current or is still behind)
 //   - status.observedGeneration
 //   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
@@ -2156,6 +2211,9 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if readyConditionStatus(oldPR) != readyConditionStatus(newPR) {
 				return true
 			}
+			if !readyConditionCurrent(oldPR) && readyConditionCurrent(newPR) {
+				return true
+			}
 			return false
 		},
 	}
@@ -2168,6 +2226,13 @@ func readyConditionStatus(pr *promoterv1alpha1.PullRequest) metav1.ConditionStat
 		return ""
 	}
 	return ready.Status
+}
+
+// readyConditionCurrent reports whether pr has a Ready condition whose observedGeneration matches
+// pr's metadata.generation.
+func readyConditionCurrent(pr *promoterv1alpha1.PullRequest) bool {
+	ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+	return ready != nil && ready.ObservedGeneration == pr.Generation
 }
 
 // metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time

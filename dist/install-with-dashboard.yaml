@@ -1401,10 +1401,11 @@ spec:
                   properties:
                     active:
                       description: |-
-                        Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+                        Active is the state of the active branch after the PR merged. Its dry state is read back from
                         <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
-                        describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
-                        snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
+                        describe what actually merged regardless of merge style. Its commitStatuses are the active commit statuses
+                        last recorded for that commit, taken from the snapshot trailers of the commit that replaced it; they are
+                        empty for the current active commit, whose live statuses are on the ChangeTransferPolicy.
                       properties:
                         commitStatuses:
                           description: CommitStatuses is a list of commit statuses
@@ -1702,10 +1703,9 @@ spec:
                       description: |-
                         MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
                         the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
-                        the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
-                        active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
-                        gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
-                        revision rather than what actually merged.
+                        the fields this entry rebuilds from its snapshot trailers — proposed.commitStatuses, plus proposed.hydrated
+                        when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the
+                        hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.
                       type: boolean
                     proposed:
                       description: Proposed is the state of the proposed branch at
@@ -1910,8 +1910,8 @@ spec:
                         RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged
                         pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's
                         tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The
-                        pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored
-                        version and describe the original promotion, not the restore. active.hydrated is the restore commit
+                        pull request and proposed commit status fields, including pullRequest.prMergeTime, are copied from the
+                        restored version and describe the original promotion, not the restore. active.hydrated is the restore commit
                         itself, so active.hydrated.commitTime is when the restore was written.
                       maxLength: 64
                       minLength: 40
@@ -2808,18 +2808,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3018,18 +3023,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3227,18 +3237,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3451,18 +3466,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3660,18 +3680,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -3869,18 +3894,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4140,18 +4170,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4381,18 +4416,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4418,9 +4458,19 @@ spec:
                 properties:
                   template:
                     description: |-
-                      Template is the template configuration used to generate pull request titles and descriptions.
-                      Uses Go template syntax with Sprig functions available.
+                      Template is the template configuration used to generate pull request titles, descriptions,
+                      and merge commit messages. Uses Go template syntax with Sprig functions available.
                     properties:
+                      commitMessage:
+                        description: |-
+                          CommitMessage is the template used to generate the merge commit message for the pull request.
+                          The rendered template is the whole human-readable message; the title and description are never
+                          used in its place. Machine-read commit trailers used by the promoter to reconstruct promotion
+                          history are always appended after the rendered message; do not attempt to include them in the template.
+                          When the template renders empty and trailers are appended, a minimal "Promote to `<branch>`"
+                          subject is added, because git does not parse trailers from the first paragraph of a message.
+                          Uses Go template syntax with Sprig functions available for string manipulation.
+                        type: string
                       description:
                         description: |-
                           Description is the template used to generate the body/description of the pull request.
@@ -4432,6 +4482,7 @@ spec:
                           Uses Go template syntax with Sprig functions available for string manipulation.
                         type: string
                     required:
+                    - commitMessage
                     - description
                     - title
                     type: object
@@ -4609,18 +4660,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -4819,18 +4875,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -5028,18 +5089,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -5246,18 +5312,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -5465,18 +5536,23 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
+                              - message: exactly one of fastSlow, exponentialFailure
+                                  or bucket must be specified
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  == 1
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
                                 rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
                                   <= 1
                             maxItems: 3
+                            minItems: 1
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: at most one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] may be set
+                        - message: exactly one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] must be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
-                            <= 1
+                            == 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
                           rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
@@ -10477,15 +10553,31 @@ spec:
                       description: Branch is the name of the branch/environment.
                       minLength: 1
                       type: string
-                    lastRequestTime:
-                      description: LastRequestTime is when the last HTTP request was
-                        made.
-                      format: date-time
-                      type: string
-                    lastResponseStatusCode:
-                      description: LastResponseStatusCode is the HTTP status code
-                        from the last request.
-                      type: integer
+                    lastRequest:
+                      description: |-
+                        LastRequest captures metadata about the most recent HTTP request for this environment.
+                        Populated on the first request; values carry forward on reconciles that skip the request.
+                      properties:
+                        method:
+                          description: Method is the resolved HTTP method (rendered
+                            from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
+                          type: string
+                        responseStatusCode:
+                          description: ResponseStatusCode is the HTTP status code
+                            from the last request.
+                          type: integer
+                        time:
+                          description: Time is when the last HTTP request was made.
+                          format: date-time
+                          type: string
+                        url:
+                          description: |-
+                            URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                            for the last HTTP request attempt (empty when no request has been made yet).
+                            It carries forward the previous value when a reconcile skips the HTTP request
+                            (polling interval, trigger false, or already-successful SHA fast path).
+                          type: string
+                      type: object
                     lastSuccessfulSha:
                       description: |-
                         LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
@@ -10558,15 +10650,31 @@ spec:
                   PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
                   At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
                 properties:
-                  lastRequestTime:
-                    description: LastRequestTime is when the last HTTP request was
-                      made.
-                    format: date-time
-                    type: string
-                  lastResponseStatusCode:
-                    description: LastResponseStatusCode is the HTTP status code from
-                      the last request.
-                    type: integer
+                  lastRequest:
+                    description: |-
+                      LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context.
+                      Populated on the first request; values carry forward on reconciles that skip the request.
+                    properties:
+                      method:
+                        description: Method is the resolved HTTP method (rendered
+                          from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).
+                        type: string
+                      responseStatusCode:
+                        description: ResponseStatusCode is the HTTP status code from
+                          the last request.
+                        type: integer
+                      time:
+                        description: Time is when the last HTTP request was made.
+                        format: date-time
+                        type: string
+                      url:
+                        description: |-
+                          URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate
+                          for the last HTTP request attempt (empty when no request has been made yet).
+                          It carries forward the previous value when a reconcile skips the HTTP request
+                          (polling interval, trigger false, or already-successful SHA fast path).
+                        type: string
+                    type: object
                   lastSuccessfulShas:
                     description: |-
                       LastSuccessfulShas tracks the last SHA that achieved success for each branch.
@@ -10652,10 +10760,40 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: serviceaccount
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - promoter-apiserver-serving-cert
+  resources:
+  - secrets
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -10703,11 +10841,37 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: promoter-manager-role
-  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
 rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  - changetransferpolicyhistories
+  - changetransferpolicies
+  - restoreactivecommits
+  - pullrequests
+  - commitstatuses
+  - argocdcommitstatuses
+  - gitcommitstatuses
+  - timedcommitstatuses
+  - webrequestcommitstatuses
+  - scheduledcommitstatuses
+  - kubernetesresourcecommitstatuses
+  - dependentssuccessfulcommitstatuses
+  - gitrepositories
+  - scmproviders
+  - clusterscmproviders
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -10717,125 +10881,6 @@ rules:
   - list
   - watch
 - apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - patch
-  - watch
-- apiGroups:
-  - ""
-  - events.k8s.io
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - argoproj.io
-  resources:
-  - applications
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses
-  - dependentssuccessfulcommitstatuses
-  - gitcommitstatuses
-  - kubernetesresourcecommitstatuses
-  - promotionstrategies
-  - scheduledcommitstatuses
-  - timedcommitstatuses
-  - webrequestcommitstatuses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses/finalizers
-  - changetransferpolicies/finalizers
-  - changetransferpolicyhistories/finalizers
-  - clusterscmproviders/finalizers
-  - dependentssuccessfulcommitstatuses/finalizers
-  - gitcommitstatuses/finalizers
-  - gitrepositories/finalizers
-  - kubernetesresourcecommitstatuses/finalizers
-  - promotionstrategies/finalizers
-  - pullrequests/finalizers
-  - scheduledcommitstatuses/finalizers
-  - scmproviders/finalizers
-  - timedcommitstatuses/finalizers
-  - webrequestcommitstatuses/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - argocdcommitstatuses/status
-  - changetransferpolicies/status
-  - changetransferpolicyhistories/status
-  - clusterscmproviders/status
-  - commitstatuses/status
-  - dependentssuccessfulcommitstatuses/status
-  - gitcommitstatuses/status
-  - gitrepositories/status
-  - kubernetesresourcecommitstatuses/status
-  - promotionstrategies/status
-  - pullrequests/status
-  - restoreactivecommits/status
-  - scheduledcommitstatuses/status
-  - scmproviders/status
-  - timedcommitstatuses/status
-  - webrequestcommitstatuses/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - changetransferpolicies
-  - commitstatuses
-  - pullrequests
-  - restoreactivecommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - changetransferpolicyhistories
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - clusterscmproviders
-  - gitrepositories
-  - scmproviders
-  verbs:
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
   - promoter.argoproj.io
   resourceNames:
   - promoter-controller-configuration
@@ -10843,17 +10888,31 @@ rules:
   - controllerconfigurations
   verbs:
   - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+rules:
+- apiGroups:
+  - apiregistration.k8s.io
+  resources:
+  - apiservices
+  verbs:
+  - get
   - list
   - watch
 - apiGroups:
-  - promoter.argoproj.io
+  - apiregistration.k8s.io
   resourceNames:
-  - promoter-controller-configuration
+  - v1alpha1.view.promoter.argoproj.io
   resources:
-  - controllerconfigurations/status
+  - apiservices
   verbs:
-  - get
-  - patch
   - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -11535,6 +11594,159 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  name: promoter-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses
+  - dependentssuccessfulcommitstatuses
+  - gitcommitstatuses
+  - kubernetesresourcecommitstatuses
+  - promotionstrategies
+  - scheduledcommitstatuses
+  - timedcommitstatuses
+  - webrequestcommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses/finalizers
+  - changetransferpolicies/finalizers
+  - changetransferpolicyhistories/finalizers
+  - clusterscmproviders/finalizers
+  - dependentssuccessfulcommitstatuses/finalizers
+  - gitcommitstatuses/finalizers
+  - gitrepositories/finalizers
+  - kubernetesresourcecommitstatuses/finalizers
+  - promotionstrategies/finalizers
+  - pullrequests/finalizers
+  - scheduledcommitstatuses/finalizers
+  - scmproviders/finalizers
+  - timedcommitstatuses/finalizers
+  - webrequestcommitstatuses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses/status
+  - changetransferpolicies/status
+  - changetransferpolicyhistories/status
+  - clusterscmproviders/status
+  - commitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
+  - gitcommitstatuses/status
+  - gitrepositories/status
+  - kubernetesresourcecommitstatuses/status
+  - promotionstrategies/status
+  - pullrequests/status
+  - restoreactivecommits/status
+  - scheduledcommitstatuses/status
+  - scmproviders/status
+  - timedcommitstatuses/status
+  - webrequestcommitstatuses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicies
+  - commitstatuses
+  - pullrequests
+  - restoreactivecommits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - changetransferpolicyhistories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - clusterscmproviders
+  - gitrepositories
+  - scmproviders
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
@@ -11608,6 +11820,24 @@ rules:
   - promotionstrategies/status
   verbs:
   - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+rules:
+- apiGroups:
+  - view.promoter.argoproj.io
+  resources:
+  - promotionstrategydetails
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -12040,6 +12270,42 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-extension-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-apiserver-cert-rotation
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: leader-election-rolebinding
@@ -12058,7 +12324,58 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-cert-rotation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver-cert-rotation
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/component: rbac
@@ -12068,11 +12385,27 @@ metadata:
     app.kubernetes.io/name: clusterrolebinding
     app.kubernetes.io/part-of: promoter
   name: promoter-manager-rolebinding
-  namespace: promoter-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: promoter-manager-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-promotionstrategydetails-viewer
 subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
@@ -12097,6 +12430,36 @@ subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-serving-cert
+  namespace: promoter-system
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: service
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/component: dashboard-apiserver
 ---
 apiVersion: v1
 kind: Service
@@ -12132,6 +12495,101 @@ spec:
     targetPort: 3333
   selector:
     control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: deployment
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: dashboard-apiserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: dashboard-apiserver
+    spec:
+      containers:
+      - args:
+        - --secure-port=6443
+        - --tls-cert-file=/serving-certs/tls.crt
+        - --tls-private-key-file=/serving-certs/tls.key
+        command:
+        - /usr/bin/tini
+        - --
+        - /gitops-promoter
+        - apiserver
+        image: quay.io/argoprojlabs/gitops-promoter:latest
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: apiserver
+        ports:
+        - containerPort: 6443
+          name: https
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 2
+            memory: 2048Mi
+          requests:
+            cpu: 1
+            memory: 1024Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /serving-certs
+          name: serving-cert
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: promoter-apiserver
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: serving-cert
+        secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          optional: true
+          secretName: promoter-apiserver-serving-cert
+      - emptyDir: {}
+        name: tmp
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -12178,6 +12636,7 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+        - --apiserver-cert-rotation
         command:
         - /usr/bin/tini
         - --
@@ -12239,6 +12698,25 @@ spec:
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
 ---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: apiservice
+    app.kubernetes.io/part-of: promoter
+  name: v1alpha1.view.promoter.argoproj.io
+spec:
+  group: view.promoter.argoproj.io
+  groupPriorityMinimum: 1000
+  service:
+    name: promoter-apiserver
+    namespace: promoter-system
+    port: 443
+  version: v1alpha1
+  versionPriority: 15
+---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
 metadata:
@@ -12290,7 +12768,7 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   clusterScmProvider:
-    mode: Disabled
+    mode: Enabled
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -12362,6 +12840,43 @@ spec:
       requeueDuration: 5m
   pullRequest:
     template:
+      commitMessage: |
+        Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}{{ . }} {{ end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}
+
+        This commit promotes changes to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} (PromotionStrategy {{ .PromotionStrategy.Name }}){{ end }}.
+
+        Deployment commit
+          Active (deployed): {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ trunc 7 .Sha }}{{ end }}{{ with .ChangeTransferPolicy.Status.Active.Dry.Subject }}
+            {{ . }}{{ end }}
+          Proposed: {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ trunc 7 .Sha }}{{ end }}{{ with .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+            {{ . }}{{ end }}
+
+        {{- $repo := "" -}}
+        {{- $base := "" -}}
+        {{- $head := "" -}}
+        {{- $activeSubject := "" -}}
+        {{- $proposedSubject := "" -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- if or $base $head }}
+
+        Code reference
+        {{- if $base }}
+          Active: {{ if and $repo $base }}{{ trimSuffix "/" $repo }}/commit/{{ $base }}{{ else }}{{ trunc 7 $base }}{{ end }}{{ if $activeSubject }}
+            {{ $activeSubject }}{{ end }}
+        {{- end }}
+        {{- if $head }}
+          Proposed: {{ if and $repo $head }}{{ trimSuffix "/" $repo }}/commit/{{ $head }}{{ else }}{{ trunc 7 $head }}{{ end }}{{ if $proposedSubject }}
+            {{ $proposedSubject }}{{ end }}
+        {{- end }}
+        {{- if and $repo $base $head }}
+          Diff: {{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }}
+        {{- end }}
+        {{- end }}
       description: |
         This PR promotes changes to **`{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`**{{ if .PromotionStrategy }} (PromotionStrategy `{{ .PromotionStrategy.Name }}`){{ end }}.
 
@@ -12450,7 +12965,7 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  scope: Namespace
+  scope: Cluster
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -12465,7 +12980,7 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   webRequestCommitStatus:
-    namespaceMetadata: Disabled
+    namespaceMetadata: Enabled
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

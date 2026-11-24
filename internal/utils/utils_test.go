@@ -972,3 +972,31 @@ var _ = Describe("GetScmProviderFromGitRepository", func() {
 		Expect(provider.GetName()).To(Equal("cluster-scm"))
 	})
 })
+
+var _ = Describe("UpsertChangeTransferPolicyList", func() {
+	const name = "app-environment-development"
+	ctp := func(namespace, sha string) promoterv1alpha1.ChangeTransferPolicy {
+		c := promoterv1alpha1.ChangeTransferPolicy{}
+		c.Namespace = namespace
+		c.Name = name
+		c.Status.Active.Hydrated.Sha = sha
+		return c
+	}
+
+	It("keeps same-named policies from different namespaces as separate entries", func() {
+		merged := utils.UpsertChangeTransferPolicyList(nil,
+			[]promoterv1alpha1.ChangeTransferPolicy{ctp("team-a", "x")},
+			[]promoterv1alpha1.ChangeTransferPolicy{ctp("team-b", "x")},
+		)
+		Expect(merged).To(HaveLen(2))
+	})
+
+	It("replaces a policy seen again with the later copy", func() {
+		merged := utils.UpsertChangeTransferPolicyList(nil,
+			[]promoterv1alpha1.ChangeTransferPolicy{ctp("team-a", "old")},
+			[]promoterv1alpha1.ChangeTransferPolicy{ctp("team-a", "new")},
+		)
+		Expect(merged).To(HaveLen(1))
+		Expect(merged[0].Status.Active.Hydrated.Sha).To(Equal("new"))
+	})
+})

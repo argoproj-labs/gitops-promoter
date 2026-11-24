@@ -1768,6 +1768,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestTemplate
   map:
     fields:
+    - name: commitMessage
+      type:
+        scalar: string
     - name: description
       type:
         scalar: string
@@ -2287,12 +2290,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
-    - name: lastRequestTime
+    - name: lastRequest
       type:
-        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
-    - name: lastResponseStatusCode
-      type:
-        scalar: numeric
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusLastRequest
     - name: lastSuccessfulSha
       type:
         scalar: string
@@ -2341,6 +2341,21 @@ var schemaYAML = typed.YAMLObject(`types:
               elementType:
                 namedType: __untyped_deduced_
               elementRelationship: separable
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusLastRequest
+  map:
+    fields:
+    - name: method
+      type:
+        scalar: string
+    - name: responseStatusCode
+      type:
+        scalar: numeric
+    - name: time
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: url
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusLastSuccessfulShaItem
   map:
     fields:
@@ -2362,12 +2377,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
   map:
     fields:
-    - name: lastRequestTime
+    - name: lastRequest
       type:
-        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
-    - name: lastResponseStatusCode
-      type:
-        scalar: numeric
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WebRequestCommitStatusLastRequest
     - name: lastSuccessfulShas
       type:
         list:

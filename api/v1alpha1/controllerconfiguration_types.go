@@ -235,8 +235,8 @@ type ChangeTransferPolicyConfiguration struct {
 // This configuration controls how the PullRequest controller processes reconciliation requests
 // and generates pull requests, including WorkQueue settings and template configuration.
 type PullRequestConfiguration struct {
-	// Template is the template configuration used to generate pull request titles and descriptions.
-	// Uses Go template syntax with Sprig functions available.
+	// Template is the template configuration used to generate pull request titles, descriptions,
+	// and merge commit messages. Uses Go template syntax with Sprig functions available.
 	// +required
 	Template PullRequestTemplate `json:"template"`
 
@@ -461,7 +461,7 @@ type ExponentialFailure struct {
 // Exactly one of the rate limiter types or MaxOf must be specified.
 //
 // See https://pkg.go.dev/k8s.io/client-go/util/workqueue for rate limiter implementation details.
-// +kubebuilder:validation:AtMostOneOf=fastSlow;exponentialFailure;bucket;maxOf
+// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket;maxOf
 type RateLimiter struct {
 	// RateLimiterTypes can be one of: FastSlow, ExponentialFailure, or Bucket.
 	// +optional
@@ -471,7 +471,9 @@ type RateLimiter struct {
 	// limiters is used. This enables sophisticated rate limiting that respects multiple
 	// constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
 	// +optional
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=3
+	// +kubebuilder:validation:items:XValidation:rule="(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) == 1",message="exactly one of fastSlow, exponentialFailure or bucket must be specified"
 	MaxOf []RateLimiterTypes `json:"maxOf,omitempty"`
 }
 
@@ -555,6 +557,11 @@ type Bucket struct {
 // Templates use Go template syntax and have access to Sprig functions for flexible string
 // manipulation and formatting.
 //
+// The CommitMessage template is the whole human-readable merge commit message; the title and
+// description are never used in its place. Commit trailers required by the promoter are appended
+// automatically after the rendered message. When the template renders empty and trailers are
+// appended, a minimal "Promote to `<branch>`" subject is added so git can still parse the trailers.
+//
 // Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
 //   - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
 //   - .PromotionStrategy – the PromotionStrategy for the CTP
@@ -568,6 +575,16 @@ type PullRequestTemplate struct {
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
 	Description string `json:"description"`
+
+	// CommitMessage is the template used to generate the merge commit message for the pull request.
+	// The rendered template is the whole human-readable message; the title and description are never
+	// used in its place. Machine-read commit trailers used by the promoter to reconstruct promotion
+	// history are always appended after the rendered message; do not attempt to include them in the template.
+	// When the template renders empty and trailers are appended, a minimal "Promote to `<branch>`"
+	// subject is added, because git does not parse trailers from the first paragraph of a message.
+	// Uses Go template syntax with Sprig functions available for string manipulation.
+	// +required
+	CommitMessage string `json:"commitMessage"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
