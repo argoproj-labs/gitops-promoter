@@ -34,6 +34,9 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
 	"github.com/google/cel-go/ext"
+	apiextensionsinternal "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	structuralschema "k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -98,7 +101,13 @@ var reportStringVariables = []string{"Phase", "ResourceName", "ResourceKind", "E
 type KindSchema struct {
 	Decl   *apiservercel.DeclType
 	Schema *spec.Schema
-	hash   string
+	// Structural is the kind's schema as a structural schema, set only when the schema carries CEL rules
+	// (x-kubernetes-validations, which only CustomResourceDefinitions publish) and can be made structural.
+	Structural *structuralschema.Structural
+	hash       string
+	// CRD is true when the kind is served from a CustomResourceDefinition, whose schema defaults the API server
+	// applies before it checks required fields. It is false when the resolver cannot tell (see OriginResolver).
+	CRD bool
 }
 
 func (ks *KindSchema) hashOrEmpty() string {
@@ -250,15 +259,27 @@ func (c *Compiler) resolveKindSchemaLocked(gvk schema.GroupVersionKind) (*KindSc
 // buildKindSchema resolves gvk and converts it; prev is returned unchanged when the schema has not changed, so
 // callers can detect changes by pointer identity or hash.
 func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema) (*KindSchema, error) {
-	s, err := c.resolver.ResolveSchema(gvk)
+	var s *spec.Schema
+	var crd bool
+	var err error
+	if origin, ok := c.resolver.(OriginResolver); ok {
+		s, crd, err = origin.ResolveSchemaWithOrigin(gvk)
+	} else {
+		s, err = c.resolver.ResolveSchema(gvk)
+	}
 	if err != nil {
 		return nil, err //nolint:wrapcheck // the caller adds the kind
 	}
+	// Built before markOpenSchemasDynamic tags untyped nodes, which would change their structural meaning.
+	structural := celStructural(s)
 	full := common.WithTypeAndObjectMeta(s)
 	markOpenSchemasDynamic(full)
 	raw, err := json.Marshal(full)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the schema: %w", err)
+	}
+	if crd {
+		raw = append(raw, []byte("crd")...)
 	}
 	sum := sha256.Sum256(raw)
 	hash := hex.EncodeToString(sum[:])
@@ -271,7 +292,45 @@ func (c *Compiler) buildKindSchema(gvk schema.GroupVersionKind, prev *KindSchema
 	}
 	decl = decl.MaybeAssignTypeName(strings.ReplaceAll(gvk.String(), " ", "") + ".Resource")
 	markOpenObjects(decl, full)
-	return &KindSchema{Decl: decl, Schema: full, hash: hash}, nil
+	return &KindSchema{Decl: decl, Schema: full, Structural: structural, CRD: crd, hash: hash}, nil
+}
+
+// celStructural converts a kind's resolved schema into a structural schema for evaluating its CEL rules. It returns
+// nil when the schema has no rules (every built-in kind) or cannot be converted. metadata is replaced by a plain
+// object: the controller sets it, and rules on the root, the only node that could read it, are never evaluated.
+// Adapted from the schema validation of PR #2343.
+func celStructural(root *spec.Schema) *structuralschema.Structural {
+	raw, err := json.Marshal(root)
+	if err != nil || !strings.Contains(string(raw), `"x-kubernetes-validations"`) {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	delete(m, gvkExtension)
+	if props, ok := m["properties"].(map[string]any); ok {
+		if _, ok := props["metadata"]; ok {
+			props["metadata"] = map[string]any{"type": "object"}
+		}
+	}
+	raw, err = json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	var v1Props apiextensionsv1.JSONSchemaProps
+	if err := json.Unmarshal(raw, &v1Props); err != nil {
+		return nil
+	}
+	var internal apiextensionsinternal.JSONSchemaProps
+	if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(&v1Props, &internal, nil); err != nil {
+		return nil
+	}
+	structural, err := structuralschema.NewStructural(&internal)
+	if err != nil {
+		return nil
+	}
+	return structural
 }
 
 // markOpenSchemasDynamic makes every subschema that declares no type at all (and no properties, items, or

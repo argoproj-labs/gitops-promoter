@@ -123,7 +123,33 @@ var _ = Describe("KubernetesResourceCommitStatus validating webhook", func() {
 
 	It("rejects template fields the kind's schema does not know", func() {
 		err := create(newGate("unknown-field", jobTemplate("paralellism: 1"), jobPhase))
-		expectDenied(err, "spec.template.spec.paralellism", "unknown field")
+		expectDenied(err, "spec.template.spec.paralellism", "unknown field", `(did you mean "parallelism"?)`)
+	})
+
+	It("rejects an object in the template that lacks a required field", func() {
+		err := create(newGate("missing-required", `
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - image: busybox
+`, jobPhase))
+		expectDenied(err, "spec.template.spec.template.spec.containers[0].name: Required value")
+	})
+
+	It("accepts required fields computed by an expression", func() {
+		Expect(create(newGate("required-from-expression", `
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers: "${ [{'name': 'smoke', 'image': 'busybox'}] }"
+`, jobPhase))).To(Succeed())
 	})
 
 	It("rejects an unknown variable and an unknown field of a typed variable", func() {

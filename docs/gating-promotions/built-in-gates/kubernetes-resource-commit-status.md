@@ -208,6 +208,15 @@ with the expression and the template path **before anything is created**:
   `spec.parallelism` or an integer for `spec.suspend`, including the item type of a list and the value type of a
   map (`args: ${ [1, 2] }` is rejected for a list of strings);
 - a literal that is not one of the field's enum values;
+- a literal that breaks another constraint of its field: format, minimum and maximum, length, pattern, or item count;
+- for kinds served from a CustomResourceDefinition, a CRD CEL rule (`x-kubernetes-validations`) that the literal
+  values break, evaluated with the schema's defaults applied. A rule is skipped when the node it is attached to holds
+  an expression anywhere below it, since it could read a value only known after rendering, and rules on the
+  object's root are always skipped, because the controller sets `metadata`;
+- a required field missing from an object written out in the template, such as a container without `name`.
+  Nothing can add it later, because an expression replaces only its own field's value. Fields inside an expression's
+  result (`containers: ${ [...] }`) and under `metadata` are not checked, and for CRD kinds a field with a schema
+  default is not reported, since the API server applies defaults first;
 - an expression that can remove a field the schema requires (a `null` or an optional result);
 - text with embedded expressions in a non-string field, and a list, map, or null in a label, annotation,
   `description`, or `url`.
@@ -234,16 +243,23 @@ description: >-
 The gate holds the whole template, so the CRD schema cannot validate it. The controller can instead serve a
 [validating admission webhook](../../advanced-usage/admission-webhook.md) that runs the same compile-time checks
 when the gate is created or updated, plus a check that every template field exists in the kind's schema (the API
-server would otherwise drop a misspelled field silently). A bad gate is then rejected by `kubectl apply` or shown as
-a sync error by Argo CD:
+server would otherwise drop a misspelled field silently, so a close match is suggested). A bad gate is then rejected
+by `kubectl apply` or shown as a sync error by Argo CD:
 
 ```text
 The KubernetesResourceCommitStatus "smoke-test" is invalid:
-spec.template.spec.parallelism: Invalid value: "${ Sha }": expression "Sha" returns string but the field expects int
+* spec.template.spec.parallelism: Invalid value: "${ Sha }": expression "Sha" returns string but the field expects int
+* spec.template.spec.template.spec.containers[0].imag: Invalid value: "imag": unknown field: the schema of batch/v1, Kind=Job has no field "imag" here and the API server would drop it (did you mean "image"?)
+* spec.template.spec.template.spec.containers[0].name: Required value
 ```
 
-The webhook is included in the `install-with-dashboard-*` bundles. Without it, the same errors appear as
-`Ready=False` on the first reconcile.
+The controller runs the same checks on every reconcile, so a gate stored while the webhook was off reports these
+errors as `Ready=False` and creates nothing.
+
+How much is checked for a custom resource depends on its CRD's schema. Argo Workflows ships two `Workflow` CRDs: the
+**full** CRD declares every field, so a typo such as `entrypont` is rejected, while the default **minimal** CRD marks
+`spec` with `x-kubernetes-preserve-unknown-fields`, so almost nothing under `spec` is checked. Tekton's `PipelineRun`
+CRD declares most of `spec`, but leaves some values (such as parameter values) open.
 
 ### Validation by dry-run
 

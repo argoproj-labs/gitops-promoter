@@ -32,7 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apiserver/pkg/cel/openapi/resolver"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/events"
@@ -123,7 +123,7 @@ func (r *KubernetesResourceCommitStatusReconciler) Reconcile(ctx context.Context
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", krcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	template, sourceGVK, err := r.parseTemplate(&krcs)
+	template, sourceGVK, err := r.parseTemplate(ctx, &krcs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -357,13 +357,23 @@ func isTerminalPhase(phase promoterv1alpha1.CommitStatusPhase) bool {
 }
 
 // parseTemplate decodes spec.template and checks that its kind is one the controller was configured to create.
-func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (map[string]any, schema.GroupVersionKind, error) {
+// parseTemplate parses spec.template and runs the admission webhook's static checks, so a gate stored while the
+// webhook was off reports the same errors as Ready=False and creates nothing. When the kind's schema cannot be
+// resolved, only the checks that need no schema run; the API server validates the rendered object.
+func (r *KubernetesResourceCommitStatusReconciler) parseTemplate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (map[string]any, schema.GroupVersionKind, error) {
 	template, sourceGVK, err := resourcetemplate.ParseTemplate(krcs.Spec.Template)
 	if err != nil {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec.template: %w", err)
 	}
 	if _, ok := r.configured[sourceGVK]; !ok {
 		return nil, schema.GroupVersionKind{}, fmt.Errorf("resource kind %s is not listed in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources", sourceGVK)
+	}
+	ks, err := r.compiler.ResolveKindSchema(sourceGVK)
+	if err != nil {
+		ks = nil
+	}
+	if _, errs := resourcetemplate.ValidateSpec(ctx, r.compiler, sourceGVK, ks, template, &krcs.Spec, field.NewPath("spec")); len(errs) > 0 {
+		return nil, schema.GroupVersionKind{}, fmt.Errorf("invalid spec: %w", errs.ToAggregate())
 	}
 	return template, sourceGVK, nil
 }
@@ -893,7 +903,7 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		return fmt.Errorf("failed to create discovery client: %w", err)
 	}
 	// Resource is typed from the created kind's OpenAPI v3 schema, resolved through discovery on first use.
-	r.compiler, err = resourcetemplate.NewCompiler(&resolver.ClientDiscoveryResolver{Discovery: discoveryClient}, logger)
+	r.compiler, err = resourcetemplate.NewCompiler(&resourcetemplate.DiscoveryResolver{Discovery: discoveryClient}, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create expression compiler: %w", err)
 	}

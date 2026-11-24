@@ -1,13 +1,17 @@
 package resourcetemplate
 
 import (
+	"context"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/kube-openapi/pkg/validation/spec"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -75,7 +79,7 @@ var _ = Describe("ValidateSpec", func() {
 		if mutate != nil {
 			mutate(krcsSpec)
 		}
-		return ValidateSpec(compiler, gvk, ks, parsed, krcsSpec, field.NewPath("spec"))
+		return ValidateSpec(context.Background(), compiler, gvk, ks, parsed, krcsSpec, field.NewPath("spec"))
 	}
 	const okPhase = "Resource.?status.?succeeded.orValue(0) > 0"
 
@@ -91,6 +95,11 @@ var _ = Describe("ValidateSpec", func() {
 			msg = agg.Error()
 		}
 		Fail("no error at " + path + " containing " + detail + "; errors: " + msg)
+	}
+
+	requiredAt := func(errs field.ErrorList, path string) {
+		GinkgoHelper()
+		Expect(errs).To(ContainElement(And(HaveField("Type", field.ErrorTypeRequired), HaveField("Field", path))), aggregate(errs))
 	}
 
 	It("accepts a template whose expressions and literals match the schema", func() {
@@ -245,11 +254,186 @@ spec:
 		Expect(errs).To(BeEmpty(), aggregate(errs))
 	})
 
+	It("suggests the declared field nearest to a misspelled one", func() {
+		_, errs := validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      containers:
+        - name: a
+          imag: busybox
+          zzzzzzzz: 1
+`, okPhase, nil)
+		errorAt(errs, "spec.template.spec.template.spec.containers[0].imag", `(did you mean "image"?)`)
+		for _, e := range errs {
+			if e.Field == "spec.template.spec.template.spec.containers[0].zzzzzzzz" {
+				Expect(e.Detail).NotTo(ContainSubstring("did you mean"))
+			}
+		}
+	})
+
+	It("reports required fields missing from objects written out in the template", func() {
+		_, errs := validate(`
+apiVersion: batch/v1
+kind: Job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+`, okPhase, nil)
+		requiredAt(errs, "spec.template.spec.template.spec.containers")
+		Expect(errs).To(HaveLen(1), aggregate(errs))
+
+		By("ignoring the placeholder default a built-in kind publishes on a required field")
+		_, errs = validate(`{apiVersion: batch/v1, kind: Job, spec: {template: {spec: {containers: [{image: busybox}]}}}}`, okPhase, nil)
+		requiredAt(errs, "spec.template.spec.template.spec.containers[0].name")
+		Expect(errs).To(HaveLen(1), aggregate(errs))
+
+		By("not looking inside an expression's result")
+		_, errs = validate(`{apiVersion: batch/v1, kind: Job, spec: {template: {spec: {containers: "${ [{'image': 'busybox'}] }"}}}}`, okPhase, nil)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
+
+		By("accepting a required field whose value is an expression")
+		_, errs = validate(`{apiVersion: batch/v1, kind: Job, spec: {template: {spec: {containers: [{name: "${ Branch.replace('/', '-') }"}]}}}}`, okPhase, nil)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
+	})
+
 	It("checks only compilation when the kind's schema is unknown", func() {
 		ks = nil
 		_, errs := validate(`{apiVersion: batch/v1, kind: Job, spec: {parallelism: "${ Sha }", paralellism: 1, x: "${ Shaa }"}}`, okPhase, nil)
 		Expect(errs).To(HaveLen(1))
 		errorAt(errs, "spec.template.spec.x", "undeclared reference to 'Shaa'")
+	})
+})
+
+// widgetGVK is a CustomResourceDefinition kind whose schema carries constraints, defaults, and CEL rules, which
+// only CRD schemas publish.
+var widgetGVK = schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}
+
+func widgetSchema() *spec.Schema {
+	size := *spec.Int64Property()
+	size.Minimum, size.Maximum = new(1.0), new(10.0)
+	mode := *spec.StringProperty()
+	mode.Enum = []any{"fast", "slow"}
+	mode.Default = "fast"
+	name := *spec.StringProperty()
+	name.Pattern = "^[a-z${}]+$"
+	name.MaxLength = new(int64(8))
+	tags := spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"array"}, MaxItems: new(int64(2)), Items: &spec.SchemaOrArray{Schema: spec.StringProperty()}}}
+	limits := spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Properties: map[string]spec.Schema{
+		"min": *spec.Int64Property(),
+		"max": *spec.Int64Property(),
+	}}}
+	limits.AddExtension("x-kubernetes-validations", []any{map[string]any{"rule": "self.min <= self.max", "message": "min must not exceed max"}})
+	widgetSpec := spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Required: []string{"size", "mode"}, Properties: map[string]spec.Schema{
+		"size": size, "mode": mode, "name": name, "tags": tags, "limits": limits,
+	}}}
+	widgetSpec.AddExtension("x-kubernetes-validations", []any{map[string]any{"rule": "self.size <= 5 || self.mode == 'slow'", "message": "big widgets must be slow"}})
+	root := &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Properties: map[string]spec.Schema{
+		"apiVersion": *spec.StringProperty(),
+		"kind":       *spec.StringProperty(),
+		"metadata":   {SchemaProps: spec.SchemaProps{Type: []string{"object"}}},
+		"spec":       widgetSpec,
+	}}}
+	root.AddExtension("x-kubernetes-validations", []any{map[string]any{"rule": "self.metadata.name.startsWith('w')", "message": "root rules are skipped"}})
+	return root
+}
+
+// originResolver serves widgetSchema and reports it as a CRD, or as a built-in kind when crd is false.
+type originResolver struct{ crd bool }
+
+func (r originResolver) ResolveSchema(gvk schema.GroupVersionKind) (*spec.Schema, error) {
+	s, _, err := r.ResolveSchemaWithOrigin(gvk)
+	return s, err
+}
+
+func (r originResolver) ResolveSchemaWithOrigin(gvk schema.GroupVersionKind) (*spec.Schema, bool, error) {
+	if gvk == widgetGVK {
+		return widgetSchema(), r.crd, nil
+	}
+	return nil, false, resolver.ErrSchemaNotFound
+}
+
+var _ = Describe("ValidateSpec on a CustomResourceDefinition kind", func() {
+	validate := func(crd bool, template string) field.ErrorList {
+		GinkgoHelper()
+		compiler, err := NewCompiler(originResolver{crd: crd}, log.Log)
+		Expect(err).NotTo(HaveOccurred())
+		ks, err := compiler.ResolveKindSchema(widgetGVK)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ks.CRD).To(Equal(crd))
+		raw, err := yaml.YAMLToJSON([]byte(template))
+		Expect(err).NotTo(HaveOccurred())
+		parsed, gvk, err := ParseTemplate(apiextensionsv1.JSON{Raw: raw})
+		Expect(err).NotTo(HaveOccurred())
+		_, errs := ValidateSpec(context.Background(), compiler, gvk, ks, parsed, &promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+			Template: apiextensionsv1.JSON{Raw: raw},
+			Phase:    promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+		}, field.NewPath("spec"))
+		return errs
+	}
+	errorAt := func(errs field.ErrorList, path, detail string) {
+		GinkgoHelper()
+		for _, e := range errs {
+			if e.Field == path && strings.Contains(e.Error(), detail) {
+				return
+			}
+		}
+		Fail("no error at " + path + " containing " + detail + "; errors: " + aggregate(errs))
+	}
+
+	requiredAt := func(errs field.ErrorList, path string) {
+		GinkgoHelper()
+		Expect(errs).To(ContainElement(And(HaveField("Type", field.ErrorTypeRequired), HaveField("Field", path))), aggregate(errs))
+	}
+
+	It("accepts a valid widget", func() {
+		errs := validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 3, mode: fast, name: abc, tags: [a, b], limits: {min: 1, max: 2}}}`)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
+	})
+
+	It("counts schema defaults for CRD kinds only", func() {
+		errs := validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {name: abc}}`)
+		requiredAt(errs, "spec.template.spec.size")
+		Expect(errs).To(HaveLen(1), aggregate(errs))
+
+		errs = validate(false, `{apiVersion: example.com/v1, kind: Widget, spec: {name: abc}}`)
+		requiredAt(errs, "spec.template.spec.size")
+		requiredAt(errs, "spec.template.spec.mode")
+	})
+
+	It("checks the constraints of values without expressions", func() {
+		errs := validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 20, mode: slow, name: ABCDEFGHIJ, tags: [a, b, c]}}`)
+		errorAt(errs, "spec.template.spec.size", "less than or equal to 10")
+		errorAt(errs, "spec.template.spec.name", "may not be more than 8")
+		errorAt(errs, "spec.template.spec.tags", "at most 2 items")
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 1, mode: slow, name: ABC}}`)
+		errorAt(errs, "spec.template.spec.name", "should match")
+
+		By("skipping values computed by expressions")
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: "${ 20 }", mode: slow, name: "${ Branch }", tags: [a, b, "${ Sha }"]}}`)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
+
+		By("resolving $${ escapes before checking")
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 1, mode: slow, name: "$${ab}"}}`)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 1, mode: slow, name: "$${ABCDEFGHIJ}"}}`)
+		errorAt(errs, "spec.template.spec.name", "may not be more than 8")
+	})
+
+	It("evaluates CEL rules over values without expressions, with defaults applied", func() {
+		By("applying the default mode before the rule reads it")
+		errs := validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 8}}`)
+		errorAt(errs, "spec.template.spec", "big widgets must be slow")
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: 8, mode: slow, limits: {min: 5, max: 1}}}`)
+		errorAt(errs, "spec.template.spec.limits", "min must not exceed max")
+		Expect(errs).To(HaveLen(1), aggregate(errs))
+
+		By("skipping rules on a node with an expression below it")
+		errs = validate(true, `{apiVersion: example.com/v1, kind: Widget, spec: {size: "${ 8 }", limits: {min: "${ 5 }", max: 1}}}`)
+		Expect(errs).To(BeEmpty(), aggregate(errs))
 	})
 })
 

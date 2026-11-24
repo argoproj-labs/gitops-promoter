@@ -17,6 +17,7 @@ limitations under the License.
 package resourcetemplate
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -35,20 +36,29 @@ import (
 //   - every ${ } expression must compile against its variable set (unknown variables and unknown fields of the
 //     typed variables are errors);
 //   - a standalone expression, or a literal, must have the type of the field it populates;
-//   - template fields must exist in the kind's schema, since the API server would silently drop them;
+//   - template fields must exist in the kind's schema, since the API server would silently drop them (with a
+//     suggestion when the name is close to a declared one);
+//   - an object written out in the template must hold the fields its schema requires, since an expression only
+//     replaces its own field and cannot add a sibling (see checkRequired);
+//   - values without expressions must satisfy the schema's constraints (format, bounds, lengths, patterns, item
+//     counts) and, for CustomResourceDefinition kinds, the CEL rules that cannot see an expression (see
+//     validateLiterals);
 //   - spec.phase.expression must return a boolean or an object, and spec.description / spec.url must render to text.
 //
 // template is the parsed spec.template (see ParseTemplate) and ks the resolved schema of gvk; a nil ks limits the
 // checks to compilation. Errors are reported under fldPath; warnings name template fields the controller ignores.
-func ValidateSpec(compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchema, template map[string]any, krcsSpec *promoterv1alpha1.KubernetesResourceCommitStatusSpec, fldPath *field.Path) (warnings []string, errs field.ErrorList) {
+func ValidateSpec(ctx context.Context, compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchema, template map[string]any, krcsSpec *promoterv1alpha1.KubernetesResourceCommitStatusSpec, fldPath *field.Path) (warnings []string, errs field.ErrorList) {
 	var decl *apiservercel.DeclType
 	var sch *spec.Schema
+	var crd bool
 	if ks != nil {
 		decl = ks.Decl
 		sch = ks.Schema
+		crd = ks.CRD
 	}
 	templatePath := fldPath.Child("template")
 	in := NewInterpolator(compiler, TemplateVariables, gvk, nil)
+	errs = append(errs, checkRequired(sch, template, templatePath, true, crd)...)
 
 	for key, value := range template {
 		switch key {
@@ -63,10 +73,21 @@ func ValidateSpec(compiler *Compiler, gvk schema.GroupVersionKind, ks *KindSchem
 		default:
 			childSchema, known := schemaChild(sch, key)
 			if !known {
-				errs = append(errs, unknownField(templatePath.Child(key), gvk, key))
+				errs = append(errs, unknownField(templatePath.Child(key), gvk, key, sch))
 				continue
 			}
-			errs = append(errs, checkValue(in, gvk, value, FieldType(decl, key), childSchema, isRequired(decl, key), templatePath.Child(key))...)
+			errs = append(errs, checkValue(in, gvk, crd, value, FieldType(decl, key), childSchema, isRequired(decl, key), templatePath.Child(key))...)
+		}
+	}
+	// The literal checks repeat the type and enum checks above in the API server's wording; keep only their
+	// errors at paths not reported yet.
+	reported := make(map[string]struct{}, len(errs))
+	for _, e := range errs {
+		reported[e.Field] = struct{}{}
+	}
+	for _, e := range validateLiterals(ctx, ks, template, templatePath) {
+		if _, ok := reported[e.Field]; !ok {
+			errs = append(errs, e)
 		}
 	}
 
@@ -132,31 +153,32 @@ func checkMetadata(in *Interpolator, value any, path *field.Path) (warnings []st
 // checkValue walks v in parallel with the kind's declaration and schema, checking expressions and literals
 // against the declared type at each path and flagging fields the schema does not know. required says whether
 // the parent declares the field required, in which case an expression that can remove it is rejected.
-func checkValue(in *Interpolator, gvk schema.GroupVersionKind, v any, decl *apiservercel.DeclType, sch *spec.Schema, required bool, path *field.Path) field.ErrorList {
+func checkValue(in *Interpolator, gvk schema.GroupVersionKind, crd bool, v any, decl *apiservercel.DeclType, sch *spec.Schema, required bool, path *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	switch t := v.(type) {
 	case map[string]any:
 		if decl != nil && !decl.IsObject() && !decl.IsMap() && decl.CelType().Kind() != cel.DynKind {
 			return field.ErrorList{field.Invalid(path, "", fmt.Sprintf("the field expects %s but the value is an object", describeDeclType(decl)))}
 		}
+		errs = append(errs, checkRequired(sch, t, path, isEmbeddedResource(sch), crd)...)
 		for key, child := range t {
 			childSchema, known := schemaChild(sch, key)
 			if !known {
-				errs = append(errs, unknownField(path.Child(key), gvk, key))
+				errs = append(errs, unknownField(path.Child(key), gvk, key, sch))
 				continue
 			}
 			if err := checkEnum(decl, key, child, path.Child(key)); err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			errs = append(errs, checkValue(in, gvk, child, FieldType(decl, key), childSchema, isRequired(decl, key), path.Child(key))...)
+			errs = append(errs, checkValue(in, gvk, crd, child, FieldType(decl, key), childSchema, isRequired(decl, key), path.Child(key))...)
 		}
 	case []any:
 		if decl != nil && !decl.IsList() && decl.CelType().Kind() != cel.DynKind {
 			return field.ErrorList{field.Invalid(path, "", fmt.Sprintf("the field expects %s but the value is a list", describeDeclType(decl)))}
 		}
 		for i, child := range t {
-			errs = append(errs, checkValue(in, gvk, child, ElemType(decl), schemaItems(sch), false, path.Index(i))...)
+			errs = append(errs, checkValue(in, gvk, crd, child, ElemType(decl), schemaItems(sch), false, path.Index(i))...)
 		}
 	case string:
 		if strings.Contains(t, "${") {
@@ -219,8 +241,102 @@ func checkLiteral(t *cel.Type, v any, decl *apiservercel.DeclType, path *field.P
 	return nil
 }
 
-func unknownField(path *field.Path, gvk schema.GroupVersionKind, key string) *field.Error {
-	return field.Invalid(path, key, fmt.Sprintf("unknown field: the schema of %s has no field %q here and the API server would drop it", gvk, key))
+func unknownField(path *field.Path, gvk schema.GroupVersionKind, key string, parent *spec.Schema) *field.Error {
+	detail := fmt.Sprintf("unknown field: the schema of %s has no field %q here and the API server would drop it", gvk, key)
+	if suggestion := closestKey(key, parent); suggestion != "" {
+		detail += fmt.Sprintf(" (did you mean %q?)", suggestion)
+	}
+	return field.Invalid(path, key, detail)
+}
+
+// closestKey returns the property of parent nearest to key by edit distance, when it is close enough to be a typo.
+// Adapted from PR #2343.
+func closestKey(key string, parent *spec.Schema) string {
+	if parent == nil {
+		return ""
+	}
+	best, bestDistance := "", -1
+	for name := range parent.Properties {
+		d := editDistance(strings.ToLower(key), strings.ToLower(name))
+		if bestDistance < 0 || d < bestDistance || (d == bestDistance && name < best) {
+			best, bestDistance = name, d
+		}
+	}
+	if bestDistance < 0 || bestDistance > max(2, len(key)/3) {
+		return ""
+	}
+	return best
+}
+
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	cur := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(b)]
+}
+
+// checkRequired reports the required fields of sch that object, which is written out in the template, lacks.
+// Nothing can add them later: an expression only replaces its own field's value. Fields inside an expression's
+// result are never walked, so they are not checked. On a resource root (the template itself or an embedded
+// resource) apiVersion, kind, metadata, and status are skipped, since the controller sets metadata and the renderer
+// drops status. For CustomResourceDefinition kinds a field with a schema default is skipped, because the API server
+// applies defaults first; built-in kinds publish placeholder defaults on fields that are still required, so their
+// defaults do not count. Objects that accept unknown fields are not checked.
+func checkRequired(sch *spec.Schema, object map[string]any, path *field.Path, resourceRoot, crd bool) field.ErrorList {
+	if sch == nil || len(sch.Required) == 0 || preservesUnknownFieldsOnly(sch) {
+		return nil
+	}
+	names := slices.Clone(sch.Required)
+	slices.Sort(names)
+	var errs field.ErrorList
+	for _, name := range slices.Compact(names) {
+		if _, ok := object[name]; ok {
+			continue
+		}
+		if resourceRoot && (name == "apiVersion" || name == "kind" || name == fieldMetadata || name == fieldStatus) {
+			continue
+		}
+		if crd {
+			if prop, ok := sch.Properties[name]; ok && prop.Default != nil {
+				continue
+			}
+		}
+		errs = append(errs, field.Required(path.Child(name), ""))
+	}
+	return errs
+}
+
+// preservesUnknownFieldsOnly reports whether s accepts arbitrary content (preserve-unknown-fields or
+// int-or-string). Unlike preservesUnknownFields it does not count embedded resources, whose declared fields are
+// still checked.
+func preservesUnknownFieldsOnly(s *spec.Schema) bool {
+	for _, ext := range []string{"x-kubernetes-preserve-unknown-fields", "x-kubernetes-int-or-string"} {
+		if v, ok := s.Extensions.GetBool(ext); ok && v {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmbeddedResource(s *spec.Schema) bool {
+	if s == nil {
+		return false
+	}
+	v, ok := s.Extensions.GetBool("x-kubernetes-embedded-resource")
+	return ok && v
 }
 
 // schemaChild returns the schema of key under parent and whether key is permitted there. An unknown parent, an

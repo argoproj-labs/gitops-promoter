@@ -64,18 +64,18 @@ func (v *KubernetesResourceCommitStatusValidator) SetupWithManager(mgr ctrl.Mana
 }
 
 // ValidateCreate implements admission.Validator.
-func (v *KubernetesResourceCommitStatusValidator) ValidateCreate(_ context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
-	return v.validate(krcs)
+func (v *KubernetesResourceCommitStatusValidator) ValidateCreate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
+	return v.validate(ctx, krcs)
 }
 
 // ValidateUpdate implements admission.Validator. An update that leaves spec unchanged (labels, finalizers,
 // ownership) is accepted without looking at the cluster, so a gate stays manageable even when its kind's CRD is
 // gone.
-func (v *KubernetesResourceCommitStatusValidator) ValidateUpdate(_ context.Context, oldKRCS, newKRCS *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
+func (v *KubernetesResourceCommitStatusValidator) ValidateUpdate(ctx context.Context, oldKRCS, newKRCS *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
 	if equality.Semantic.DeepEqual(oldKRCS.Spec, newKRCS.Spec) {
 		return nil, nil
 	}
-	return v.validate(newKRCS)
+	return v.validate(ctx, newKRCS)
 }
 
 // ValidateDelete implements admission.Validator; deletions are never rejected.
@@ -83,7 +83,7 @@ func (v *KubernetesResourceCommitStatusValidator) ValidateDelete(context.Context
 	return nil, nil
 }
 
-func (v *KubernetesResourceCommitStatusValidator) validate(krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
+func (v *KubernetesResourceCommitStatusValidator) validate(ctx context.Context, krcs *promoterv1alpha1.KubernetesResourceCommitStatus) (admission.Warnings, error) {
 	specPath := field.NewPath("spec")
 	templatePath := specPath.Child("template")
 	invalid := func(errs field.ErrorList) error {
@@ -107,7 +107,7 @@ func (v *KubernetesResourceCommitStatusValidator) validate(krcs *promoterv1alpha
 		return nil, apierrors.NewInternalError(fmt.Errorf("failed to resolve the schema of %s: %w", gvk, err)) //nolint:wrapcheck // a StatusError sets the admission response code
 	}
 
-	warnings, errs := resourcetemplate.ValidateSpec(v.Compiler, gvk, ks, template, &krcs.Spec, specPath)
+	warnings, errs := resourcetemplate.ValidateSpec(ctx, v.Compiler, gvk, ks, template, &krcs.Spec, specPath)
 	if len(errs) > 0 {
 		return warnings, invalid(errs)
 	}

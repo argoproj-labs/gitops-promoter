@@ -31,7 +31,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -132,7 +131,7 @@ var _ = BeforeSuite(func() {
 
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
-	compiler, err := resourcetemplate.NewCompiler(&resolver.ClientDiscoveryResolver{Discovery: discoveryClient}, logf.Log)
+	compiler, err := resourcetemplate.NewCompiler(&resourcetemplate.DiscoveryResolver{Discovery: discoveryClient}, logf.Log)
 	Expect(err).NotTo(HaveOccurred())
 	validator = &KubernetesResourceCommitStatusValidator{
 		Compiler:   compiler,

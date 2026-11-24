@@ -797,6 +797,46 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		It("reports the webhook's schema errors as Ready=False and creates nothing", func() {
+			// The envtest suite runs without the admission webhook, like a gate stored before it was installed.
+			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
+				Name: name + "-schema-errors", Namespace: "default",
+				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  k8sResourceFailureGateKey,
+					Template: templateJSON(map[string]any{
+						"apiVersion": "batch/v1",
+						"kind":       "Job",
+						"spec": map[string]any{
+							"paralellism": 1,
+							"template": map[string]any{"spec": map[string]any{
+								"restartPolicy": "Never",
+								"containers":    []any{map[string]any{"image": "busybox"}},
+							}},
+						},
+					}),
+					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			Eventually(func(g Gomega) {
+				fetched := getK8sResourceGate(ctx, g, krcs.Name)
+				ready := meta.FindStatusCondition(fetched.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(ContainSubstring(`spec.template.spec.paralellism`))
+				g.Expect(ready.Message).To(ContainSubstring(`did you mean "parallelism"?`))
+				g.Expect(ready.Message).To(ContainSubstring("spec.template.spec.template.spec.containers[0].name: Required value"))
+				g.Expect(fetched.Status.Environments).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			var jobs batchv1.JobList
+			Expect(k8sClient.List(ctx, &jobs, ctrlclient.InNamespace("default"), ctrlclient.MatchingLabels{"promoter.argoproj.io/kubernetes-resource-commit-status": utils.KubeSafeLabel(krcs.Name)})).To(Succeed())
+			Expect(jobs.Items).To(BeEmpty())
+		})
+
 		It("reports Ready=False with a compile error when an expression produces the wrong type for a typed kind", func() {
 			template := jobTemplate()
 			var object map[string]any

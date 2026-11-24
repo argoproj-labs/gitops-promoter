@@ -1,6 +1,7 @@
 package resourcetemplate
 
 import (
+	"context"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -27,8 +28,10 @@ func jobSchema() *spec.Schema {
 	str := spec.StringProperty()
 	integer := spec.Int32Property()
 	boolean := spec.BoolProperty()
-	container := &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Properties: map[string]spec.Schema{
-		"name":  *str,
+	placeholderName := *spec.StringProperty()
+	placeholderName.Default = ""
+	container := &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"object"}, Required: []string{"name"}, Properties: map[string]spec.Schema{
+		"name":  placeholderName,
 		"image": *str,
 		"args":  {SchemaProps: spec.SchemaProps{Type: []string{"array"}, Items: &spec.SchemaOrArray{Schema: str}}},
 		"env": {SchemaProps: spec.SchemaProps{Type: []string{"array"}, Items: &spec.SchemaOrArray{Schema: &spec.Schema{SchemaProps: spec.SchemaProps{
@@ -304,7 +307,7 @@ var _ = Describe("Compiler open schemas", func() {
 		ks, err := c.ResolveKindSchema(jobGVK)
 		Expect(err).NotTo(HaveOccurred())
 		template := map[string]any{"apiVersion": "batch/v1", "kind": "Job", "spec": map[string]any{"podTemplate": map[string]any{"known": "${ Sha }", "other": "${ Sha }"}}}
-		_, errs := ValidateSpec(c, jobGVK, ks, template, &promoterv1alpha1.KubernetesResourceCommitStatusSpec{Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"}}, field.NewPath("spec"))
+		_, errs := ValidateSpec(context.Background(), c, jobGVK, ks, template, &promoterv1alpha1.KubernetesResourceCommitStatusSpec{Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: "true"}}, field.NewPath("spec"))
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Field).To(Equal("spec.template.spec.podTemplate.known"))
 		Expect(errs[0].Detail).To(ContainSubstring("returns string but the field expects int"))
