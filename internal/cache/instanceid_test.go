@@ -6,10 +6,12 @@ import (
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
@@ -114,6 +116,20 @@ var _ = Describe("ProviderClusterCacheOptions", func() {
 		Expect(byObj.UnsafeDisableDeepCopy).NotTo(BeNil())
 		Expect(*byObj.UnsafeDisableDeepCopy).To(BeTrue())
 		Expect(byObj.Label).To(BeNil(), "provider Application must stay unfiltered (no DefaultLabelSelector)")
+	})
+
+	It("strips managedFields from provider Applications", func() {
+		opts := promotercache.ProviderClusterCacheOptions()
+		byObj := opts.ByObject[promotercache.UnpartitionedApplicationObject()]
+		Expect(byObj.Transform).NotTo(BeNil())
+
+		app := &argocd.Application{}
+		app.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "argocd-application-controller"}}
+		out, err := byObj.Transform(app)
+		Expect(err).NotTo(HaveOccurred())
+		stripped, ok := out.(*argocd.Application)
+		Expect(ok).To(BeTrue())
+		Expect(stripped.ManagedFields).To(BeEmpty())
 	})
 })
 
