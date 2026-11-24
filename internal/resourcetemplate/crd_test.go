@@ -2,20 +2,25 @@ package resourcetemplate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -117,6 +122,55 @@ var _ = Describe("CRDGenerator", func() {
 		usePermissiveSchema(crd)
 		Expect(validateCRD(ctx, crd)).To(BeEmpty())
 		Expect(crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].XPreserveUnknownFields).NotTo(BeNil())
+	})
+
+	It("retries transient write failures and gives up on definitive ones", func() {
+		resources := []promoterv1alpha1.ResourceGroupVersionKind{{Group: "batch", Version: "v1", Kind: "Job"}}
+		gen.WriteBackoff = wait.Backoff{Duration: time.Millisecond, Factor: 1, Steps: 5}
+
+		By("succeeding once a server error clears")
+		var createCalls, failuresLeft int
+		failuresLeft = 2
+		c = fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				createCalls++
+				if failuresLeft > 0 {
+					failuresLeft--
+					return k8serrors.NewInternalError(errors.New("injected"))
+				}
+				return cl.Create(ctx, obj, opts...)
+			},
+		}).Build()
+		gen.Client = c
+		Expect(gen.Ensure(ctx, resources)).To(Succeed())
+		Expect(createCalls).To(BeNumerically(">=", 3), "two failed dry-run creates, then the dry run and the real create")
+		Expect(c.Get(ctx, types.NamespacedName{Name: "jobs.batch.templates.promoter.argoproj.io"}, &apiextensionsv1.CustomResourceDefinition{})).To(Succeed())
+
+		By("not retrying an authorization failure")
+		createCalls = 0
+		c = fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(_ context.Context, _ client.WithWatch, obj client.Object, _ ...client.CreateOption) error {
+				createCalls++
+				return k8serrors.NewForbidden(schema.GroupResource{Group: "apiextensions.k8s.io", Resource: "customresourcedefinitions"}, obj.GetName(), errors.New("denied"))
+			},
+		}).Build()
+		gen.Client = c
+		err := gen.Ensure(ctx, resources)
+		Expect(k8serrors.IsForbidden(err)).To(BeTrue(), err.Error())
+		Expect(createCalls).To(Equal(1))
+
+		By("giving up after the backoff is exhausted")
+		createCalls = 0
+		c = fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.CreateOption) error {
+				createCalls++
+				return k8serrors.NewInternalError(errors.New("still broken"))
+			},
+		}).Build()
+		gen.Client = c
+		err = gen.Ensure(ctx, resources)
+		Expect(k8serrors.IsInternalError(err)).To(BeTrue(), err.Error())
+		Expect(createCalls).To(Equal(5))
 	})
 
 	It("rejects cluster-scoped and unknown kinds", func() {

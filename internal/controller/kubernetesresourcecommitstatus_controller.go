@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -748,7 +749,11 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.KubernetesResourceCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.KubernetesResourceCommitStatusList](r.Client))
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.KubernetesResourceCommitStatusList](r.Client)).
+		// The gate inherits a Ready=False/Unknown condition from its CommitStatuses (InheritNotReadyConditionFromObjects).
+		// Without this watch it would keep that condition until the next periodic requeue even after the
+		// CommitStatus controller recovered, for example from a transient status-apply failure.
+		Owns(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(commitStatusReadyChanged()))
 
 	r.configured = make(map[schema.GroupVersionKind]struct{}, len(resources))
 	mapper := mgr.GetRESTMapper()
@@ -786,6 +791,33 @@ func (r *KubernetesResourceCommitStatusReconciler) SetupWithManager(ctx context.
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
+}
+
+// commitStatusReadyChanged enqueues the owning gate when an owned CommitStatus is deleted (so it is recreated) or
+// when its Ready condition changes. Creates are the gate's own writes and spec-only updates do not affect the
+// inherited condition, so neither triggers a reconcile.
+func commitStatusReadyChanged() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc:  func(event.CreateEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCS, okOld := e.ObjectOld.(*promoterv1alpha1.CommitStatus)
+			newCS, okNew := e.ObjectNew.(*promoterv1alpha1.CommitStatus)
+			if !okOld || !okNew {
+				return false
+			}
+			oldReady := meta.FindStatusCondition(oldCS.Status.Conditions, string(promoterConditions.Ready))
+			newReady := meta.FindStatusCondition(newCS.Status.Conditions, string(promoterConditions.Ready))
+			switch {
+			case oldReady == nil && newReady == nil:
+				return false
+			case oldReady == nil || newReady == nil:
+				return true
+			}
+			return oldReady.Status != newReady.Status || oldReady.Reason != newReady.Reason ||
+				oldReady.Message != newReady.Message || oldReady.ObservedGeneration != newReady.ObservedGeneration
+		},
+	}
 }
 
 // templateMappingWait bounds how long SetupWithManager retries the RESTMapper lookup of a wrapped template kind.

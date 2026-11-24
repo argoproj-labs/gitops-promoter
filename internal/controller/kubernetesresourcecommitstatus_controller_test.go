@@ -437,6 +437,51 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, historyGate, constants.KubernetesResourcePrunedReason, historyFirstJob))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("re-evaluates Ready when an owned CommitStatus changes Ready without waiting for the requeue interval", func() {
+			var csName string
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				csName = utils.CommitStatusResourceName(ctx, krcs, testBranchDevelopment)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// The CommitStatus controller only reconciles generation changes, so a status-only edit is not overwritten.
+			setCommitStatusReady := func(status metav1.ConditionStatus, reason string) {
+				GinkgoHelper()
+				Eventually(func(g Gomega) {
+					var cs promoterv1alpha1.CommitStatus
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)).To(Succeed())
+					meta.SetStatusCondition(&cs.Status.Conditions, metav1.Condition{
+						Type: string(promoterConditions.Ready), Status: status, Reason: reason,
+						Message: "set by the test", ObservedGeneration: cs.Generation,
+					})
+					g.Expect(k8sClient.Status().Update(ctx, &cs)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			By("marking the development CommitStatus not Ready")
+			setCommitStatusReady(metav1.ConditionFalse, "TestInjectedFailure")
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Reason).To(Equal(string(promoterConditions.CommitStatusesNotReady)))
+				g.Expect(ready.Message).To(ContainSubstring("TestInjectedFailure"))
+			}, constants.EventuallyTimeout).Should(Succeed(), "the gate watches its CommitStatuses; the testdata requeue interval is 5m")
+
+			By("restoring Ready on the CommitStatus")
+			setCommitStatusReady(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+			Eventually(func(g Gomega) {
+				krcs := getK8sResourceGate(ctx, g, gateName)
+				ready := meta.FindStatusCondition(krcs.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	Describe("InPlace ConfigMap gate", Ordered, func() {

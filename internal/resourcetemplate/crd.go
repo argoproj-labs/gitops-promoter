@@ -61,6 +61,9 @@ type CRDGenerator struct {
 	// discovery, so callers can set up watches on the template kinds right after Ensure returns. Zero uses
 	// DefaultReadyTimeout.
 	ReadyTimeout time.Duration
+	// WriteBackoff bounds the retries of transient API server failures while writing a CRD. Zero Steps means
+	// defaultWriteBackoff.
+	WriteBackoff wait.Backoff
 	// SkipReadyWait disables the readiness wait (unit tests with fake clients).
 	SkipReadyWait bool
 }
@@ -278,8 +281,51 @@ func buildCRD(group string, names apiextensionsv1.CustomResourceDefinitionNames,
 	}
 }
 
-// apply creates or updates crd, validating with a dry run first so a rejected schema surfaces before any write.
+// defaultWriteBackoff retries a transient API server failure while writing a CRD about six times over roughly
+// six seconds. CRD generation runs once at startup, where a single 5xx or conflict should not cost a restart.
+var defaultWriteBackoff = wait.Backoff{Duration: 200 * time.Millisecond, Factor: 2, Jitter: 0.1, Steps: 6}
+
+// isRetryableWriteError reports whether err is a transient failure of a CRD write: a server-side error, a
+// timeout, throttling, or a conflict with a concurrent writer. AlreadyExists is included because a create whose
+// response was lost may have succeeded; the next attempt reads the CRD back and takes the update path. Schema
+// rejections (see isSchemaRejection) and authorization failures are definitive and are not retried.
+func isRetryableWriteError(err error) bool {
+	return k8serrors.IsInternalError(err) || k8serrors.IsUnexpectedServerError(err) || k8serrors.IsServerTimeout(err) ||
+		k8serrors.IsTimeout(err) || k8serrors.IsServiceUnavailable(err) || k8serrors.IsTooManyRequests(err) ||
+		k8serrors.IsConflict(err) || k8serrors.IsAlreadyExists(err)
+}
+
+// apply creates or updates crd, retrying transient API server failures with backoff. Every attempt re-reads the
+// current CRD, so a retry after a lost response converges on the same result.
 func (g *CRDGenerator) apply(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) error {
+	backoff := g.WriteBackoff
+	if backoff.Steps == 0 {
+		backoff = defaultWriteBackoff
+	}
+	var lastErr error
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		lastErr = g.applyOnce(ctx, crd)
+		switch {
+		case lastErr == nil:
+			return true, nil
+		case isRetryableWriteError(lastErr):
+			g.Log.Info("retrying wrapped template CRD write after a transient error", "crd", crd.Name, "error", lastErr.Error())
+			return false, nil
+		default:
+			return false, lastErr
+		}
+	})
+	if err == nil {
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("write CRD %s: %w", crd.Name, err)
+}
+
+// applyOnce creates or updates crd, validating with a dry run first so a rejected schema surfaces before any write.
+func (g *CRDGenerator) applyOnce(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) error {
 	existing := &apiextensionsv1.CustomResourceDefinition{}
 	err := g.Client.Get(ctx, client.ObjectKey{Name: crd.Name}, existing)
 	switch {
