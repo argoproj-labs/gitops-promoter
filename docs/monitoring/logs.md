@@ -19,7 +19,7 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `scm_provider_kind` | Kind from `GitRepository.spec.scmProviderRef.kind`: `ScmProvider` or `ClusterScmProvider` (defaults to `ScmProvider` when unset). |
 | `scm_account` | Account whose rate-limit bucket the call belongs to. For GitHub this is `spec.github.owner`, lowercased. Empty when the provider credential is the whole bucket. |
 | `api` | `CommitStatus`, `PullRequest`, or `Provider` (provider-specific calls outside those Promoter APIs, such as GitHub App installation listing). |
-| `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, `get`, or `list-installations`, depending on the call. |
+| `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, `get`, or `get-org-installation`, depending on the call. |
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 

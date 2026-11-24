@@ -273,9 +273,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 				// Validate status fields are populated
 				g.Expect(devEnvStatus.ReportedSha).ToNot(BeEmpty(), "ReportedSha should be populated")
-				g.Expect(devEnvStatus.LastRequestTime).ToNot(BeNil(), "LastRequestTime should be populated")
-				g.Expect(devEnvStatus.LastResponseStatusCode).ToNot(BeNil(), "LastResponseStatusCode should be populated")
-				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(200))
+				g.Expect(devEnvStatus.LastRequest.Time).ToNot(BeNil(), "LastRequestTime should be populated")
+				g.Expect(devEnvStatus.LastRequest.ResponseStatusCode).ToNot(BeNil(), "LastResponseStatusCode should be populated")
+				g.Expect(*devEnvStatus.LastRequest.ResponseStatusCode).To(Equal(200))
 
 				// Verify CommitStatus was created for dev environment with success phase
 				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
@@ -680,8 +680,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
 				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
 				g.Expect(devEnvStatus.LastSuccessfulSha).To(BeEmpty(), "a failed environment must not record a successful SHA")
-				g.Expect(devEnvStatus.LastResponseStatusCode).ToNot(BeNil())
-				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(503))
+				g.Expect(devEnvStatus.LastRequest.ResponseStatusCode).ToNot(BeNil())
+				g.Expect(*devEnvStatus.LastRequest.ResponseStatusCode).To(Equal(503))
 
 				By("Verifying the CommitStatus carries the failure phase")
 				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
@@ -767,7 +767,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the request count")
 				for i := range wrcs.Status.Environments {
-					g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
+					g.Expect(wrcs.Status.Environments[i].LastRequest.Time).ToNot(BeNil(), "LastRequestTime should be set after first request")
 					g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
 				}
 				scRequestMu.Lock()
@@ -1534,7 +1534,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
 				// Expression evaluates to false because StatusCode != 200
 				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(500))
+				g.Expect(*devEnvStatus.LastRequest.ResponseStatusCode).To(Equal(500))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -1676,8 +1676,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(devEnv.ResponseOutput).To(BeNil(), "response output should be nil without response.output.expression")
 
 				// But lastResponseStatusCode should still be populated
-				g.Expect(devEnv.LastResponseStatusCode).NotTo(BeNil())
-				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
+				g.Expect(devEnv.LastRequest.ResponseStatusCode).NotTo(BeNil())
+				g.Expect(*devEnv.LastRequest.ResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -1741,6 +1741,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Waiting for first request and response data")
 			var firstResponseData []byte
+			var requestsBeforePersist int
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1751,7 +1752,20 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).NotTo(BeNil())
 				firstResponseData = wrcs.Status.Environments[0].ResponseOutput.Raw
+				// Snapshot after the status read: the request that produced this status has already
+				// been counted, and no later reconcile fires once triggerOutput is persisted.
+				mu.Lock()
+				requestsBeforePersist = requestCount
+				mu.Unlock()
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// WebRequestCommitStatus delivery is at-least-once (see the web-request-commit-status docs):
+			// if the status apply after a request fails, triggerOutput is not persisted and the next
+			// reconcile re-sends. Injected Kubernetes write faults do exactly that, so only assert a
+			// single request when faults are off.
+			if !faultsInjected {
+				Expect(requestsBeforePersist).To(Equal(1), "Should only make one request")
+			}
 
 			By("Verifying response data is preserved on subsequent reconciles")
 			Consistently(func(g Gomega) {
@@ -1769,7 +1783,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				mu.Lock()
 				c := requestCount
 				mu.Unlock()
-				g.Expect(c).To(Equal(1), "Should only make one request")
+				g.Expect(c).To(Equal(requestsBeforePersist), "Should make no further requests once triggerOutput is persisted")
 			}, 15*time.Second, 3*time.Second).Should(Succeed())
 		})
 
@@ -2028,8 +2042,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).To(BeNil(), "response output should be nil in polling mode")
 
 				// But lastResponseStatusCode should still be populated
-				g.Expect(wrcs.Status.Environments[0].LastResponseStatusCode).NotTo(BeNil())
-				g.Expect(*wrcs.Status.Environments[0].LastResponseStatusCode).To(Equal(200))
+				g.Expect(wrcs.Status.Environments[0].LastRequest.ResponseStatusCode).NotTo(BeNil())
+				g.Expect(*wrcs.Status.Environments[0].LastRequest.ResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -2164,8 +2178,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				}
 				g.Expect(devEnv).ToNot(BeNil())
 				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				g.Expect(devEnv.LastResponseStatusCode).ToNot(BeNil())
-				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
+				g.Expect(devEnv.LastRequest.ResponseStatusCode).ToNot(BeNil())
+				g.Expect(*devEnv.LastRequest.ResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying Fake SCM provider applied no auth headers to the request")
@@ -2703,9 +2717,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(), "PromotionStrategyContext should be populated")
-				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
-				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(200))
-				g.Expect(fetched.Status.PromotionStrategyContext.LastRequestTime).NotTo(BeNil())
+				g.Expect(fetched.Status.PromotionStrategyContext.LastRequest.ResponseStatusCode).NotTo(BeNil())
+				g.Expect(*fetched.Status.PromotionStrategyContext.LastRequest.ResponseStatusCode).To(Equal(200))
+				g.Expect(fetched.Status.PromotionStrategyContext.LastRequest.Time).NotTo(BeNil())
 
 				// Per-environment status slice should be empty in promotionstrategy context
 				g.Expect(fetched.Status.Environments).To(BeEmpty(), "Environments should be empty in promotionstrategy context")
@@ -3219,8 +3233,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhasePending), "PhasePerBranch for %s should be pending", branch)
 				}
-				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
-				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(500))
+				g.Expect(fetched.Status.PromotionStrategyContext.LastRequest.ResponseStatusCode).NotTo(BeNil())
+				g.Expect(*fetched.Status.PromotionStrategyContext.LastRequest.ResponseStatusCode).To(Equal(500))
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
@@ -3754,7 +3768,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 							"Phase should be success from PromotionStrategy context, no HTTP request needed")
 						// LastRequestTime should be nil since no HTTP request was made
-						g.Expect(env.LastRequestTime).To(BeNil(),
+						g.Expect(env.LastRequest.Time).To(BeNil(),
 							"LastRequestTime should be nil since trigger never fired")
 					}
 				}
@@ -3838,7 +3852,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(),
 					"PromotionStrategyContext should be populated")
-				g.Expect(fetched.Status.PromotionStrategyContext.LastRequestTime).To(BeNil(),
+				g.Expect(fetched.Status.PromotionStrategyContext.LastRequest.Time).To(BeNil(),
 					"LastRequestTime should be nil since trigger never fired")
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {

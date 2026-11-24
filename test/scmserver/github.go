@@ -40,6 +40,8 @@ func (s *Server) githubRoutes(mux *http.ServeMux) {
 	app("GET /app/installations", s.githubListInstallations)
 	app("POST /app/installations/{id}/access_tokens", s.githubCreateInstallationToken)
 	app("GET /repos/{owner}/{repo}/installation", s.githubRepoInstallation)
+	app("GET /orgs/{account}/installation", s.githubAccountInstallation)
+	app("GET /users/{account}/installation", s.githubAccountInstallation)
 
 	api("GET /repos/{owner}/{repo}", s.githubGetRepo)
 	api("GET /repos/{owner}/{repo}/pulls", s.githubListPulls)
@@ -160,6 +162,20 @@ func (s *Server) githubRepoInstallation(w http.ResponseWriter, r *http.Request, 
 	}
 	for _, inst := range app.installations {
 		if strings.EqualFold(inst.account, r.PathValue("owner")) {
+			writeJSON(w, http.StatusOK, githubInstallationJSON(app, inst))
+			return
+		}
+	}
+	writeProviderError(w, GitHub, http.StatusNotFound, "Not Found")
+}
+
+// githubAccountInstallation serves both the organization and user installation endpoints. Installations do not
+// record whether their account is an organization or a user, so either endpoint finds any account.
+func (s *Server) githubAccountInstallation(w http.ResponseWriter, r *http.Request, app *githubApp) {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	for _, inst := range app.installations {
+		if strings.EqualFold(inst.account, r.PathValue("account")) {
 			writeJSON(w, http.StatusOK, githubInstallationJSON(app, inst))
 			return
 		}

@@ -159,7 +159,10 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     );
 
     if (strategyNodes.length === 0) {
-      setFetchError('No PromotionStrategy resources found');
+      setFetchError(
+        `No ${KIND} resources found. Make sure this Application manages a PromotionStrategy ` +
+          `and the GitOps Promoter apiserver (${GROUP}) is installed.`,
+      );
       setStrategies([]);
       setSelectedKey('');
       setParam('');

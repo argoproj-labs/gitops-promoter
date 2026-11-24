@@ -181,6 +181,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
 		apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusConfiguration(ref),
 		apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName():              schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastRequest(ref),
 		apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName():          schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastSuccessfulShaItem(ref),
 		apiv1alpha1.WebRequestCommitStatusList{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusList(ref),
 		apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName():             schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPhasePerBranchItem(ref),
@@ -4404,7 +4405,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
+							Description: "Active is the state of the active branch after the PR merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses are the active commit statuses last recorded for that commit, taken from the snapshot trailers of the commit that replaced it; they are empty for the current active commit, whose live statuses are on the ChangeTransferPolicy.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
@@ -4417,14 +4418,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"mergeCommitSnapshotMismatch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from its snapshot trailers — proposed.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},
 					"restoredFrom": {
 						SchemaProps: spec.SchemaProps{
-							Description: "RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.",
+							Description: "RestoredFrom is set when this entry describes a manual restore of the active branch rather than a merged pull request. Its value is the hydrated SHA the branch was restored to. A restore reuses that version's tree, so active.dry repeats an earlier entry's dry SHA; this field is what distinguishes the two. The pull request and proposed commit status fields, including pullRequest.prMergeTime, are copied from the restored version and describe the original promotion, not the restore. active.hydrated is the restore commit itself, so active.hydrated.commitTime is when the restore was written.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -5147,7 +5148,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(
 				Properties: map[string]spec.Schema{
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is the template configuration used to generate pull request titles and descriptions. Uses Go template syntax with Sprig functions available.",
+							Description: "Template is the template configuration used to generate pull request titles, descriptions, and merge commit messages. Uses Go template syntax with Sprig functions available.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName()),
 						},
@@ -5456,7 +5457,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
+				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nThe CommitMessage template is the whole human-readable merge commit message; the title and description are never used in its place. Commit trailers required by the promoter are appended automatically after the rendered message. When the template renders empty and trailers are appended, a minimal \"Promote to `<branch>`\" subject is added so git can still parse the trailers.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"title": {
@@ -5475,8 +5476,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 							Format:      "",
 						},
 					},
+					"commitMessage": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitMessage is the template used to generate the merge commit message for the pull request. The rendered template is the whole human-readable message; the title and description are never used in its place. Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended after the rendered message; do not attempt to include them in the template. When the template renders empty and trailers are appended, a minimal \"Promote to `<branch>`\" subject is added, because git does not parse trailers from the first paragraph of a message. Uses Go template syntax with Sprig functions available for string manipulation.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
-				Required: []string{"title", "description"},
+				Required: []string{"title", "description", "commitMessage"},
 			},
 		},
 	}
@@ -6972,7 +6981,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "TriggerModeSpec defines expression-based trigger configuration.\n\nDelivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.\n\nTreat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).",
+				Description: "TriggerModeSpec defines expression-based trigger configuration.\n\nDelivery semantics: the controller dedupes HTTP requests by comparing fresh state against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile (TriggerOutput, ResponseOutput, SuccessOutput, LastRequest.Time, LastSuccessfulShas). That state is written via Server-Side Apply at the END of a reconcile and read from the controller's informer cache at the START of the next reconcile. Under cache- propagation lag, controller restarts, or status-write retries, a reconcile may not see the most recently persisted state and may re-fire the HTTP request even though the trigger would otherwise have been false.\n\nTreat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make external endpoints idempotent for the same (branch, sha) input. Don't use trigger output to count attempts authoritatively (counters built on TriggerOutput are eventually-consistent and may briefly observe a stale older value under cache lag).",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"requeueDuration": {
@@ -7155,17 +7164,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 							Format:      "",
 						},
 					},
-					"lastRequestTime": {
+					"lastRequest": {
 						SchemaProps: spec.SchemaProps{
-							Description: "LastRequestTime is when the last HTTP request was made.",
-							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
-						},
-					},
-					"lastResponseStatusCode": {
-						SchemaProps: spec.SchemaProps{
-							Description: "LastResponseStatusCode is the HTTP status code from the last request.",
-							Type:        []string{"integer"},
-							Format:      "int32",
+							Description: "LastRequest captures metadata about the most recent HTTP request for this environment. Populated on the first request; values carry forward on reconciles that skip the request.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName()),
 						},
 					},
 					"triggerOutput": {
@@ -7191,7 +7194,49 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 			},
 		},
 		Dependencies: []string{
-			apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WebRequestCommitStatusLastRequest captures metadata about the most recent HTTP request made by the controller for this environment or PromotionStrategy context. It is populated the first time an HTTP request is sent and its values carry forward on every reconcile that skips the request (polling interval not elapsed, trigger expression false, or already-successful SHA fast path). All fields are empty until the first request is made.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"method": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Method is the resolved HTTP method (rendered from spec.httpRequest.methodTemplate or copied from spec.httpRequest.method).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL is the fully rendered HTTP request URL from spec.httpRequest.urlTemplate for the last HTTP request attempt (empty when no request has been made yet). It carries forward the previous value when a reconcile skips the HTTP request (polling interval, trigger false, or already-successful SHA fast path).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"time": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Time is when the last HTTP request was made.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"responseStatusCode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ResponseStatusCode is the HTTP status code from the last request.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -7330,17 +7375,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 							},
 						},
 					},
-					"lastRequestTime": {
+					"lastRequest": {
 						SchemaProps: spec.SchemaProps{
-							Description: "LastRequestTime is when the last HTTP request was made.",
-							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
-						},
-					},
-					"lastResponseStatusCode": {
-						SchemaProps: spec.SchemaProps{
-							Description: "LastResponseStatusCode is the HTTP status code from the last request.",
-							Type:        []string{"integer"},
-							Format:      "int32",
+							Description: "LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context. Populated on the first request; values carry forward on reconciles that skip the request.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName()),
 						},
 					},
 					"triggerOutput": {
@@ -7386,7 +7425,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusLastRequest{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName()},
 	}
 }
 

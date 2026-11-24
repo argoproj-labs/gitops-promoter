@@ -510,8 +510,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(result.CommitStatuses).To(HaveLen(2))
 			for _, env := range result.Status.Environments {
 				Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				Expect(env.LastResponseStatusCode).ToNot(BeNil())
-				Expect(*env.LastResponseStatusCode).To(Equal(200))
+				Expect(env.LastRequest.ResponseStatusCode).ToNot(BeNil())
+				Expect(*env.LastRequest.ResponseStatusCode).To(Equal(200))
 				Expect(env.LastSuccessfulSha).ToNot(BeEmpty())
 			}
 			for _, req := range result.RenderedRequests {
@@ -647,8 +647,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			}
 			Expect(byBranch["dev"].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			Expect(byBranch["prod"].Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-			Expect(byBranch["prod"].LastResponseStatusCode).ToNot(BeNil())
-			Expect(*byBranch["prod"].LastResponseStatusCode).To(Equal(201))
+			Expect(byBranch["prod"].LastRequest.ResponseStatusCode).ToNot(BeNil())
+			Expect(*byBranch["prod"].LastRequest.ResponseStatusCode).To(Equal(201))
 		})
 
 		It("resolves failure from a { phase } object return", func() {
@@ -698,6 +698,128 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("promotionstrategy"))
+		})
+
+		// RenderedURL is stored in each environment status entry after an HTTP request fires.
+		// The URL is the fully rendered urlTemplate — branch-specific when .Branch is referenced.
+		It("stores RenderedURL per environment with branch substituted from urlTemplate", func() {
+			// basicWRCS uses URLTemplate "https://example.com/{{ .Branch }}"
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			byBranch := map[string]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{}
+			for _, e := range result.Status.Environments {
+				byBranch[e.Branch] = e
+			}
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://example.com/dev"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://example.com/prod"))
+		})
+
+		It("stores RenderedURL per environment with HTTPRequestVariables fully substituted", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				// url.Values.Encode sorts keys alphabetically: branch < limit
+				Expression: `{"qs": urlValuesEncode({"branch": Branch, "limit": "10"})}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://api.example.com/alerts` +
+				`{{- $qs := index .HTTPRequestVariables "qs" -}}` +
+				`{{- if $qs }}?{{ $qs }}{{ end -}}`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			byBranch := map[string]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{}
+			for _, e := range result.Status.Environments {
+				byBranch[e.Branch] = e
+			}
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://api.example.com/alerts?branch=dev&limit=10"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://api.example.com/alerts?branch=prod&limit=10"))
+		})
+
+		// urlTemplate is rendered exactly once: the same value lands in status.renderedURL and in
+		// the URL passed to the executor. The Sprig randInt function produces a different integer on
+		// every call, so a double-render would make the two values diverge — this test catches any
+		// regression introduced by re-rendering templates inside the executor.
+		It("stores the same RenderedURL as the URL sent to the executor (templates rendered once)", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"Response.StatusCode == 200",
+			)
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com/{{ randInt 0 1000000 }}/{{ .Branch }}`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+
+			executedURLByBranch := map[string]string{}
+			for _, req := range result.RenderedRequests {
+				executedURLByBranch[req.Branch] = req.URL
+			}
+			for _, env := range result.Status.Environments {
+				Expect(env.LastRequest.URL).To(Equal(executedURLByBranch[env.Branch]),
+					"status.lastRequest.url must equal the URL the executor received for branch %q", env.Branch)
+			}
+		})
+
+		It("carries forward RenderedURL per environment when the trigger does not fire", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Trigger: &promoterv1alpha1.TriggerModeSpec{
+					RequeueDuration: metav1.Duration{Duration: 0},
+					When:            promoterv1alpha1.WhenWithOutputSpec{Expression: "false"},
+				}},
+				"true",
+			)
+			// Seed prior status that already has a LastRequest.URL set.
+			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+				{
+					Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Phase:       promoterv1alpha1.CommitPhasePending,
+					LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/dev"},
+				},
+				{
+					Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					Phase:       promoterv1alpha1.CommitPhasePending,
+					LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/prod"},
+				},
+			}
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(BeEmpty(), "trigger was false, no HTTP request should fire")
+
+			byBranch := map[string]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{}
+			for _, e := range result.Status.Environments {
+				byBranch[e.Branch] = e
+			}
+			Expect(byBranch["dev"].LastRequest.URL).To(Equal("https://example.com/dev"))
+			Expect(byBranch["prod"].LastRequest.URL).To(Equal("https://example.com/prod"))
 		})
 	})
 
@@ -873,6 +995,108 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 				Expect(cs.Spec.Description).To(Equal("success for " + branch))
 				Expect(cs.Spec.Url).To(Equal("https://dash.example.com/" + branch))
 			}
+		})
+
+		// RenderedURL is stored in PromotionStrategyContext after an HTTP request fires.
+		// The shared request has no per-branch Branch value so templates that do not
+		// reference .Branch render identically for all environments.
+		It("stores RenderedURL in PromotionStrategyContext from urlTemplate", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+				},
+				"true",
+			)
+			// Use .PromotionStrategy.Name so the rendered URL is deterministic and non-empty.
+			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/{{ .PromotionStrategy.Name }}/check"
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/ps/check"))
+		})
+
+		It("stores RenderedURL in PromotionStrategyContext with HTTPRequestVariables fully substituted", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+				},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.HTTPRequestVariables = &promoterv1alpha1.HTTPRequestVariablesSpec{
+				Expression: `{"api": "v2"}`,
+			}
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com/{{ index .HTTPRequestVariables "api" }}/checks`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/v2/checks"))
+		})
+
+		// Same single-render guarantee as the environments context: status.renderedURL and the URL
+		// sent to the executor must be identical even when the template is non-deterministic.
+		It("stores the same RenderedURL in PromotionStrategyContext as the URL sent to the executor "+
+			"(templates rendered once)", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+				},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.URLTemplate = `https://example.com/{{ randInt 0 1000000 }}`
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(1))
+			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal(result.RenderedRequests[0].URL),
+				"status.lastRequest.url must equal the URL the executor received")
+		})
+
+		It("carries forward RenderedURL in PromotionStrategyContext when the trigger does not fire", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Trigger: &promoterv1alpha1.TriggerModeSpec{
+						RequeueDuration: metav1.Duration{Duration: 0},
+						When:            promoterv1alpha1.WhenWithOutputSpec{Expression: "false"},
+					},
+				},
+				"true",
+			)
+			// Seed prior status with a LastRequest.URL from a previous reconcile.
+			wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
+				LastRequest: promoterv1alpha1.WebRequestCommitStatusLastRequest{URL: "https://example.com/prior"},
+			}
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(BeEmpty(), "trigger was false, no HTTP request should fire")
+			Expect(result.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(result.Status.PromotionStrategyContext.LastRequest.URL).To(Equal("https://example.com/prior"))
 		})
 	})
 

@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaRocket } from 'react-icons/fa';
+import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { ScmProviderSpec } from '@shared/types/view';
 import type { CommitRow, FilterId, SortId } from './types';
-import { isEmptyCellKind, safeHttpUrl } from './helpers';
+import { formatDayHeading, groupRowsByDay, isEmptyCellKind, safeHttpUrl } from './helpers';
 import { buildExplorerModel, type ExplorerModel } from './explorerModel';
 import { buildCommitPath } from './graphFocus';
 import PromotionMap from './PromotionMap/PromotionMap';
@@ -224,6 +225,8 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
       ? [...list].sort((a, b) => a.freshestAt - b.freshestAt)
       : [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
+
+  const dayGroups = useMemo(() => groupRowsByDay(filteredRows), [filteredRows]);
 
   const counts = useMemo(() => {
     return {
@@ -467,95 +470,120 @@ const PromotionExplorer: React.FC<PromotionExplorerProps> = ({
                 No commits match these filters. Try adjusting them.
               </div>
             ) : (
-              filteredRows.map((row) => {
-                const dryCommitUrl = safeHttpUrl(
-                  getCommitUrl(row.repoUrl, row.dryShaFull, scmProvider),
-                );
-                return (
-                  <div
-                    key={row.id}
-                    id={`row-${row.id}`}
-                    className={['hp-row', selected?.rowId === row.id ? 'hp-row--selected' : '']
-                      .filter(Boolean)
-                      .join(' ')}
-                    style={{ gridTemplateColumns: gridTemplate }}
-                  >
-                    <div className="hp-row__commit">
-                      <CommitBlock
-                        role="group"
-                        ariaLabel="Dry commit"
-                        icon={
-                          <span title="Dry commit" className="hp-commit__icon-wrap">
-                            <FaRocket className="hp-commit__icon" aria-hidden="true" />
-                          </span>
-                        }
-                        chip={
-                          dryCommitUrl ? (
-                            <a
-                              className="hp-commit__sha"
-                              href={dryCommitUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              aria-label={`Dry commit ${row.dryShaShort}, opens in new tab`}
-                            >
-                              {row.dryShaShort}
-                            </a>
-                          ) : (
-                            <span className="hp-commit__sha">{row.dryShaShort}</span>
-                          )
-                        }
-                        title={row.subject}
-                        author={
-                          row.author && (
-                            <Tooltip label={`Authored by ${row.author}`}>
-                              <span className="hp-commit__author">{row.author}</span>
-                            </Tooltip>
-                          )
-                        }
-                        time={
-                          row.freshestAt > 0 && (
-                            <Tooltip
-                              label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
-                            >
-                              <span className="hp-commit__time">
-                                {timeAgo(new Date(row.earliestAt || row.freshestAt).toISOString())}
-                              </span>
-                            </Tooltip>
-                          )
-                        }
-                      />
-                      {row.references.length > 0 && <AppCommits references={row.references} />}
+              <div className="hp-timeline">
+                {dayGroups.map((group) => (
+                  <section key={group.key} className="hp-day">
+                    <div className="hp-day__rail">
+                      <GoGitCommit className="hp-day__icon" aria-hidden="true" />
                     </div>
-                    {visibleEnvs.map((env) => {
-                      const isFocusedEnv = envFilter.includes(env.branch);
-                      return (
-                        <div
-                          key={env.branch}
-                          className={[
-                            'hp-row__env-slot',
-                            isFocusedEnv ? 'hp-row__env-slot--focus' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          <FlowCell
-                            cell={row.cells[env.branch]}
-                            branch={env.branch}
-                            isSelected={
-                              selected?.rowId === row.id && selected.branch === env.branch
-                            }
-                            onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
-                            rowsById={rowsById}
-                            scmProvider={scmProvider}
-                            onJumpToRow={handleJumpToRow}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
+                    <div className="hp-day__content">
+                      <h2 className="hp-day__title">Activity on {formatDayHeading(group.at)}</h2>
+                      <div className="hp-day__rows">
+                        {group.rows.map((row) => {
+                          const dryCommitUrl = safeHttpUrl(
+                            getCommitUrl(row.repoUrl, row.dryShaFull, scmProvider),
+                          );
+                          return (
+                            <div
+                              key={row.id}
+                              id={`row-${row.id}`}
+                              className={[
+                                'hp-row',
+                                selected?.rowId === row.id ? 'hp-row--selected' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              style={{ gridTemplateColumns: gridTemplate }}
+                            >
+                              <div className="hp-row__commit">
+                                <CommitBlock
+                                  role="group"
+                                  ariaLabel="Dry commit"
+                                  icon={
+                                    <span title="Dry commit" className="hp-commit__icon-wrap">
+                                      <FaRocket className="hp-commit__icon" aria-hidden="true" />
+                                    </span>
+                                  }
+                                  chip={
+                                    dryCommitUrl ? (
+                                      <a
+                                        className="hp-commit__sha"
+                                        href={dryCommitUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={`Dry commit ${row.dryShaShort}, opens in new tab`}
+                                      >
+                                        {row.dryShaShort}
+                                      </a>
+                                    ) : (
+                                      <span className="hp-commit__sha">{row.dryShaShort}</span>
+                                    )
+                                  }
+                                  title={row.subject}
+                                  author={
+                                    row.author && (
+                                      <Tooltip label={`Authored by ${row.author}`}>
+                                        <span className="hp-commit__author">{row.author}</span>
+                                      </Tooltip>
+                                    )
+                                  }
+                                  time={
+                                    row.freshestAt > 0 && (
+                                      <Tooltip
+                                        label={`Introduced ${formatDate(new Date(row.earliestAt || row.freshestAt).toISOString())}`}
+                                      >
+                                        <span className="hp-commit__time">
+                                          {timeAgo(
+                                            new Date(
+                                              row.earliestAt || row.freshestAt,
+                                            ).toISOString(),
+                                          )}
+                                        </span>
+                                      </Tooltip>
+                                    )
+                                  }
+                                />
+                                {row.references.length > 0 && (
+                                  <AppCommits references={row.references} />
+                                )}
+                              </div>
+                              {visibleEnvs.map((env) => {
+                                const isFocusedEnv = envFilter.includes(env.branch);
+                                return (
+                                  <div
+                                    key={env.branch}
+                                    className={[
+                                      'hp-row__env-slot',
+                                      isFocusedEnv ? 'hp-row__env-slot--focus' : '',
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' ')}
+                                  >
+                                    <FlowCell
+                                      cell={row.cells[env.branch]}
+                                      branch={env.branch}
+                                      isSelected={
+                                        selected?.rowId === row.id && selected.branch === env.branch
+                                      }
+                                      onSelect={() =>
+                                        selectCell({ rowId: row.id, branch: env.branch })
+                                      }
+                                      rowsById={rowsById}
+                                      scmProvider={scmProvider}
+                                      onJumpToRow={handleJumpToRow}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                ))}
+              </div>
             )}
           </div>
         </div>

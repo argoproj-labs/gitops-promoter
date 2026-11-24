@@ -2,6 +2,83 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
+
+`lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from
+`status.promotionStrategyContext`. Those values, plus the HTTP method and the rendered URL, are now
+fields of `lastRequest`:
+
+| Before | After |
+| --- | --- |
+| `lastRequestTime` | `lastRequest.time` |
+| `lastResponseStatusCode` | `lastRequest.responseStatusCode` |
+
+No spec change is required. Update anything that reads the old status fields (scripts, dashboards, other
+controllers) to use `lastRequest`.
+
+On the first reconcile after upgrade, the controller reads `lastRequest.time`. That field is empty on
+existing resources, so each polling WebRequestCommitStatus sends one request even when its interval has
+not elapsed. The status write from that request stores `lastRequest`, and later reconciles follow the
+configured interval. Trigger mode still decides whether to fire from its trigger expression.
+
+Headers and body are not stored. See
+[Last Request](gating-promotions/built-in-gates/web-request-commit-status/index.md#last-request-lastrequest).
+
+## 0.49 — Controller-only install bundles are removed
+
+> [!IMPORTANT]
+> `install-without-ui.yaml` and `install-without-ui-namespaced.yaml` are no longer published.
+> Every release bundle includes the dashboard aggregation API. Update GitOps manifests, CI, and
+> anything else that downloads those two assets before upgrading.
+
+The cluster-wide default is `install-with-dashboard.yaml`. The controller-manager issues and rotates
+the dashboard apiserver's serving certificate and writes the `APIService` `caBundle`. That bundle
+does not need cert-manager.
+
+| Previous bundle | Replacement |
+| --- | --- |
+| `install-without-ui.yaml` | `install-with-dashboard.yaml` (built-in certs), `install-with-dashboard-cert-manager.yaml`, or `install-with-dashboard-byo-cert.yaml` |
+| `install-without-ui-namespaced.yaml` | `install-with-dashboard-cert-manager-namespaced.yaml` or `install-with-dashboard-byo-cert-namespaced.yaml` |
+
+A namespaced install has no built-in cert bundle. Writing `APIService.spec.caBundle` requires the
+`promoter-apiserver-cert-rotation` ClusterRole, and the namespaced install does not grant the
+controller that role. Use the cert-manager bundle, or the bring-your-own-cert bundle and supply the
+serving Secret and `caBundle` yourself.
+
+Applying `install-with-dashboard.yaml` onto a controller-only install adds:
+
+- the `promoter-apiserver` Deployment, Service, and ServiceAccount
+- `APIService` `v1alpha1.view.promoter.argoproj.io`
+- a `RoleBinding` for `extension-apiserver-authentication-reader` in `kube-system`
+- the empty `promoter-apiserver-serving-cert` Secret, which the controller-manager fills when started with `--apiserver-cert-rotation`
+- rotation RBAC: `update` on that Secret, plus `get`, `list`, and `watch` on APIServices and `update` on the dashboard APIService
+
+Installs that already apply a cert-manager or bring-your-own-cert bundle, including the `-namespaced`
+variants, keep those bundles. Those manifests are unchanged from 0.48.
+
+The Helm chart is generated from `install-with-dashboard.yaml`, so a chart upgrade includes the
+dashboard apiserver, the `APIService`, and the `kube-system` RoleBinding.
+
+The shipped manifests leave `promoter-apiserver-serving-cert` `.data` and `APIService.spec.caBundle`
+empty. The controller-manager owns both under the field manager `promoter-apiserver-cert-rotator`,
+so a client-side or server-side apply leaves the generated values in place. A sync with
+`Replace=true` overwrites them until the next rotation.
+
+See [Installation](getting-started.md#installation) and
+[Serving certs](advanced-usage/dashboard-apiserver.md#serving-certs).
+
+## 0.49 — Rate limiters must name exactly one strategy
+
+Every `spec.<controller>.workQueue.rateLimiter` in the ControllerConfiguration must now set exactly one of
+`fastSlow`, `exponentialFailure`, `bucket` or `maxOf`, and every `maxOf` entry must set exactly one of the first three.
+The CRD previously allowed an empty `rateLimiter: {}` or an empty `maxOf` entry, which the controller then rejected at
+startup with `no valid rate limiter configuration found`. The API server now rejects such a configuration on write, so
+the mistake surfaces at `kubectl apply` instead of as a crash loop.
+
+The shipped ControllerConfiguration sets a strategy for every controller, so an install that uses it is unaffected. A
+custom configuration with an empty rate limiter was already failing to start and needs a strategy added; there is no
+in-code default, by design.
+
 ## 0.46 — WebRequestCommitStatus authentication Secrets must be labeled
 
 > [!IMPORTANT]

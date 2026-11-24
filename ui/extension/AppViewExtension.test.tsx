@@ -137,12 +137,12 @@ describe('AppViewExtension', () => {
     await wait();
   };
 
-  describe('when tree has no PromotionStrategy nodes', () => {
+  describe('when tree has no PromotionStrategyDetails nodes', () => {
     it('shows an error message and does not call fetch', async () => {
       await render(makeProps([]));
 
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-      expect(container.textContent).toContain('No PromotionStrategy resources found');
+      expect(container.textContent).toContain('No PromotionStrategyDetails resources found');
     });
 
     it('ignores nodes with wrong group', async () => {
@@ -164,7 +164,7 @@ describe('AppViewExtension', () => {
       await render(props);
 
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-      expect(container.textContent).toContain('No PromotionStrategy resources found');
+      expect(container.textContent).toContain('No PromotionStrategyDetails resources found');
     });
 
     it('ignores nodes with wrong kind', async () => {
