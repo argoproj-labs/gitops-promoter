@@ -31,6 +31,14 @@ handle whatever manifest structure your organization prefers.
 No, GitOps Promoter works with any tools that can provide hydrated manifests in Git.
 Check the [Custom Hydration](advanced-usage/custom-hydrator.md) documentation for more details.
 
+## Why weren't my re-hydrated manifests promoted?
+
+Some hydrators, including the Argo CD Source Hydrator starting in Argo CD 3.7, can push new manifests without a new DRY
+commit, for example after a hydrator upgrade or a remote chart change. GitOps Promoter promotes DRY commits, so these
+re-hydrated manifests stay on the proposed branch until a DRY commit changes that environment's manifests. To release
+them sooner, push a DRY commit that changes the manifests, such as bumping a Kustomize label. See
+[Re-hydrating a DRY Commit](advanced-usage/custom-hydrator.md#6-re-hydrating-a-dry-commit-allowed-not-promoted).
+
 ## Why Should I use Webhooks?
 
 Webhooks allow GitOps Promoter to react to events from your Git repository in real-time. This means that when you push

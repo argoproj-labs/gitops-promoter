@@ -118,6 +118,58 @@ If you use `activePath` to share one active branch across multiple applications,
 
 This ensures independent PromotionStrategies can safely share the same active branch.
 
+### 6. Re-hydrating a DRY Commit (Allowed, Not Promoted)
+
+A hydrator may push a new hydrated commit whose `hydrator.metadata` has the same `drySha` as the commit before it. This
+happens when the rendered output changes even though the DRY branch hasn't, for example after upgrading the hydrator or
+its config management tools, or when a remote Helm chart or Kustomize base used by the DRY commit changes. Starting in
+Argo CD 3.7, the Argo CD Source Hydrator does this.
+
+After a re-hydration, later DRY commits that don't change that environment's manifests advance only the git note
+(see [Duplicate Detection](#4-duplicate-detection-recommended)). `hydrator.metadata` keeps the re-hydrated `drySha`.
+
+GitOps Promoter accepts this behavior. It does not promote the re-hydration by itself:
+
+- **No PR is opened.** GitOps Promoter opens a promotion PR only when the `drySha` in `hydrator.metadata` on the
+  proposed branch differs from the one on the active branch. Re-hydrating the DRY commit that is already active doesn't
+  change the `drySha`, so it doesn't open a PR.
+- **Note-only advances don't open a PR either.** The git note tells GitOps Promoter that the hydrator has processed a
+  DRY commit, which unblocks downstream environments that wait on hydration. It never starts a promotion.
+- **The re-hydrated manifests wait on the proposed branch.** They don't count as a pending promotion, so they don't block
+  downstream environments.
+- **The next manifest-changing DRY commit promotes them.** Once a DRY commit changes the environment's manifests, the
+  hydrator writes a new `drySha`, GitOps Promoter opens a PR, and that PR includes everything on the proposed branch,
+  including the re-hydrated manifests.
+- **An open PR includes a re-hydration.** If the re-hydrated DRY commit is already in an open, unmerged PR, the PR picks
+  up the new hydrated commit and the merge includes it.
+
+Promotions follow the `drySha` because the DRY commit is the unit GitOps Promoter promotes and gates on. PR contents,
+commit statuses, promotion history, and environment ordering all refer to it. A re-hydration has no new DRY commit. If
+GitOps Promoter promoted it under the old `drySha`, every environment would already appear to have that commit, so the
+ordering gates would pass immediately and the re-rendered manifests would reach all environments at the same time
+instead of one environment after another.
+
+#### Releasing Re-hydrated Manifests
+
+To release re-hydrated manifests without waiting for an unrelated change, push a DRY commit that changes the rendered
+manifests of each environment you want to release. Each environment then gets a hydrated commit with a new `drySha`,
+and the change moves through your environments in the usual order.
+
+With Kustomize, you can add or bump a label in a shared base:
+
+```yaml
+# base/kustomization.yaml
+labels:
+  - pairs:
+      example.com/rehydrated: "2026-11-24"
+```
+
+> [!WARNING]
+> Prefer `labels` (without `includeSelectors`) over `commonLabels`. `commonLabels` also changes label selectors, and
+> selectors are immutable on resources such as Deployments, so changing them can make syncs fail.
+
+A DRY commit that changes only some environments' manifests releases only those environments.
+
 ## Example Implementations
 
 These example scripts would run on every push to the DRY branch. They could run anywhere, but a common choice would be
