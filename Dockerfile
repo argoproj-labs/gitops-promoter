@@ -63,7 +63,7 @@ RUN set -eu; \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a $extra -o gitops-promoter $target
 
 # Runtime image. Keep in sync with release.Dockerfile, which is what releases ship.
-FROM debian:13.7-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+FROM debian:13.8-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
 WORKDIR /
 
 # git is the only program the controller runs. tini reaps the git processes it leaves behind.
