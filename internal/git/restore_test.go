@@ -422,6 +422,37 @@ var _ = Describe("RestoreActiveBranch", func() {
 		Expect(ordinary).To(Equal(git.RestoreBlock{}))
 	})
 
+	It("RestoreBlockState sees an unblock another clone pushed after its notes were cached", func() {
+		v1 := commitFile("version.txt", "v1\n", "version v1")
+		mustGit(workDir, "branch", "-M", "environment/development")
+		mustGit(workDir, "push", "-u", "origin", "environment/development")
+		commitFile("version.txt", "v2\n", "version v2")
+		mustGit(workDir, "push", "origin", "HEAD:refs/heads/environment/development")
+
+		g := newOps()
+		restored, err := g.RestoreActiveBranch(GinkgoT().Context(), "environment/development", "", v1)
+		Expect(err).NotTo(HaveOccurred())
+
+		// A second clone, as another reconcile would have, reads and caches the tip's note while it's blocked.
+		reader := git.NewEnvironmentOperations(repo, &fakeGitProvider{tempDirPath: tempRepoDir}, "default/restore-reader-"+restored.ActiveSha)
+		Expect(reader.CloneRepo(GinkgoT().Context())).To(Succeed())
+		DeferCleanup(func() { _ = reader.RemoveClone() })
+		Expect(reader.FetchNotes(GinkgoT().Context())).To(Succeed())
+		Expect(reader.LoadHistoryNotes(GinkgoT().Context(), restored.ActiveSha)).To(Succeed())
+		gate, err := reader.RestoreBlockState(GinkgoT().Context(), restored.ActiveSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.Unblocked).To(BeFalse())
+
+		_, err = g.UnblockRestore(GinkgoT().Context(), restored.ActiveSha, time.Date(2024, 8, 1, 0, 0, 0, 0, time.UTC))
+		Expect(err).NotTo(HaveOccurred())
+
+		// Fetching the notes again must not leave the pre-unblock note cached.
+		Expect(reader.FetchNotes(GinkgoT().Context())).To(Succeed())
+		gate, err = reader.RestoreBlockState(GinkgoT().Context(), restored.ActiveSha, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.Unblocked).To(BeTrue())
+	})
+
 	It("refuses a restore of a tip that already carries Promoter-restore-unblocked-at", func() {
 		v1 := commitFile("version.txt", "v1\n", "version v1")
 		mustGit(workDir, "branch", "-M", "environment/development")
