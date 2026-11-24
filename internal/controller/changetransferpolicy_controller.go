@@ -2164,16 +2164,21 @@ func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) str
 //   - Update when metadata.generation changes (spec was patched — title, commit.message, state, etc.)
 //   - Update when the CTP pull-request finalizer is added or removed
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
-//   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
 //   - Update when the Ready condition's status changes (including appearing or disappearing). The CTP
 //     inherits a not-Ready PR's condition, so without this a CTP whose PR recovers from a transient
 //     failure would stay not-Ready until its periodic requeue.
+//   - Update when the Ready condition catches up to the current generation (its observedGeneration was
+//     behind metadata.generation and now matches it). A CTP reconcile that runs between a PR spec patch
+//     and the PR controller's next reconcile records "Ready condition is not up to date"; the catch-up
+//     usually leaves the Ready status unchanged, so without this the CTP would stay not-Ready until its
+//     periodic requeue.
 //
 // Does not enqueue CTP on status-only updates, including:
 //   - status.url (stable or changed)
 //   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
-//   - other status.conditions changes (Ready message, reason, lastTransitionTime)
+//   - other status.conditions changes (Ready message, reason, lastTransitionTime, or observedGeneration
+//     when the condition was already current or is still behind)
 //   - status.observedGeneration
 //   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
@@ -2206,6 +2211,9 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if readyConditionStatus(oldPR) != readyConditionStatus(newPR) {
 				return true
 			}
+			if !readyConditionCurrent(oldPR) && readyConditionCurrent(newPR) {
+				return true
+			}
 			return false
 		},
 	}
@@ -2218,6 +2226,13 @@ func readyConditionStatus(pr *promoterv1alpha1.PullRequest) metav1.ConditionStat
 		return ""
 	}
 	return ready.Status
+}
+
+// readyConditionCurrent reports whether pr has a Ready condition whose observedGeneration matches
+// pr's metadata.generation.
+func readyConditionCurrent(pr *promoterv1alpha1.PullRequest) bool {
+	ready := meta.FindStatusCondition(pr.Status.Conditions, string(promoterConditions.Ready))
+	return ready != nil && ready.ObservedGeneration == pr.Generation
 }
 
 // metaTimeString formats a metadata timestamp for logs. A nil *metav1.Time
