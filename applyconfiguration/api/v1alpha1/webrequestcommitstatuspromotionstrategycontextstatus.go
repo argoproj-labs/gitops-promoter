@@ -18,8 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration represents a declarative configuration of the WebRequestCommitStatusPromotionStrategyContextStatus type for use
@@ -30,16 +29,15 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 	// PhasePerBranch holds the resolved phase for each applicable branch.
 	// Every applicable branch is always present after reconciliation.
 	PhasePerBranch []WebRequestCommitStatusPhasePerBranchItemApplyConfiguration `json:"phasePerBranch,omitempty"`
-	// LastRequestTime is when the last HTTP request was made.
-	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
-	// LastResponseStatusCode is the HTTP status code from the last request.
-	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
+	// LastRequest captures metadata about the most recent HTTP request for this PromotionStrategy context.
+	// Populated on the first request; values carry forward on reconciles that skip the request.
+	LastRequest *WebRequestCommitStatusLastRequestApplyConfiguration `json:"lastRequest,omitempty"`
 	// TriggerOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.TriggerOutput, one shared map for context=promotionstrategy.
-	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
+	TriggerOutput *v1.JSON `json:"triggerOutput,omitempty"`
 	// ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput, one shared map for context=promotionstrategy.
-	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+	ResponseOutput *v1.JSON `json:"responseOutput,omitempty"`
 	// SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput, one shared map for context=promotionstrategy.
-	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
+	SuccessOutput *v1.JSON `json:"successOutput,omitempty"`
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
 	// have already succeeded for their current SHAs.
@@ -65,26 +63,18 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 	return b
 }
 
-// WithLastRequestTime sets the LastRequestTime field in the declarative configuration to the given value
+// WithLastRequest sets the LastRequest field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the LastRequestTime field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastRequestTime(value v1.Time) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
-	b.LastRequestTime = &value
-	return b
-}
-
-// WithLastResponseStatusCode sets the LastResponseStatusCode field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the LastResponseStatusCode field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastResponseStatusCode(value int) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
-	b.LastResponseStatusCode = &value
+// If called multiple times, the LastRequest field is set to the value of the last call.
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastRequest(value *WebRequestCommitStatusLastRequestApplyConfiguration) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+	b.LastRequest = value
 	return b
 }
 
 // WithTriggerOutput sets the TriggerOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TriggerOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithTriggerOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithTriggerOutput(value v1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.TriggerOutput = &value
 	return b
 }
@@ -92,7 +82,7 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 // WithResponseOutput sets the ResponseOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResponseOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithResponseOutput(value v1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.ResponseOutput = &value
 	return b
 }
@@ -100,7 +90,7 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 // WithSuccessOutput sets the SuccessOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SuccessOutput field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithSuccessOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithSuccessOutput(value v1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.SuccessOutput = &value
 	return b
 }

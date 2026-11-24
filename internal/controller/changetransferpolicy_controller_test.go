@@ -2736,6 +2736,36 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring(fmt.Sprintf("`%s` **(this PR)**", testBranchDevelopment)))
 			Expect(description).To(ContainSubstring("[#42](https://github.com/example/gitops/pull/42)"))
 			Expect(description).To(ContainSubstring(fmt.Sprintf("| `%s` | %s | %s | — |", testBranchStaging, activeDrySha[:7], proposedDrySha[:7])))
+
+			commitMessage, err := TemplateCommitMessage(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cc.Spec.PullRequest.Template.CommitMessage).NotTo(BeEmpty())
+			Expect(strings.SplitN(commitMessage, "\n", 2)[0]).To(Equal(fmt.Sprintf("Promote apps/demo (%s) to %s", proposedDrySha[:5], testBranchDevelopment)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("This commit promotes changes to %s (PromotionStrategy %s).", testBranchDevelopment, psName)))
+			Expect(commitMessage).To(ContainSubstring("Deployment commit"))
+			Expect(commitMessage).To(ContainSubstring("Active (deployed): " + activeDrySha[:7]))
+			Expect(commitMessage).To(ContainSubstring("Proposed: " + proposedDrySha[:7]))
+			Expect(commitMessage).NotTo(ContainSubstring(fmt.Sprintf("%s/commit/%s", strings.TrimSuffix(gitopsRepoURL, "/"), activeDrySha)))
+			Expect(commitMessage).NotTo(ContainSubstring(fmt.Sprintf("%s/commit/%s", strings.TrimSuffix(gitopsRepoURL, "/"), proposedDrySha)))
+			Expect(commitMessage).To(ContainSubstring(activeSubject))
+			Expect(commitMessage).To(ContainSubstring(proposedSubject))
+			Expect(commitMessage).To(ContainSubstring("Code reference"))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("Active: %s/commit/%s", strings.TrimSuffix(codeRepoURL, "/"), baseRefSha)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("Proposed: %s/commit/%s", strings.TrimSuffix(codeRepoURL, "/"), headRefSha)))
+			Expect(commitMessage).To(ContainSubstring("chore(deps): bump foo"))
+			Expect(commitMessage).To(ContainSubstring("chore(deps): bump bar"))
+			Expect(commitMessage).NotTo(ContainSubstring(fmt.Sprintf("Active: %s ", baseRefSha[:7])))
+			Expect(commitMessage).NotTo(ContainSubstring(fmt.Sprintf("Proposed: %s ", headRefSha[:7])))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("%s/compare/%s...%s", strings.TrimSuffix(codeRepoURL, "/"), baseRefSha, headRefSha)))
+			Expect(commitMessage).NotTo(ContainSubstring("**"))
+			Expect(commitMessage).NotTo(ContainSubstring("]("))
+			Expect(commitMessage).NotTo(ContainSubstring("###"))
+			Expect(commitMessage).NotTo(ContainSubstring("Promotion pipeline"))
+			Expect(commitMessage).NotTo(ContainSubstring(testBranchStaging))
+			Expect(commitMessage).NotTo(ContainSubstring("https://github.com/example/gitops/pull/42"))
 		})
 
 		It("omits optional sections when PromotionStrategy and code references are absent", func() {
@@ -2775,7 +2805,153 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring("| currently deployed | proposed update |"))
 			Expect(description).NotTo(ContainSubstring("### Code reference"))
 			Expect(description).NotTo(ContainSubstring("### Promotion pipeline"))
+
+			commitMessage, err := TemplateCommitMessage(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.SplitN(commitMessage, "\n", 2)[0]).To(Equal(fmt.Sprintf("Promote (%s) to %s", proposedDrySha[:5], testBranchDevelopment)))
+			Expect(commitMessage).To(ContainSubstring(fmt.Sprintf("This commit promotes changes to %s.", testBranchDevelopment)))
+			Expect(commitMessage).To(ContainSubstring("Deployment commit"))
+			Expect(commitMessage).To(ContainSubstring("Active (deployed): " + activeDrySha[:7]))
+			Expect(commitMessage).To(ContainSubstring("Proposed: " + proposedDrySha[:7]))
+			Expect(commitMessage).To(ContainSubstring("currently deployed"))
+			Expect(commitMessage).To(ContainSubstring("proposed update"))
+			Expect(commitMessage).NotTo(ContainSubstring("Code reference"))
+			Expect(commitMessage).NotTo(ContainSubstring("Promotion pipeline"))
+			Expect(commitMessage).NotTo(ContainSubstring("PromotionStrategy"))
+			Expect(commitMessage).NotTo(ContainSubstring("**"))
+			Expect(commitMessage).NotTo(ContainSubstring("|"))
 		})
+	})
+})
+
+var _ = Describe("TemplateCommitMessage", func() {
+	Context("Commit message template with ChangeTransferPolicy and optional PromotionStrategy", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   testBranchDevelopment,
+				ProposedBranch: testBranchDevelopmentNext,
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:     "abc1234def",
+						Subject: "feat: add new feature",
+					},
+				},
+			},
+		}
+
+		It("returns an empty string when no commit message template is configured", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "some title",
+				Description: "some description",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(BeEmpty())
+		})
+
+		It("renders the commit message with only CTP when PromotionStrategy is absent", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} (dry: {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}){{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature (dry: abc1234)"))
+		})
+
+		It("renders the commit message with CTP and PromotionStrategy when PromotionStrategy is present", func() {
+			psName := "my-promotion-strategy"
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Name: psName, Namespace: "default",
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature Strategy: " + psName))
+		})
+
+		It("returns an error when the commit message template is invalid", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .Invalid",
+			}
+			_, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to render pull request commit message template"))
+		})
+	})
+})
+
+var _ = Describe("assembleCommitMessageWithTrailers", func() {
+	It("keeps the trailer block as the final paragraph after a non-empty base", func() {
+		base := "promote: feat\n\n"
+		commitTrailers := trailers{
+			constants.TrailerPullRequestID:  "42",
+			constants.TrailerShaDryProposed: "abc",
+		}
+		trimmed := strings.TrimRight(base, "\n")
+		got := assembleCommitMessageWithTrailers(trimmed, commitTrailers)
+		Expect(got).To(HavePrefix("promote: feat\n\n"))
+		Expect(got).To(ContainSubstring(constants.TrailerPullRequestID + ": 42"))
+		Expect(got).To(ContainSubstring(constants.TrailerShaDryProposed + ": abc"))
+		Expect(got).NotTo(ContainSubstring("some title"))
+		Expect(got).NotTo(ContainSubstring("some description"))
+		Expect(strings.HasSuffix(strings.TrimRight(got, "\n"), constants.TrailerShaDryProposed+": abc")).To(BeTrue())
+	})
+
+	It("adds a minimal subject when the base is empty so the trailers stay parseable", func() {
+		commitTrailers := trailers{
+			constants.TrailerPullRequestID:           "7",
+			constants.TrailerPullRequestTargetBranch: testBranchDevelopment,
+			constants.TrailerShaDryProposed:          "abc",
+		}
+		got := assembleCommitMessageWithTrailers("", commitTrailers)
+		Expect(got).To(Equal("Promote to `" + testBranchDevelopment + "`\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestTargetBranch, []string{testBranchDevelopment}))
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerShaDryProposed, []string{"abc"}))
+	})
+
+	It("uses a generic subject when the base is empty and no target branch trailer is set", func() {
+		commitTrailers := trailers{constants.TrailerPullRequestID: "7"}
+		got := assembleCommitMessageWithTrailers("", commitTrailers)
+		Expect(got).To(Equal("Promote\n\n" + commitTrailers.String()))
+
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"7"}))
+	})
+
+	It("keeps trailers parseable after a non-empty base", func() {
+		commitTrailers := trailers{constants.TrailerPullRequestID: "42"}
+		got := assembleCommitMessageWithTrailers("promote: feat\n\nsome body", commitTrailers)
+		parsed, err := git.ParseTrailersFromMessage(context.Background(), got)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed).To(HaveKeyWithValue(constants.TrailerPullRequestID, []string{"42"}))
+	})
+
+	It("returns an empty string when both the base and trailers are empty", func() {
+		Expect(assembleCommitMessageWithTrailers("", trailers{})).To(BeEmpty())
 	})
 })
 
@@ -2876,6 +3052,29 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		oldPR.Status.Conditions[0].Message = "first failure"
 		newPR := oldPR.DeepCopy()
 		newPR.Status.Conditions[0].Message = "second failure"
+		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("enqueues when the Ready condition catches up to the current generation", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Generation = 2
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].ObservedGeneration = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores Ready observedGeneration changes while the condition is still behind", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		oldPR.Generation = 3
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Conditions[0].ObservedGeneration = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("ignores Ready updates when the condition was already current", func() {
+		oldPR := readyPR(metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess))
+		newPR := oldPR.DeepCopy()
 		newPR.Status.Conditions[0].LastTransitionTime = metav1.Now()
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
@@ -3614,9 +3813,8 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 	})
 
 	It("falls back to commit message trailers when no history note exists", func() {
-		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("77"))
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/77"))
 	})
@@ -3627,9 +3825,8 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("88"), "the note must win over the commit message trailers")
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
 	})
@@ -3645,9 +3842,8 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
 		Expect(entry.RestoreUnblockedAt).To(BeNil())
 		Expect(entry.PullRequest.PRMergeTime.UTC().Format(time.RFC3339)).To(Equal("2020-01-01T00:00:00Z"),
@@ -3666,19 +3862,143 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
 		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
 
-		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(Equal(commitSha))
 		Expect(entry.RestoreUnblockedAt).NotTo(BeNil())
 		Expect(entry.RestoreUnblockedAt.UTC().Format(time.RFC3339)).To(Equal("2024-06-01T12:00:00Z"))
 	})
 
 	It("leaves restoredFrom empty for an ordinary promotion", func() {
-		entry, include, err := buildHistoryEntry(ctx, commitSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, commitSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.RestoredFrom).To(BeEmpty())
+	})
+
+	It("attributes active commit statuses to the commit they were observed on, not the commit that replaced it", func() {
+		By("Recording a failing active check on the first commit in the note of the commit that replaced it")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["77"],"`+
+				constants.TrailerCommitStatusProposedPrefix+`gate-phase":["success"]}`, commitSha)
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("fixed"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Promote the fix")
+		fixSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["78"],"`+
+				constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["failure"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-description":["\"Flux failed\""],"`+
+				constants.TrailerCommitStatusProposedPrefix+`gate-phase":["success"]}`, fixSha)
+		mustRunGit(workDir, "push", "origin", branch, git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+		history, err := calculateHistory(ctx, branch, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(2))
+
+		Expect(history[0].Active.Hydrated.Sha).To(Equal(fixSha))
+		Expect(history[0].Active.CommitStatuses).To(BeEmpty(), "the active tip has not been replaced, so no snapshot describes it yet")
+		Expect(history[0].Proposed.CommitStatuses).To(ConsistOf(HaveField("Key", "gate")))
+
+		Expect(history[1].Active.Hydrated.Sha).To(Equal(commitSha))
+		Expect(history[1].Active.CommitStatuses).To(HaveLen(1))
+		Expect(history[1].Active.CommitStatuses[0].Key).To(Equal("flux-health"))
+		Expect(history[1].Active.CommitStatuses[0].Phase).To(Equal("failure"))
+		Expect(history[1].Active.CommitStatuses[0].Description).To(Equal("Flux failed"))
+		Expect(history[1].Proposed.CommitStatuses).To(ConsistOf(HaveField("Key", "gate")))
+	})
+
+	It("ignores the replacing commit's active snapshot when it was taken against a different commit", func() {
+		replacerTrailers := map[string][]string{
+			constants.TrailerShaHydratedActive:                              {"2222222222222222222222222222222222222222"},
+			constants.TrailerCommitStatusActivePrefix + "flux-health-phase": {"failure"},
+		}
+		entry, err := buildHistoryEntry(ctx, commitSha, "", replacerTrailers, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entry.Active.CommitStatuses).To(BeEmpty())
+	})
+
+	It("uses the newest active snapshot that names a commit, even when another commit sits between them", func() {
+		By("Recording a pending snapshot on the middle commit and a later failure on the tip, both naming the first commit")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("middle"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Land an unrelated commit on the active branch")
+		middleSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["pending"]}`, middleSha)
+
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("tip"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Promote the next change")
+		tipSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["79"],"`+
+				constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["failure"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-description":["\"Flux failed\""],"`+
+				constants.TrailerCommitStatusProposedPrefix+`gate-phase":["success"]}`, tipSha)
+		mustRunGit(workDir, "push", "origin", branch, git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+		history, err := calculateHistory(ctx, branch, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(3))
+
+		Expect(history[0].Active.Hydrated.Sha).To(Equal(tipSha))
+		Expect(history[0].Active.CommitStatuses).To(BeEmpty(), "the active tip has not been replaced, so no snapshot describes it yet")
+		Expect(history[0].Proposed.CommitStatuses).To(ConsistOf(HaveField("Key", "gate")))
+
+		Expect(history[1].Active.Hydrated.Sha).To(Equal(middleSha))
+		Expect(history[1].Active.CommitStatuses).To(BeEmpty(), "the tip's snapshot names the first commit, not this one")
+
+		Expect(history[2].Active.Hydrated.Sha).To(Equal(commitSha))
+		Expect(history[2].Active.CommitStatuses).To(Equal([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{{
+			Key:         "flux-health",
+			Phase:       "failure",
+			Description: "Flux failed",
+		}}), "the newer snapshot replaces the pending one recorded on the middle commit")
+	})
+
+	It("does not let a copied restore snapshot replace the active statuses recorded for that commit", func() {
+		By("Recording a successful active check on the first commit in the note of the promotion that replaced it")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("promoted"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Promote the change")
+		promotionSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["success"]}`, promotionSha)
+
+		By("Restoring with a copied note that names the same commit but records a failure")
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("restored"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "Restore the active branch")
+		restoreSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerShaHydratedActive+`":["`+commitSha+`"],"`+
+				constants.TrailerCommitStatusActivePrefix+`flux-health-phase":["failure"],"`+
+				constants.TrailerRestoredFrom+`":["`+promotionSha+`"]}`, restoreSha)
+		mustRunGit(workDir, "push", "origin", branch, git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+
+		history, err := calculateHistory(ctx, branch, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(3))
+
+		Expect(history[0].Active.Hydrated.Sha).To(Equal(restoreSha))
+		Expect(history[0].RestoredFrom).To(Equal(promotionSha))
+		Expect(history[0].Active.CommitStatuses).To(BeEmpty(), "nothing has snapshotted the restore commit itself")
+
+		Expect(history[1].Active.Hydrated.Sha).To(Equal(promotionSha))
+		Expect(history[1].Active.CommitStatuses).To(BeEmpty())
+
+		Expect(history[2].Active.Hydrated.Sha).To(Equal(commitSha))
+		Expect(history[2].Active.CommitStatuses).To(Equal([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{{
+			Key:   "flux-health",
+			Phase: "success",
+		}}), "the copied restore note must not override the snapshot recorded when this commit was replaced")
 	})
 })
 
@@ -3817,9 +4137,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		Eventually(recorder.Events).Should(Receive(ContainSubstring(constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason)))
 
 		By("Verifying the rebuilt history entry is flagged with mergeCommitSnapshotMismatch")
-		entry, include, err := buildHistoryEntry(ctx, mergeSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.MergeCommitSnapshotMismatch).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("99"))
 	})
@@ -3840,9 +4159,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 
 		Consistently(recorder.Events).ShouldNot(Receive())
 
-		entry, include, err := buildHistoryEntry(ctx, mergeSha, "", gitOps)
+		entry, err := buildHistoryEntry(ctx, mergeSha, "", nil, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
 		Expect(entry.MergeCommitSnapshotMismatch).To(BeFalse())
 	})
 })
@@ -4280,7 +4598,9 @@ var _ = Describe("commit status description trailers", func() {
 		encoded, err := encodeTrailerDescription(description)
 		Expect(err).NotTo(HaveOccurred())
 
+		const replacedSha = "1111111111111111111111111111111111111111"
 		trailers := map[string][]string{
+			constants.TrailerShaHydratedActive:                                            {replacedSha},
 			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-phase":       {"success"},
 			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-url":         {"https://example.com/check"},
 			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-description": {encoded},
@@ -4289,7 +4609,8 @@ var _ = Describe("commit status description trailers", func() {
 		}
 
 		history := promoterv1alpha1.History{}
-		populateCommitStatuses(ctx, &history, trailers)
+		populateProposedCommitStatuses(ctx, &history, trailers)
+		populateActiveCommitStatuses(ctx, &history, replacedSha, trailers)
 
 		Expect(history.Active.CommitStatuses).To(HaveLen(1))
 		Expect(history.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))

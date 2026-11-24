@@ -12,6 +12,7 @@ kind: Kustomization
 # leaves APIService/CRD names alone - but would double-prefix the other resources.)
 #
 # Pick a cert overlay instead of applying this base directly:
+#   kubectl apply -k config/apiserver/certs-builtin   (default, built-in)
 #   kubectl apply -k config/apiserver/certs-manual
 #   kubectl apply -k config/apiserver/certs-cert-manager
 # (the base ships without a caBundle on the APIService).

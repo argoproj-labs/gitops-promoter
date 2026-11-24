@@ -304,7 +304,7 @@ type okExecutor struct {
 	body any
 }
 
-func (e okExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
+func (e okExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, RenderedHTTPRequest) (HTTPResponse, error) {
 	return HTTPResponse{StatusCode: 200, Body: e.body}, nil
 }
 
@@ -317,6 +317,10 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 				Key:                 "external-approval",
 				ReportOn:            constants.CommitRefProposed,
 				DescriptionTemplate: `Build: {{ index .SuccessVariables "tag" }}`,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					MethodTemplate: "GET",
+					URLTemplate:    "https://example.com",
+				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{
 						Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"tag": "v1.2.3", "branch": Branch}`},
@@ -435,7 +439,7 @@ type countingExecutor struct {
 	requests int
 }
 
-func (e *countingExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, TemplateData) (HTTPResponse, error) {
+func (e *countingExecutor) Execute(context.Context, *promoterv1alpha1.WebRequestCommitStatus, RenderedHTTPRequest) (HTTPResponse, error) {
 	e.requests++
 	return HTTPResponse{StatusCode: 200}, nil
 }
@@ -469,6 +473,10 @@ var _ = Describe("A CommitStatus write failure", func() {
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				Key:      "external-approval",
 				ReportOn: constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					MethodTemplate: "GET",
+					URLTemplate:    "https://example.com",
+				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`},
 				},
@@ -512,6 +520,10 @@ var _ = Describe("A CommitStatus write failure", func() {
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				Key:      "external-approval",
 				ReportOn: constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					MethodTemplate: "GET",
+					URLTemplate:    "https://example.com",
+				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`},
 				},

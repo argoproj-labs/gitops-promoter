@@ -139,6 +139,11 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// CleanupOrphanedCommitStatuses lists CommitStatuses by their controller owner.
+	if err := utils.RegisterControllerOwnerUIDFieldIndex(ctx, mgr.GetFieldIndexer(), &promoterv1alpha1.CommitStatus{}); err != nil {
+		return fmt.Errorf("TimedCommitStatus controller: %w", err)
+	}
+
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.TimedCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
