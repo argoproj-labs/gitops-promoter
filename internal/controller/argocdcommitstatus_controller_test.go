@@ -1327,29 +1327,44 @@ var _ = Describe("Application watch handler", func() {
 			gates = append(gates, gate)
 		}
 
-		app := &argocd.Application{
-			Kind: "Application", APIVersion: "argoproj.io/v1alpha1",
-			Namespace: "default", Name: "test-app-two-gates",
-			Labels: map[string]string{"app": "two-gates", "team": "two-gates"},
-			Spec: argocd.ApplicationSpec{SourceHydrator: &argocd.SourceHydrator{
-				DrySource:  argocd.DrySource{RepoURL: testGitRepoCloneURL(gitRepo)},
-				SyncSource: argocd.SyncSource{TargetBranch: testBranchStaging},
-			}},
-			Status: argocd.ApplicationStatus{
-				Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
-				Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
-			},
+		makeApp := func(appName string) *argocd.Application {
+			return &argocd.Application{
+				Kind: "Application", APIVersion: "argoproj.io/v1alpha1",
+				Namespace: "default", Name: appName,
+				Labels: map[string]string{"app": "two-gates", "team": "two-gates"},
+				Spec: argocd.ApplicationSpec{SourceHydrator: &argocd.SourceHydrator{
+					DrySource:  argocd.DrySource{RepoURL: testGitRepoCloneURL(gitRepo)},
+					SyncSource: argocd.SyncSource{TargetBranch: testBranchStaging},
+				}},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+					Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+				},
+			}
 		}
-		Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
+		// First Application: lets both gates settle (their error-retry backoff finds it regardless of
+		// what the watch handler enqueues), so nothing but the handler can trigger the next reconcile.
+		app := makeApp(name + "-first")
+		Expect(k8sClient.Create(ctx, app)).To(Succeed())
 		for _, gate := range gates {
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(gate), updated)).To(Succeed())
 				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
-				g.Expect(updated.Status.ApplicationsSelected[0].Name).To(Equal(app.Name))
-				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-			}, constants.EventuallyTimeout).Should(Succeed(), "gate %s was not reconciled for the Application", gate.Name)
+			}, constants.EventuallyTimeout).Should(Succeed(), "gate %s did not settle", gate.Name)
+		}
+
+		// Second Application: its create event must enqueue BOTH gates.
+		app2 := makeApp(name + "-second")
+		Expect(k8sClient.Create(ctx, app2)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, app2) })
+		for _, gate := range gates {
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(gate), updated)).To(Succeed())
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(2))
+			}, constants.EventuallyTimeout).Should(Succeed(), "gate %s was not reconciled for the second Application", gate.Name)
 		}
 
 		Expect(k8sClient.Delete(ctx, app)).To(Succeed())
