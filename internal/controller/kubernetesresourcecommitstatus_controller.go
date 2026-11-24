@@ -237,8 +237,8 @@ func isAdmissionDenial(err error) bool {
 func (r *KubernetesResourceCommitStatusReconciler) keepPreviousReport(ctx context.Context, in environmentInput, validation *promoterv1alpha1.KubernetesResourceTemplateValidation) (promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus, *promoterv1alpha1.CommitStatus, bool, error) {
 	entry := promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{Branch: in.branch}
 	var cs *promoterv1alpha1.CommitStatus
-	if in.previous != nil {
-		entry = *in.previous.DeepCopy()
+	if previous := in.previous.DeepCopy(); previous != nil {
+		entry = *previous
 		if in.previous.ReportedSha != "" {
 			var err error
 			if cs, err = r.upsertCommitStatus(ctx, in, in.previous.GateEnvironmentCommitStatus); err != nil {
@@ -277,6 +277,22 @@ func (r *KubernetesResourceCommitStatusReconciler) handleFinalizer(ctx context.C
 		}
 	}
 	return true, nil
+}
+
+// pruneOnSuccess implements spec.lifecycle.pruneOnSuccess. Like the finalizer release, it waits until success is
+// recorded in status: deleting earlier would let a failed status write recreate the resource. The bool asks for a
+// prompt requeue when success was computed in this pass, so the prune follows the status write.
+func (r *KubernetesResourceCommitStatusReconciler) pruneOnSuccess(ctx context.Context, in environmentInput, live *unstructured.Unstructured, exists bool, phase promoterv1alpha1.CommitStatusPhase) (bool, error) {
+	if !exists || !in.gate.Spec.Lifecycle.PruneOnSuccess || in.mode() != promoterv1alpha1.KubernetesResourceLifecyclePerSha {
+		return false, nil
+	}
+	if in.recordedPhaseForSha() != promoterv1alpha1.CommitPhaseSuccess {
+		return phase == promoterv1alpha1.CommitPhaseSuccess, nil
+	}
+	if !live.GetDeletionTimestamp().IsZero() {
+		return false, nil
+	}
+	return false, r.deleteResource(ctx, in.gate, live, "pruneOnSuccess")
 }
 
 // settleResourceFinalizer decides what happens to the resource finalizer after this reconcile's evaluation. It is
@@ -636,18 +652,11 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	if err != nil {
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
-	// Like the finalizer release, pruneOnSuccess waits until success is recorded in status: deleting earlier would
-	// let a failed status write recreate the resource. A success computed in this pass requeues soon (see above).
-	if exists && in.gate.Spec.Lifecycle.PruneOnSuccess && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha &&
-		in.recordedPhaseForSha() == promoterv1alpha1.CommitPhaseSuccess && live.GetDeletionTimestamp().IsZero() {
-		if err := r.deleteResource(ctx, in.gate, live, "pruneOnSuccess"); err != nil {
-			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
-		}
+	pruneSoon, err := r.pruneOnSuccess(ctx, in, live, exists, result.Phase)
+	if err != nil {
+		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
 	}
-	if exists && in.gate.Spec.Lifecycle.PruneOnSuccess && result.Phase == promoterv1alpha1.CommitPhaseSuccess &&
-		in.recordedPhaseForSha() != promoterv1alpha1.CommitPhaseSuccess {
-		requeueSoon = true
-	}
+	requeueSoon = requeueSoon || pruneSoon
 
 	report, err := r.buildReport(in, name, live, result, templateData)
 	if err != nil {

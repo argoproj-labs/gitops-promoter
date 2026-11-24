@@ -535,7 +535,8 @@ func runController(
 			panic(fmt.Errorf("unable to set up webhook ready check: %w", err))
 		}
 	} else {
-		setupLog.Info("admission webhook disabled; invalid KubernetesResourceCommitStatus templates are reported at reconcile only")
+		setupLog.Info("admission webhook disabled; " +
+			"invalid KubernetesResourceCommitStatus templates are reported at reconcile only")
 	}
 	//+kubebuilder:scaffold:builder
 

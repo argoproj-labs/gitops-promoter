@@ -78,14 +78,7 @@ func (r *DiscoveryResolver) ResolveSchemaWithOrigin(gvk schema.GroupVersionKind)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to read the OpenAPI v3 document of %s: %w", gvk.GroupVersion(), err)
 	}
-	var doc struct {
-		Info struct {
-			Title string `json:"title"`
-		} `json:"info"`
-		Components struct {
-			Schemas map[string]*spec.Schema `json:"schemas"`
-		} `json:"components"`
-	}
+	var doc openAPIDocument
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, false, fmt.Errorf("failed to decode the OpenAPI v3 document of %s: %w", gvk.GroupVersion(), err)
 	}
@@ -101,6 +94,20 @@ func (r *DiscoveryResolver) ResolveSchemaWithOrigin(gvk schema.GroupVersionKind)
 		return nil, false, fmt.Errorf("failed to resolve the schema of %s: %w", gvk, err)
 	}
 	return s, doc.Info.Title == crdDocumentTitle, nil
+}
+
+// openAPIDocument is the part of an OpenAPI v3 group-version document the resolver reads.
+type openAPIDocument struct {
+	Components openAPIComponents `json:"components"`
+	Info       openAPIInfo       `json:"info"`
+}
+
+type openAPIInfo struct {
+	Title string `json:"title"`
+}
+
+type openAPIComponents struct {
+	Schemas map[string]*spec.Schema `json:"schemas"`
 }
 
 // findKindRef returns the component name whose x-kubernetes-group-version-kind lists gvk.

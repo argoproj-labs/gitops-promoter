@@ -206,7 +206,7 @@ func isRequired(parent *apiservercel.DeclType, key string) bool {
 		return false
 	}
 	f, ok := parent.FindField(key)
-	return ok && f.Required
+	return ok && f != nil && f.Required
 }
 
 // checkEnum rejects a literal string that is not one of the field's enum values, when the schema declares any.
