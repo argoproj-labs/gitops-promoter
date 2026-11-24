@@ -5690,15 +5690,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha2, "hydrate dev for B")).To(Succeed())
 				Expect(hydrateEnvironment(ctx, gitPath, testBranchStagingNext, drySha2, "hydrate staging for B")).To(Succeed())
+				// The PR for B has the same name as the PR that merged A, which lingers (merged, possibly
+				// mid-deletion) until the PullRequest controller removes it. Only capture the PR once it
+				// is open and targets B's hydrated commit, so a lingering A PR isn't mistaken for it.
+				var stagingPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					refreshCTP(g, &ctpDev)
 					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha2))
 					refreshCTP(g, &ctpStaging)
 					g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(drySha2))
-					g.Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &promoterv1alpha1.PullRequest{})).To(Succeed())
+					g.Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &stagingPR)).To(Succeed())
+					g.Expect(stagingPR.DeletionTimestamp).To(BeNil())
+					g.Expect(stagingPR.Spec.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(stagingPR.Spec.MergeSha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 				}, constants.EventuallyTimeout).Should(Succeed())
-				var stagingPR promoterv1alpha1.PullRequest
-				Expect(k8sClient.Get(ctx, pullRequestKey(&ctpStaging), &stagingPR)).To(Succeed())
 
 				By("Re-hydrating staging for the in-flight dry commit B")
 				rehydratedSha, err := rehydrateEnvironmentWithoutDryChange(ctx, gitPath, testBranchStagingNext, rehydratedPath, rehydratedContent)
