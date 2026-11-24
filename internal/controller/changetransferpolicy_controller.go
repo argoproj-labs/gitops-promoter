@@ -1455,9 +1455,9 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		"ChangeTransferPolicy": ctp,
 		"PromotionStrategy":    ps,
 	}
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
+	title, description, baseCommitMessage, err := templatePullRequestAndCommitMessage(templatePullRequestTemplate, templateData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request: %w", err)
+		return nil, err
 	}
 
 	// Check if the PR already exists to determine the commit message
@@ -1487,11 +1487,13 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Determine the commit message based on whether this is a new or existing PR
+	// Determine the commit message based on whether this is a new or existing PR.
+	// The rendered commitMessage template is the whole human-readable message; there is no fallback
+	// to title or description. An empty template stays empty.
 	var commitMessage string
 	if !prExists {
 		// New PR
-		commitMessage = fmt.Sprintf("%s\n\n%s", title, description)
+		commitMessage = baseCommitMessage
 	} else {
 		// Update existing PR - add trailers
 		commitTrailers := trailers{}
@@ -1512,7 +1514,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
+		commitMessage = assembleCommitMessageWithTrailers(baseCommitMessage, commitTrailers)
 	}
 
 	// Determine the state: preserve existing state if PR exists, otherwise default to open
@@ -2103,6 +2105,54 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// TemplateCommitMessage renders the commit message template of a pull request template using the
+// provided data map. Returns an empty string if the commit message template is empty.
+func TemplateCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (string, error) {
+	if prt.CommitMessage == "" {
+		return "", nil
+	}
+	commitMessage, err := utils.RenderStringTemplate(prt.CommitMessage, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to render pull request commit message template: %w", err)
+	}
+	return commitMessage, nil
+}
+
+// templatePullRequestAndCommitMessage renders the title, description and merge commit message of a
+// pull request template. Trailing newlines are trimmed from the commit message so the trailer block
+// appended later remains its final paragraph.
+func templatePullRequestAndCommitMessage(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (title, description, commitMessage string, err error) {
+	title, description, err = TemplatePullRequest(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request: %w", err)
+	}
+	commitMessage, err = TemplateCommitMessage(prt, data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to template pull request commit message: %w", err)
+	}
+	return title, description, strings.TrimRight(commitMessage, "\n"), nil
+}
+
+// assembleCommitMessageWithTrailers joins a human-readable base message with promoter trailers.
+// The title and description are never substituted for an empty base.
+func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) string {
+	if len(commitTrailers) == 0 {
+		return base
+	}
+	if base == "" {
+		// git treats the first paragraph of a message as the subject and never parses it as trailers,
+		// so a message made only of the trailer block yields no trailers from git interpret-trailers
+		// (ParseTrailersFromMessage), and the promotion history note would be silently skipped. A
+		// leading blank line is not enough: git strips leading blank lines when it creates the merge
+		// commit. Use a minimal subject so the trailers always form a separate, final paragraph.
+		base = "Promote"
+		if target := commitTrailers[constants.TrailerPullRequestTargetBranch]; target != "" {
+			base = fmt.Sprintf("Promote to `%s`", target)
+		}
+	}
+	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
 }
 
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned

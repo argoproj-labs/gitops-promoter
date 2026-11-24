@@ -1,3 +1,13 @@
+# A pull request commit receives three coverage reports: integration and ui from ci.yaml, and e2e from
+# ci-e2e.yaml (its matrix jobs upload under one name and flag, which Codecov counts as one report). The
+# e2e workflow usually finishes first, and without this Codecov posted the PR comment on the first
+# report and never refreshed it, so the comment showed e2e-only coverage (about 49%) against a complete
+# base (about 85%). Wait for all three before commenting. If a report is added or removed, update this
+# count: a value above the number of reports means no comment is ever posted. The status checks were
+# never affected; they use the merged report.
+comment:
+  after_n_builds: 3
+
 coverage:
   status:
     # allow test coverage to drop by 0.1%, assume that it's typically due to CI problems
