@@ -825,6 +825,20 @@
     },
     {
       customType: 'regex',
+      description: 'Update the nilaway commit pinned in Makefile (no tagged releases)',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'NILAWAY_VERSION\\s*\\??=\\s*(?<currentDigest>[0-9a-f]{40})',
+      ],
+      depNameTemplate: 'nilaway',
+      packageNameTemplate: 'https://github.com/uber-go/nilaway',
+      currentValueTemplate: 'main',
+      datasourceTemplate: 'git-refs',
+    },
+    {
+      customType: 'regex',
       description: 'Update goreleaser version in Makefile',
       managerFilePatterns: [
         '/^Makefile$/',
