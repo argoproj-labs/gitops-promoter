@@ -616,7 +616,7 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 		// The finalizer keeps the resource around until the gate has recorded its terminal phase, so a
 		// ttlSecondsAfterFinished shorter than a controller outage cannot make the gate re-run the work.
 		desired.SetFinalizers([]string{promoterv1alpha1.KubernetesResourceCommitStatusResourceFinalizer})
-		if err := r.Create(ctx, desired); err != nil && !k8serrors.IsAlreadyExists(err) {
+		if err := r.Create(ctx, desired, client.FieldValidation(metav1.FieldValidationStrict)); err != nil && !k8serrors.IsAlreadyExists(err) {
 			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, fmt.Errorf("failed to create %s %q: %w", in.sourceGVK.Kind, name, err)
 		}
 		logger.Info("created resource from template", "kind", in.sourceGVK.Kind, "resource", name)

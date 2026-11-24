@@ -268,7 +268,9 @@ required), its defaulting, its CEL rules, or the cluster's admission policies, a
 value an expression produces. So in `PerSha` mode the controller also renders the template for **every** applicable
 environment, once per gate `metadata.generation`, and submits a **dry-run create** of the real kind with strict field
 validation. Each environment is validated separately because expressions can change the shape of the object per
-environment. The verdict is recorded in `status.environments[].templateValidation`:
+environment. The real create uses strict field validation too, so an unknown field that an expression renders only
+for a later SHA is rejected (and reported as `Ready=False`) instead of being dropped silently. The verdict is recorded
+in `status.environments[].templateValidation`:
 
 ```yaml
 status:
