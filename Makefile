@@ -539,7 +539,8 @@ GOLANGCI_LINT_VERSION ?= v2.15.0
 DEADCODE_VERSION ?= v0.52.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.8.1
-NILAWAY_VERSION ?= latest
+# nilaway has no tagged releases; pin a commit on main so cached CI binaries stay in sync (Renovate bumps it).
+NILAWAY_VERSION ?= 91ad9bf5d8e662d23c715c7ddb5b26c57f328e33
 GORELEASER_VERSION ?= v2.20.3
 
 .PHONY: kustomize
