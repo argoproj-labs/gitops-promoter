@@ -299,7 +299,21 @@ deleted down to `historyLimit`. Use this for immutable or run-once kinds (Job, W
 
 A SHA that reached `success` or `failure` is **terminal**: if its resource disappears afterwards (for example a Job
 removed by `ttlSecondsAfterFinished`), the gate keeps the last report and does not recreate the resource. A new SHA
-always starts over with a fresh resource and `pending`.
+always starts over with a fresh resource and `pending`. Two options adjust this:
+
+- `pruneOnSuccess: true` deletes the resource once `success` is recorded in the gate's status. Success stays
+  terminal, so the report is kept and nothing is recreated. Use it when successful runs are not worth keeping around.
+- `retryOnDelete: true` makes failure non-terminal: deleting the resource of a failed SHA makes the controller create
+  a new one, and the phase returns to `pending`, so deleting the resource is how you rerun a failed check. Leave it
+  off for kinds that remove failed resources on their own, such as a Job with `ttlSecondsAfterFinished`, or every
+  removal starts another run.
+
+```yaml
+spec:
+  lifecycle:
+    pruneOnSuccess: true
+    retryOnDelete: true
+```
 
 Each per-SHA resource carries the finalizer `kubernetesresourcecommitstatus.promoter.argoproj.io/resource-finalizer`
 until the gate has recorded its terminal phase, so a TTL shorter than a controller outage cannot remove the result

@@ -4936,6 +4936,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_KubernetesResourceLifecyc
 							Format:      "int32",
 						},
 					},
+					"pruneOnSuccess": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PruneOnSuccess deletes the created resource once the environment's success phase is recorded in the gate's status. Success is terminal for a SHA, so the gate keeps reporting it and does not recreate the resource. Use this for run-once kinds whose successful runs are not worth keeping. Only valid with mode PerSha.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"retryOnDelete": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RetryOnDelete makes failure non-terminal: when the resource of a SHA whose phase is failure is deleted, the controller creates a new one for the same SHA and the phase returns to pending, so deleting the resource is how a failed check is rerun. Leave it off (default) for kinds that remove failed resources on their own, such as a Job with ttlSecondsAfterFinished, or every removal would start another run. Only valid with mode PerSha.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},

@@ -289,7 +289,7 @@ func (r *KubernetesResourceCommitStatusReconciler) settleResourceFinalizer(ctx c
 		return false, nil
 	}
 	switch {
-	case in.isTerminalForSha(), !live.GetDeletionTimestamp().IsZero() && !isTerminalPhase(phase):
+	case isTerminalPhase(in.recordedPhaseForSha()), !live.GetDeletionTimestamp().IsZero() && !isTerminalPhase(phase):
 		return false, r.releaseResourceFinalizer(ctx, live)
 	case isTerminalPhase(phase):
 		return true, nil
@@ -496,12 +496,27 @@ func (in environmentInput) resourceName() string {
 	return resourcetemplate.PerShaResourceName(in.gate.Name, in.branch, in.sha)
 }
 
-// isTerminalForSha reports whether the previous report already reached a terminal phase for the current SHA.
-func (in environmentInput) isTerminalForSha() bool {
+// recordedPhaseForSha returns the phase the gate's status already records for the current SHA, or "" when the
+// previous report is for another SHA or missing. Unlike a phase computed in the current reconcile, which the
+// deferred status update writes, a phase returned here is persisted.
+func (in environmentInput) recordedPhaseForSha() promoterv1alpha1.CommitStatusPhase {
 	if in.previous == nil || in.previous.ReportedSha != in.sha {
+		return ""
+	}
+	return in.previous.Phase
+}
+
+// isTerminalForSha reports whether the SHA's recorded phase is final, so a resource that disappeared is not
+// recreated. Success is always terminal; failure is terminal unless spec.lifecycle.retryOnDelete asks for a rerun.
+func (in environmentInput) isTerminalForSha() bool {
+	switch in.recordedPhaseForSha() {
+	case promoterv1alpha1.CommitPhaseSuccess:
+		return true
+	case promoterv1alpha1.CommitPhaseFailure:
+		return !in.gate.Spec.Lifecycle.RetryOnDelete
+	default:
 		return false
 	}
-	return in.previous.Phase == promoterv1alpha1.CommitPhaseSuccess || in.previous.Phase == promoterv1alpha1.CommitPhaseFailure
 }
 
 // reconcileEnvironment ensures the real resource exists for the environment (or re-applies it in InPlace mode),
@@ -548,9 +563,11 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 
 	// Terminal-phase rule: once a SHA reached success or failure, a resource that disappeared afterwards
 	// (for example a Job removed by ttlSecondsAfterFinished) must not be recreated, or the gate would loop.
-	if !exists && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
-		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", in.previous.Phase)
-		entry := *in.previous.DeepCopy()
+	// isTerminalForSha implies in.previous is set; the nil check on its copy is for nilaway.
+	if previous := in.previous.DeepCopy(); previous != nil && !exists &&
+		in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha && in.isTerminalForSha() {
+		logger.Info("resource is gone but the SHA already reached a terminal phase; keeping the previous report", "resource", name, "phase", previous.Phase)
+		entry := *previous
 		entry.TemplateValidation = validation
 		cs, err := r.upsertCommitStatus(ctx, in, entry.GateEnvironmentCommitStatus)
 		if err != nil {
@@ -608,6 +625,18 @@ func (r *KubernetesResourceCommitStatusReconciler) reconcileEnvironment(ctx cont
 	requeueSoon, err := r.settleResourceFinalizer(ctx, in, live, exists, result.Phase)
 	if err != nil {
 		return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+	}
+	// Like the finalizer release, pruneOnSuccess waits until success is recorded in status: deleting earlier would
+	// let a failed status write recreate the resource. A success computed in this pass requeues soon (see above).
+	if exists && in.gate.Spec.Lifecycle.PruneOnSuccess && in.mode() == promoterv1alpha1.KubernetesResourceLifecyclePerSha &&
+		in.recordedPhaseForSha() == promoterv1alpha1.CommitPhaseSuccess && live.GetDeletionTimestamp().IsZero() {
+		if err := r.deleteResource(ctx, in.gate, live, "pruneOnSuccess"); err != nil {
+			return promoterv1alpha1.KubernetesResourceCommitStatusEnvironmentStatus{}, nil, false, err
+		}
+	}
+	if exists && in.gate.Spec.Lifecycle.PruneOnSuccess && result.Phase == promoterv1alpha1.CommitPhaseSuccess &&
+		in.recordedPhaseForSha() != promoterv1alpha1.CommitPhaseSuccess {
+		requeueSoon = true
 	}
 
 	report, err := r.buildReport(in, name, live, result, templateData)
