@@ -240,7 +240,7 @@ description: >-
 
 ### Validation at admission time
 
-The gate holds the whole template, so the CRD schema cannot validate it. The controller can instead serve a
+The gate holds the whole template, so the CRD schema cannot validate it. The controller instead serves a
 [validating admission webhook](../../advanced-usage/admission-webhook.md) that runs the same compile-time checks
 when the gate is created or updated, plus a check that every template field exists in the kind's schema (the API
 server would otherwise drop a misspelled field silently, so a close match is suggested). A bad gate is then rejected

@@ -8,6 +8,10 @@ kind: Kustomization
 resources:
   - ../default
 
+components:
+  # The controller reconciles gates only in promoter-system, so its webhook validates only those.
+  - ../webhook/namespaced
+
 patches:
   - path: controllerconfiguration_patch.yaml
   - target:

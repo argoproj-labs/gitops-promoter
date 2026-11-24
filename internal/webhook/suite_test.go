@@ -47,6 +47,7 @@ import (
 
 var (
 	testEnv   *envtest.Environment
+	cfg       *rest.Config
 	k8sClient client.Client
 	// warnClient is k8sClient with admission warnings recorded in warnings.
 	warnClient client.Client
@@ -99,13 +100,14 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: time.Minute,
 		WebhookInstallOptions: envtest.WebhookInstallOptions{
-			Paths: []string{filepath.Join("..", "..", "config", "webhook", "base")},
+			Paths: []string{filepath.Join("..", "..", "config", "webhook", "manifests.yaml")},
 		},
 		// Used when KUBEBUILDER_ASSETS is unset; make test sets it.
 		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
 			fmt.Sprintf("1.31.0-%s-%s", goruntime.GOOS, goruntime.GOARCH)),
 	}
-	cfg, err := testEnv.Start()
+	var err error
+	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 
 	scheme := utils.GetScheme()

@@ -10995,6 +10995,25 @@ rules:
   - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-cert-role
+  namespace: promoter-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - promoter-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
@@ -12171,6 +12190,31 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-configuration-role
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - promoter-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
@@ -12338,6 +12382,23 @@ subjects:
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-cert-rolebinding
+  namespace: promoter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promoter-webhook-cert-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
@@ -12373,6 +12434,32 @@ subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-configuration-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-webhook-configuration-role
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: promoter
+  name: promoter-webhook-server-cert
+  namespace: promoter-system
+type: Opaque
 ---
 apiVersion: v1
 kind: Service
@@ -12571,7 +12658,6 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
-        - --enable-admission-webhooks
         command:
         - /usr/bin/tini
         - --
@@ -12609,7 +12695,7 @@ spec:
             - ALL
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: webhook-server-cert
+          name: webhook-certs
           readOnly: true
       - args:
         - --secure-listen-address=0.0.0.0:8443
@@ -12641,7 +12727,7 @@ spec:
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
-      - name: webhook-server-cert
+      - name: webhook-certs
         secret:
           defaultMode: 420
           secretName: promoter-webhook-server-cert

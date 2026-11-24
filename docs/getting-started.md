@@ -61,9 +61,9 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
-The `install-with-dashboard-*` bundles also serve the
-[admission webhook](advanced-usage/admission-webhook.md) that validates `KubernetesResourceCommitStatus` gates when
-they are applied, using the same certificate strategy. `install-without-ui.yaml` leaves it out.
+Every bundle also serves the [admission webhook](advanced-usage/admission-webhook.md) that validates
+`KubernetesResourceCommitStatus` gates when they are applied. The controller manages the webhook's certificate
+itself.
 
 ### Namespaced
 

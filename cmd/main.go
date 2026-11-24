@@ -87,7 +87,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
-	var admissionWebhook admissionWebhookOptions
+	var admissionWebhook promoterwebhook.Options
 	apiserverCertRotation := certrotation.NewOptions()
 	var tlsMinVersion string
 	var tlsCipherSuites []string
@@ -126,14 +126,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	cmd.Flags().BoolVar(&admissionWebhook.enabled, "enable-admission-webhooks", false,
-		"Serve the validating admission webhook for KubernetesResourceCommitStatus. Requires the serving certificate "+
-			"in --admission-webhook-cert-dir and the ValidatingWebhookConfiguration from config/webhook.")
-	cmd.Flags().StringVar(&admissionWebhook.certDir, "admission-webhook-cert-dir", "",
-		"Directory containing tls.crt and tls.key for the admission webhook server. "+
-			"Defaults to <temp dir>/k8s-webhook-server/serving-certs.")
-	cmd.Flags().IntVar(&admissionWebhook.port, "admission-webhook-port", 9443,
-		"Port the admission webhook server listens on.")
+	admissionWebhook.AddFlags(cmd.Flags())
 	apiserverCertRotation.AddFlags(cmd.Flags())
 
 	// Flag names match RecommendedOptions.SecureServing. Versions below TLS 1.2 and
@@ -161,13 +154,6 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
-// admissionWebhookOptions configures the admission webhook server (see --enable-admission-webhooks).
-type admissionWebhookOptions struct {
-	certDir string
-	port    int
-	enabled bool
-}
-
 // One parameter per flag group; the registration sequence is linear and splitting it would obscure
 // the startup order.
 //
@@ -179,7 +165,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
-	admissionWebhook admissionWebhookOptions,
+	admissionWebhook promoterwebhook.Options,
 	apiserverCertRotation *certrotation.Options,
 	tlsSettings utils.TLSSettings,
 	clientConfig clientcmd.ClientConfig,
@@ -238,10 +224,10 @@ func runController(
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	// The server only starts when a webhook is registered (see --enable-admission-webhooks).
+	// The server only starts when a webhook is registered, which promoterwebhook.Setup does once the
+	// self-managed certificate is on disk (see --admission-webhook).
 	webhookServer := webhook.NewServer(webhook.Options{
-		Port:    admissionWebhook.port,
-		CertDir: admissionWebhook.certDir,
+		CertDir: admissionWebhook.CertDir,
 		TLSOpts: tlsOpts,
 	})
 
@@ -535,14 +521,21 @@ func runController(
 	if err := krcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus controller: %w", err))
 	}
-	if admissionWebhook.enabled {
+	if admissionWebhook.Enabled {
 		// Shares the controller's compiler and kind list so admission and reconciliation agree.
-		if err := (&promoterwebhook.KubernetesResourceCommitStatusValidator{
-			Compiler:   krcsReconciler.Compiler(),
-			Configured: krcsReconciler.ConfiguredKinds(),
-		}).SetupWithManager(localManager); err != nil {
-			panic(fmt.Errorf("unable to create KubernetesResourceCommitStatus admission webhook: %w", err))
+		webhookReady, err := promoterwebhook.Setup(runCtx, localManager, webhookServer, admissionWebhook, controllerNamespace,
+			&promoterwebhook.KubernetesResourceCommitStatusValidator{
+				Compiler:   krcsReconciler.Compiler(),
+				Configured: krcsReconciler.ConfiguredKinds(),
+			})
+		if err != nil {
+			panic(fmt.Errorf("unable to set up the KubernetesResourceCommitStatus admission webhook: %w", err))
 		}
+		if err := localManager.AddReadyzCheck("webhook", webhookReady); err != nil {
+			panic(fmt.Errorf("unable to set up webhook ready check: %w", err))
+		}
+	} else {
+		setupLog.Info("admission webhook disabled; invalid KubernetesResourceCommitStatus templates are reported at reconcile only")
 	}
 	//+kubebuilder:scaffold:builder
 
