@@ -26,14 +26,20 @@ import (
 // the gates to wake when the dry branch or an environment tag is pushed.
 const DependentsQualifiedObservedDryShaField = ".status.observedDryShas"
 
-// TagAdvanceMode says who moves an environment's tag.
-// +kubebuilder:validation:Enum=Auto;Manual
+// TagAdvanceMode says who moves an environment's tag, and when.
+// +kubebuilder:validation:Enum=WhenIdle;Immediately;Manual
 type TagAdvanceMode string
 
 const (
-	// TagAdvanceAuto has the controller move the tag: to the dry branch HEAD for an environment with no
-	// upstreams, and to the newest commit every upstream has qualified for any other environment.
-	TagAdvanceAuto TagAdvanceMode = "Auto"
+	// TagAdvanceWhenIdle has the controller move the tag, but only while the environment is idle: its
+	// hydrator has processed the commit the tag points at, nothing is waiting to be promoted, and no active
+	// commit status is pending. The environment finishes what it is promoting before it is given the next
+	// commit, so that it can qualify commits while newer ones keep arriving.
+	TagAdvanceWhenIdle TagAdvanceMode = "WhenIdle"
+	// TagAdvanceImmediately has the controller move the tag as soon as there is a newer commit to move it
+	// to: the dry branch HEAD for an environment with no upstreams, and the newest commit every upstream has
+	// qualified for any other environment. A promotion that is under way is replaced by the next one.
+	TagAdvanceImmediately TagAdvanceMode = "Immediately"
 	// TagAdvanceManual leaves the tag to a person (or their CI). The controller creates the tag if it is
 	// missing and never moves it afterwards.
 	TagAdvanceManual TagAdvanceMode = "Manual"
@@ -121,11 +127,13 @@ type DependentsQualifiedEnvironment struct {
 	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 
-	// Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
-	// controller still verifies that what they tagged is hydrated and qualified upstream before it may be
-	// promoted.
+	// Advance says who moves the environment's tag, and when.
+	// WhenIdle (the default): the controller, once the environment has finished what it is promoting.
+	// Immediately: the controller, as soon as there is a newer commit to move the tag to.
+	// Manual: a person; the controller still verifies that what they tagged is hydrated and qualified
+	// upstream before it may be promoted.
 	// +optional
-	// +kubebuilder:default=Auto
+	// +kubebuilder:default=WhenIdle
 	Advance TagAdvanceMode `json:"advance,omitempty"`
 }
 
@@ -151,6 +159,20 @@ type DependentsQualifiedTagStatus struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	Sha string `json:"sha,omitempty"`
+}
+
+// DependentsQualifiedHeldStatus is a commit an environment's tag is waiting to be moved to.
+type DependentsQualifiedHeldStatus struct {
+	// Sha is the dry commit the tag will be moved to.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	Sha string `json:"sha"`
+
+	// Message says what the controller is waiting for.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Message string `json:"message"`
 }
 
 // DependentsQualifiedWatermark is the newest dry commit an environment has qualified: a commit that was live
@@ -201,6 +223,11 @@ type DependentsQualifiedCommitStatusEnvironmentStatus struct {
 	// qualified a commit.
 	// +optional
 	Qualified *DependentsQualifiedWatermark `json:"qualified,omitempty"`
+
+	// Held is the commit the controller would move the tag to but is not moving it to yet, and why. Omitted
+	// when the tag is where the controller wants it.
+	// +optional
+	Held *DependentsQualifiedHeldStatus `json:"held,omitempty"`
 
 	// Branch is the environment branch name.
 	// +required

@@ -115,6 +115,12 @@ type dqEnvironment struct {
 	Status promoterv1alpha1.EnvironmentStatus
 	// Manual is true when a person moves the tag (advance: Manual).
 	Manual bool
+	// WhenIdle is true when the controller moves the tag only while the environment is idle (advance:
+	// WhenIdle). See dqBusy.
+	WhenIdle bool
+	// Blocked is true while a RestoreActiveCommit holds the environment on the commit it restored. Whatever
+	// is proposed is not going to merge until a person lifts the block.
+	Blocked bool
 	// Restored is true when the live commit was put there by a RestoreActiveCommit. It is only known to be
 	// right when an older commit than Qualified is live, which is the only time it is used.
 	Restored bool
@@ -127,6 +133,14 @@ type dqTagMove struct {
 	// From is the commit the tag points at now, "" when the tag is to be created.
 	From string
 	To   string
+}
+
+// dqTagHold is a move of an existing tag that is waiting for its environment to be idle.
+type dqTagHold struct {
+	// Sha is the commit the tag will be moved to.
+	Sha string
+	// Message says what the environment is still doing.
+	Message string
 }
 
 // dqGate is the ordering commit status for one environment's proposed commit.
@@ -245,37 +259,78 @@ func dqQualify(ctx context.Context, graph dqCommitGraph, head string, env dqEnvi
 	return next, nil
 }
 
-// dqPlanTags returns the tags to create or move, in environment order.
+// dqPlanTags returns the tags to create or move, in environment order, and the moves that are waiting for
+// their environment to be idle, by branch.
 //
 // A root's tag follows the dry branch HEAD. A dependent's tag follows the newest commit every direct upstream
 // has qualified. A tag only moves forward, except that a tag which is no longer on the dry branch (the branch
-// was force-pushed) is reset. An advance: Manual tag is created when missing and never moved.
-func dqPlanTags(ctx context.Context, graph dqCommitGraph, head string, envs []dqEnvironment) ([]dqTagMove, error) {
+// was force-pushed) is reset. An advance: WhenIdle tag is not moved forward while its environment is busy
+// (see dqBusy). An advance: Manual tag is created when missing and never moved.
+func dqPlanTags(ctx context.Context, graph dqCommitGraph, head string, envs []dqEnvironment) ([]dqTagMove, map[string]dqTagHold, error) {
 	byBranch := make(map[string]dqEnvironment, len(envs))
 	for _, env := range envs {
 		byBranch[env.Branch] = env
 	}
 
 	var moves []dqTagMove
+	holds := map[string]dqTagHold{}
 	for _, env := range envs {
 		target, err := dqTagTarget(ctx, graph, head, env, byBranch)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var to string
+		forward := false
 		if env.TagSha == "" {
 			to, err = dqNewTagSha(ctx, graph, head, env, target)
 		} else {
-			to, err = dqMovedTagSha(ctx, graph, head, env, target)
+			to, forward, err = dqMovedTagSha(ctx, graph, head, env, target)
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if to != "" && to != env.TagSha {
-			moves = append(moves, dqTagMove{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: to})
+		if to == "" || to == env.TagSha {
+			continue
+		}
+		if forward && env.WhenIdle {
+			// Moving the tag now would replace what the environment is promoting with the next commit.
+			// Under steady churn it would then never finish, and so never qualify, any commit.
+			if busy := dqBusy(env); busy != "" {
+				holds[env.Branch] = dqTagHold{Sha: to, Message: busy}
+				continue
+			}
+		}
+		moves = append(moves, dqTagMove{Branch: env.Branch, Tag: env.Tag, From: env.TagSha, To: to})
+	}
+	return moves, holds, nil
+}
+
+// dqBusy says what an environment is still doing for the commit its tag points at, "" when it is idle.
+//
+// An environment is idle when its hydrator has processed the tagged commit, nothing is waiting to be
+// promoted, and no active commit status is pending. A failed commit status counts as idle, so that a fix can
+// roll forward. So does an environment a RestoreActiveCommit is blocking: what is proposed there is not going
+// to merge, and the commit that fixes it has to be hydrated before anyone can lift the block for it.
+func dqBusy(env dqEnvironment) string {
+	if env.Blocked {
+		return ""
+	}
+	tagged := dqShortSha(env.TagSha)
+	if hydrated := getEffectiveHydratedDrySha(env.Status); hydrated != env.TagSha {
+		return "Waiting for the hydrator to process " + tagged
+	}
+	if env.Status.Proposed.Dry.Sha != env.Status.Active.Dry.Sha {
+		return "Waiting for the promotion of " + dqShortSha(env.Status.Proposed.Dry.Sha) + " to merge"
+	}
+	if pr := env.Status.PullRequest; pr != nil && pr.State == promoterv1alpha1.PullRequestOpen {
+		return "Waiting for the promotion of " + tagged + " to merge"
+	}
+	for _, status := range env.Status.Active.CommitStatuses {
+		if status.Phase == string(promoterv1alpha1.CommitPhasePending) {
+			return fmt.Sprintf("Waiting for commit status %q on %s", status.Key, dqShortSha(env.Status.Active.Dry.Sha))
 		}
 	}
-	return moves, nil
+	return ""
 }
 
 // dqTagTarget returns the commit an automatically advanced tag wants to be at: the dry branch HEAD for a
@@ -327,31 +382,32 @@ func dqNewTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEn
 	return base, nil
 }
 
-// dqMovedTagSha returns where an existing tag should point; env.TagSha when it should stay.
-func dqMovedTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, target string) (string, error) {
+// dqMovedTagSha returns where an existing tag should point; env.TagSha when it should stay. forward is true
+// when the tag moves to a newer commit on the dry branch, which is the move that can wait for the environment.
+func dqMovedTagSha(ctx context.Context, graph dqCommitGraph, head string, env dqEnvironment, target string) (to string, forward bool, err error) {
 	if env.Manual {
-		return env.TagSha, nil
+		return env.TagSha, false, nil
 	}
 	onBranch, err := graph.Contains(ctx, head, env.TagSha)
 	if err != nil {
-		return "", fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
+		return "", false, fmt.Errorf("failed to check whether tag %q is on the dry branch: %w", env.Tag, err)
 	}
 	if target == "" || target == env.TagSha {
-		return env.TagSha, nil
+		return env.TagSha, false, nil
 	}
 	if !onBranch {
 		// The dry branch was rewritten. The tag points at history that no longer exists there, so
 		// "forward" has no meaning; put it back on the branch.
-		return target, nil
+		return target, false, nil
 	}
 	ahead, err := graph.Contains(ctx, target, env.TagSha)
 	if err != nil {
-		return "", fmt.Errorf("failed to compare tag %q with its target: %w", env.Tag, err)
+		return "", false, fmt.Errorf("failed to compare tag %q with its target: %w", env.Tag, err)
 	}
 	if ahead {
-		return target, nil
+		return target, true, nil
 	}
-	return env.TagSha, nil
+	return env.TagSha, false, nil
 }
 
 // dqEvaluateGate decides whether an environment's proposed commit may be promoted: the hydrator has caught up
@@ -518,6 +574,20 @@ func dqRestored(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydra
 	}
 	for _, rac := range racs {
 		if rac.Spec.Branch == branch && rac.Status.ActiveSha == activeHydratedSha {
+			return true
+		}
+	}
+	return false
+}
+
+// dqBlocked reports whether a RestoreActiveCommit is holding branch on the commit it restored: one of the
+// given RestoreActiveCommits produced the live commit and still blocks the environment.
+func dqBlocked(racs []promoterv1alpha1.RestoreActiveCommit, branch, activeHydratedSha string) bool {
+	if activeHydratedSha == "" {
+		return false
+	}
+	for _, rac := range racs {
+		if rac.Spec.Branch == branch && rac.Status.ActiveSha == activeHydratedSha && rac.Spec.BlocksEnvironment() {
 			return true
 		}
 	}
@@ -891,14 +961,14 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 	if err != nil {
 		return 0, err
 	}
-	moves, err := dqPlanTags(ctx, graph, dry.head, planEnvs)
+	moves, holds, err := dqPlanTags(ctx, graph, dry.head, planEnvs)
 	if err != nil {
 		return 0, err
 	}
 	pushErrs := r.pushTags(ctx, dqcs, dry.ops, moves, envs)
 
 	// Gate.
-	commitStatuses, err := r.writeGates(ctx, dqcs, ps, graph, dry.head, envs)
+	commitStatuses, err := r.writeGates(ctx, dqcs, ps, graph, dry.head, envs, holds)
 	if err != nil {
 		return 0, err
 	}
@@ -1099,6 +1169,9 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 			Status:    status,
 			Restored:  dqRestored(racs, branch, status.Active.Hydrated.Sha),
 		}
+		// An environment the gate does not list has no advance at all, and gets the default.
+		env.WhenIdle = spec.Advance == promoterv1alpha1.TagAdvanceWhenIdle || spec.Advance == ""
+		env.Blocked = dqBlocked(racs, branch, status.Active.Hydrated.Sha)
 
 		live, err := dqLiveDrySha(status, func() (bool, error) {
 			return r.sameManifests(ctx, repos, branch, activePath, status)
@@ -1375,6 +1448,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
 	graph dqCommitGraph,
 	head string,
 	envs []dqEnvironment,
+	holds map[string]dqTagHold,
 ) ([]*promoterv1alpha1.CommitStatus, error) {
 	logger := logf.FromContext(ctx)
 	byBranch := make(map[string]dqEnvironment, len(envs))
@@ -1390,6 +1464,9 @@ func (r *DependentsQualifiedCommitStatusReconciler) writeGates(
 			Tag:                  &promoterv1alpha1.DependentsQualifiedTagStatus{Name: env.Tag, Sha: env.TagSha},
 			Qualified:            env.Qualified,
 			ActiveCommitStatuses: env.Status.Active.CommitStatuses,
+		}
+		if hold, held := holds[env.Branch]; held {
+			entry.Held = &promoterv1alpha1.DependentsQualifiedHeldStatus{Sha: hold.Sha, Message: hold.Message}
 		}
 
 		// With no proposed change (active and proposed dry SHAs match) there is no promotion to gate.

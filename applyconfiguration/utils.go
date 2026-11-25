@@ -133,6 +133,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.DependentsQualifiedDryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedEnvironment"):
 		return &apiv1alpha1.DependentsQualifiedEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedHeldStatus"):
+		return &apiv1alpha1.DependentsQualifiedHeldStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedTagStatus"):
 		return &apiv1alpha1.DependentsQualifiedTagStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependentsQualifiedWatermark"):

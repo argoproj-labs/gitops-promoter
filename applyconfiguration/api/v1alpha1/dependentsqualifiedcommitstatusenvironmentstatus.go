@@ -31,6 +31,9 @@ type DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Qualified is the newest dry commit this environment has qualified. Omitted until the environment has
 	// qualified a commit.
 	Qualified *DependentsQualifiedWatermarkApplyConfiguration `json:"qualified,omitempty"`
+	// Held is the commit the controller would move the tag to but is not moving it to yet, and why. Omitted
+	// when the tag is where the controller wants it.
+	Held *DependentsQualifiedHeldStatusApplyConfiguration `json:"held,omitempty"`
 	// Branch is the environment branch name.
 	Branch *string `json:"branch,omitempty"`
 	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
@@ -62,6 +65,14 @@ func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) Wit
 // If called multiple times, the Qualified field is set to the value of the last call.
 func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithQualified(value *DependentsQualifiedWatermarkApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Qualified = value
+	return b
+}
+
+// WithHeld sets the Held field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Held field is set to the value of the last call.
+func (b *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration) WithHeld(value *DependentsQualifiedHeldStatusApplyConfiguration) *DependentsQualifiedCommitStatusEnvironmentStatusApplyConfiguration {
+	b.Held = value
 	return b
 }
 

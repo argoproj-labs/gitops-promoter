@@ -578,6 +578,8 @@ export type components = {
             branch: string;
             /** @description Description mirrors child CommitStatus.spec.description. */
             description?: string;
+            /** @description Held is the commit the controller would move the tag to but is not moving it to yet, and why. Omitted when the tag is where the controller wants it. */
+            held?: components["schemas"]["DependentsQualifiedHeldStatus"];
             /** @description Phase mirrors child CommitStatus.spec.phase. */
             phase?: string;
             /** @description Qualified is the newest dry commit this environment has qualified. Omitted until the environment has qualified a commit. */
@@ -668,13 +670,26 @@ export type components = {
         };
         /** @description DependentsQualifiedEnvironment holds the settings of one environment. */
         DependentsQualifiedEnvironment: {
-            /** @description Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
+            /** @description Advance says who moves the environment's tag, and when. WhenIdle (the default): the controller, once the environment has finished what it is promoting. Immediately: the controller, as soon as there is a newer commit to move the tag to. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
             advance?: string;
             /**
              * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             branch: string;
+        };
+        /** @description DependentsQualifiedHeldStatus is a commit an environment's tag is waiting to be moved to. */
+        DependentsQualifiedHeldStatus: {
+            /**
+             * @description Message says what the controller is waiting for.
+             * @default
+             */
+            message: string;
+            /**
+             * @description Sha is the dry commit the tag will be moved to.
+             * @default
+             */
+            sha: string;
         };
         /** @description DependentsQualifiedTagStatus is the observed state of one environment tag. */
         DependentsQualifiedTagStatus: {

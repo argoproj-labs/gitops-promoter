@@ -316,6 +316,11 @@ func (in DependentsQualifiedEnvironment) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsQualifiedHeldStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedHeldStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DependentsQualifiedTagStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DependentsQualifiedTagStatus"
 }

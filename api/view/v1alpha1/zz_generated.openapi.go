@@ -94,6 +94,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.DependentsQualifiedDrySource{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedDrySource(ref),
 		apiv1alpha1.DependentsQualifiedDryStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedDryStatus(ref),
 		apiv1alpha1.DependentsQualifiedEnvironment{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedEnvironment(ref),
+		apiv1alpha1.DependentsQualifiedHeldStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedHeldStatus(ref),
 		apiv1alpha1.DependentsQualifiedTagStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedTagStatus(ref),
 		apiv1alpha1.DependentsQualifiedWatermark{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedWatermark(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref),
@@ -2882,6 +2883,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedCommit
 							Ref:         ref(apiv1alpha1.DependentsQualifiedWatermark{}.OpenAPIModelName()),
 						},
 					},
+					"held": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Held is the commit the controller would move the tag to but is not moving it to yet, and why. Omitted when the tag is where the controller wants it.",
+							Ref:         ref(apiv1alpha1.DependentsQualifiedHeldStatus{}.OpenAPIModelName()),
+						},
+					},
 					"branch": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Branch is the environment branch name.",
@@ -2962,7 +2969,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedCommit
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedTagStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedWatermark{}.OpenAPIModelName()},
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedHeldStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedTagStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsQualifiedWatermark{}.OpenAPIModelName()},
 	}
 }
 
@@ -3280,13 +3287,43 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedEnviro
 					},
 					"advance": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
+							Description: "Advance says who moves the environment's tag, and when. WhenIdle (the default): the controller, once the environment has finished what it is promoting. Immediately: the controller, as soon as there is a newer commit to move the tag to. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
 				Required: []string{"branch"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedHeldStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsQualifiedHeldStatus is a commit an environment's tag is waiting to be moved to.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the dry commit the tag will be moved to.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message says what the controller is waiting for.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"sha", "message"},
 			},
 		},
 	}

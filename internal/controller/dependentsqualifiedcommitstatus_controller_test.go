@@ -570,7 +570,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		It("moves a root environment's tag to the DRY branch HEAD", func() {
 			dev, test, prod := chain("d", "d", "d")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "d", To: "f"}}))
 		})
@@ -579,7 +579,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			dev, test, prod := chain("f", "d", "c")
 			dev.Qualified = dqWatermark("d")
 			test.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
@@ -587,14 +587,14 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		It("moves a dependent's tag to the newest commit its upstream has qualified", func() {
 			dev, test, prod := chain("f", "c", "c")
 			dev.Qualified = dqWatermark("e")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "c", To: "e"}}))
 		})
 
 		It("does not move a dependent's tag while its upstream has qualified nothing", func() {
 			dev, test, prod := chain("f", "c", "c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
@@ -603,18 +603,18 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			dev, test, prod := chain("f", "f", "b")
 			dev.Qualified = dqWatermark("f")
 			test.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "b", To: "c"}}),
 				"prod follows test's watermark, not dev's")
 		})
 
-		It("ignores the environment's own state: an open promotion and running checks do not delay its tag", func() {
+		It("with advance: Immediately, ignores the environment's own state: an open promotion and running checks do not delay its tag", func() {
 			dev, _, _ := chain("f", "", "")
 			dev.Qualified = dqWatermark("e")
 			test := dqProposing(dqTest, dqTagTest, "d", "c", "d", dqDev)
 			test.Status.Active.CommitStatuses = dqPhases(pending)
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "e"}}))
 		})
@@ -623,7 +623,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			// test's tag is at e; dev was restored and its watermark pulled back to c.
 			dev, test, prod := chain("f", "e", "b")
 			dev.Qualified = dqWatermark("c")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(BeEmpty())
 		})
@@ -632,7 +632,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			dev, test, prod := chain("c", "b", "a")
 			dev.Qualified = dqWatermark("c")
 			test.Qualified = dqWatermark("b")
-			moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+			moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(moves).To(Equal([]dqTagMove{
 				{Branch: dqDev, Tag: dqTagDev, From: "c", To: "f"},
@@ -653,13 +653,13 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			}
 
 			It("moves the tag to the newest commit every upstream has qualified", func() {
-				moves, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), dqWatermark("d"), "b"))
+				moves, _, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), dqWatermark("d"), "b"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "b", To: "d"}}))
 			})
 
 			It("waits while any upstream has qualified nothing", func() {
-				moves, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), nil, "b"))
+				moves, _, err := dqPlanTags(ctx, graph, "f", fanIn(dqWatermark("f"), nil, "b"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -667,10 +667,123 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("uses the merge base when the upstream watermarks are on different sides of a merge", func() {
 				envs := fanIn(dqWatermark("l"), dqWatermark("r"), "a")
 				envs[0].TagSha, envs[1].TagSha = "m", "m"
-				moves, err := dqPlanTags(ctx, graph, "m", envs)
+				moves, _, err := dqPlanTags(ctx, graph, "m", envs)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "a", To: "b"}}),
 					"b is the newest commit both l and r contain")
+			})
+		})
+
+		Context("advance: WhenIdle", func() {
+			// plan returns what is planned for dev (tag f, qualified e) and test in the given state, advancing WhenIdle.
+			// test's tag is at d, so the controller wants to move it to e.
+			plan := func(test dqEnvironment) ([]dqTagMove, map[string]dqTagHold) {
+				GinkgoHelper()
+				dev, _, _ := chain("f", "", "")
+				dev.Qualified = dqWatermark("e")
+				test.DependsOn = []string{dqDev}
+				test.WhenIdle = true
+				moves, holds, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				Expect(err).NotTo(HaveOccurred())
+				return moves, holds
+			}
+			moved := []dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "e"}}
+
+			It("moves the tag of an environment that has finished what it was promoting", func() {
+				moves, holds := plan(dqSettled(dqTest, dqTagTest, "d", "d", success))
+				Expect(moves).To(Equal(moved))
+				Expect(holds).To(BeEmpty())
+			})
+
+			It("holds the tag until the hydrator has processed the commit it points at", func() {
+				moves, holds := plan(dqSettled(dqTest, dqTagTest, "d", "c", success))
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(Equal(map[string]dqTagHold{dqTest: {Sha: "e", Message: "Waiting for the hydrator to process d"}}))
+			})
+
+			It("holds the tag while the promotion of the commit it points at has not merged", func() {
+				moves, holds := plan(dqProposing(dqTest, dqTagTest, "d", "c", "d"))
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(Equal(map[string]dqTagHold{dqTest: {Sha: "e", Message: "Waiting for the promotion of d to merge"}}))
+			})
+
+			It("holds the tag while a pull request is open for a commit hydrated again from the same DRY commit", func() {
+				test := dqSettled(dqTest, dqTagTest, "d", "d", success)
+				test.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{State: promoterv1alpha1.PullRequestOpen}
+				moves, holds := plan(test)
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(HaveKey(dqTest))
+			})
+
+			It("does not wait for a merged pull request to be cleaned up", func() {
+				test := dqSettled(dqTest, dqTagTest, "d", "d", success)
+				test.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{State: promoterv1alpha1.PullRequestMerged}
+				moves, _ := plan(test)
+				Expect(moves).To(Equal(moved))
+			})
+
+			It("holds the tag while an active commit status is pending", func() {
+				moves, holds := plan(dqSettled(dqTest, dqTagTest, "d", "d", success, pending))
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(Equal(map[string]dqTagHold{dqTest: {Sha: "e", Message: `Waiting for commit status "check-1" on d`}}))
+			})
+
+			It("moves the tag of an environment whose commit failed, so that a fix can roll forward", func() {
+				moves, holds := plan(dqSettled(dqTest, dqTagTest, "d", "d", failure))
+				Expect(moves).To(Equal(moved))
+				Expect(holds).To(BeEmpty())
+			})
+
+			It("counts a no-op hydration as processed", func() {
+				test := dqSettled(dqTest, dqTagTest, "d", "c", success)
+				test.Status = dqWithNote(test.Status, "d")
+				moves, _ := plan(test)
+				Expect(moves).To(Equal(moved))
+			})
+
+			It("moves the tag of an environment a RestoreActiveCommit is blocking, so that the fix is hydrated", func() {
+				// d was promoted and then restored away from; it is still proposed and will not merge.
+				test := dqProposing(dqTest, dqTagTest, "d", "c", "d")
+				test.Blocked = true
+				moves, holds := plan(test)
+				Expect(moves).To(Equal(moved))
+				Expect(holds).To(BeEmpty())
+			})
+
+			It("holds a root's tag too, so that the first environment qualifies commits under churn", func() {
+				dev := dqProposing(dqDev, dqTagDev, "d", "c", "d")
+				dev.WhenIdle = true
+				moves, holds, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(Equal(map[string]dqTagHold{dqDev: {Sha: "f", Message: "Waiting for the promotion of d to merge"}}))
+			})
+
+			It("creates a missing tag without waiting", func() {
+				dev := dqProposing(dqDev, dqTagDev, "", "c", "d")
+				dev.WhenIdle = true
+				moves, holds, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "", To: "f"}}))
+				Expect(holds).To(BeEmpty())
+			})
+
+			It("resets a tag that a force-push left off the DRY branch without waiting", func() {
+				dev := dqProposing(dqDev, dqTagDev, "e", "d", "e")
+				dev.WhenIdle = true
+				moves, holds, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "e", To: "q"}}))
+				Expect(holds).To(BeEmpty())
+			})
+
+			It("reports nothing as held when the tag is where it should be", func() {
+				dev := dqProposing(dqDev, dqTagDev, "f", "d", "f")
+				dev.WhenIdle = true
+				moves, holds, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(moves).To(BeEmpty())
+				Expect(holds).To(BeEmpty())
 			})
 		})
 
@@ -680,7 +793,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				dev.Qualified = dqWatermark("f")
 				test.Qualified = dqWatermark("f")
 				prod.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -688,7 +801,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("never moves a root's tag", func() {
 				dev, _, _ := chain("c", "", "")
 				dev.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -699,7 +812,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				test.Qualified = dqWatermark("f")
 				prod.Manual = true
 				prod.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqProd, Tag: dqTagProd, From: "", To: "c"}}),
 					"the first hydration from the tag is a no-op; a person decides what comes next")
@@ -711,7 +824,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				dev, test, prod := chain("f", "", "")
 				test.LiveDrySha = "d"
 				prod.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{
 					{Branch: dqTest, Tag: dqTagTest, From: "", To: "d"},
@@ -721,7 +834,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 			It("creates the tag at the DRY branch HEAD when nothing is live", func() {
 				dev, test, prod := chain("", "", "")
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test, prod})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{
 					{Branch: dqDev, Tag: dqTagDev, From: "", To: "f"},
@@ -733,7 +846,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("creates the tag at the DRY branch HEAD when the live commit is not on the DRY branch", func() {
 				dev, test, _ := chain("f", "", "")
 				test.LiveDrySha = "x"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "f"}}))
 			})
@@ -741,7 +854,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("creates a root's tag directly at the DRY branch HEAD", func() {
 				dev, _, _ := chain("", "", "")
 				dev.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "", To: "f"}}))
 			})
@@ -750,7 +863,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				dev, test, _ := chain("f", "", "")
 				dev.Qualified = dqWatermark("e")
 				test.LiveDrySha = "c"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "e"}}))
 			})
@@ -759,7 +872,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				dev, test, _ := chain("f", "", "")
 				dev.Qualified = dqWatermark("c")
 				test.LiveDrySha = "e"
-				moves, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
+				moves, _, err := dqPlanTags(ctx, graph, "f", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "", To: "e"}}))
 			})
@@ -768,19 +881,19 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		Context("after the DRY branch is force-pushed", func() {
 			It("resets a root's tag that is no longer reachable from HEAD", func() {
 				dev, _, _ := chain("e", "", "")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
+				moves, _, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "e", To: "q"}}))
 			})
 
 			It("leaves a dependent's unreachable tag until an upstream qualifies a commit on the new history", func() {
 				dev, test, _ := chain("q", "d", "")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				moves, _, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 
 				dev.Qualified = dqWatermark("p")
-				moves, err = dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				moves, _, err = dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "p"}}))
 			})
@@ -788,7 +901,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("resets a dependent's unreachable tag even when the target is not ahead of it", func() {
 				dev, test, _ := chain("q", "e", "")
 				dev.Qualified = dqWatermark("b")
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
+				moves, _, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev, test})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "e", To: "b"}}))
 			})
@@ -796,7 +909,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			It("leaves an advance: Manual tag alone", func() {
 				dev, _, _ := chain("e", "", "")
 				dev.Manual = true
-				moves, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
+				moves, _, err := dqPlanTags(ctx, graph, "q", []dqEnvironment{dev})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(moves).To(BeEmpty())
 			})
@@ -804,7 +917,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		It("returns ancestry errors", func() {
 			dev, test, prod := chain("d", "d", "d")
-			_, err := dqPlanTags(ctx, dqFailingGraph{}, "f", []dqEnvironment{dev, test, prod})
+			_, _, err := dqPlanTags(ctx, dqFailingGraph{}, "f", []dqEnvironment{dev, test, prod})
 			Expect(err).To(MatchError(ContainSubstring("graph unavailable")))
 		})
 	})
@@ -1019,7 +1132,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 				Expect(err).NotTo(HaveOccurred())
 				envs[i].Qualified = qualified
 			}
-			moves, err := dqPlanTags(ctx, graph, head, envs)
+			moves, _, err := dqPlanTags(ctx, graph, head, envs)
 			Expect(err).NotTo(HaveOccurred())
 			for _, move := range moves {
 				idx := slices.IndexFunc(envs, func(e dqEnvironment) bool { return e.Branch == move.Branch })
@@ -1092,6 +1205,54 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			envs, moves = step("f", envs)
 			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "d", To: "f"}}))
 			Expect(envs[2].TagSha).To(Equal("d"))
+		})
+
+		It("with advance: WhenIdle, keeps releasing to every environment while commits land faster than one can finish", func() {
+			envs := []dqEnvironment{
+				dqSettled(dqDev, dqTagDev, "b", "b", success),
+				dqSettled(dqTest, dqTagTest, "b", "b", success),
+			}
+			envs[1].DependsOn = []string{dqDev}
+			for i := range envs {
+				envs[i].WhenIdle = true
+			}
+
+			By("c lands: dev is idle, so its tag moves to c")
+			envs, moves := step("c", envs)
+			Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "b", To: "c"}}))
+
+			By("d and e land while dev is still rolling c out: dev's tag stays on c")
+			promote(envs, 0, "c", pending)
+			envs, moves = step("d", envs)
+			Expect(moves).To(BeEmpty())
+			envs, moves = step("e", envs)
+			Expect(moves).To(BeEmpty())
+
+			By("dev finishes c: it qualifies c, test gets c, and dev skips d for the newest commit")
+			promote(envs, 0, "c", success)
+			envs, moves = step("e", envs)
+			Expect(moves).To(Equal([]dqTagMove{
+				{Branch: dqDev, Tag: dqTagDev, From: "c", To: "e"},
+				{Branch: dqTest, Tag: dqTagTest, From: "b", To: "c"},
+			}))
+
+			By("f lands while dev rolls e out and test rolls c out: neither tag moves")
+			promote(envs, 0, "e", pending)
+			promote(envs, 1, "c", pending)
+			envs, moves = step("f", envs)
+			Expect(moves).To(BeEmpty())
+
+			By("dev finishes e first: test is still busy with c, so e waits for it")
+			promote(envs, 0, "e", success)
+			envs, moves = step("f", envs)
+			Expect(moves).To(Equal([]dqTagMove{{Branch: dqDev, Tag: dqTagDev, From: "e", To: "f"}}))
+			Expect(envs[1].TagSha).To(Equal("c"))
+
+			By("test finishes c: it has qualified a commit under churn, and moves on to e")
+			promote(envs, 1, "c", success)
+			envs, moves = step("f", envs)
+			Expect(envs[1].Qualified.DrySha).To(Equal("c"))
+			Expect(moves).To(Equal([]dqTagMove{{Branch: dqTest, Tag: dqTagTest, From: "c", To: "e"}}))
 		})
 
 		It("lets a person hold prod back and release a commit the upstream skipped", func() {
@@ -1394,6 +1555,35 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			Expect(dqRestored([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "")}, dqTest, "")).To(BeFalse())
 		})
 	})
+
+	Describe("dqBlocked: whether a RestoreActiveCommit is holding an environment on the commit it restored", func() {
+		restore := func(branch, activeSha string, block *bool) promoterv1alpha1.RestoreActiveCommit {
+			return promoterv1alpha1.RestoreActiveCommit{
+				Spec:   promoterv1alpha1.RestoreActiveCommitSpec{Branch: branch, BlockEnvironment: block},
+				Status: promoterv1alpha1.RestoreActiveCommitStatus{ActiveSha: activeSha},
+			}
+		}
+
+		It("is true when a restore for the branch produced the active commit and blocks by default", func() {
+			Expect(dqBlocked([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "bbb", nil)}, dqTest, "bbb")).To(BeTrue())
+		})
+
+		It("is false once the block was lifted, while the RestoreActiveCommit still exists", func() {
+			Expect(dqBlocked([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "bbb", new(false))}, dqTest, "bbb")).To(BeFalse())
+		})
+
+		It("is false when the environment has been promoted past the restore commit", func() {
+			Expect(dqBlocked([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "bbb", nil)}, dqTest, "ccc")).To(BeFalse())
+		})
+
+		It("is false for another environment's restore", func() {
+			Expect(dqBlocked([]promoterv1alpha1.RestoreActiveCommit{restore(dqDev, "bbb", nil)}, dqTest, "bbb")).To(BeFalse())
+		})
+
+		It("is false for a restore that has not run yet", func() {
+			Expect(dqBlocked([]promoterv1alpha1.RestoreActiveCommit{restore(dqTest, "", nil)}, dqTest, "")).To(BeFalse())
+		})
+	})
 })
 
 // dqRemoteTagSha returns the commit a tag points at on the test git server, or "" when the tag does not exist.
@@ -1484,12 +1674,23 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			Expect(err).To(MatchError(ContainSubstring("Unsupported value")))
 		})
 
-		It("should default advance to Auto", func() {
+		It("should accept every advance mode", func() {
+			gate := newGate("dq-advance-modes", "main")
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: testBranchDevelopment, Advance: promoterv1alpha1.TagAdvanceWhenIdle},
+				{Branch: testBranchStaging, Advance: promoterv1alpha1.TagAdvanceImmediately},
+				{Branch: testBranchProduction, Advance: promoterv1alpha1.TagAdvanceManual},
+			}
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
+		})
+
+		It("should default advance to WhenIdle", func() {
 			gate := newGate("dq-default-advance", "main")
 			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{{Branch: testBranchProduction}}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
-			Expect(gate.Spec.Environments[0].Advance).To(Equal(promoterv1alpha1.TagAdvanceAuto))
+			Expect(gate.Spec.Environments[0].Advance).To(Equal(promoterv1alpha1.TagAdvanceWhenIdle))
 		})
 	})
 
@@ -1860,10 +2061,75 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		It("should hold a tag while its environment is busy, and move it once the environment is idle", func() {
+			const healthKey = "dq-health"
+			neverHydrated()
+
+			By("Requiring an active commit status on development, which advances WhenIdle by default")
+			promotionStrategy.Spec.Environments[0].ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: healthKey}}
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			By("Promoting the first commit to development, where it is not reported healthy yet")
+			first := headSha()
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(first))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			hydrate(testBranchDevelopmentNext, tagDevelopment)
+			var developmentActive string
+			Eventually(func(g Gomega) {
+				g.Expect(activeDrySha(g, testBranchDevelopment)).To(Equal(first))
+				developmentActive = activeHydratedSha(g, testBranchDevelopment)
+				g.Expect(developmentActive).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing a second commit: development's tag stays on the first, and the second is reported as held")
+			second, err := makeDryCommit(ctx, gitPath, "second release")
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				held := environmentStatus(g, testBranchDevelopment).Held
+				g.Expect(held).NotTo(BeNil())
+				g.Expect(held.Sha).To(Equal(second))
+				g.Expect(held.Message).To(Equal(`Waiting for commit status "` + healthKey + `" on ` + first[:7]))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(first))
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Reporting development healthy: it qualifies the first commit and its tag moves to the second")
+			health := &promoterv1alpha1.CommitStatus{
+				Name:      name + "-health",
+				Namespace: "default",
+				Labels:    map[string]string{promoterv1alpha1.CommitStatusLabel: healthKey},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: gitRepo.Name},
+					Sha:                 developmentActive,
+					Name:                healthKey,
+					Description:         "development is healthy",
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+				},
+			}
+			Expect(k8sClient.Create(ctx, health)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, health) })
+			Eventually(func(g Gomega) {
+				development := environmentStatus(g, testBranchDevelopment)
+				g.Expect(development.Qualified).NotTo(BeNil())
+				g.Expect(development.Qualified.DrySha).To(Equal(first))
+				g.Expect(tagSha(g, tagDevelopment)).To(Equal(second))
+				g.Expect(development.Held).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		It("should take a qualification back after a restore whose RestoreActiveCommit no longer exists", func() {
 			neverHydrated()
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
+			// Staging is not hydrated until the end of this spec. With advance: WhenIdle its tag would wait
+			// for that, and this spec needs the tag at the second commit before development is restored.
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: testBranchStaging, Advance: promoterv1alpha1.TagAdvanceImmediately},
+			}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			By("Promoting the first commit to development")

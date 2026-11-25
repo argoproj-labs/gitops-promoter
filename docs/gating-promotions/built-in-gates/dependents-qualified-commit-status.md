@@ -147,7 +147,8 @@ Two limits follow from evaluating live:
 
 ### 3. Advance tags
 
-For each environment with `advance: Auto` (the default), the controller computes where its tag should be:
+For each environment the controller moves the tag of (`advance: WhenIdle`, the default, or `advance: Immediately`),
+it computes where the tag should be:
 
 | Environment | Tag should point at |
 |-------------|---------------------|
@@ -158,21 +159,41 @@ It pushes the tag when the target is a descendant of the tag's current commit. O
 tag is never moved backward, and a tag someone pushed ahead of what upstream has qualified stays there (the gate holds
 the promotion until upstream catches up). A dependent with an upstream that has qualified nothing has no target.
 
-The controller does not look at the environment's own state when deciding to move its tag. An open promotion PR is
-updated by the next hydration, and active checks that are still running do not delay the move.
+**When the tag moves.** With `advance: WhenIdle` the controller moves a tag forward only while the environment is
+**idle**, so that the environment finishes what it is promoting before it is given the next commit. An environment is
+idle when all of these hold:
+
+- its hydrator has processed the commit the tag points at (a [no-op hydration](#picking-up-no-op-hydrations) counts);
+- nothing is waiting to be promoted: the proposed and active DRY commits are the same, and no promotion pull request
+  is open;
+- no active commit status is `pending`.
+
+A `failure` counts as idle, so that a fix can roll forward. So does an environment that a
+[RestoreActiveCommit](../../advanced-usage/rolling-back.md) is blocking: what is proposed there will not merge, and
+the commit that fixes it has to be hydrated before anyone can lift the block for it.
+
+While the environment is busy, the tag stays where it is and `status.environments[].held` names the commit that is
+waiting and what the controller is waiting for. When the environment becomes idle, the tag moves to the newest
+target, skipping the commits in between.
+
+With `advance: Immediately` the controller does not look at the environment's own state. An open promotion PR is
+updated by the next hydration, and active checks that are still running do not delay the move. An environment that
+receives commits faster than it can finish promoting them then never qualifies any, and the environments after it
+get nothing. Use it only for an environment whose promotions finish well within the time between commits, or where
+running the newest commit matters more than qualifying one.
 
 Environments with `advance: Manual` are skipped.
 
 **Missing tags.** A missing tag is created for every environment, including manual ones, at the DRY commit that is
 live in the environment, so the first hydration from the tag changes nothing. When nothing is live, or what is live is
-not on the DRY branch, the tag is created at the DRY branch HEAD. An `advance: Auto` tag is created directly at its
-target when the target is ahead of the live commit. If the PromotionStrategy has not reported the environment yet, the
+not on the DRY branch, the tag is created at the DRY branch HEAD. A tag the controller moves is created directly at its
+target when the target is ahead of the live commit; creating a tag never waits for the environment to be idle. If the PromotionStrategy has not reported the environment yet, the
 controller reads `hydrator.metadata` from the tip of the active branch itself. It does not wait, because on a new
 setup the hydrator needs the tag before it can create the proposed branch.
 
 **After a force-push to the DRY branch.** A tag that is no longer reachable from the DRY branch HEAD has no "forward".
-An `advance: Auto` tag in that state is reset to its target. An `advance: Manual` tag is left alone, and the gate
-reports that it is not on the DRY branch.
+A tag the controller moves is reset to its target, without waiting for the environment to be idle. An
+`advance: Manual` tag is left alone, and the gate reports that it is not on the DRY branch.
 
 **Pushes.** Each tag is pushed on its own, with a lease on the commit the controller read for it at the start of the
 reconcile. A tag someone moved in between is not overwritten; the next reconcile re-evaluates. One rejected tag does
@@ -295,7 +316,7 @@ defaults; an entry for a branch the PromotionStrategy does not have sets `Ready`
 | Field | Required | Notes |
 |-------|----------|-------|
 | `branch` | yes | The environment's active branch, matching `PromotionStrategy.spec.environments[].branch`. |
-| `advance` | no | `Auto` (default): the controller moves the tag. `Manual`: the controller creates the tag if it is missing and never moves it. |
+| `advance` | no | `WhenIdle` (default): the controller moves the tag once the environment has finished what it is promoting. `Immediately`: the controller moves the tag as soon as there is a newer commit for it. `Manual`: the controller creates the tag if it is missing and never moves it. See [Advance tags](#3-advance-tags). |
 
 ### `spec.publishTo`
 
@@ -356,6 +377,7 @@ the tags must exist and the hydrator must follow them before the gate can pass.
 | `tag` | yes | `{name, sha}`: the environment tag and the commit it pointed at when last observed. `sha` is omitted while the tag does not exist. |
 | `activeCommitStatuses` | optional | Verbatim copy of `PromotionStrategy.status.environments[].active.commitStatuses`. Omitted when empty. |
 | `qualified` | optional | `{drySha, hydratedSha, qualifiedAt}`: the newest DRY commit qualified for this environment. Omitted until the first qualification. |
+| `held` | optional | `{sha, message}`: the commit an `advance: WhenIdle` tag will move to once the environment is idle, and what the controller is waiting for. Omitted when the tag is where the controller wants it. |
 | `upstreams` | optional | Direct `dependsOn` upstreams: `[{branch, satisfied, reason}]`. `reason` is set when `satisfied` is false. |
 
 Gate report fields (`phase`, `description`, `url`, `reportedSha`) mirror the child `CommitStatus` spec, following the

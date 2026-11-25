@@ -773,6 +773,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: description
       type:
         scalar: string
+    - name: held
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedHeldStatus
     - name: phase
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
@@ -886,8 +889,17 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: advance
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.TagAdvanceMode
-      default: Auto
+      default: WhenIdle
     - name: branch
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedHeldStatus
+  map:
+    fields:
+    - name: message
+      type:
+        scalar: string
+    - name: sha
       type:
         scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedTagStatus

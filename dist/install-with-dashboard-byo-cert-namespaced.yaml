@@ -5730,13 +5730,16 @@ spec:
                     one environment.
                   properties:
                     advance:
-                      default: Auto
+                      default: WhenIdle
                       description: |-
-                        Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
-                        controller still verifies that what they tagged is hydrated and qualified upstream before it may be
-                        promoted.
+                        Advance says who moves the environment's tag, and when.
+                        WhenIdle (the default): the controller, once the environment has finished what it is promoting.
+                        Immediately: the controller, as soon as there is a newer commit to move the tag to.
+                        Manual: a person; the controller still verifies that what they tagged is hydrated and qualified
+                        upstream before it may be promoted.
                       enum:
-                      - Auto
+                      - WhenIdle
+                      - Immediately
                       - Manual
                       type: string
                     branch:
@@ -5967,6 +5970,26 @@ spec:
                     description:
                       description: Description mirrors child CommitStatus.spec.description.
                       type: string
+                    held:
+                      description: |-
+                        Held is the commit the controller would move the tag to but is not moving it to yet, and why. Omitted
+                        when the tag is where the controller wants it.
+                      properties:
+                        message:
+                          description: Message says what the controller is waiting
+                            for.
+                          minLength: 1
+                          type: string
+                        sha:
+                          description: Sha is the dry commit the tag will be moved
+                            to.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
+                      required:
+                      - message
+                      - sha
+                      type: object
                     phase:
                       description: Phase mirrors child CommitStatus.spec.phase.
                       enum:

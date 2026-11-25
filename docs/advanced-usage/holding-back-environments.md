@@ -40,14 +40,16 @@ prod  hydrates promoter/environment/prod  → D is proposed; test qualified it, 
 ```
 
 1. **Advance the roots.** The controller watches the DRY branch. When HEAD moves, it moves the tag of every root
-   environment (one with no `dependsOn` upstreams) to the new HEAD. The hydrator hydrates the root from its tag and
+   environment (one with no `dependsOn` upstreams) to the new HEAD, once the environment has finished what it was
+   promoting. The hydrator hydrates the root from its tag and
    Promoter opens the promotion PR as usual.
 2. **Qualify.** The controller watches each environment's active commit statuses. Whenever a DRY commit is live in an
    environment and every active commit status is `success`, that commit is **qualified** for the environment.
    Qualifying a commit qualifies every commit before it on the DRY branch: the environment does not need to run every
    commit, only a newer one that contains it.
 3. **Advance the dependents.** When an environment qualifies a newer commit, the controller moves the tag of each
-   environment that depends on it to the newest commit all of that environment's upstreams have qualified. The hydrator
+   environment that depends on it to the newest commit all of that environment's upstreams have qualified, once that
+   environment has finished what it was promoting. The hydrator
    picks up the moved tag and the next promotion PR opens.
 4. **Gate.** The controller posts the ordering commit status on each environment's proposed commit. It reports
    `success` once the hydrator has caught up to the tag **and** the tagged commit is qualified in every upstream. For a
@@ -274,11 +276,25 @@ for the unchanged manifests does not run again.
 **Tags only move forward on their own.** The controller advances a tag only to a descendant of the commit it currently
 points at. It never moves a tag backward, and it never moves a tag on an environment set to `advance: Manual`.
 
-**Each environment needs a quiet window.** An environment qualifies a commit only if its active checks all pass while
-that commit is live. If `test` has a one-hour soak and `dev` qualifies a new commit every twenty minutes, `test` merges
-each of them, restarts its soak each time, and never qualifies anything, so `prod` never advances. Environment tags do
-not fix this on their own. Shorten the checks, turn off `autoMerge` on `test`, or set `test` to `advance: Manual` and
-move its tag on your own schedule.
+**An environment finishes one commit before it gets the next.** An environment qualifies a commit only if its active
+checks all pass while that commit is live. So by default (`advance: WhenIdle`) the controller leaves an environment's
+tag alone until the environment is idle: its hydrator has processed the tagged commit, the promotion has merged, and
+no active check is still pending. If `test` has a one-hour soak and `dev` qualifies a new commit every twenty
+minutes, `test` soaks one commit, qualifies it, and then takes the newest commit `dev` has qualified, skipping the
+ones in between. `status.environments[].held` on the gate shows the commit that is waiting.
+
+Two consequences:
+
+- **A promotion that waits for a person holds the environment.** With `autoMerge: false`, the tag does not move
+  while the promotion PR is open. Merge or close the PR to let the environment move on.
+- **A fix waits for a rollout that is stuck.** A check that is `pending` holds the tag; a check that has failed does
+  not. If a bad commit leaves a check pending for a long time (an Argo CD Application stays `Progressing` until the
+  Deployment's progress deadline, ten minutes by default), the fix is not hydrated until the check fails. To send it
+  sooner, set the environment to `advance: Immediately` for the moment.
+
+`advance: Immediately` moves the tag as soon as there is a newer commit and ignores what the environment is doing.
+An environment that receives commits faster than it can finish promoting them then never qualifies anything, and the
+environments after it get nothing.
 
 **Different environments sit on different commits.** That is the point, and it is new. Dashboards and habits built on
 "every environment is converging on HEAD" need adjusting: compare an environment against its tag, not against its

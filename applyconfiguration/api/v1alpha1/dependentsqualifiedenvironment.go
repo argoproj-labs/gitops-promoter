@@ -30,9 +30,11 @@ type DependentsQualifiedEnvironmentApplyConfiguration struct {
 	// PromotionStrategy.
 	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
-	// Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
-	// controller still verifies that what they tagged is hydrated and qualified upstream before it may be
-	// promoted.
+	// Advance says who moves the environment's tag, and when.
+	// WhenIdle (the default): the controller, once the environment has finished what it is promoting.
+	// Immediately: the controller, as soon as there is a newer commit to move the tag to.
+	// Manual: a person; the controller still verifies that what they tagged is hydrated and qualified
+	// upstream before it may be promoted.
 	Advance *apiv1alpha1.TagAdvanceMode `json:"advance,omitempty"`
 }
 
