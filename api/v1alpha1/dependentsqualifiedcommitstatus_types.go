@@ -56,18 +56,21 @@ type DependentsQualifiedCommitStatusSpec struct {
 	Key string `json:"key"`
 
 	// DrySource is where the dry commits and the environment tags live.
+	//
+	// Every environment of the PromotionStrategy hydrates from its own tag in that repository. The tag
+	// names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an
+	// environment with an activePath. The controller creates the tags and reports their names in
+	// status.environments[].tag.name.
 	// +required
 	DrySource DependentsQualifiedDrySource `json:"drySource"`
 
-	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
-	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
-	// +required
+	// Environments holds per-environment settings. An environment of the PromotionStrategy with no entry
+	// here gets the defaults. Every entry must name an environment of the PromotionStrategy.
+	// +optional
 	// +listType=map
 	// +listMapKey=branch
-	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=50
-	// +kubebuilder:validation:XValidation:rule="self.all(e, self.exists_one(o, o.tag == e.tag))",message="each environment must have its own tag"
-	Environments []DependentsQualifiedEnvironment `json:"environments"`
+	Environments []DependentsQualifiedEnvironment `json:"environments,omitempty"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,
@@ -105,7 +108,7 @@ type DependentsQualifiedDrySource struct {
 	GitRepositoryRef *ObjectReference `json:"gitRepositoryRef,omitempty"`
 }
 
-// DependentsQualifiedEnvironment declares the tag one environment hydrates from.
+// DependentsQualifiedEnvironment holds the settings of one environment.
 type DependentsQualifiedEnvironment struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
@@ -118,19 +121,9 @@ type DependentsQualifiedEnvironment struct {
 	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 
-	// Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-	// refs/tags/ prefix). The controller creates the tag if it does not exist.
-	// Must not start with '-', contain ':', or contain '..'.
-	// +required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=100
-	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="tag must not start with '-'"
-	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="tag must not contain ':'"
-	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="tag must not contain '..'"
-	Tag string `json:"tag"`
-
-	// Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-	// still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+	// Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
+	// controller still verifies that what they tagged is hydrated and qualified upstream before it may be
+	// promoted.
 	// +optional
 	// +kubebuilder:default=Auto
 	Advance TagAdvanceMode `json:"advance,omitempty"`
@@ -147,7 +140,8 @@ type DependentsQualifiedDryStatus struct {
 
 // DependentsQualifiedTagStatus is the observed state of one environment tag.
 type DependentsQualifiedTagStatus struct {
-	// Name is the tag name.
+	// Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's
+	// active branch and activePath.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`

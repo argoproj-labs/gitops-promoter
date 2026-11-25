@@ -72,8 +72,16 @@ type PromotionStrategySpec struct {
 	// ActivePath is the default repository subpath for this strategy's active state.
 	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
 	// Individual environments can override this value via their own activePath field.
+	// It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+	// it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+	// "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+	// also not start with '-'.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$`
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..') && !self.contains('@{') && !self.endsWith('.')",message="activePath must not contain '..' or '@{', or end with '.'"
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock') && !self.contains('.lock/')",message="activePath directory names must not end with '.lock'"
 	ActivePath string `json:"activePath,omitempty"`
 
 	// PullRequest configures SCM pull request behavior for all environments in this strategy.
@@ -120,8 +128,16 @@ type Environment struct {
 
 	// ActivePath optionally overrides the strategy-level activePath for this environment.
 	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+	// it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+	// "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+	// also not start with '-'.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$`
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..') && !self.contains('@{') && !self.endsWith('.')",message="activePath must not contain '..' or '@{', or end with '.'"
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock') && !self.contains('.lock/')",message="activePath directory names must not end with '.lock'"
 	ActivePath string `json:"activePath,omitempty"`
 
 	// DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible

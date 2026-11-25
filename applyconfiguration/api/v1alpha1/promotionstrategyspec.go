@@ -50,6 +50,10 @@ type PromotionStrategySpecApplyConfiguration struct {
 	// ActivePath is the default repository subpath for this strategy's active state.
 	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
 	// Individual environments can override this value via their own activePath field.
+	// It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+	// it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+	// "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+	// also not start with '-'.
 	ActivePath *string `json:"activePath,omitempty"`
 	// PullRequest configures SCM pull request behavior for all environments in this strategy.
 	PullRequest *PullRequestPolicySpecApplyConfiguration `json:"pullRequest,omitempty"`

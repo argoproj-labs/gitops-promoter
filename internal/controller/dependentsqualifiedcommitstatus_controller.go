@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -464,19 +465,32 @@ func (b *dqBackoff) forget(key string) {
 	delete(b.entries, key)
 }
 
-// dqValidateEnvironments checks that spec.environments has exactly one entry per PromotionStrategy
-// environment. (The CRD already guarantees the entries have distinct branches and distinct tags.)
-func dqValidateEnvironments(specEnvs []promoterv1alpha1.DependentsQualifiedEnvironment, branches []string) error {
-	declared := make(map[string]struct{}, len(specEnvs))
-	for _, env := range specEnvs {
-		declared[env.Branch] = struct{}{}
+// dqTagPrefix is the namespace of the environment tags in the dry repository. It keeps a tag from sharing
+// its short name with a branch (the dry and the hydrated branches are often in one repository), and gives
+// one pattern, refs/tags/promoter/**, to grant the controller tag pushes on.
+const dqTagPrefix = "promoter"
+
+// dqTagName returns the name of the tag an environment hydrates from. The names are not configurable.
+//
+// The activePath sets apart the tags of environments of different PromotionStrategies that share an active
+// branch. It is appended as it is, not resolved: the API only admits plain relative paths, and an older
+// object with ".." in its activePath gets a name that is not a valid ref, which cannot be read or pushed,
+// instead of the name of some other tag.
+func dqTagName(branch, activePath string) string {
+	name := dqTagPrefix + "/" + branch
+	if activePath != "" {
+		name += "/" + activePath
 	}
+	return name
+}
+
+// dqValidateEnvironments checks that every entry of spec.environments names a PromotionStrategy
+// environment. An environment with no entry gets the defaults. (The CRD already guarantees the entries have
+// distinct branches.)
+func dqValidateEnvironments(specEnvs []promoterv1alpha1.DependentsQualifiedEnvironment, branches []string) error {
 	known := make(map[string]struct{}, len(branches))
 	for _, branch := range branches {
 		known[branch] = struct{}{}
-		if _, ok := declared[branch]; !ok {
-			return fmt.Errorf("spec.environments has no entry for PromotionStrategy environment %q", branch)
-		}
 	}
 	for _, env := range specEnvs {
 		if _, ok := known[env.Branch]; !ok {
@@ -618,10 +632,15 @@ type dqRepositories struct {
 }
 
 func (q *dqRepositories) dryRepositoryName() string {
-	if ref := q.dqcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
+	return dqDryRepositoryName(q.dqcs, q.ps)
+}
+
+// dqDryRepositoryName returns the name of the GitRepository that holds a gate's dry branch and tags.
+func dqDryRepositoryName(dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) string {
+	if ref := dqcs.Spec.DrySource.GitRepositoryRef; ref != nil && ref.Name != "" {
 		return ref.Name
 	}
-	return q.ps.Spec.RepositoryReference.Name
+	return ps.Spec.RepositoryReference.Name
 }
 
 // dry returns the clone that holds the dry branch and the environment tags.
@@ -698,8 +717,46 @@ type dqDryState struct {
 	head string
 }
 
+// tagConflict describes the conflict when a gate with precedence already manages one of this gate's tags in
+// the same GitRepository, and returns "" when there is none. Gates are compared within the namespace and by
+// the GitRepository they name: the same repository behind two GitRepository objects is not recognized.
+func (r *DependentsQualifiedCommitStatusReconciler) tagConflict(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
+	var gates promoterv1alpha1.DependentsQualifiedCommitStatusList
+	if err := r.List(ctx, &gates, client.InNamespace(dqcs.Namespace)); err != nil {
+		return "", fmt.Errorf("failed to list DependentsQualifiedCommitStatuses: %w", err)
+	}
+
+	others := make([]dqTagClaim, 0, len(gates.Items))
+	for i := range gates.Items {
+		other := &gates.Items[i]
+		if other.Name == dqcs.Name || !other.DeletionTimestamp.IsZero() {
+			continue
+		}
+		otherPS := ps
+		if other.Spec.PromotionStrategyRef.Name != ps.Name {
+			otherPS = &promoterv1alpha1.PromotionStrategy{}
+			err := r.Get(ctx, client.ObjectKey{Namespace: other.Namespace, Name: other.Spec.PromotionStrategyRef.Name}, otherPS)
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return "", fmt.Errorf("failed to get PromotionStrategy %q: %w", other.Spec.PromotionStrategyRef.Name, err)
+			}
+		}
+		others = append(others, dqNewTagClaim(other, otherPS))
+	}
+
+	mine := dqNewTagClaim(dqcs, ps)
+	tag, gate, found := dqTagConflict(mine, others)
+	if !found {
+		return "", nil
+	}
+	return fmt.Sprintf("tag %q in GitRepository %q is already managed by DependentsQualifiedCommitStatus %q; two gates must not manage the same tag",
+		tag, mine.repository, gate), nil
+}
+
 // readDryRepository reads the dry branch HEAD and every environment tag from the remote.
-func (r *DependentsQualifiedCommitStatusReconciler) readDryRepository(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, repos *dqRepositories) (*dqDryState, error) {
+func (r *DependentsQualifiedCommitStatusReconciler) readDryRepository(ctx context.Context, dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, repos *dqRepositories, tagNames []string) (*dqDryState, error) {
 	ops, err := repos.dry(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the dry repository: %w", err)
@@ -709,11 +766,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) readDryRepository(ctx contex
 	if dqcs.Status.Dry != nil {
 		lastKnownHead = dqcs.Status.Dry.Sha
 	}
-	names := make([]string, 0, len(dqcs.Spec.Environments))
-	for _, env := range dqcs.Spec.Environments {
-		names = append(names, env.Tag)
-	}
-	head, tags, err := dqReadDryRefs(ctx, ops, dqcs.Spec.DrySource.Branch, lastKnownHead, names)
+	head, tags, err := dqReadDryRefs(ctx, ops, dqcs.Spec.DrySource.Branch, lastKnownHead, tagNames)
 	if err != nil {
 		return nil, err
 	}
@@ -768,8 +821,27 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 		return 0, err
 	}
 
+	conflict, err := r.tagConflict(ctx, dqcs, ps)
+	if err != nil {
+		return 0, err
+	}
+	if conflict != "" {
+		// Leave the tags to the other gate. The child CommitStatuses and the last reported status stay as
+		// they are; a gate that never had the tags has none, which holds its environments.
+		logger.Info("Environment tag is managed by another gate", "conflict", conflict)
+		dqSetNotReady(dqcs, promoterConditions.TagConflict, conflict)
+		return dqSoftRetry, nil
+	}
+
+	activePaths := dqActivePaths(ps)
+	tagByBranch := dqTagNames(ps)
+	tagNames := make([]string, 0, len(dependencies.branches))
+	for _, branch := range dependencies.branches {
+		tagNames = append(tagNames, tagByBranch[branch])
+	}
+
 	repos := &dqRepositories{reconciler: r, dqcs: dqcs, ps: ps}
-	dry, err := r.readDryRepository(ctx, dqcs, repos)
+	dry, err := r.readDryRepository(ctx, dqcs, repos, tagNames)
 	if err != nil {
 		// Without the dry repository nothing can be decided. Leave the tags, the child CommitStatuses, and
 		// the last reported status alone, and say why on the Ready condition.
@@ -787,7 +859,6 @@ func (r *DependentsQualifiedCommitStatusReconciler) reconcileEnvironments(ctx co
 
 	// Qualify. A failure to persist a qualification does not stop the rest of the reconcile; it is returned
 	// at the end so the status still reflects everything else.
-	activePaths := dqActivePaths(ps)
 	var qualifyErrs []error
 	now := metav1.Now()
 	for i := range envs {
@@ -881,6 +952,70 @@ func dqActivePaths(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
 	return paths
 }
 
+// dqTagClaim is the tags one gate manages in one GitRepository.
+type dqTagClaim struct {
+	created    time.Time
+	gate       string
+	repository string
+	tags       []string
+}
+
+// before reports whether a claim takes precedence over another: the older gate's does, and the name decides
+// between gates created in the same second.
+func (c dqTagClaim) before(other dqTagClaim) bool {
+	if !c.created.Equal(other.created) {
+		return c.created.Before(other.created)
+	}
+	return c.gate < other.gate
+}
+
+// dqTagConflict returns a tag of a gate that another gate manages in the same GitRepository with precedence,
+// and that gate. Tag names are fixed, so two gates that derive the same name would move the same tag; the
+// later gate has to stand down. With several conflicts it returns the one with the gate that comes first.
+func dqTagConflict(mine dqTagClaim, others []dqTagClaim) (tag, gate string, found bool) {
+	var winner dqTagClaim
+	for _, other := range others {
+		if other.repository != mine.repository || !other.before(mine) || (found && !other.before(winner)) {
+			continue
+		}
+		shared := ""
+		for _, candidate := range other.tags {
+			if slices.Contains(mine.tags, candidate) && (shared == "" || candidate < shared) {
+				shared = candidate
+			}
+		}
+		if shared != "" {
+			tag, winner, found = shared, other, true
+		}
+	}
+	return tag, winner.gate, found
+}
+
+// dqNewTagClaim returns the tags a gate manages for its PromotionStrategy.
+func dqNewTagClaim(dqcs *promoterv1alpha1.DependentsQualifiedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) dqTagClaim {
+	tagByBranch := dqTagNames(ps)
+	tags := make([]string, 0, len(tagByBranch))
+	for _, tag := range tagByBranch {
+		tags = append(tags, tag)
+	}
+	return dqTagClaim{
+		created:    dqcs.CreationTimestamp.Time,
+		gate:       dqcs.Name,
+		repository: dqDryRepositoryName(dqcs, ps),
+		tags:       tags,
+	}
+}
+
+// dqTagNames returns the tag of every environment of a PromotionStrategy, by branch.
+func dqTagNames(ps *promoterv1alpha1.PromotionStrategy) map[string]string {
+	activePaths := dqActivePaths(ps)
+	names := make(map[string]string, len(activePaths))
+	for branch, activePath := range activePaths {
+		names[branch] = dqTagName(branch, activePath)
+	}
+	return names
+}
+
 // dqUnrecordedQualification returns the watermark to act on when attempted, the environment's new watermark,
 // could not be written to its note. It errs toward holding promotions back.
 //
@@ -935,6 +1070,7 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 		previousByBranch[previous.Branch] = previous
 	}
 	activePaths := dqActivePaths(ps)
+	tagByBranch := dqTagNames(ps)
 
 	var racList promoterv1alpha1.RestoreActiveCommitList
 	if err := r.List(ctx, &racList, client.InNamespace(dqcs.Namespace)); err != nil {
@@ -953,10 +1089,11 @@ func (r *DependentsQualifiedCommitStatusReconciler) observeEnvironments(
 		status := statusByBranch[branch]
 		activePath := activePaths[branch]
 
+		tag := tagByBranch[branch]
 		env := dqEnvironment{
 			Branch:    branch,
-			Tag:       spec.Tag,
-			TagSha:    dry.tags[spec.Tag],
+			Tag:       tag,
+			TagSha:    dry.tags[tag],
 			Manual:    spec.Advance == promoterv1alpha1.TagAdvanceManual,
 			DependsOn: dependencies.dependsOn[branch],
 			Status:    status,

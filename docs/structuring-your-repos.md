@@ -60,6 +60,23 @@ In this pattern, `PromotionStrategy.spec.activePath`, `sourceHydrator.drySource.
 `sourceHydrator.syncSource.path` should point to the same app directory so the hydrator writes and Argo CD reads from
 the same location.
 
+#### What an `activePath` may contain
+
+An `activePath` becomes the end of git ref names: the proposed branch `<active branch>-next/<activePath>`, and the
+[environment tag](gating-promotions/built-in-gates/dependents-qualified-commit-status.md#environment-tags) of a
+DependentsQualifiedCommitStatus gate. The API accepts a relative path that
+[git accepts in a ref name](https://git-scm.com/docs/git-check-ref-format):
+
+- Directory names are separated by single `/`s, with no `/` at the start or the end.
+- No directory name starts with `.` or ends with `.lock`. That excludes `.` and `..`.
+- The path contains no `..`, no `@{`, no space or control character, and none of `~ ^ : ? * [ \`, and it does not
+  end with `.`.
+- The path does not start with `-`. Git would allow this one; it keeps the path from being read as an option.
+- The whole path is at most 100 characters.
+
+`apps/payments`, `apps/eu-west-1/payments_v2`, `packages/@scope/api` and `apps/café` are accepted. `./apps`, `apps/`,
+`../shared`, `.argocd/apps` and `my apps/payments` are rejected.
+
 #### Constraints when multiple PromotionStrategies share an active branch
 
 Two configuration constraints apply whenever more than one `PromotionStrategy` targets the same active branch.

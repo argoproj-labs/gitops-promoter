@@ -890,9 +890,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
-    - name: tag
-      type:
-        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsQualifiedTagStatus
   map:
     fields:

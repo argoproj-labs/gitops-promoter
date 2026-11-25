@@ -43,6 +43,10 @@ type EnvironmentApplyConfiguration struct {
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
 	// ActivePath optionally overrides the strategy-level activePath for this environment.
 	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+	// it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+	// "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+	// also not start with '-'.
 	ActivePath *string `json:"activePath,omitempty"`
 	// DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
 	// for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment

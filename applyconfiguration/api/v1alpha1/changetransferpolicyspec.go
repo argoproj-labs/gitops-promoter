@@ -34,6 +34,10 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	ActiveBranch *string `json:"activeBranch,omitempty"`
 	// ActivePath is an optional repository subpath for this policy's active state.
 	// When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+	// It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+	// it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+	// "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+	// also not start with '-'.
 	ActivePath *string `json:"activePath,omitempty"`
 	AutoMerge  *bool   `json:"autoMerge,omitempty"`
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch

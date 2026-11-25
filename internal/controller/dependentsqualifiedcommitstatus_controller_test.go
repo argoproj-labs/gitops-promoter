@@ -48,9 +48,9 @@ const (
 	dqDev     = "environment/dev"
 	dqTest    = "environment/test"
 	dqProd    = "environment/prod"
-	dqTagDev  = "env/dev"
-	dqTagTest = "env/test"
-	dqTagProd = "env/prod"
+	dqTagDev  = "promoter/environment/dev"
+	dqTagTest = "promoter/environment/test"
+	dqTagProd = "promoter/environment/prod"
 )
 
 // dqTestGraph is an in-memory DRY commit graph (commit → parents) implementing dqCommitGraph.
@@ -643,9 +643,9 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 
 		Context("fan-in", func() {
 			fanIn := func(leftQualified, rightQualified *promoterv1alpha1.DependentsQualifiedWatermark, prodTag string) []dqEnvironment {
-				left := dqSettled("environment/left", "env/left", "f", "f")
+				left := dqSettled("environment/left", "promoter/environment/left", "f", "f")
 				left.Qualified = leftQualified
-				right := dqSettled("environment/right", "env/right", "f", "f")
+				right := dqSettled("environment/right", "promoter/environment/right", "f", "f")
 				right.Qualified = rightQualified
 				prod := dqSettled(dqProd, dqTagProd, prodTag, prodTag)
 				prod.DependsOn = []string{left.Branch, right.Branch}
@@ -815,7 +815,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
-			Expect(gate.Description).To(Equal(`Waiting for tag "env/dev" to be created`))
+			Expect(gate.Description).To(Equal(`Waiting for tag "promoter/environment/dev" to be created`))
 		})
 
 		It("is pending until the hydrator has processed the tagged commit", func() {
@@ -823,7 +823,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
-			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at f (currently e)`))
+			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "promoter/environment/dev" at f (currently e)`))
 		})
 
 		It("is pending when the hydrator has reported nothing", func() {
@@ -831,7 +831,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
-			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at f (currently none)`))
+			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "promoter/environment/dev" at f (currently none)`))
 		})
 
 		It("shortens SHAs to seven characters in descriptions", func() {
@@ -840,7 +840,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			dev := dqProposing(dqDev, dqTagDev, tagSha, "c", proposedSha)
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "env/dev" at 0123456 (currently fedcba9)`))
+			Expect(gate.Description).To(Equal(`Waiting for hydrator to process tag "promoter/environment/dev" at 0123456 (currently fedcba9)`))
 		})
 
 		It("prefers the hydrator note over hydrator.metadata for the hydrated DRY SHA", func() {
@@ -856,7 +856,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
-			Expect(gate.Description).To(Equal(`Tag "env/dev" at f is hydrated`))
+			Expect(gate.Description).To(Equal(`Tag "promoter/environment/dev" at f is hydrated`))
 			Expect(gate.Upstreams).To(BeEmpty())
 		})
 
@@ -867,7 +867,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", test, dqByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(success))
-			Expect(gate.Description).To(Equal(`Tag "env/test" at e is hydrated and qualified upstream`))
+			Expect(gate.Description).To(Equal(`Tag "promoter/environment/test" at e is hydrated and qualified upstream`))
 			Expect(gate.Upstreams).To(Equal([]promoterv1alpha1.DependentsQualifiedCommitStatusUpstreamStatus{
 				{Branch: dqDev, Satisfied: true},
 			}))
@@ -942,7 +942,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "f", "main", dev, dqByBranch(dev))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
-			Expect(gate.Description).To(Equal(`Tag "env/dev" at x is not on dry branch "main"`))
+			Expect(gate.Description).To(Equal(`Tag "promoter/environment/dev" at x is not on dry branch "main"`))
 		})
 
 		It("is pending for a tagged commit that was rewritten away by a force-push", func() {
@@ -952,7 +952,7 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			gate, err := dqEvaluateGate(ctx, graph, "q", "main", test, dqByBranch(dev, test))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gate.Phase).To(Equal(pending))
-			Expect(gate.Description).To(Equal(`Tag "env/test" at e is not on dry branch "main"`))
+			Expect(gate.Description).To(Equal(`Tag "promoter/environment/test" at e is not on dry branch "main"`))
 		})
 
 		It("looks only at direct upstreams", func() {
@@ -972,8 +972,8 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 			var left, right, prod dqEnvironment
 
 			BeforeEach(func() {
-				left = dqSettled("environment/left", "env/left", "f", "f", success)
-				right = dqSettled("environment/right", "env/right", "f", "f", success)
+				left = dqSettled("environment/left", "promoter/environment/left", "f", "f", success)
+				right = dqSettled("environment/right", "promoter/environment/right", "f", "f", success)
 				prod = dqProposing(dqProd, dqTagProd, "e", "c", "e", left.Branch, right.Branch)
 			})
 
@@ -1220,27 +1220,141 @@ var _ = Describe("DependentsQualifiedCommitStatus decisions", func() {
 		})
 	})
 
-	Describe("dqValidateEnvironments: spec.environments must cover the PromotionStrategy", func() {
+	Describe("dqValidateEnvironments: spec.environments may only name the PromotionStrategy's environments", func() {
 		specEnvs := func(branches ...string) []promoterv1alpha1.DependentsQualifiedEnvironment {
 			out := make([]promoterv1alpha1.DependentsQualifiedEnvironment, 0, len(branches))
 			for _, branch := range branches {
-				out = append(out, promoterv1alpha1.DependentsQualifiedEnvironment{Branch: branch, Tag: "env/" + branch})
+				out = append(out, promoterv1alpha1.DependentsQualifiedEnvironment{Branch: branch})
 			}
 			return out
 		}
 
-		It("accepts one entry per PromotionStrategy environment in any order", func() {
-			Expect(dqValidateEnvironments(specEnvs(dqProd, dqDev, dqTest), []string{dqDev, dqTest, dqProd})).To(Succeed())
+		It("accepts no entries at all, which leaves every environment on the defaults", func() {
+			Expect(dqValidateEnvironments(nil, []string{dqDev, dqTest, dqProd})).To(Succeed())
 		})
 
-		It("rejects a PromotionStrategy environment with no tag", func() {
-			err := dqValidateEnvironments(specEnvs(dqDev, dqTest), []string{dqDev, dqTest, dqProd})
-			Expect(err).To(MatchError(ContainSubstring(`spec.environments has no entry for PromotionStrategy environment "environment/prod"`)))
+		It("accepts entries for some of the environments, in any order", func() {
+			Expect(dqValidateEnvironments(specEnvs(dqProd, dqDev), []string{dqDev, dqTest, dqProd})).To(Succeed())
 		})
 
 		It("rejects an entry for a branch the PromotionStrategy does not have", func() {
-			err := dqValidateEnvironments(specEnvs(dqDev, dqTest, dqProd, "environment/extra"), []string{dqDev, dqTest, dqProd})
+			err := dqValidateEnvironments(specEnvs(dqProd, "environment/extra"), []string{dqDev, dqTest, dqProd})
 			Expect(err).To(MatchError(ContainSubstring(`spec.environments lists "environment/extra", which is not an environment of the PromotionStrategy`)))
+		})
+	})
+
+	Describe("dqTagName: the tag an environment hydrates from", func() {
+		It("is the active branch under promoter/, so that it cannot be confused with the branch", func() {
+			Expect(dqTagName(dqProd, "")).To(Equal("promoter/environment/prod"))
+		})
+
+		It("ends with the activePath for an environment that shares its active branch", func() {
+			Expect(dqTagName(dqProd, "apps/checkout")).To(Equal("promoter/environment/prod/apps/checkout"))
+			Expect(dqTagName(dqProd, "apps/payments")).To(Equal("promoter/environment/prod/apps/payments"))
+		})
+
+		// The API rejects such an activePath, but an object stored before it did may still carry one. The
+		// name is then not a valid ref, so the tag cannot be read or pushed, rather than naming another
+		// environment's tag or a tag outside promoter/.
+		It("does not resolve the activePath, so that it cannot lead out of the environment's own name", func() {
+			Expect(dqTagName(dqProd, "../staging")).To(Equal("promoter/environment/prod/../staging"))
+			Expect(dqTagName(dqProd, "../../../v1.0.0")).To(Equal("promoter/environment/prod/../../../v1.0.0"))
+		})
+	})
+
+	Describe("dqTagNames: the tag of every environment of a PromotionStrategy", func() {
+		It("names a tag for every environment, whether or not the gate configures it", func() {
+			ps := &promoterv1alpha1.PromotionStrategy{Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{{Branch: dqDev}, {Branch: dqTest}, {Branch: dqProd}},
+			}}
+			Expect(dqTagNames(ps)).To(Equal(map[string]string{dqDev: dqTagDev, dqTest: dqTagTest, dqProd: dqTagProd}))
+		})
+
+		It("uses the PromotionStrategy's activePath, and an environment's own activePath over it", func() {
+			ps := &promoterv1alpha1.PromotionStrategy{Spec: promoterv1alpha1.PromotionStrategySpec{
+				ActivePath: "apps/checkout",
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: dqDev},
+					{Branch: dqProd, ActivePath: "regions/eu/checkout"},
+				},
+			}}
+			Expect(dqTagNames(ps)).To(Equal(map[string]string{
+				dqDev:  "promoter/environment/dev/apps/checkout",
+				dqProd: "promoter/environment/prod/regions/eu/checkout",
+			}))
+		})
+	})
+
+	Describe("dqTagConflict: two gates must not manage the same tag", func() {
+		start := time.Date(2026, time.November, 13, 12, 0, 0, 0, time.UTC)
+		claim := func(gate string, age time.Duration, repository string, tags ...string) dqTagClaim {
+			return dqTagClaim{gate: gate, created: start.Add(-age), repository: repository, tags: tags}
+		}
+
+		It("finds nothing for a gate that is alone", func() {
+			_, _, found := dqTagConflict(claim("checkout", 0, "dry", dqTagDev, dqTagProd), nil)
+			Expect(found).To(BeFalse())
+		})
+
+		It("finds nothing between gates whose tags are in different repositories", func() {
+			_, _, found := dqTagConflict(
+				claim("checkout", 0, "dry-checkout", dqTagProd),
+				[]dqTagClaim{claim("payments", time.Hour, "dry-payments", dqTagProd)})
+			Expect(found).To(BeFalse())
+		})
+
+		It("finds nothing between gates that share a repository but no tag", func() {
+			_, _, found := dqTagConflict(
+				claim("checkout", 0, "dry", dqTagName(dqProd, "apps/checkout")),
+				[]dqTagClaim{claim("payments", time.Hour, "dry", dqTagName(dqProd, "apps/payments"))})
+			Expect(found).To(BeFalse())
+		})
+
+		It("yields a tag to the older gate that manages it in the same repository", func() {
+			tag, gate, found := dqTagConflict(
+				claim("checkout", 0, "dry", dqTagDev, dqTagProd),
+				[]dqTagClaim{claim("payments", time.Hour, "dry", dqTagProd)})
+			Expect(found).To(BeTrue())
+			Expect(tag).To(Equal(dqTagProd))
+			Expect(gate).To(Equal("payments"))
+		})
+
+		It("leaves the older gate in charge of the tag", func() {
+			_, _, found := dqTagConflict(
+				claim("payments", time.Hour, "dry", dqTagProd),
+				[]dqTagClaim{claim("checkout", 0, "dry", dqTagDev, dqTagProd)})
+			Expect(found).To(BeFalse())
+		})
+
+		It("lets the name decide between gates created at the same time, so that exactly one yields", func() {
+			checkout := claim("checkout", 0, "dry", dqTagProd)
+			payments := claim("payments", 0, "dry", dqTagProd)
+			_, _, checkoutYields := dqTagConflict(checkout, []dqTagClaim{payments})
+			_, gate, paymentsYields := dqTagConflict(payments, []dqTagClaim{checkout})
+			Expect(checkoutYields).To(BeFalse())
+			Expect(paymentsYields).To(BeTrue())
+			Expect(gate).To(Equal("checkout"))
+		})
+
+		// A branch and an activePath that join to the same name give the same tag.
+		It("sees the same tag in different splits of branch and activePath", func() {
+			tag, _, found := dqTagConflict(
+				claim("checkout", 0, "dry", dqTagName("environment/prod/apps", "checkout")),
+				[]dqTagClaim{claim("payments", time.Hour, "dry", dqTagName("environment/prod", "apps/checkout"))})
+			Expect(found).To(BeTrue())
+			Expect(tag).To(Equal("promoter/environment/prod/apps/checkout"))
+		})
+
+		It("reports the oldest gate and its first tag when there are several", func() {
+			tag, gate, found := dqTagConflict(
+				claim("checkout", 0, "dry", dqTagProd, dqTagDev, dqTagTest),
+				[]dqTagClaim{
+					claim("payments", time.Hour, "dry", dqTagTest),
+					claim("billing", 2*time.Hour, "dry", dqTagProd, dqTagDev),
+				})
+			Expect(found).To(BeTrue())
+			Expect(gate).To(Equal("billing"))
+			Expect(tag).To(Equal(dqTagDev))
 		})
 	})
 
@@ -1314,12 +1428,12 @@ func dqDefaultBranch(ctx context.Context, gitPath string) string {
 
 var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 	const (
-		tagDevelopment = "env/development"
-		tagStaging     = "env/staging"
-		tagProduction  = "env/production"
+		tagDevelopment = "promoter/" + testBranchDevelopment
+		tagStaging     = "promoter/" + testBranchStaging
+		tagProduction  = "promoter/" + testBranchProduction
 	)
 
-	// newGate builds a gate for the three test environments of a PromotionStrategy.
+	// newGate builds a gate for a PromotionStrategy, with every environment on the defaults.
 	newGate := func(name, dryBranch string) *promoterv1alpha1.DependentsQualifiedCommitStatus {
 		return &promoterv1alpha1.DependentsQualifiedCommitStatus{
 			Name:      name,
@@ -1328,11 +1442,6 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  promoterv1alpha1.DependentsQualifiedCommitStatusKey,
 				DrySource:            promoterv1alpha1.DependentsQualifiedDrySource{Branch: dryBranch},
-				Environments: []promoterv1alpha1.DependentsQualifiedEnvironment{
-					{Branch: testBranchDevelopment, Tag: tagDevelopment},
-					{Branch: testBranchStaging, Tag: tagStaging},
-					{Branch: testBranchProduction, Tag: tagProduction},
-				},
 			},
 		}
 	}
@@ -1360,29 +1469,24 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			ctx = context.Background()
 		})
 
-		It("should reject two environments that share a tag", func() {
-			gate := newGate("dq-duplicate-tag", "main")
-			gate.Spec.Environments[2].Tag = tagStaging
-			err := k8sClient.Create(ctx, gate)
-			Expect(err).To(MatchError(ContainSubstring("each environment must have its own tag")))
+		It("should accept a gate that configures no environment", func() {
+			gate := newGate("dq-no-environments", "main")
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
 		})
 
 		It("should reject an unknown advance mode", func() {
 			gate := newGate("dq-bad-advance", "main")
-			gate.Spec.Environments[2].Advance = "Sometimes"
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: testBranchProduction, Advance: "Sometimes"},
+			}
 			err := k8sClient.Create(ctx, gate)
 			Expect(err).To(MatchError(ContainSubstring("Unsupported value")))
 		})
 
-		It("should reject a tag that is not a valid ref name", func() {
-			gate := newGate("dq-bad-tag", "main")
-			gate.Spec.Environments[0].Tag = "-env..dev"
-			err := k8sClient.Create(ctx, gate)
-			Expect(err).To(HaveOccurred())
-		})
-
 		It("should default advance to Auto", func() {
 			gate := newGate("dq-default-advance", "main")
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{{Branch: testBranchProduction}}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gate) })
 			Expect(gate.Spec.Environments[0].Advance).To(Equal(promoterv1alpha1.TagAdvanceAuto))
@@ -1519,21 +1623,52 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			_ = k8sClient.Delete(ctx, scmSecret)
 		})
 
-		It("should set Ready=False when spec.environments does not cover the PromotionStrategy", func() {
+		It("should set Ready=False when spec.environments names an environment the PromotionStrategy does not have", func() {
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments = gate.Spec.Environments[:2]
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: "environment/extra", Advance: promoterv1alpha1.TagAdvanceManual},
+			}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				condition := readyCondition(ctx, g, gate)
 				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(condition.Message).To(ContainSubstring(`spec.environments has no entry for PromotionStrategy environment "environment/production"`))
+				g.Expect(condition.Message).To(ContainSubstring(`spec.environments lists "environment/extra", which is not an environment of the PromotionStrategy`))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Not creating any tag for a gate that is misconfigured")
 			Consistently(func(g Gomega) {
 				g.Expect(tagSha(g, tagDevelopment)).To(BeEmpty())
+			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+
+		It("should set Ready=False with reason TagConflict on a second gate for tags an older gate manages", func() {
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			gate = newGate(name, dryBranch)
+			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
+
+			By("Letting the first gate create its tags")
+			Eventually(func(g Gomega) {
+				g.Expect(tagSha(g, tagProduction)).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			second := newGate(name, dryBranch)
+			second.Name = name + "-second"
+			Expect(k8sClient.Create(ctx, second)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, second) })
+
+			Eventually(func(g Gomega) {
+				condition := readyCondition(ctx, g, second)
+				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(condition.Reason).To(Equal(string(promoterConditions.TagConflict)))
+				g.Expect(condition.Message).To(ContainSubstring(tagDevelopment))
+				g.Expect(condition.Message).To(ContainSubstring(`DependentsQualifiedCommitStatus "` + name + `"`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Leaving the first gate in charge")
+			Consistently(func(g Gomega) {
+				g.Expect(readyCondition(ctx, g, gate).Reason).NotTo(Equal(string(promoterConditions.TagConflict)))
 			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
 		})
 
@@ -1556,20 +1691,20 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 		It("should set Ready=False with reason TagPushFailed when a tag cannot be pushed, and still manage the others", func() {
 			neverHydrated()
 
-			By("Occupying the ref namespace the development tag needs")
-			// refs/tags/blocker exists, so refs/tags/blocker/development cannot be created.
-			dqPushTag(ctx, gitPath, "blocker", headSha())
+			By("Occupying the ref the development tag needs")
+			// A ref cannot be both a tag and the parent of another tag: while this tag exists, the
+			// development tag cannot be created.
+			dqPushTag(ctx, gitPath, tagDevelopment+"/blocker", headSha())
 
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments[0].Tag = "blocker/development"
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				condition := readyCondition(ctx, g, gate)
 				g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 				g.Expect(condition.Reason).To(Equal(string(promoterConditions.TagPushFailed)))
-				g.Expect(condition.Message).To(ContainSubstring("blocker/development"))
+				g.Expect(condition.Message).To(ContainSubstring(tagDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Creating the tags that can be pushed")
@@ -1892,7 +2027,9 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments[2].Advance = promoterv1alpha1.TagAdvanceManual
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: testBranchProduction, Advance: promoterv1alpha1.TagAdvanceManual},
+			}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			By("Creating the root's tag at the DRY branch HEAD and the other tags at what their environment runs")
@@ -1925,7 +2062,9 @@ var _ = Describe("DependentsQualifiedCommitStatus Controller", func() {
 			neverHydrated()
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 			gate = newGate(name, dryBranch)
-			gate.Spec.Environments[2].Advance = promoterv1alpha1.TagAdvanceManual
+			gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
+				{Branch: testBranchProduction, Advance: promoterv1alpha1.TagAdvanceManual},
+			}
 			Expect(k8sClient.Create(ctx, gate)).To(Succeed())
 
 			By("Creating the missing tags, including the manual one")

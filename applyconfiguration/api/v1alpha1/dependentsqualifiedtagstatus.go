@@ -22,7 +22,8 @@ package v1alpha1
 //
 // DependentsQualifiedTagStatus is the observed state of one environment tag.
 type DependentsQualifiedTagStatusApplyConfiguration struct {
-	// Name is the tag name.
+	// Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's
+	// active branch and activePath.
 	Name *string `json:"name,omitempty"`
 	// Sha is the dry commit the tag points at. Empty when the tag does not exist.
 	Sha *string `json:"sha,omitempty"`

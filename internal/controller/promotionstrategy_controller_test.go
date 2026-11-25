@@ -24,6 +24,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -1287,6 +1288,107 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(prod.Status.Proposed.Note.DrySha).To(Equal(drySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+	})
+
+	Context("When validating activePath", func() {
+		// withActivePath returns an otherwise valid object for every API field that takes an activePath.
+		withActivePath := func(activePath string) map[string]client.Object {
+			strategy := func() *promoterv1alpha1.PromotionStrategy {
+				return &promoterv1alpha1.PromotionStrategy{
+					ObjectMeta: metav1.ObjectMeta{Name: "active-path-validation", Namespace: "default"},
+					Spec: promoterv1alpha1.PromotionStrategySpec{
+						RepositoryReference: promoterv1alpha1.ObjectReference{Name: "active-path-validation"},
+						OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+							Group: promoterv1alpha1.SchemeGroupVersion.Group,
+							Kind:  "DependentsSuccessfulCommitStatus",
+							Name:  "active-path-validation",
+						},
+						Environments: []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+					},
+				}
+			}
+			strategyLevel := strategy()
+			strategyLevel.Spec.ActivePath = activePath
+			environmentLevel := strategy()
+			environmentLevel.Spec.Environments[0].ActivePath = activePath
+			return map[string]client.Object{
+				"PromotionStrategy spec.activePath":                strategyLevel,
+				"PromotionStrategy spec.environments[].activePath": environmentLevel,
+				"ChangeTransferPolicy spec.activePath": &promoterv1alpha1.ChangeTransferPolicy{
+					ObjectMeta: metav1.ObjectMeta{Name: "active-path-validation", Namespace: "default"},
+					Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+						RepositoryReference: promoterv1alpha1.ObjectReference{Name: "active-path-validation"},
+						ActiveBranch:        testBranchDevelopment,
+						ProposedBranch:      testBranchDevelopmentNext,
+						ActivePath:          activePath,
+					},
+				},
+				"ChangeTransferPolicyHistory spec.activePath": &promoterv1alpha1.ChangeTransferPolicyHistory{
+					ObjectMeta: metav1.ObjectMeta{Name: "active-path-validation", Namespace: "default"},
+					Spec: promoterv1alpha1.ChangeTransferPolicyHistorySpec{
+						RepositoryReference: promoterv1alpha1.ObjectReference{Name: "active-path-validation"},
+						ActiveBranch:        testBranchDevelopment,
+						ActivePath:          activePath,
+					},
+				},
+			}
+		}
+
+		// The activePath becomes the end of ref names: the proposed branch, and the environment tag of a
+		// DependentsQualifiedCommitStatus. The API accepts what git accepts there.
+		DescribeTable("accepts a relative path that git accepts at the end of a ref name",
+			func(activePath string) {
+				for field, object := range withActivePath(activePath) {
+					Expect(k8sClient.Create(ctx, object, client.DryRunAll)).To(Succeed(), field)
+				}
+				tag := "refs/tags/promoter/" + testBranchProduction + "/" + activePath
+				Expect(exec.CommandContext(ctx, "git", "check-ref-format", tag).Run()).To(Succeed(), "git rejects %s", tag)
+			},
+			Entry("one directory", "payments"),
+			Entry("nested directories", "apps/eu-west-1/payments_v2"),
+			Entry("dots inside a directory name", "apps/payments-v1.2.3"),
+			Entry("a directory name that starts with an underscore", "_shared/payments"),
+			Entry("a later directory name that starts with a dash", "apps/-payments"),
+			Entry("letters outside ASCII", "apps/café/支払い"),
+			Entry("punctuation that git allows", "apps/@scope/c++/region=eu,us"),
+			Entry("100 characters", strings.Repeat("a", 100)),
+		)
+
+		DescribeTable("rejects a path that leaves its directory or that git rejects in a ref name",
+			func(activePath string) {
+				for field, object := range withActivePath(activePath) {
+					err := k8sClient.Create(ctx, object, client.DryRunAll)
+					Expect(err).To(HaveOccurred(), field)
+					Expect(errors.IsInvalid(err)).To(BeTrue(), "%s: %v", field, err)
+					Expect(err.Error()).To(ContainSubstring("activePath"), field)
+				}
+			},
+			Entry("a parent directory", "../staging"),
+			Entry("a parent directory in the middle", "apps/../payments"),
+			Entry("the current directory", "./apps"),
+			Entry("an absolute path", "/apps/payments"),
+			Entry("a trailing slash", "apps/payments/"),
+			Entry("an empty directory name", "apps//payments"),
+			Entry("a hidden directory", ".argocd/apps"),
+			Entry("two dots in a row", "apps/v1..v2"),
+			Entry("a trailing dot", "apps/payments."),
+			Entry("a directory name that ends with .lock", "apps/payments.lock"),
+			Entry("a parent directory name that ends with .lock", "apps.lock/payments"),
+			Entry("a space", "my apps/payments"),
+			Entry("a tab", "apps/pay\tments"),
+			Entry("a colon", "apps/a:b"),
+			Entry("a tilde", "apps/v1~rc"),
+			Entry("a caret", "apps/v1^2"),
+			Entry("a question mark", "apps/payments?"),
+			Entry("an asterisk", "apps/*"),
+			Entry("an opening bracket", "apps/[eu]"),
+			Entry("a backslash", `apps\payments`),
+			Entry("the reflog syntax", "apps/payments@{1}"),
+			// git would accept this one after a slash. It is rejected so that the path can never be taken
+			// for an option of a git command.
+			Entry("a leading dash", "-apps/payments"),
+			Entry("more than 100 characters", strings.Repeat("a", 101)),
+		)
 	})
 
 	Context("When reconciling a resource with activePath configured", func() {

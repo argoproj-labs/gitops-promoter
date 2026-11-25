@@ -83,7 +83,7 @@ function dependentsQualified(key: string, branches: string[]) {
       environments: branches.map((branch) => ({
         branch,
         phase: 'pending',
-        tag: { name: `env/${branch}` },
+        tag: { name: `promoter/${branch}` },
       })),
     },
   } as unknown as NonNullable<

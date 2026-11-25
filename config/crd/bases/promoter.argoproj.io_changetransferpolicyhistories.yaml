@@ -68,8 +68,19 @@ spec:
                 description: |-
                   ActivePath is an optional repository subpath for this environment's active state.
                   When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                  It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                  it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                  "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                  also not start with '-'.
+                maxLength: 100
                 minLength: 1
+                pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                 type: string
+                x-kubernetes-validations:
+                - message: activePath must not contain '..' or '@{', or end with '.'
+                  rule: '!self.contains(''..'') && !self.contains(''@{'') && !self.endsWith(''.'')'
+                - message: activePath directory names must not end with '.lock'
+                  rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
               gitRepositoryRef:
                 description: |-
                   RepositoryReference is the repository whose active branch is inspected to reconstruct

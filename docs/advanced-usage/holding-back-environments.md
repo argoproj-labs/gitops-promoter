@@ -30,12 +30,13 @@ push it by hand.
 ```text
 DRY branch (main):   A ─ B ─ C ─ D ─ E ─ F   (HEAD)
                                  ▲       ▲
-                              env/prod  env/dev
-                              env/test
+                                 │       └─ promoter/environment/dev
+                                 └─ promoter/environment/test
+                                    promoter/environment/prod
 
-dev   hydrates env/dev   → F is live, checks still running
-test  hydrates env/test  → D is live and successful
-prod  hydrates env/prod  → D is proposed; test qualified it, so prod may merge
+dev   hydrates promoter/environment/dev   → F is live, checks still running
+test  hydrates promoter/environment/test  → D is live and successful
+prod  hydrates promoter/environment/prod  → D is proposed; test qualified it, so prod may merge
 ```
 
 1. **Advance the roots.** The controller watches the DRY branch. When HEAD moves, it moves the tag of every root
@@ -71,7 +72,18 @@ commit it replaced.
 
 ## Configuring the hydrator
 
-Point each Application's `drySource.targetRevision` at its environment's tag rather than the DRY branch.
+Point each Application's `drySource.targetRevision` at its environment's tag rather than the DRY branch. The tag
+names are fixed; you do not choose them:
+
+| Environment | Tag |
+|-------------|-----|
+| active branch `environment/prod` | `promoter/environment/prod` |
+| active branch `environment/prod`, `activePath: apps/checkout` | `promoter/environment/prod/apps/checkout` |
+
+The tag is the active branch under `promoter/`, so it can never be mistaken for a branch of the same name. The
+`activePath` is appended the same way it is appended to the proposed branch (`environment/prod-next/apps/checkout`),
+which gives PromotionStrategies that share an active branch their own tags. The gate reports each environment's tag
+in `status.environments[].tag.name`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -82,7 +94,7 @@ spec:
   sourceHydrator:
     drySource:
       repoURL: https://github.com/example/demo.git
-      targetRevision: env/prod        # a tag, instead of main
+      targetRevision: promoter/environment/prod        # a tag, instead of main
       path: environments/prod
     syncSource:
       targetBranch: environment/prod
@@ -91,8 +103,9 @@ spec:
       targetBranch: environment/prod-next
 ```
 
-The tag names are declared on the gate, one per environment. The PromotionStrategy gains no new fields; it only
-references the gate through `orderCommitStatusRef`.
+The gate needs to know the DRY branch and nothing else: the environments come from the PromotionStrategy, and the
+tags from the rule above. The PromotionStrategy gains no new fields; it only references the gate through
+`orderCommitStatusRef`.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -105,18 +118,14 @@ spec:
     name: demo
   drySource:
     branch: main
-  environments:
-    - branch: environment/dev
-      tag: env/dev
-    - branch: environment/test
-      tag: env/test
-    - branch: environment/prod
-      tag: env/prod
 ```
 
-Choose tag names that do not collide with branch names in the same repository. A tag and a branch that are both called
-`environment/prod` make `targetRevision: environment/prod` ambiguous. When several PromotionStrategies share a DRY
-repository, give each its own tags (for example `env/<app>/prod`); qualification is tracked per PromotionStrategy.
+Because the tag name is the active branch joined with the `activePath`, two gates that read the same DRY repository
+must not have environments whose joined names are equal. That takes PromotionStrategies whose hydrated branches are
+in different repositories and whose gates both point `drySource.gitRepositoryRef` at one shared DRY repository. The
+gate that was created later then reports `Ready: False` with reason `TagConflict` and leaves the tag to the older
+gate. See [Environment tags](../gating-promotions/built-in-gates/dependents-qualified-commit-status.md#environment-tags)
+for what the controller can and cannot detect.
 
 ### Your hydrator must report no-op hydrations
 
@@ -134,7 +143,7 @@ later commit changes that environment's manifests.
 
 The controller pushes tags with the credentials of the GitRepository that holds the DRY branch. Those credentials need
 permission to create and update tags. If the repository protects tags (GitHub rulesets, GitLab protected tags), exempt
-your environment tag pattern or grant Promoter's identity bypass. A rejected push sets the gate's `Ready` condition to
+`refs/tags/promoter/**` or grant Promoter's identity bypass. A rejected push sets the gate's `Ready` condition to
 `False` with reason `TagPushFailed` and names the tag.
 
 The controller also records each qualification as a git note under `refs/notes/promoter.qualified` in the hydrated
@@ -170,8 +179,8 @@ DependentsSuccessfulCommitStatus. Then delete the tags yourself if you no longer
 
 ## Taking control of an environment's tag
 
-To decide for yourself when an environment gets a new version, set `advance: Manual` on it in the gate. The controller stops
-moving that tag and you move it.
+To decide for yourself when an environment gets a new version, set `advance: Manual` on it in the gate. The
+controller stops moving that tag and you move it. Only the environments you want to change need an entry.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -181,19 +190,14 @@ metadata:
 spec:
   # ...
   environments:
-    - branch: environment/dev
-      tag: env/dev
-    - branch: environment/test
-      tag: env/test
     - branch: environment/prod
-      tag: env/prod
       advance: Manual
 ```
 
 ```shell
 git fetch origin main
-git tag --force env/prod <dry-sha>
-git push --force origin refs/tags/env/prod
+git tag --force promoter/environment/prod <dry-sha>
+git push --force origin refs/tags/promoter/environment/prod
 ```
 
 The hydrator hydrates `prod` from the new tag and Promoter opens the promotion PR. Nothing about the PR is different
@@ -230,9 +234,10 @@ the environment's active checks pass, the commit is qualified for that environme
 
 Git treats tags as immutable by convention, which is why the commands above need `--force`. Keep two things in mind:
 
-- **Stale local tags.** A clone that already fetched `env/prod` will not update it on a plain `git fetch`. Use
-  `git fetch --force --tags` (or `git fetch origin +refs/tags/env/prod:refs/tags/env/prod`) when inspecting a tag.
-  Argo CD is unaffected because it does not rely on cached tags.
+- **Stale local tags.** A clone that already fetched `promoter/environment/prod` will not update it on a plain
+  `git fetch`. Use `git fetch --force --tags` when inspecting a tag (or, for one tag,
+  `git fetch origin +refs/tags/promoter/environment/prod:refs/tags/promoter/environment/prod`). Argo CD is
+  unaffected because it does not rely on cached tags.
 - **No "move" button.** SCM web UIs can create and delete tags but not move them. Advancing a tag by hand is a CLI or
   CI job.
 

@@ -431,8 +431,19 @@ spec:
                 description: |-
                   ActivePath is an optional repository subpath for this policy's active state.
                   When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                  It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                  it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                  "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                  also not start with '-'.
+                maxLength: 100
                 minLength: 1
+                pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                 type: string
+                x-kubernetes-validations:
+                - message: activePath must not contain '..' or '@{', or end with '.'
+                  rule: '!self.contains(''..'') && !self.contains(''@{'') && !self.endsWith(''.'')'
+                - message: activePath directory names must not end with '.lock'
+                  rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
               autoMerge:
                 default: true
                 type: boolean
@@ -1304,8 +1315,19 @@ spec:
                 description: |-
                   ActivePath is an optional repository subpath for this environment's active state.
                   When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                  It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                  it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                  "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                  also not start with '-'.
+                maxLength: 100
                 minLength: 1
+                pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                 type: string
+                x-kubernetes-validations:
+                - message: activePath must not contain '..' or '@{', or end with '.'
+                  rule: '!self.contains(''..'') && !self.contains(''@{'') && !self.endsWith(''.'')'
+                - message: activePath directory names must not end with '.lock'
+                  rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
               gitRepositoryRef:
                 description: |-
                   RepositoryReference is the repository whose active branch is inspected to reconstruct
@@ -5659,8 +5681,13 @@ spec:
             description: spec defines the desired state of DependentsQualifiedCommitStatus
             properties:
               drySource:
-                description: DrySource is where the dry commits and the environment
-                  tags live.
+                description: |-
+                  DrySource is where the dry commits and the environment tags live.
+
+                  Every environment of the PromotionStrategy hydrates from its own tag in that repository. The tag
+                  names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an
+                  environment with an activePath. The controller creates the tags and reports their names in
+                  status.environments[].tag.name.
                 properties:
                   branch:
                     description: |-
@@ -5696,17 +5723,18 @@ spec:
                 type: object
               environments:
                 description: |-
-                  Environments declares the tag each environment hydrates from. There must be exactly one entry for
-                  every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+                  Environments holds per-environment settings. An environment of the PromotionStrategy with no entry
+                  here gets the defaults. Every entry must name an environment of the PromotionStrategy.
                 items:
-                  description: DependentsQualifiedEnvironment declares the tag one
-                    environment hydrates from.
+                  description: DependentsQualifiedEnvironment holds the settings of
+                    one environment.
                   properties:
                     advance:
                       default: Auto
                       description: |-
-                        Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-                        still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+                        Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
+                        controller still verifies that what they tagged is hydrated and qualified upstream before it may be
+                        promoted.
                       enum:
                       - Auto
                       - Manual
@@ -5726,34 +5754,14 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: branch must not contain '..'
                         rule: '!self.contains(''..'')'
-                    tag:
-                      description: |-
-                        Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-                        refs/tags/ prefix). The controller creates the tag if it does not exist.
-                        Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
-                      minLength: 1
-                      type: string
-                      x-kubernetes-validations:
-                      - message: tag must not start with '-'
-                        rule: '!self.startsWith(''-'')'
-                      - message: tag must not contain ':'
-                        rule: '!self.contains('':'')'
-                      - message: tag must not contain '..'
-                        rule: '!self.contains(''..'')'
                   required:
                   - branch
-                  - tag
                   type: object
                 maxItems: 50
-                minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
-                x-kubernetes-validations:
-                - message: each environment must have its own tag
-                  rule: self.all(e, self.exists_one(o, o.tag == e.tag))
               key:
                 description: |-
                   Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
@@ -5828,7 +5836,6 @@ spec:
                 type: object
             required:
             - drySource
-            - environments
             - key
             - promotionStrategyRef
             type: object
@@ -6006,7 +6013,9 @@ spec:
                         the dry repository.
                       properties:
                         name:
-                          description: Name is the tag name.
+                          description: |-
+                            Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's
+                            active branch and activePath.
                           minLength: 1
                           type: string
                         sha:
@@ -7149,8 +7158,19 @@ spec:
                   ActivePath is the default repository subpath for this strategy's active state.
                   When set, proposed branches are created as <environment-branch>-next/<activePath>.
                   Individual environments can override this value via their own activePath field.
+                  It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                  it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                  "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                  also not start with '-'.
+                maxLength: 100
                 minLength: 1
+                pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                 type: string
+                x-kubernetes-validations:
+                - message: activePath must not contain '..' or '@{', or end with '.'
+                  rule: '!self.contains(''..'') && !self.contains(''@{'') && !self.endsWith(''.'')'
+                - message: activePath directory names must not end with '.lock'
+                  rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
               environments:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
@@ -7185,8 +7205,21 @@ spec:
                       description: |-
                         ActivePath optionally overrides the strategy-level activePath for this environment.
                         When set, this environment's CTP uses this path instead of spec.activePath.
+                        It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                        it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                        "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                        also not start with '-'.
+                      maxLength: 100
                       minLength: 1
+                      pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                       type: string
+                      x-kubernetes-validations:
+                      - message: activePath must not contain '..' or '@{', or end
+                          with '.'
+                        rule: '!self.contains(''..'') && !self.contains(''@{'') &&
+                          !self.endsWith(''.'')'
+                      - message: activePath directory names must not end with '.lock'
+                        rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
                     autoMerge:
                       default: true
                       description: |-

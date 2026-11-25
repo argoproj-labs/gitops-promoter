@@ -250,7 +250,7 @@ export type components = {
              * @default
              */
             activeBranch: string;
-            /** @description ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. */
+            /** @description ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must also not start with '-'. */
             activePath?: string;
             /**
              * @description RepositoryReference is the repository whose active branch is inspected to reconstruct the promotion history.
@@ -281,7 +281,7 @@ export type components = {
             activeBranch: string;
             /** @description ActiveCommitStatuses lists the statuses to be monitored on the active branch */
             activeCommitStatuses: components["schemas"]["CommitStatusSelector"][];
-            /** @description ActivePath is an optional repository subpath for this policy's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. */
+            /** @description ActivePath is an optional repository subpath for this policy's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must also not start with '-'. */
             activePath?: string;
             autoMerge?: boolean;
             /**
@@ -595,11 +595,13 @@ export type components = {
         DependentsQualifiedCommitStatusSpec: {
             /**
              * @description DrySource is where the dry commits and the environment tags live.
+             *
+             *     Every environment of the PromotionStrategy hydrates from its own tag in that repository. The tag names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an environment with an activePath. The controller creates the tags and reports their names in status.environments[].tag.name.
              * @default {}
              */
             drySource: components["schemas"]["DependentsQualifiedDrySource"];
-            /** @description Environments declares the tag each environment hydrates from. There must be exactly one entry for every environment of the referenced PromotionStrategy, and every entry must name its own tag. */
-            environments: components["schemas"]["DependentsQualifiedEnvironment"][];
+            /** @description Environments holds per-environment settings. An environment of the PromotionStrategy with no entry here gets the defaults. Every entry must name an environment of the PromotionStrategy. */
+            environments?: components["schemas"]["DependentsQualifiedEnvironment"][];
             /**
              * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
              * @default
@@ -664,25 +666,20 @@ export type components = {
             /** @description Sha is the HEAD of the dry branch when the controller last reconciled. */
             sha?: string;
         };
-        /** @description DependentsQualifiedEnvironment declares the tag one environment hydrates from. */
+        /** @description DependentsQualifiedEnvironment holds the settings of one environment. */
         DependentsQualifiedEnvironment: {
-            /** @description Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
+            /** @description Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted. */
             advance?: string;
             /**
              * @description Branch is the environment's active branch. It must match an environment of the referenced PromotionStrategy. Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             branch: string;
-            /**
-             * @description Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The controller creates the tag if it does not exist. Must not start with '-', contain ':', or contain '..'.
-             * @default
-             */
-            tag: string;
         };
         /** @description DependentsQualifiedTagStatus is the observed state of one environment tag. */
         DependentsQualifiedTagStatus: {
             /**
-             * @description Name is the tag name.
+             * @description Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's active branch and activePath.
              * @default
              */
             name: string;
@@ -802,7 +799,7 @@ export type components = {
              *     The commit statuses specified in this field apply to this environment only. You can also specify commit statuses for all environments in the `spec.activeCommitStatuses` field.
              */
             activeCommitStatuses?: components["schemas"]["CommitStatusSelector"][];
-            /** @description ActivePath optionally overrides the strategy-level activePath for this environment. When set, this environment's CTP uses this path instead of spec.activePath. */
+            /** @description ActivePath optionally overrides the strategy-level activePath for this environment. When set, this environment's CTP uses this path instead of spec.activePath. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must also not start with '-'. */
             activePath?: string;
             /** @description AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence. If false, the dry commit will be proposed but not merged. */
             autoMerge?: boolean;
@@ -1648,7 +1645,7 @@ export type components = {
              *     The commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.
              */
             activeCommitStatuses?: components["schemas"]["CommitStatusSelector"][];
-            /** @description ActivePath is the default repository subpath for this strategy's active state. When set, proposed branches are created as <environment-branch>-next/<activePath>. Individual environments can override this value via their own activePath field. */
+            /** @description ActivePath is the default repository subpath for this strategy's active state. When set, proposed branches are created as <environment-branch>-next/<activePath>. Individual environments can override this value via their own activePath field. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must also not start with '-'. */
             activePath?: string;
             /** @description Environments is the sequence of environments that a dry commit will be promoted through. */
             environments: components["schemas"]["Environment"][];

@@ -74,8 +74,19 @@ spec:
                   ActivePath is the default repository subpath for this strategy's active state.
                   When set, proposed branches are created as <environment-branch>-next/<activePath>.
                   Individual environments can override this value via their own activePath field.
+                  It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                  it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                  "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                  also not start with '-'.
+                maxLength: 100
                 minLength: 1
+                pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                 type: string
+                x-kubernetes-validations:
+                - message: activePath must not contain '..' or '@{', or end with '.'
+                  rule: '!self.contains(''..'') && !self.contains(''@{'') && !self.endsWith(''.'')'
+                - message: activePath directory names must not end with '.lock'
+                  rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
               environments:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
@@ -110,8 +121,21 @@ spec:
                       description: |-
                         ActivePath optionally overrides the strategy-level activePath for this environment.
                         When set, this environment's CTP uses this path instead of spec.activePath.
+                        It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so
+                        it must be valid there: no directory name starts with '.' or ends with ".lock", and the path has no
+                        "..", no "@{", no space, control character or any of ~ ^ : ? * [ \, and does not end with '.'. It must
+                        also not start with '-'.
+                      maxLength: 100
                       minLength: 1
+                      pattern: ^[^\x00-\x20\x7f~^:?*\[\\/.-][^\x00-\x20\x7f~^:?*\[\\/]*(/[^\x00-\x20\x7f~^:?*\[\\/.][^\x00-\x20\x7f~^:?*\[\\/]*)*$
                       type: string
+                      x-kubernetes-validations:
+                      - message: activePath must not contain '..' or '@{', or end
+                          with '.'
+                        rule: '!self.contains(''..'') && !self.contains(''@{'') &&
+                          !self.endsWith(''.'')'
+                      - message: activePath directory names must not end with '.lock'
+                        rule: '!self.endsWith(''.lock'') && !self.contains(''.lock/'')'
                     autoMerge:
                       default: true
                       description: |-

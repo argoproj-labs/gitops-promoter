@@ -1380,7 +1380,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyHisto
 					},
 					"activePath": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata.",
+							Description: "ActivePath is an optional repository subpath for this environment's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with \".lock\", and the path has no \"..\", no \"@{\", no space, control character or any of ~ ^ : ? * [ \\, and does not end with '.'. It must also not start with '-'.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1539,7 +1539,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 					},
 					"activePath": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ActivePath is an optional repository subpath for this policy's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata.",
+							Description: "ActivePath is an optional repository subpath for this policy's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with \".lock\", and the path has no \"..\", no \"@{\", no space, control character or any of ~ ^ : ? * [ \\, and does not end with '.'. It must also not start with '-'.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3038,7 +3038,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedCommit
 					},
 					"drySource": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DrySource is where the dry commits and the environment tags live.",
+							Description: "DrySource is where the dry commits and the environment tags live.\n\nEvery environment of the PromotionStrategy hydrates from its own tag in that repository. The tag names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an environment with an activePath. The controller creates the tags and reports their names in status.environments[].tag.name.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.DependentsQualifiedDrySource{}.OpenAPIModelName()),
 						},
@@ -3053,7 +3053,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedCommit
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Environments declares the tag each environment hydrates from. There must be exactly one entry for every environment of the referenced PromotionStrategy, and every entry must name its own tag.",
+							Description: "Environments holds per-environment settings. An environment of the PromotionStrategy with no entry here gets the defaults. Every entry must name an environment of the PromotionStrategy.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -3091,7 +3091,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedCommit
 						},
 					},
 				},
-				Required: []string{"promotionStrategyRef", "key", "drySource", "environments"},
+				Required: []string{"promotionStrategyRef", "key", "drySource"},
 			},
 		},
 		Dependencies: []string{
@@ -3267,7 +3267,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedEnviro
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DependentsQualifiedEnvironment declares the tag one environment hydrates from.",
+				Description: "DependentsQualifiedEnvironment holds the settings of one environment.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"branch": {
@@ -3278,23 +3278,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedEnviro
 							Format:      "",
 						},
 					},
-					"tag": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the refs/tags/ prefix). The controller creates the tag if it does not exist. Must not start with '-', contain ':', or contain '..'.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 					"advance": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
+							Description: "Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the controller still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
-				Required: []string{"branch", "tag"},
+				Required: []string{"branch"},
 			},
 		},
 	}
@@ -3309,7 +3301,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsQualifiedTagSta
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Name is the tag name.",
+							Description: "Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's active branch and activePath.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -3808,7 +3800,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 					},
 					"activePath": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ActivePath optionally overrides the strategy-level activePath for this environment. When set, this environment's CTP uses this path instead of spec.activePath.",
+							Description: "ActivePath optionally overrides the strategy-level activePath for this environment. When set, this environment's CTP uses this path instead of spec.activePath. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with \".lock\", and the path has no \"..\", no \"@{\", no space, control character or any of ~ ^ : ? * [ \\, and does not end with '.'. It must also not start with '-'.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -5533,7 +5525,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 					},
 					"activePath": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ActivePath is the default repository subpath for this strategy's active state. When set, proposed branches are created as <environment-branch>-next/<activePath>. Individual environments can override this value via their own activePath field.",
+							Description: "ActivePath is the default repository subpath for this strategy's active state. When set, proposed branches are created as <environment-branch>-next/<activePath>. Individual environments can override this value via their own activePath field. It is a relative path of directory names separated by '/', and it becomes the end of git ref names, so it must be valid there: no directory name starts with '.' or ends with \".lock\", and the path has no \"..\", no \"@{\", no space, control character or any of ~ ^ : ? * [ \\, and does not end with '.'. It must also not start with '-'.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

@@ -48,14 +48,11 @@ spec:
     name: demo
   drySource:
     branch: main
-  environments:
-    - branch: environment/dev
-      tag: env/dev
-    - branch: environment/test
-      tag: env/test
-    - branch: environment/prod
-      tag: env/prod
 ```
+
+Every environment of the PromotionStrategy hydrates from its own tag. The names are fixed (see
+[Environment tags](#environment-tags)); with this example they are `promoter/environment/dev`,
+`promoter/environment/test`, and `promoter/environment/prod`.
 
 As with DependentsSuccessfulCommitStatus, omitting `dependsOn` on every PromotionStrategy environment infers a linear
 chain from list order, and `PromotionStrategy.spec.environments[].dependsOn` declares a custom DAG. The graph rules
@@ -188,9 +185,9 @@ the ordering `CommitStatus` on the proposed hydrated commit:
 
 | Check | Passes when | `pending` description |
 |-------|-------------|-----------------------|
-| Tag | `E`'s tag exists | `Waiting for tag "env/prod" to be created` |
-| Hydration | `X` is the commit `E`'s tag points at | `Waiting for hydrator to process tag "env/prod" at a1b2c3d (currently f6e5d4c)` |
-| On the DRY branch | the tagged commit is reachable from the DRY branch HEAD | `Tag "env/prod" at a1b2c3d is not on dry branch "main"` |
+| Tag | `E`'s tag exists | `Waiting for tag "promoter/environment/prod" to be created` |
+| Hydration | `X` is the commit `E`'s tag points at | `Waiting for hydrator to process tag "promoter/environment/prod" at a1b2c3d (currently f6e5d4c)` |
+| On the DRY branch | the tagged commit is reachable from the DRY branch HEAD | `Tag "promoter/environment/prod" at a1b2c3d is not on dry branch "main"` |
 | Qualification | for every direct upstream `U`, `X` is `U`'s watermark or an ancestor of it | `Waiting for "environment/test" to qualify dry a1b2c3d (newest qualified: f6e5d4c)` |
 
 The checks run in that order and the description is the first one that fails. The gate is `success` when all pass.
@@ -257,14 +254,47 @@ Required.
 The controller reads the DRY commit graph from this repository to resolve ancestry, and pushes environment tags to it.
 The credentials behind the GitRepository need permission to create and update tags.
 
+### Environment tags
+
+The tag an environment hydrates from is not configurable. It is derived from the environment on the
+PromotionStrategy:
+
+| Environment | Tag |
+|-------------|-----|
+| no `activePath` | `promoter/<active branch>` |
+| with an `activePath` (its own, or the PromotionStrategy's) | `promoter/<active branch>/<activePath>` |
+
+For example `promoter/environment/prod`, or `promoter/environment/prod/apps/checkout` for `activePath: apps/checkout`.
+The hydrator's configuration for the environment must name that tag. The gate reports the name in
+`status.environments[].tag.name`.
+
+Appending the `activePath` gives PromotionStrategies that share an active branch their own tags, as it gives them
+their own proposed branches. The
+[`activePath` naming rules](../../structuring-your-repos.md#what-an-activepath-may-contain) keep the result a valid
+tag name under `promoter/`.
+
+Two gates must not manage the same tag. The tag is the active branch and the `activePath` joined with a `/`, so
+`environment/prod` with `activePath: apps/checkout` and `environment/prod/apps` with `activePath: checkout` both give
+`promoter/environment/prod/apps/checkout`, as do two environments with the same active branch and `activePath`. Within
+one hydrated repository that does not happen between correctly configured PromotionStrategies. It takes
+PromotionStrategies whose hydrated branches are in different repositories and whose gates point
+`drySource.gitRepositoryRef` at one DRY repository, or two gates for one PromotionStrategy.
+
+The controller compares the gates of a namespace. When two of them have a tag in common in the same GitRepository, the
+gate that was created later sets `Ready` to `False` with reason `TagConflict`, and reads and moves no tag until the
+conflict is gone. The older gate carries on. Give the environments different names, or their own DRY repositories.
+
+The comparison is by GitRepository resource. It does not see two GitRepository resources that describe the same
+repository, or gates in another namespace or cluster. Such gates would move each other's tags.
+
 ### `spec.environments`
 
-Required. One entry for every environment on the PromotionStrategy.
+Optional. Settings for individual environments. An environment of the PromotionStrategy with no entry gets the
+defaults; an entry for a branch the PromotionStrategy does not have sets `Ready` to `False`.
 
 | Field | Required | Notes |
 |-------|----------|-------|
 | `branch` | yes | The environment's active branch, matching `PromotionStrategy.spec.environments[].branch`. |
-| `tag` | yes | The tag in the DRY repository this environment hydrates from. Must be unique within the gate and must match the hydrator's configuration for the environment. |
 | `advance` | no | `Auto` (default): the controller moves the tag. `Manual`: the controller creates the tag if it is missing and never moves it. |
 
 ### `spec.publishTo`
@@ -294,12 +324,7 @@ spec:
     gitRepositoryRef:
       name: demo-dry
   environments:
-    - branch: environment/dev
-      tag: env/dev
-    - branch: environment/test
-      tag: env/test
     - branch: environment/prod
-      tag: env/prod
       advance: Manual
   publishTo: [scm]
   url:
@@ -345,7 +370,7 @@ status:
   environments:
     - branch: environment/test
       tag:
-        name: env/test
+        name: promoter/environment/test
         sha: d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3
       activeCommitStatuses:
         - key: argocd-health
@@ -356,7 +381,7 @@ status:
         qualifiedAt: "2026-11-12T14:02:11Z"
     - branch: environment/prod
       tag:
-        name: env/prod
+        name: promoter/environment/prod
         sha: d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3
       activeCommitStatuses:
         - key: argocd-health
@@ -365,7 +390,7 @@ status:
         - branch: environment/test
           satisfied: true
       phase: success
-      description: 'Tag "env/prod" at d4c3b2a is hydrated and qualified upstream'
+      description: 'Tag "promoter/environment/prod" at d4c3b2a is hydrated and qualified upstream'
       reportedSha: abc123def4567890abcdef1234567890abcdef12
 ```
 
@@ -377,6 +402,7 @@ In addition to the [standard conditions](../../crd-specs.md#status-conditions), 
 |--------|---------|
 | `CommitStatusesNotReady` | A child CommitStatus is not Ready. |
 | `DryRepositoryUnavailable` | The controller could not read the DRY repository to observe HEAD, read tags, or resolve ancestry. Child CommitStatuses keep their last phase and no tag is moved. |
+| `TagConflict` | An older gate in the namespace manages one of this gate's tags in the same GitRepository. See [Environment tags](#environment-tags). The gate moves no tag and leaves its child CommitStatuses as they are; it checks again after a minute. |
 | `TagPushFailed` | A tag push was rejected, for example by tag protection or missing permission. The message names the tag. The other tags are still managed, and the push is retried after a minute. |
 
 ## Lifecycle
@@ -384,8 +410,8 @@ In addition to the [standard conditions](../../crd-specs.md#status-conditions), 
 - **Deleting the gate** removes its child CommitStatuses. The tags stay where they are and nothing moves them, so
   every environment keeps hydrating the commit its tag points at. Point the hydrator back at the DRY branch, or move
   the tags yourself, when you remove the gate.
-- **Removing an environment, or renaming its tag,** leaves the old tag in the DRY repository. The controller never
-  deletes a tag.
+- **Removing an environment, or changing its active branch or `activePath`,** leaves the old tag in the DRY
+  repository. The controller never deletes a tag.
 - **Recreating the gate** rebuilds each environment's watermark from the qualification notes on its active branch.
 
 ## Comparison with DependentsSuccessfulCommitStatus

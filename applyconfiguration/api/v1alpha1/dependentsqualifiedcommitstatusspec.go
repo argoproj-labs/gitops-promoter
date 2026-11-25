@@ -34,9 +34,14 @@ type DependentsQualifiedCommitStatusSpecApplyConfiguration struct {
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
 	// DrySource is where the dry commits and the environment tags live.
+	//
+	// Every environment of the PromotionStrategy hydrates from its own tag in that repository. The tag
+	// names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an
+	// environment with an activePath. The controller creates the tags and reports their names in
+	// status.environments[].tag.name.
 	DrySource *DependentsQualifiedDrySourceApplyConfiguration `json:"drySource,omitempty"`
-	// Environments declares the tag each environment hydrates from. There must be exactly one entry for
-	// every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+	// Environments holds per-environment settings. An environment of the PromotionStrategy with no entry
+	// here gets the defaults. Every entry must name an environment of the PromotionStrategy.
 	Environments []DependentsQualifiedEnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link). Optional; when
 	// empty, no URL is set on the child CommitStatus. The template receives .Environment,

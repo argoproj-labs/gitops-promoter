@@ -271,6 +271,7 @@ The `DependentsQualifiedCommitStatus` CRD may also have the following condition 
 
 * `CommitStatusesNotReady`
 * `DryRepositoryUnavailable`
+* `TagConflict`
 * `TagPushFailed`
 
 #### `ChangeTransferPolicy`

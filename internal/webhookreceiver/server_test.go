@@ -184,21 +184,17 @@ func newFakeClient(objs ...client.Object) client.Client {
 	return builder.Build()
 }
 
-// newDryGate returns a gate that reads dry branch "main" (last seen at testShaA) and the tags "env/dev"
-// (last seen at testShaA) and "env/prod" (last seen at testShaB).
+// newDryGate returns a gate that reads dry branch "main" (last seen at testShaA) and the tags
+// "promoter/environment/dev" (last seen at testShaA) and "promoter/environment/prod" (last seen at testShaB).
 func newDryGate(name string) *promoterv1alpha1.DependentsQualifiedCommitStatus {
 	gate := &promoterv1alpha1.DependentsQualifiedCommitStatus{}
 	gate.Name = name
 	gate.Namespace = testNamespace
 	gate.Spec.DrySource.Branch = "main"
-	gate.Spec.Environments = []promoterv1alpha1.DependentsQualifiedEnvironment{
-		{Branch: "environment/dev", Tag: "env/dev"},
-		{Branch: "environment/prod", Tag: "env/prod"},
-	}
 	gate.Status.Dry = &promoterv1alpha1.DependentsQualifiedDryStatus{Sha: testShaA}
 	gate.Status.Environments = []promoterv1alpha1.DependentsQualifiedCommitStatusEnvironmentStatus{
-		{Branch: "environment/dev", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "env/dev", Sha: testShaA}},
-		{Branch: "environment/prod", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "env/prod", Sha: testShaB}},
+		{Branch: "environment/dev", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "promoter/environment/dev", Sha: testShaA}},
+		{Branch: "environment/prod", Tag: &promoterv1alpha1.DependentsQualifiedTagStatus{Name: "promoter/environment/prod", Sha: testShaB}},
 	}
 	return gate
 }
@@ -517,7 +513,7 @@ var _ = Describe("WebhookReceiver dry gate routing", func() {
 	It("enqueues the gate when one of its environment tags is pushed", func() {
 		wr := newReceiver(newDryGate("gate"))
 
-		rec := postGitHubPushForRef(wr, testShaB, "refs/tags/env/prod")
+		rec := postGitHubPushForRef(wr, testShaB, "refs/tags/promoter/environment/prod")
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(gates.names()).To(Equal([]string{"gate"}))
 		Expect(ctps.count()).To(Equal(0))

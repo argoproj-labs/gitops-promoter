@@ -44,8 +44,13 @@ spec:
             description: spec defines the desired state of DependentsQualifiedCommitStatus
             properties:
               drySource:
-                description: DrySource is where the dry commits and the environment
-                  tags live.
+                description: |-
+                  DrySource is where the dry commits and the environment tags live.
+
+                  Every environment of the PromotionStrategy hydrates from its own tag in that repository. The tag
+                  names are fixed: promoter/<active branch>, or promoter/<active branch>/<activePath> for an
+                  environment with an activePath. The controller creates the tags and reports their names in
+                  status.environments[].tag.name.
                 properties:
                   branch:
                     description: |-
@@ -81,17 +86,18 @@ spec:
                 type: object
               environments:
                 description: |-
-                  Environments declares the tag each environment hydrates from. There must be exactly one entry for
-                  every environment of the referenced PromotionStrategy, and every entry must name its own tag.
+                  Environments holds per-environment settings. An environment of the PromotionStrategy with no entry
+                  here gets the defaults. Every entry must name an environment of the PromotionStrategy.
                 items:
-                  description: DependentsQualifiedEnvironment declares the tag one
-                    environment hydrates from.
+                  description: DependentsQualifiedEnvironment holds the settings of
+                    one environment.
                   properties:
                     advance:
                       default: Auto
                       description: |-
-                        Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-                        still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+                        Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
+                        controller still verifies that what they tagged is hydrated and qualified upstream before it may be
+                        promoted.
                       enum:
                       - Auto
                       - Manual
@@ -111,34 +117,14 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: branch must not contain '..'
                         rule: '!self.contains(''..'')'
-                    tag:
-                      description: |-
-                        Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-                        refs/tags/ prefix). The controller creates the tag if it does not exist.
-                        Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
-                      minLength: 1
-                      type: string
-                      x-kubernetes-validations:
-                      - message: tag must not start with '-'
-                        rule: '!self.startsWith(''-'')'
-                      - message: tag must not contain ':'
-                        rule: '!self.contains('':'')'
-                      - message: tag must not contain '..'
-                        rule: '!self.contains(''..'')'
                   required:
                   - branch
-                  - tag
                   type: object
                 maxItems: 50
-                minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
-                x-kubernetes-validations:
-                - message: each environment must have its own tag
-                  rule: self.all(e, self.exists_one(o, o.tag == e.tag))
               key:
                 description: |-
                   Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
@@ -213,7 +199,6 @@ spec:
                 type: object
             required:
             - drySource
-            - environments
             - key
             - promotionStrategyRef
             type: object
@@ -391,7 +376,9 @@ spec:
                         the dry repository.
                       properties:
                         name:
-                          description: Name is the tag name.
+                          description: |-
+                            Name is the tag name, without the refs/tags/ prefix. The controller derives it from the environment's
+                            active branch and activePath.
                           minLength: 1
                           type: string
                         sha:

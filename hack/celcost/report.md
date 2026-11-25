@@ -10,16 +10,16 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | Resource | Version | Total cost | % of schema limit |
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
-| ChangeTransferPolicy | v1alpha1 | 2,589 | 0.00% |
-| ChangeTransferPolicyHistory | v1alpha1 | 36,327 | 0.04% |
+| ChangeTransferPolicy | v1alpha1 | 2,721 | 0.00% |
+| ChangeTransferPolicyHistory | v1alpha1 | 36,459 | 0.04% |
 | ClusterScmProvider | v1alpha1 | 5,829 | 0.01% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 650 | 0.00% |
-| DependentsQualifiedCommitStatus | v1alpha1 | 275,713 | 0.28% |
+| DependentsQualifiedCommitStatus | v1alpha1 | 156,061 | 0.16% |
 | DependentsSuccessfulCommitStatus | v1alpha1 | 151,500 | 0.15% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 16 | 0.00% |
-| PromotionStrategy | v1alpha1 | 7,903,503 | 7.90% |
+| PromotionStrategy | v1alpha1 | 7,969,635 | 7.97% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RestoreActiveCommit | v1alpha1 | 165 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
@@ -53,6 +53,8 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 | `.status.proposed.dry.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.hydrated.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.note.references[].commit.repoURL` | 300 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.spec.activePath` | 87 | 0.00% | `!self.contains('..') && !self.contains('@{') && !self.endsWith('.')` |
+| `.spec.activePath` | 45 | 0.00% | `!self.endsWith('.lock') && !self.contains('.lock/')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `.spec.proposedBranch` | 42 | 0.00% | `!self.contains(':')` |
@@ -64,7 +66,7 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 | `.status.proposed.dry.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.hydrated.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.pullRequest.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **2,589** | **0.00%** | |
+| **Total** | **2,721** | **0.00%** | |
 
 #### ChangeTransferPolicyHistory
 
@@ -80,14 +82,16 @@ Source: `promoter.argoproj.io_changetransferpolicyhistories.yaml`
 | `.status.history[].active.note.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
 | `.status.history[].proposed.commitStatuses[].url` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
 | `.status.history[].proposed.hydrated.references[].commit.repoURL` | 6,000 | 0.06% | `self == '' \|\| isURL(self)` |
+| `.spec.activePath` | 87 | 0.00% | `!self.contains('..') && !self.contains('@{') && !self.endsWith('.')` |
 | `.status.history[].active.dry.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.history[].active.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.history[].proposed.hydrated.repoURL` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.history[].pullRequest.url` | 60 | 0.00% | `self == '' \|\| isURL(self)` |
+| `.spec.activePath` | 45 | 0.00% | `!self.endsWith('.lock') && !self.contains('.lock/')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **36,327** | **0.04%** | |
+| **Total** | **36,459** | **0.04%** | |
 
 #### ClusterScmProvider
 
@@ -204,18 +208,14 @@ Source: `promoter.argoproj.io_dependentsqualifiedcommitstatuses.yaml`
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
 | `.status.environments[].activeCommitStatuses[].url` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
-| `.spec.environments` | 115,302 | 1.15% | `self.all(e, self.exists_one(o, o.tag == e.tag))` |
 | `.spec.environments[].branch` | 2,100 | 0.02% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 2,100 | 0.02% | `!self.contains('..')` |
-| `.spec.environments[].tag` | 2,100 | 0.02% | `!self.contains(':')` |
-| `.spec.environments[].tag` | 2,100 | 0.02% | `!self.contains('..')` |
 | `.status.environments[].url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
 | `.spec.environments[].branch` | 150 | 0.00% | `!self.startsWith('-')` |
-| `.spec.environments[].tag` | 150 | 0.00% | `!self.startsWith('-')` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains(':')` |
 | `.spec.drySource.branch` | 104 | 0.00% | `!self.contains('..')` |
 | `.spec.drySource.branch` | 3 | 0.00% | `!self.startsWith('-')` |
-| **Total** | **275,713** | **0.28%** | |
+| **Total** | **156,061** | **0.16%** | |
 
 #### DependentsSuccessfulCommitStatus
 
@@ -268,6 +268,8 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.status.environments[].proposed.dry.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].proposed.hydrated.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].proposed.note.references[].commit.repoURL` | 150,000 | 1.50% | `self == '' \|\| isURL(self)` |
+| `.spec.environments[].activePath` | 43,500 | 0.43% | `!self.contains('..') && !self.contains('@{') && !self.endsWith('.')` |
+| `.spec.environments[].activePath` | 22,500 | 0.22% | `!self.endsWith('.lock') && !self.contains('.lock/')` |
 | `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 21,000 | 0.21% | `!self.contains('..')` |
 | `.spec.environments[].branch` | 1,500 | 0.01% | `!self.startsWith('-')` |
@@ -276,8 +278,10 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.status.environments[].proposed.dry.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].proposed.hydrated.repoURL` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].pullRequest.url` | 1,500 | 0.01% | `self == '' \|\| isURL(self)` |
+| `.spec.activePath` | 87 | 0.00% | `!self.contains('..') && !self.contains('@{') && !self.endsWith('.')` |
+| `.spec.activePath` | 45 | 0.00% | `!self.endsWith('.lock') && !self.contains('.lock/')` |
 | `.spec.orderCommitStatusRef.kind` | 3 | 0.00% | `self.endsWith('CommitStatus')` |
-| **Total** | **7,903,503** | **7.90%** | |
+| **Total** | **7,969,635** | **7.97%** | |
 
 #### PullRequest
 

@@ -24,18 +24,15 @@ import (
 // DependentsQualifiedEnvironmentApplyConfiguration represents a declarative configuration of the DependentsQualifiedEnvironment type for use
 // with apply.
 //
-// DependentsQualifiedEnvironment declares the tag one environment hydrates from.
+// DependentsQualifiedEnvironment holds the settings of one environment.
 type DependentsQualifiedEnvironmentApplyConfiguration struct {
 	// Branch is the environment's active branch. It must match an environment of the referenced
 	// PromotionStrategy.
 	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
-	// Tag is the name of the tag in the dry repository that this environment's hydrator reads (without the
-	// refs/tags/ prefix). The controller creates the tag if it does not exist.
-	// Must not start with '-', contain ':', or contain '..'.
-	Tag *string `json:"tag,omitempty"`
-	// Advance says who moves the tag. Auto (the default): the controller. Manual: a person; the controller
-	// still verifies that what they tagged is hydrated and qualified upstream before it may be promoted.
+	// Advance says who moves the environment's tag. Auto (the default): the controller. Manual: a person; the
+	// controller still verifies that what they tagged is hydrated and qualified upstream before it may be
+	// promoted.
 	Advance *apiv1alpha1.TagAdvanceMode `json:"advance,omitempty"`
 }
 
@@ -50,14 +47,6 @@ func DependentsQualifiedEnvironment() *DependentsQualifiedEnvironmentApplyConfig
 // If called multiple times, the Branch field is set to the value of the last call.
 func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithBranch(value string) *DependentsQualifiedEnvironmentApplyConfiguration {
 	b.Branch = &value
-	return b
-}
-
-// WithTag sets the Tag field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Tag field is set to the value of the last call.
-func (b *DependentsQualifiedEnvironmentApplyConfiguration) WithTag(value string) *DependentsQualifiedEnvironmentApplyConfiguration {
-	b.Tag = &value
 	return b
 }
 

@@ -45,6 +45,27 @@ so a client-side or server-side apply leaves the generated values in place. A sy
 See [Installation](getting-started.md#installation) and
 [Serving certs](advanced-usage/dashboard-apiserver.md#serving-certs).
 
+## 0.49 — `activePath` must be valid in a git ref name
+
+`activePath` is now validated by the CRDs: on a PromotionStrategy, on each of its environments, and on the
+ChangeTransferPolicy and ChangeTransferPolicyHistory the controller creates from them. It must be a relative path, at
+most 100 characters long, that git accepts at the end of a ref name. See
+[What an `activePath` may contain](structuring-your-repos.md#what-an-activepath-may-contain) for the exact rule.
+
+Any non-empty string was accepted before. Most of what is now rejected never worked, because it does not give a valid
+proposed branch name: a directory starting with `.`, a space, `:`, `~`, or a name ending with `.lock`. These values
+did work and are now rejected:
+
+| Previously accepted | Write instead |
+| --- | --- |
+| a leading `./`, a trailing `/` or a doubled `/` (`apps/payments/`) | the same path without them (`apps/payments`) |
+| a `..` that resolves to another directory (`apps/../payments`) | the resolved path (`payments`) |
+| a path starting with `-` (`-apps/payments`) | a renamed directory |
+
+The API server does not re-check a stored value until it changes (validation ratcheting, on by default since
+Kubernetes 1.30), so an existing PromotionStrategy keeps reconciling. A ChangeTransferPolicy the controller has to
+create for it, for example for an environment you add, is rejected until the `activePath` is corrected.
+
 ## 0.49 — Rate limiters must name exactly one strategy
 
 Every `spec.<controller>.workQueue.rateLimiter` in the ControllerConfiguration must now set exactly one of
