@@ -9,4 +9,7 @@ extend-exclude = [
     # Generated OpenAPI definitions embed upstream Kubernetes type descriptions
     # verbatim (e.g. "ANDed", "mutatation"); don't spell-check generated code.
     "**/zz_generated.openapi.go",
+    # Third-party CRDs vendored verbatim for tests (Argo Workflows, Tekton).
+    "test/external_crds/**",
+    "test/crd_variants/**",
 ]

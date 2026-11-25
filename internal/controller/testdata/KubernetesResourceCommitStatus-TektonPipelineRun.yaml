@@ -1,0 +1,42 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: security-scan
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: security-scan
+  reportOn: proposed
+  # Requires tekton.dev/v1 PipelineRun in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources.
+  template:
+    apiVersion: tekton.dev/v1
+    kind: PipelineRun
+    spec:
+      pipelineRef:
+        name: security-scan
+      taskRunTemplate:
+        serviceAccountName: tekton-runner
+      params:
+        - name: gitUrl
+          value: "https://github.com/myorg/myrepo/commit/${ Sha }"
+        - name: branch
+          value: ${ Branch }
+        - name: endpoints
+          value: ["api/health", "api/users"]
+  lifecycle:
+    # Successful runs are not worth keeping; delete a failed run to rerun it.
+    pruneOnSuccess: true
+    retryOnDelete: true
+  phase:
+    # Tekton reports completion in the Succeeded condition and results as a name/value list, which
+    # transformMapEntry turns into a map.
+    expression: |
+      cel.bind(conditions, Resource.?status.?conditions.orValue([]),
+        cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
+          conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
+            ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
+            : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
+            : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
+            : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
+            : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))

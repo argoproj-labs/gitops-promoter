@@ -1,0 +1,474 @@
+# Kubernetes Resource Commit Status
+
+`KubernetesResourceCommitStatus` gates a promotion on a Kubernetes resource the controller creates for you: a
+`batch/v1 Job` that runs a smoke test, an Argo Workflows `Workflow`, an Argo Rollouts `AnalysisRun`, or any other
+namespaced kind installed in the cluster. For every environment of the referenced `PromotionStrategy` the controller
+instantiates the resource from an inline **template**, then evaluates a
+[CEL](https://kubernetes.io/docs/reference/using-api/cel/) expression against the live resource to compute the commit
+status phase (`pending`, `success`, or `failure`). The CEL environment is the one Kubernetes uses for CRD validation
+rules and admission policies, with the same extension libraries, and expressions are type-checked against the
+created kind's schema.
+
+## How it works
+
+1. **Configure the kinds.** List the resource kinds gates may create in
+   `ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources`.
+2. **Write the gate.** `KubernetesResourceCommitStatus` holds the template (an ordinary Kubernetes object whose
+   string values may contain `${ }` expressions), declares the commit status `key`, and holds the phase expression.
+3. **The controller reconciles.** Per applicable environment it renders the template, creates (or re-applies) the
+   resource in the gate's namespace, evaluates the phase expression against the live object, writes a child
+   `CommitStatus`, and mirrors the result in `status.environments[]`. Status changes on the resource trigger a
+   reconcile immediately through a watch.
+
+```mermaid
+flowchart LR
+  CC[ControllerConfiguration<br/>resources: batch/v1 Job] -->|allows| G
+  G[KubernetesResourceCommitStatus<br/>spec.template] -->|creates per environment + SHA| J[batch/v1 Job]
+  J -->|status → CEL| G
+  G -->|upserts| CS[CommitStatus]
+```
+
+## Controller configuration
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+  namespace: promoter-system
+spec:
+  kubernetesResourceCommitStatus:
+    workQueue: { ... }
+    resources:
+      - group: batch
+        version: v1
+        kind: Job
+      - group: argoproj.io
+        version: v1alpha1
+        kind: Workflow
+      - group: tekton.dev
+        version: v1
+        kind: PipelineRun
+      - group: argoproj.io
+        version: v1alpha1
+        kind: AnalysisRun
+      - group: ""            # core group, for example core/v1 ConfigMap
+        version: v1
+        kind: ConfigMap
+```
+
+| Field | Values | Description |
+| --- | --- | --- |
+| `resources[]` | `{group, version, kind}` | Namespaced kinds gates may create. Each entry produces one informer on the kind. Cluster-scoped kinds are rejected. |
+
+`resources` is a **startup setting**: the ControllerConfiguration controller shuts the process down when it changes so
+the informers are rebuilt on restart (single-replica installs restart automatically; HA installs need a rolling
+restart, the same as [`instanceID`](../../multi-install.md)).
+
+`spec.kubernetesResourceCommitStatus.namespaceMetadata` (`Enabled` by default) controls whether the controller reads
+the gate's namespace to fill the `NamespaceMetadata` expression variable; set it to `Disabled` to skip the read.
+
+### RBAC
+
+RBAC for the configured kinds cannot be generated ahead of time; grant the controller ServiceAccount
+(`promoter-controller-manager` in `promoter-system`) `get`, `list`, `watch`, `create`, `patch`, and `delete` on every
+listed kind:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promoter-kubernetesresource-jobs
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-kubernetesresource-jobs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-kubernetesresource-jobs
+subjects:
+  - kind: ServiceAccount
+    name: promoter-controller-manager
+    namespace: promoter-system
+```
+
+> [!IMPORTANT]
+> Anyone who can create a `KubernetesResourceCommitStatus` can make the controller create the configured kinds in
+> that namespace with the controller's permissions. Only list kinds you are comfortable delegating this way, and
+> prefer kinds whose impact is bounded to the namespace (Jobs, Workflows, AnalysisRuns).
+
+## The gate
+
+A gate that runs a smoke-test Job against every proposed commit:
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus.yaml!}
+```
+
+Declare the key on the PromotionStrategy as usual:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: demo
+spec:
+  proposedCommitStatuses:
+    - key: smoke-test
+```
+
+| Field | Description |
+| --- | --- |
+| `key` | Commit status key matched against `proposedCommitStatuses` / `activeCommitStatuses`. |
+| `reportOn` | `proposed` (default) creates the resource for the proposed hydrated SHA and reports on it; `active` uses the active hydrated SHA. |
+| `publishTo` | Copied to the child CommitStatus. Default `["scm"]`. |
+| `template` | The object to create, see below. Its `apiVersion`/`kind` must be listed in the ControllerConfiguration. |
+| `lifecycle.mode` | `PerSha` (default) or `InPlace`, see below. |
+| `lifecycle.historyLimit` | Resources kept per environment in `PerSha` mode, including the current one (default 1). |
+| `phase.expression` | CEL expression, see below. |
+| `description` / `url` | Optional CommitStatus description and URL, with `${ }` expressions. |
+
+## The template
+
+`spec.template` is an ordinary Kubernetes object. `apiVersion` and `kind` must be literal and name a configured
+kind. `metadata.name`, `metadata.namespace`, and `status` are ignored because the controller sets them;
+`metadata.labels` and `metadata.annotations` are kept and merged under the controller's labels. Everything else is
+copied into the created resource.
+
+### Expressions
+
+Any **string** value may contain [CEL](https://kubernetes.io/docs/reference/using-api/cel/) expressions wrapped in
+`${ }`. Two forms exist:
+
+- **Standalone.** A value that is exactly one expression, such as `suspend: ${ Branch == 'environment/production' }`
+  or `env: ${ [...] }`, is replaced by the expression's result **with its type preserved**. This is how integers,
+  booleans, lists, and whole objects are computed. A result of `null`, or an absent optional such as
+  `optional.none()` or `Environment.?active.?hydrated.?sha`, removes the field (or the list item).
+- **Embedded.** A string that mixes text and expressions, such as `"smoke-${ ShortSha }"`, concatenates the pieces;
+  numbers and booleans are formatted as text, lists and objects as JSON, and `null` is an error (use `orValue()` for
+  a default).
+
+`$${` produces a literal `${`. Values without `${` and non-string values are copied verbatim.
+
+Objects are addressed by their **JSON field names**, as in `kubectl` output: `Environment.proposed.hydrated.sha`,
+`PromotionStrategy.spec.environments`. CEL requires both branches of a conditional to have the same type; to set a
+field conditionally use optionals: `${ cond ? optional.of(value) : optional.none() }`.
+
+| Variable | Description |
+| --- | --- |
+| `Branch` | Environment branch, for example `environment/development` |
+| `Sha` / `ShortSha` | Reported hydrated SHA and its first 7 characters |
+| `ReportOn` | `proposed` or `active` |
+| `Environment` | The `PromotionStrategy.status.environments[]` entry for the branch |
+| `PromotionStrategy` | The full PromotionStrategy |
+| `KubernetesResourceCommitStatus` | The gate (snapshot from the previous reconcile) |
+| `NamespaceMetadata` | `labels` and `annotations` of the gate's namespace, for example `NamespaceMetadata.labels['team']`; both maps are empty when `namespaceMetadata` is `Disabled` in the ControllerConfiguration |
+
+### Type checking
+
+The Promoter variables are typed from the Promoter OpenAPI schema, and the controller resolves the created kind's
+OpenAPI v3 schema through discovery. Expressions are compiled against both, so these are reported as `Ready=False`
+with the expression and the template path **before anything is created**:
+
+- a misspelled variable, or a misspelled field of a typed variable such as `Environment.propsed`;
+- a standalone expression or a literal whose type does not match the field it populates, for example a string for
+  `spec.parallelism` or an integer for `spec.suspend`, including the item type of a list and the value type of a
+  map (`args: ${ [1, 2] }` is rejected for a list of strings);
+- a literal that is not one of the field's enum values;
+- a literal that breaks another constraint of its field: format, minimum and maximum, length, pattern, or item count;
+- for kinds served from a CustomResourceDefinition, a CRD CEL rule (`x-kubernetes-validations`) that the literal
+  values break, evaluated with the schema's defaults applied. A rule is skipped when the node it is attached to holds
+  an expression anywhere below it, since it could read a value only known after rendering, and rules on the
+  object's root are always skipped, because the controller sets `metadata`;
+- a required field missing from an object written out in the template, such as a container without `name`.
+  Nothing can add it later, because an expression replaces only its own field's value. Fields inside an expression's
+  result (`containers: ${ [...] }`) and under `metadata` are not checked, and for CRD kinds a field with a schema
+  default is not reported, since the API server applies defaults first;
+- an expression that can remove a field the schema requires (a `null` or an optional result);
+- text with embedded expressions in a non-string field, and a list, map, or null in a label, annotation,
+  `description`, or `url`.
+
+Fields the schema does not describe are dynamically typed: an object that preserves unknown fields keeps its declared
+fields typed and accepts anything else, and an untyped union such as a Tekton param `value` is `dyn`. Such fields are
+not checked in the template, and reading them from `Resource` compiles but is only type-checked at run time. When the
+kind's schema cannot be resolved at all, `Resource` is untyped and only the API server validates the rendered object.
+
+The library set is the Kubernetes one: `has()`, optionals (`.?`, `orValue()`, `optMap()`), list macros (`exists`,
+`all`, `map`, `filter`), two-variable comprehensions (`transformMap`, `transformList`), `quantity()`, `semver()`,
+`url()`, `isURL()`, `format`, IP and CIDR helpers, and the string, math, sets, and encoders extensions, plus
+`cel.bind(name, value, expression)` for naming a value an expression uses more than once:
+
+```yaml
+description: >-
+  ${ cel.bind(results, Resource.?status.?results.orValue([]),
+       cel.bind(vulns, (results.filter(r, r.name == 'vulnerabilities').map(r, string(r.value)) + ['0'])[0],
+         vulns == '0' ? 'No vulnerabilities' : vulns + ' vulnerabilities found')) }
+```
+
+### Validation at admission time
+
+The gate holds the whole template, so the CRD schema cannot validate it. The controller instead serves a
+[validating admission webhook](../../advanced-usage/admission-webhook.md) that runs the same compile-time checks
+when the gate is created or updated, plus a check that every template field exists in the kind's schema (the API
+server would otherwise drop a misspelled field silently, so a close match is suggested). A bad gate is then rejected
+by `kubectl apply` or shown as a sync error by Argo CD:
+
+```text
+The KubernetesResourceCommitStatus "smoke-test" is invalid:
+* spec.template.spec.parallelism: Invalid value: "${ Sha }": expression "Sha" returns string but the field expects int
+* spec.template.spec.template.spec.containers[0].imag: Invalid value: "imag": unknown field: the schema of batch/v1, Kind=Job has no field "imag" here and the API server would drop it (did you mean "image"?)
+* spec.template.spec.template.spec.containers[0].name: Required value
+```
+
+The controller runs the same checks on every reconcile, so a gate stored while the webhook was off reports these
+errors as `Ready=False` and creates nothing.
+
+How much is checked for a custom resource depends on its CRD's schema. Argo Workflows ships two `Workflow` CRDs: the
+**full** CRD declares every field, so a typo such as `entrypont` is rejected, while the default **minimal** CRD marks
+`spec` with `x-kubernetes-preserve-unknown-fields`, so almost nothing under `spec` is checked. Tekton's `PipelineRun`
+CRD declares most of `spec`, but leaves some values (such as parameter values) open.
+
+### Validation by dry-run
+
+A schema cannot express a kind's native validation (`Job.spec.backoffLimit` must be non-negative, `restartPolicy` is
+required), its defaulting, its CEL rules, or the cluster's admission policies, and a static check cannot know the
+value an expression produces. So in `PerSha` mode the controller also renders the template for **every** applicable
+environment, once per gate `metadata.generation`, and submits a **dry-run create** of the real kind with strict field
+validation. Each environment is validated separately because expressions can change the shape of the object per
+environment. The real create uses strict field validation too, so an unknown field that an expression renders only
+for a later SHA is rejected (and reported as `Ready=False`) instead of being dropped silently. The verdict is recorded
+in `status.environments[].templateValidation`:
+
+```yaml
+status:
+  environments:
+    - branch: environment/staging
+      phase: success
+      reportedSha: 0123456789abcdef0123456789abcdef01234567
+      templateValidation:
+        observedGeneration: 3
+        valid: false
+        message: 'Job.batch "smoke-environment-staging-0123456-dryrun" is invalid: spec.backoffLimit: Invalid value: -1: must be greater than or equal to 0'
+        lastValidationTime: "2026-10-31T01:00:00Z"
+```
+
+An environment whose rendering is rejected keeps its previous report and gets no new resource until the template is
+fixed; the gate reports `Ready=False` naming the environment, while the other environments keep reconciling. This is
+the only timely signal for a template edited after an environment's current SHA already has its resource or reached a
+terminal phase, since that SHA is never re-run. The dry-run uses the same `create` permission as the real resource.
+Admission webhooks on the kind must declare `sideEffects: None` or `NoneOnDryRun`; when one does not, the API server
+refuses the dry-run and the controller records the template as not validated (`valid: true` with a message) rather
+than blocking the gate. `InPlace` resources are re-applied on every reconcile, so their errors surface directly and
+they are not dry-run.
+
+Examples:
+
+```yaml
+# A label-safe branch name
+labels:
+  environment: ${ Branch.replace('/', '-') }
+
+# Only set a field in one environment
+activeDeadlineSeconds: ${ Branch == 'environment/development' ? optional.of(600) : optional.none() }
+
+# A resource request computed from a quantity
+memory: ${ quantity('256Mi').add(quantity('64Mi')).asInteger() }
+```
+
+## Lifecycle modes
+
+**`PerSha`** (default) creates a new resource for every (environment, SHA) pair and never mutates it afterwards. The
+name is derived from the gate name, branch, and SHA and is bounded to 63 characters so it is valid for kinds such as Job
+that copy their name into a label. Once the current SHA's resource exists, older resources for the same environment are
+deleted down to `historyLimit`. Use this for immutable or run-once kinds (Job, Workflow, AnalysisRun).
+
+A SHA that reached `success` or `failure` is **terminal**: if its resource disappears afterwards (for example a Job
+removed by `ttlSecondsAfterFinished`), the gate keeps the last report and does not recreate the resource. A new SHA
+always starts over with a fresh resource and `pending`. Two options adjust this:
+
+- `pruneOnSuccess: true` deletes the resource once `success` is recorded in the gate's status. Success stays
+  terminal, so the report is kept and nothing is recreated. Use it when successful runs are not worth keeping around.
+- `retryOnDelete: true` makes failure non-terminal: deleting the resource of a failed SHA makes the controller create
+  a new one, and the phase returns to `pending`, so deleting the resource is how you rerun a failed check. Leave it
+  off for kinds that remove failed resources on their own, such as a Job with `ttlSecondsAfterFinished`, or every
+  removal starts another run.
+
+```yaml
+spec:
+  lifecycle:
+    pruneOnSuccess: true
+    retryOnDelete: true
+```
+
+Each per-SHA resource carries the finalizer `kubernetesresourcecommitstatus.promoter.argoproj.io/resource-finalizer`
+until the gate has recorded its terminal phase, so a TTL shorter than a controller outage cannot remove the result
+before it was observed and make the gate re-run the work. The finalizer is released on the reconcile after the
+terminal phase is written, when a resource is deleted before it finished (the gate then recreates it), when the
+resource is pruned, and for every resource when the gate itself is deleted (the gate holds
+`kubernetesresourcecommitstatus.promoter.argoproj.io/finalizer` for that). `InPlace` resources carry no finalizer.
+
+**`InPlace`** keeps a single resource per environment and re-applies the rendered template with Server-Side Apply on
+every reconcile, so SHA changes and template changes propagate into the same object. Fields set by other managers are
+preserved unless the template also sets them. Use this for mutable kinds. Immutable-field changes surface as
+`Ready=False` on the gate.
+
+## Phase expression
+
+`spec.phase.expression` runs on every reconcile while the resource exists. It sees the template variables plus:
+
+| Variable | Description |
+| --- | --- |
+| `Resource` | The live resource as a map, including `status` |
+
+Return either a boolean (`true` → `success`, `false` → `pending`) or an object `{ phase, description?, url? }` where
+`phase` is `success`, `pending`, or `failure` (omitted means `pending`). Because CEL conditionals must have one type,
+an expression returns booleans throughout or objects throughout. Any other value fails the reconcile, and an
+expression whose type is statically neither is rejected at compile time.
+
+> [!WARNING]
+> CEL raises an error when an absent field is accessed. A freshly created Job has no `status.conditions`, so always
+> guard optional paths with `.?` and `orValue()`, for example `Resource.?status.?conditions.orValue([])` or
+> `Resource.?status.?succeeded.orValue(0) > 0`.
+
+For a Job, counting pods instead of reading conditions:
+
+```text
+{!internal/controller/testdata/KubernetesResourceCommitStatus-JobPodCountsPhase.cel!}
+```
+
+The [examples](#examples) below show phase expressions for Argo Workflows, Tekton, and Argo Rollouts.
+
+## Examples
+
+Every example on this page is a file in the repository's test data, included here verbatim. The test suite admits
+each one through the admission webhook against the real CRD of its kind, then runs it in the controller: it checks
+the created resource and reports a phase from the status the kind's own controller would write. For each kind, list
+it in the [ControllerConfiguration](#controller-configuration) and grant the controller [RBAC](#rbac) on it.
+
+### Job
+
+See [the gate](#the-gate) above. `suspend` holds the first production run until something is live there, and a
+standalone expression computes the whole `env` list.
+
+### Argo Workflows
+
+A Workflow per proposed commit. `{{ }}` is Argo Workflows' own templating and is passed through untouched; `${ }` is
+resolved by the controller before the Workflow is created. The Workflow's `status.phase` maps to the gate's phase.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus-ArgoWorkflow.yaml!}
+```
+
+With Argo Workflows' default **minimal** CRD, almost nothing under `spec` is checked when the gate is applied (see
+[validation at admission time](#validation-at-admission-time)); install the full CRD to catch typos early.
+
+### Tekton
+
+Tekton `PipelineRun` and `TaskRun` are ordinary kinds, so gating on a Pipeline needs no Tekton-specific support:
+write the run you would write by hand, with the SHA and branch as parameters. Tekton results are a name/value list
+on `status.results`; `transformMapEntry` turns it into a map.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus-TektonPipelineRun.yaml!}
+```
+
+`reportOn: proposed` runs the pipeline against the proposed commit and gates it; `reportOn: active` runs it against
+what is live and gates the environments after it. To run against the active commit while gating the proposed one,
+keep `reportOn: proposed` and pass `${ Environment.active.hydrated.sha }` as the parameter.
+
+### Argo Rollouts AnalysisRun
+
+An AnalysisRun against what is live in each environment, reusing Argo Rollouts' metric providers outside a Rollout.
+With `reportOn: active`, the key belongs in `activeCommitStatuses`, so a failed analysis blocks promotion to the
+environments after this one. `Inconclusive` is treated as a failure here; map it to `pending` instead to wait for a
+person to decide.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus-ArgoRolloutsAnalysisRun.yaml!}
+```
+
+## Description and URL
+
+`spec.description` and `spec.url` use the same `${ }` expressions as the template and see the template variables plus:
+
+| Variable | Description |
+| --- | --- |
+| `Phase` | The phase computed this reconcile |
+| `Resource` | The live resource as a map (nil when it does not exist) |
+| `ResourceName` / `ResourceKind` | The created resource's name and Kind |
+| `ExpressionDescription` / `ExpressionUrl` | The description and url returned by the phase expression, if any |
+
+When `description` is empty, the description returned by the expression is used, falling back to
+`Waiting for Job <name>`, `Job <name> reports success`, or `Job <name> reports failure`. When `url` is empty, the
+`url` returned by the expression is used.
+
+## Status
+
+```yaml
+status:
+  observedGeneration: 2
+  conditions:
+    - type: Ready
+      status: "True"
+  environments:
+    - branch: environment/development
+      phase: success
+      description: Smoke test smoke-environment-development-01234567-9f3e2a1b is success
+      reportedSha: 0123456789abcdef0123456789abcdef01234567
+      resource:
+        apiVersion: batch/v1
+        kind: Job
+        name: smoke-environment-development-01234567-9f3e2a1b
+      lastEvaluationTime: "2026-10-31T01:00:00Z"
+      templateValidation:
+        observedGeneration: 2
+        valid: true
+        lastValidationTime: "2026-10-31T00:59:58Z"
+```
+
+`Ready=False` reports configuration problems: a template without `apiVersion`/`kind`, a kind that is not listed in the
+ControllerConfiguration, an expression that does not compile or type-check, a rendered object the API server rejects,
+an invalid phase expression result, or missing RBAC on the kind (the API server's `forbidden` error names the verb).
+
+Created resources carry these labels, which also drive pruning:
+
+| Label | Value |
+| --- | --- |
+| `promoter.argoproj.io/kubernetes-resource-commit-status` | gate name |
+| `promoter.argoproj.io/environment` | label-safe branch |
+| `promoter.argoproj.io/commit-status` | `spec.key` |
+| `promoter.argoproj.io/sha` | reported SHA |
+| `promoter.argoproj.io/instance-id` | the install's instance ID in [multi-install](../../multi-install.md) mode |
+
+They also carry the annotation `promoter.argoproj.io/created-at` (RFC 3339 with nanoseconds), which `historyLimit`
+pruning orders by because `metadata.creationTimestamp` only has second granularity.
+
+The gate is the controller owner of every resource it creates and of its CommitStatuses, so deleting the gate garbage
+collects them.
+
+## Multiple controller installs
+
+Created resources are stamped with the `promoter.argoproj.io/instance-id` label automatically when the controller runs
+with one; no extra labeling is needed.
+
+## Events
+
+| Event Type | Event Reason | Description |
+| --- | --- | --- |
+| Normal | KubernetesResourceCreated | The resource was created for an environment and SHA. |
+| Warning | KubernetesResourceTemplateInvalid | The template rendered for an environment was rejected by a server-side dry-run; the environment keeps its previous report. |
+| Normal | KubernetesResourcePruned | A created resource was deleted because it exceeded `historyLimit` or its environment is no longer gated. |
+| Normal/Warning | CommitStatusPhaseChanged | The phase for an environment changed. Warning when the new phase is `failure`. |
+| Warning | CommitStatusesNotReady | A managed CommitStatus is not Ready. |
+| Normal | OrphanedCommitStatusDeleted | A CommitStatus for a removed environment was deleted. |
+
+## Field reference
+
+See the [CRD specification](../../crd-specs.md#kubernetesresourcecommitstatus) and `kubectl explain
+kubernetesresourcecommitstatus.spec`.

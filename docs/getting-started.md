@@ -61,6 +61,10 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 ///
 
+Every bundle also serves the [admission webhook](advanced-usage/admission-webhook.md) that validates
+`KubernetesResourceCommitStatus` gates when they are applied. The controller manages the webhook's certificate
+itself.
+
 ### Namespaced
 
 Reconciles resources only in the `promoter-system` namespace. The controller's reconcile

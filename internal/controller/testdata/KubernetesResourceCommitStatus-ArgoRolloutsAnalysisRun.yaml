@@ -1,0 +1,42 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: error-rate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: error-rate
+  # Analyze what is live in each environment; list the key in activeCommitStatuses so a bad error rate
+  # blocks promotion to the next environment.
+  reportOn: active
+  # Requires argoproj.io/v1alpha1 AnalysisRun in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources.
+  template:
+    apiVersion: argoproj.io/v1alpha1
+    kind: AnalysisRun
+    spec:
+      args:
+        - name: environment
+          value: "${ Branch.replace('environment/', '') }"
+        - name: sha
+          value: ${ Sha }
+      metrics:
+        - name: error-rate
+          interval: 1m
+          count: 5
+          failureLimit: 1
+          successCondition: result[0] < 0.01
+          provider:
+            prometheus:
+              address: http://prometheus.monitoring.svc:9090
+              # {{ }} is Argo Rollouts' own templating, resolved by the Rollouts controller.
+              query: |
+                sum(rate(http_requests_total{env="{{args.environment}}",sha="{{args.sha}}",code=~"5.."}[5m]))
+                / sum(rate(http_requests_total{env="{{args.environment}}",sha="{{args.sha}}"}[5m]))
+  phase:
+    expression: |
+      Resource.?status.?phase.orValue('') == 'Successful' ? {'phase': 'success'}
+        : (Resource.?status.?phase.orValue('') in ['Failed', 'Error', 'Inconclusive']
+            ? {'phase': 'failure', 'description': Resource.?status.?message.orValue('Analysis did not succeed')}
+            : {'phase': 'pending'})
+  description: "Error rate analysis ${ ResourceName } is ${ Phase }"

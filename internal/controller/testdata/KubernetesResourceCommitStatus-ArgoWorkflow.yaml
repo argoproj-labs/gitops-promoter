@@ -1,0 +1,37 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: integration-tests
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: integration-tests
+  reportOn: proposed
+  # Requires argoproj.io/v1alpha1 Workflow in ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources.
+  template:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Workflow
+    spec:
+      entrypoint: tests
+      # A standalone expression keeps its type: this is an integer.
+      activeDeadlineSeconds: "${ Branch == 'environment/production' ? 1800 : 600 }"
+      arguments:
+        parameters:
+          - name: sha
+            value: ${ Sha }
+          - name: branch
+            value: ${ Branch }
+      templates:
+        - name: tests
+          container:
+            image: ghcr.io/acme/integration-tests:latest
+            # {{ }} is Argo Workflows' own templating, resolved by the Workflow controller.
+            args: ["--sha", "{{workflow.parameters.sha}}", "--branch", "{{workflow.parameters.branch}}"]
+  phase:
+    expression: |
+      Resource.?status.?phase.orValue('') == 'Succeeded' ? {'phase': 'success'}
+        : (Resource.?status.?phase.orValue('') in ['Failed', 'Error']
+            ? {'phase': 'failure', 'description': Resource.?status.?message.orValue('Workflow failed')}
+            : {'phase': 'pending'})
+  description: "Integration tests ${ ResourceName } are ${ Phase }"

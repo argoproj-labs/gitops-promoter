@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Limits the admission webhook to the install namespace, for the fully isolated controller
+# (config/namespaced): that controller reconciles gates only in promoter-system, so gates
+# elsewhere belong to other installs and are validated by their webhooks.
+
+patches:
+  - target:
+      group: admissionregistration.k8s.io
+      version: v1
+      kind: ValidatingWebhookConfiguration
+      name: promoter-validating-webhook-configuration
+    patch: |-
+      - op: add
+        path: /webhooks/0/namespaceSelector
+        value:
+          matchLabels:
+            kubernetes.io/metadata.name: promoter-system

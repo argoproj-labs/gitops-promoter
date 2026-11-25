@@ -60,6 +60,7 @@ nav:
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
           - ScheduledCommitStatus: gating-promotions/built-in-gates/scheduled-commit-status.md
+          - KubernetesResourceCommitStatus: gating-promotions/built-in-gates/kubernetes-resource-commit-status.md
           - WebRequestCommitStatus:
               - Overview: gating-promotions/built-in-gates/web-request-commit-status/index.md
               - Simulator: gating-promotions/built-in-gates/web-request-commit-status/simulator.md
@@ -82,6 +83,7 @@ nav:
       - Configuring Multi-Tenancy: advanced-usage/multi-tenancy.md
       - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
+      - Admission Webhook: advanced-usage/admission-webhook.md
       - Rolling Back an Environment: advanced-usage/rolling-back.md
       - Dynamic Pull Request Labels: advanced-usage/pull-request-labels.md
   - CRD Specs: crd-specs.md

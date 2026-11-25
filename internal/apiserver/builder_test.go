@@ -150,6 +150,10 @@ func seedObjects() []client.Object {
 			ObjectMeta: objectMeta("scheduled-1"),
 			Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
 		},
+		&promoterv1alpha1.KubernetesResourceCommitStatus{
+			ObjectMeta: objectMeta("k8s-resource-1"),
+			Spec:       promoterv1alpha1.KubernetesResourceCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
+		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),
 			Spec: promoterv1alpha1.GitRepositorySpec{
@@ -213,6 +217,8 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.WebRequestCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses[0].Name).To(Equal("scheduled-1"))
+		Expect(bundle.KubernetesResourceCommitStatuses).To(HaveLen(1))
+		Expect(bundle.KubernetesResourceCommitStatuses[0].Name).To(Equal("k8s-resource-1"))
 
 		By("resolving git config but never the Secret")
 		Expect(bundle.GitRepository).NotTo(BeNil())

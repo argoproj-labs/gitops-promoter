@@ -2,6 +2,39 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.51 — KubernetesResourceCommitStatus configuration section
+
+`ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller
+section). The installation manifests include it with the standard work-queue defaults and an empty `resources` list.
+If you maintain your own ControllerConfiguration, add:
+
+```yaml
+spec:
+  kubernetesResourceCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    resources: []
+```
+
+RBAC for the kinds you list is not generated; see
+[Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#rbac).
+
+Every install bundle now also includes the gate's [admission webhook](advanced-usage/admission-webhook.md): a
+`ValidatingWebhookConfiguration`, a Service, an empty certificate Secret the controller fills in, and the RBAC to
+rotate it (including a small ClusterRole in the namespaced bundles). If you build your own manifests from
+`config/default`, they include it too; if you run the controller without the webhook configuration, pass
+`--admission-webhook=false`.
+
 ## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
 
 `lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from

@@ -1,0 +1,2 @@
+Resource.?status.?succeeded.orValue(0) > 0 ? {'phase': 'success'}
+  : (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure', 'description': 'Smoke test is failing'} : {'phase': 'pending'})
