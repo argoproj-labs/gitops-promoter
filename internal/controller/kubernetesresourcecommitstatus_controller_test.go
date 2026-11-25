@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +31,21 @@ import (
 //go:embed testdata/KubernetesResourceCommitStatus.yaml
 var kubernetesResourceCommitStatusTestdataYAML string
 
+// The gate's documentation includes these files, so the specs below verify its examples as published.
+var (
+	//go:embed testdata/KubernetesResourceCommitStatus-ArgoWorkflow.yaml
+	krcsArgoWorkflowExampleYAML string
+	//go:embed testdata/KubernetesResourceCommitStatus-TektonPipelineRun.yaml
+	krcsTektonExampleYAML string
+	//go:embed testdata/KubernetesResourceCommitStatus-ArgoRolloutsAnalysisRun.yaml
+	krcsAnalysisRunExampleYAML string
+	// jobPhaseExpression keys off status.succeeded / status.failed (the documented pod-count variant), which the
+	// JobManagedBy status validation (enforced by the envtest API server) lets tests set without a fully
+	// consistent condition set.
+	//go:embed testdata/KubernetesResourceCommitStatus-JobPodCountsPhase.cel
+	jobPhaseExpression string
+)
+
 // Each gate uses its own commit-status key: two CommitStatuses with the same key on one SHA make the
 // ChangeTransferPolicy controller fail with "too many matching SHAs", and envtest has no garbage collector
 // to remove the CommitStatuses of deleted gates.
@@ -41,32 +57,11 @@ const (
 	k8sResourceFinalizerGateKey = "smoke-finalizer"
 	k8sResourcePruneGateKey     = "smoke-prune"
 	k8sResourceRetryGateKey     = "smoke-retry"
-	k8sResourceWorkflowGateKey  = "smoke-workflow"
-	k8sResourceTektonGateKey    = "smoke-tekton"
+	k8sResourceJobExampleKey    = "example-job"
+	k8sResourceWorkflowGateKey  = "example-workflow"
+	k8sResourceTektonGateKey    = "example-tekton"
+	k8sResourceAnalysisGateKey  = "example-analysisrun"
 )
-
-// workflowPhaseExpression maps an Argo Workflow's status.phase to a commit status phase.
-const workflowPhaseExpression = `Resource.?status.?phase.orValue('') == 'Succeeded' ? {'phase': 'success'}
-  : (Resource.?status.?phase.orValue('') in ['Failed', 'Error']
-      ? {'phase': 'failure', 'description': Resource.?status.?message.orValue('Workflow failed')}
-      : {'phase': 'pending'})`
-
-// tektonPhaseExpression gates on a Tekton run's Succeeded condition and its vulnerabilities result. It is the
-// expression from the gate's documentation.
-const tektonPhaseExpression = `cel.bind(conditions, Resource.?status.?conditions.orValue([]),
-  cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
-    conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
-      ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
-      : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
-      : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
-      : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
-      : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))`
-
-// jobPhaseExpression keys off status.succeeded / status.failed, which the JobManagedBy status validation
-// (enforced by the envtest API server) lets tests set without a fully consistent condition set.
-const jobPhaseExpression = `Resource.?status.?succeeded.orValue(0) > 0
-	? {'phase': 'success'}
-	: (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure', 'description': 'Smoke test is failing'} : {'phase': 'pending'})`
 
 // templateJSON encodes an inline spec.template.
 func templateJSON(object map[string]any) apiextensionsv1.JSON {
@@ -164,9 +159,13 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			{Key: k8sResourceFinalizerGateKey},
 			{Key: k8sResourcePruneGateKey},
 			{Key: k8sResourceRetryGateKey},
+			{Key: k8sResourceJobExampleKey},
 			{Key: k8sResourceWorkflowGateKey},
 			{Key: k8sResourceTektonGateKey},
 		}
+		// The AnalysisRun example reports on the active commit, so its key gates downstream environments.
+		promotionStrategy.Spec.ActiveCommitStatuses = append(promotionStrategy.Spec.ActiveCommitStatuses,
+			promoterv1alpha1.CommitStatusSelector{Key: k8sResourceAnalysisGateKey})
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -796,10 +795,23 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	// Third-party kinds run against their real CRDs from test/external_crds: Argo Workflows' full Workflow CRD and
-	// Tekton's PipelineRun CRD. No Argo or Tekton controller runs in envtest, so the specs write the status those
-	// controllers would. Adapted from PR #2343.
-	Describe("Third-party kinds", func() {
+	// The documented examples (testdata/KubernetesResourceCommitStatus*.yaml, included verbatim by the gate's docs)
+	// run as published, except for the name, key, and PromotionStrategy, which belong to this suite. Third-party
+	// kinds use their real CRDs from test/external_crds. No Job, Argo, or Tekton controller runs in envtest, so the
+	// specs write the status those controllers would. Adapted from PR #2343.
+	Describe("Documented examples", func() {
+		// loadExample parses a documented gate and points it at this suite's PromotionStrategy.
+		loadExample := func(yamlText, suffix, key string) *promoterv1alpha1.KubernetesResourceCommitStatus {
+			GinkgoHelper()
+			var krcs promoterv1alpha1.KubernetesResourceCommitStatus
+			Expect(unmarshalYamlStrict(yamlText, &krcs)).To(Succeed())
+			krcs.Name = name + "-" + suffix
+			krcs.Namespace = "default"
+			krcs.Spec.PromotionStrategyRef.Name = name
+			krcs.Spec.Key = key
+			return &krcs
+		}
+
 		// devResource waits for the development environment's created resource and returns it.
 		devResource := func(gateName string, gvk schema.GroupVersionKind) (*unstructured.Unstructured, string) {
 			GinkgoHelper()
@@ -822,9 +834,7 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				dev := devEnvironmentStatus(g, getK8sResourceGate(ctx, g, gateName))
 				g.Expect(dev.Phase).To(Equal(phase))
-				if description != "" {
-					g.Expect(dev.Description).To(Equal(description))
-				}
+				g.Expect(dev.Description).To(Equal(description))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		}
 
@@ -841,44 +851,61 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 					g.Expect(err).NotTo(HaveOccurred())
 					fresh.SetFinalizers(nil)
 					g.Expect(k8sClient.Update(ctx, fresh)).To(Succeed())
-					g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, fresh))).To(Succeed())
+					g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, fresh, ctrlclient.PropagationPolicy(metav1.DeletePropagationBackground)))).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		}
 
-		It("creates an Argo Workflow and reports its phase", func() {
-			workflowGVK := schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"}
-			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
-				Name: name + "-workflow", Namespace: "default",
-				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  k8sResourceWorkflowGateKey,
-					Template: templateJSON(map[string]any{
-						"apiVersion": "argoproj.io/v1alpha1",
-						"kind":       "Workflow",
-						"spec": map[string]any{
-							"entrypoint":            "smoke",
-							"activeDeadlineSeconds": "${ Branch == 'environment/production' ? 1800 : 600 }",
-							"arguments": map[string]any{"parameters": []any{
-								map[string]any{"name": "sha", "value": "${ Sha }"},
-								map[string]any{"name": "branch", "value": "${ Branch }"},
-							}},
-							"templates": []any{map[string]any{
-								"name": "smoke",
-								"container": map[string]any{
-									"image": "ghcr.io/acme/smoke:latest",
-									"args":  []any{"--sha", "{{workflow.parameters.sha}}"},
-								},
-							}},
-						},
-					}),
-					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: workflowPhaseExpression},
-				},
-			}
+		// updateObject writes status with the object, for CRDs without a status subresource.
+		updateObject := func(obj *unstructured.Unstructured, status map[string]any, subresource bool) {
+			GinkgoHelper()
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: "default"}, obj)).To(Succeed())
+				g.Expect(unstructured.SetNestedField(obj.Object, status, "status")).To(Succeed())
+				if subresource {
+					g.Expect(k8sClient.Status().Update(ctx, obj)).To(Succeed())
+				} else {
+					g.Expect(k8sClient.Update(ctx, obj)).To(Succeed())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+		}
+
+		It("runs the Job example and reports success from the Complete condition", func() {
+			krcs := loadExample(kubernetesResourceCommitStatusTestdataYAML, "example-job", k8sResourceJobExampleKey)
 			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
 
-			workflow, sha := devResource(krcs.Name, workflowGVK)
+			jobObj, sha := devResource(krcs.Name, schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"})
+			release(jobObj)
+			var job batchv1.Job
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(jobObj.Object, &job)).To(Succeed())
+			Expect(job.Spec.Suspend).To(HaveValue(BeFalse()), "only a first production run is held")
+			container := job.Spec.Template.Spec.Containers[0]
+			Expect(container.Args).To(Equal([]string{"--sha", sha, "--env", testBranchDevelopment}))
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "BRANCH_ENVIRONMENT_DEVELOPMENT", Value: testBranchDevelopment}))
+
+			By("completing the Job, as the Job controller would")
+			now := metav1.Now()
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: "default"}, &job)).To(Succeed())
+				job.Status.StartTime = &now
+				job.Status.CompletionTime = &now
+				job.Status.Succeeded = 1
+				job.Status.Conditions = []batchv1.JobCondition{
+					{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue, LastTransitionTime: now},
+					{Type: batchv1.JobComplete, Status: corev1.ConditionTrue, LastTransitionTime: now},
+				}
+				g.Expect(k8sClient.Status().Update(ctx, &job)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseSuccess, "Smoke test "+job.Name+" is success")
+		})
+
+		It("runs the Argo Workflows example and reports a failed Workflow", func() {
+			krcs := loadExample(krcsArgoWorkflowExampleYAML, "example-workflow", k8sResourceWorkflowGateKey)
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			workflow, sha := devResource(krcs.Name, schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"})
 			release(workflow)
 			params, found, err := unstructured.NestedSlice(workflow.Object, "spec", "arguments", "parameters")
 			Expect(err).NotTo(HaveOccurred())
@@ -894,41 +921,16 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 
 			By("failing the Workflow, as the Argo Workflows controller would")
 			// The Workflow CRD has no status subresource, so status is written with the object.
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: workflow.GetName(), Namespace: "default"}, workflow)).To(Succeed())
-				g.Expect(unstructured.SetNestedMap(workflow.Object, map[string]any{"phase": "Failed", "message": "smoke test failed"}, "status")).To(Succeed())
-				g.Expect(k8sClient.Update(ctx, workflow)).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "smoke test failed")
+			updateObject(workflow, map[string]any{"phase": "Failed", "message": "integration tests failed"}, false)
+			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "Integration tests "+workflow.GetName()+" are failure")
 		})
 
-		It("creates a Tekton PipelineRun and reads its results", func() {
-			pipelineRunGVK := schema.GroupVersionKind{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"}
-			krcs := &promoterv1alpha1.KubernetesResourceCommitStatus{
-				Name: name + "-tekton", Namespace: "default",
-				Spec: promoterv1alpha1.KubernetesResourceCommitStatusSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  k8sResourceTektonGateKey,
-					Template: templateJSON(map[string]any{
-						"apiVersion": "tekton.dev/v1",
-						"kind":       "PipelineRun",
-						"spec": map[string]any{
-							"pipelineRef":     map[string]any{"name": "security-scan"},
-							"taskRunTemplate": map[string]any{"serviceAccountName": "tekton-runner"},
-							"params": []any{
-								map[string]any{"name": "gitUrl", "value": "https://github.com/myorg/myrepo/commit/${ Sha }"},
-								map[string]any{"name": "branch", "value": "${ Branch }"},
-								map[string]any{"name": "endpoints", "value": []any{"api/health", "api/users"}},
-							},
-						},
-					}),
-					Phase: promoterv1alpha1.KubernetesResourcePhaseSpec{Expression: tektonPhaseExpression},
-				},
-			}
+		It("runs the Tekton example and reads the PipelineRun's results", func() {
+			krcs := loadExample(krcsTektonExampleYAML, "example-tekton", k8sResourceTektonGateKey)
 			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
 
-			pipelineRun, sha := devResource(krcs.Name, pipelineRunGVK)
+			pipelineRun, sha := devResource(krcs.Name, schema.GroupVersionKind{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"})
 			release(pipelineRun)
 			params, found, err := unstructured.NestedSlice(pipelineRun.Object, "spec", "params")
 			Expect(err).NotTo(HaveOccurred())
@@ -937,15 +939,42 @@ var _ = Describe("KubernetesResourceCommitStatus Controller", Ordered, func() {
 			Expect(params).To(ContainElement(map[string]any{"name": "endpoints", "value": []any{"api/health", "api/users"}}))
 
 			By("finishing the PipelineRun with results, as the Tekton controller would")
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pipelineRun.GetName(), Namespace: "default"}, pipelineRun)).To(Succeed())
-				g.Expect(unstructured.SetNestedField(pipelineRun.Object, map[string]any{
-					"conditions": []any{map[string]any{"type": "Succeeded", "status": "True", "reason": "Succeeded"}},
-					"results":    []any{map[string]any{"name": "vulnerabilities", "value": "3"}},
-				}, "status")).To(Succeed())
-				g.Expect(k8sClient.Status().Update(ctx, pipelineRun)).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			updateObject(pipelineRun, map[string]any{
+				"conditions": []any{map[string]any{"type": "Succeeded", "status": "True", "reason": "Succeeded"}},
+				"results":    []any{map[string]any{"name": "vulnerabilities", "value": "3"}},
+			}, true)
 			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "3 vulnerabilities found")
+		})
+
+		It("runs the Argo Rollouts example against the active commit and reports a failed analysis", func() {
+			krcs := loadExample(krcsAnalysisRunExampleYAML, "example-analysisrun", k8sResourceAnalysisGateKey)
+			Expect(krcs.Spec.ReportOn).To(Equal("active"))
+			Expect(k8sClient.Create(ctx, krcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, krcs) })
+
+			analysisRun, sha := devResource(krcs.Name, schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "AnalysisRun"})
+			release(analysisRun)
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				for _, env := range ps.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(sha).To(Equal(env.Active.Hydrated.Sha), "reportOn: active creates the run for the live SHA")
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+			args, found, err := unstructured.NestedSlice(analysisRun.Object, "spec", "args")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(args).To(ConsistOf(
+				map[string]any{"name": "environment", "value": "development"},
+				map[string]any{"name": "sha", "value": sha},
+			))
+
+			By("failing the analysis, as the Argo Rollouts controller would")
+			// The AnalysisRun CRD has no status subresource, so status is written with the object.
+			updateObject(analysisRun, map[string]any{"phase": "Failed", "message": "error rate above 1%"}, false)
+			expectDevPhase(krcs.Name, promoterv1alpha1.CommitPhaseFailure, "Error rate analysis "+analysisRun.GetName()+" is failure")
 		})
 	})
 

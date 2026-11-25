@@ -101,7 +101,7 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-			// Argo Workflows' full (typed) Workflow CRD and Tekton's PipelineRun CRD.
+			// Argo Workflows' full (typed) Workflow CRD, Tekton's PipelineRun CRD, and Argo Rollouts' AnalysisRun CRD.
 			filepath.Join("..", "..", "test", "external_crds"),
 		},
 		// Argo Workflows' minimal (loose) Workflow CRD has the same name as the full one, so it is installed
@@ -147,7 +147,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	// The API server publishes a newly installed CRD's OpenAPI schema shortly after the CRD is established (the
 	// 2.8 MB full Workflow schema takes longest). Until then the webhook rejects gates for that kind, so wait.
-	for _, gvk := range []schema.GroupVersionKind{workflowGVK, minimalWorkflowGVK, pipelineRunGVK} {
+	for _, gvk := range []schema.GroupVersionKind{workflowGVK, minimalWorkflowGVK, pipelineRunGVK, analysisRunGVK} {
 		Eventually(func() error {
 			_, err := compiler.ResolveKindSchema(gvk)
 			return err //nolint:wrapcheck // test helper
@@ -156,7 +156,7 @@ var _ = BeforeSuite(func() {
 	validator = &KubernetesResourceCommitStatusValidator{
 		Compiler: compiler,
 		Configured: map[schema.GroupVersionKind]struct{}{
-			jobGVK: {}, configMapGVK: {}, widgetGVK: {}, workflowGVK: {}, minimalWorkflowGVK: {}, pipelineRunGVK: {},
+			jobGVK: {}, configMapGVK: {}, widgetGVK: {}, workflowGVK: {}, minimalWorkflowGVK: {}, pipelineRunGVK: {}, analysisRunGVK: {},
 		},
 	}
 	Expect(validator.SetupWithManager(mgr)).To(Succeed())
@@ -183,6 +183,7 @@ var (
 	workflowGVK        = schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"}
 	minimalWorkflowGVK = schema.GroupVersionKind{Group: minimalWorkflowGroup, Version: "v1alpha1", Kind: "Workflow"}
 	pipelineRunGVK     = schema.GroupVersionKind{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"}
+	analysisRunGVK     = schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "AnalysisRun"}
 )
 
 // minimalWorkflowCRD reads Argo Workflows' minimal Workflow CRD and moves it to minimalWorkflowGroup.

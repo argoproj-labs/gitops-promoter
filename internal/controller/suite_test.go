@@ -850,6 +850,7 @@ func kubernetesResourceCommitStatusResourcesForTests() []promoterv1alpha1.Resour
 		// Third-party kinds with real CRDs in test/external_crds.
 		{Group: "argoproj.io", Version: "v1alpha1", Kind: "Workflow"},
 		{Group: "tekton.dev", Version: "v1", Kind: "PipelineRun"},
+		{Group: "argoproj.io", Version: "v1alpha1", Kind: "AnalysisRun"},
 		{Group: "", Version: "v1", Kind: "ConfigMap"},
 	}
 }

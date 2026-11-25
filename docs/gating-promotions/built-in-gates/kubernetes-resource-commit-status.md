@@ -46,6 +46,12 @@ spec:
       - group: argoproj.io
         version: v1alpha1
         kind: Workflow
+      - group: tekton.dev
+        version: v1
+        kind: PipelineRun
+      - group: argoproj.io
+        version: v1alpha1
+        kind: AnalysisRun
       - group: ""            # core group, for example core/v1 ConfigMap
         version: v1
         kind: ConfigMap
@@ -99,43 +105,10 @@ subjects:
 
 ## The gate
 
+A gate that runs a smoke-test Job against every proposed commit:
+
 ```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: KubernetesResourceCommitStatus
-metadata:
-  name: smoke
-  namespace: team-a
-spec:
-  promotionStrategyRef:
-    name: demo
-  key: smoke-test
-  reportOn: proposed
-  template:
-    apiVersion: batch/v1
-    kind: Job
-    spec:
-      ttlSecondsAfterFinished: 3600
-      backoffLimit: 0
-      suspend: ${ Branch == 'environment/production' && !has(Environment.active) }
-      template:
-        spec:
-          restartPolicy: Never
-          containers:
-            - name: test
-              image: ghcr.io/acme/smoke:latest
-              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
-              env: ${ PromotionStrategy.spec.environments.map(e, {'name': 'BRANCH_' + e.branch.replace('/', '_').upperAscii(), 'value': e.branch}) }
-  lifecycle:
-    mode: PerSha
-    historyLimit: 1
-  phase:
-    expression: |
-      Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Complete' && c.status == 'True')
-        ? {'phase': 'success'}
-        : Resource.?status.?conditions.orValue([]).exists(c, c.type == 'Failed' && c.status == 'True')
-          ? {'phase': 'failure', 'description': 'Smoke test is failing'}
-          : {'phase': 'pending'}
-  description: "Smoke test ${ ResourceName } is ${ Phase }"
+{!internal/controller/testdata/KubernetesResourceCommitStatus.yaml!}
 ```
 
 Declare the key on the PromotionStrategy as usual:
@@ -363,74 +336,62 @@ expression whose type is statically neither is rejected at compile time.
 > guard optional paths with `.?` and `orValue()`, for example `Resource.?status.?conditions.orValue([])` or
 > `Resource.?status.?succeeded.orValue(0) > 0`.
 
-Examples:
+For a Job, counting pods instead of reading conditions:
 
 ```text
-# Argo Workflows
-Resource.?status.?phase.orValue('') == 'Succeeded' ? {'phase': 'success'}
-  : (Resource.?status.?phase.orValue('') in ['Failed', 'Error']
-      ? {'phase': 'failure', 'description': Resource.?status.?message.orValue('Workflow failed')}
-      : {'phase': 'pending'})
-
-# Argo Rollouts AnalysisRun
-Resource.?status.?phase.orValue('') == 'Successful' ? {'phase': 'success'}
-  : (Resource.?status.?phase.orValue('') in ['Failed', 'Error', 'Inconclusive'] ? {'phase': 'failure'} : {'phase': 'pending'})
-
-# Job, counting pods instead of conditions
-Resource.?status.?succeeded.orValue(0) > 0 ? {'phase': 'success'}
-  : (Resource.?status.?failed.orValue(0) > 0 ? {'phase': 'failure'} : {'phase': 'pending'})
+{!internal/controller/testdata/KubernetesResourceCommitStatus-JobPodCountsPhase.cel!}
 ```
 
-## Example: a Tekton Pipeline
+The [examples](#examples) below show phase expressions for Argo Workflows, Tekton, and Argo Rollouts.
 
-Tekton `PipelineRun` and `TaskRun` are ordinary kinds, so gating on a Pipeline needs no Tekton-specific support. List
-`tekton.dev/v1 PipelineRun` in the ControllerConfiguration, grant the controller RBAC on `pipelineruns`, and write the
-run you would write by hand, with the SHA and branch as parameters. Tekton results are a name/value list on
-`status.results`; `transformMapEntry` turns it into a map.
+## Examples
+
+Every example on this page is a file in the repository's test data, included here verbatim. The test suite admits
+each one through the admission webhook against the real CRD of its kind, then runs it in the controller: it checks
+the created resource and reports a phase from the status the kind's own controller would write. For each kind, list
+it in the [ControllerConfiguration](#controller-configuration) and grant the controller [RBAC](#rbac) on it.
+
+### Job
+
+See [the gate](#the-gate) above. `suspend` holds the first production run until something is live there, and a
+standalone expression computes the whole `env` list.
+
+### Argo Workflows
+
+A Workflow per proposed commit. `{{ }}` is Argo Workflows' own templating and is passed through untouched; `${ }` is
+resolved by the controller before the Workflow is created. The Workflow's `status.phase` maps to the gate's phase.
 
 ```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: KubernetesResourceCommitStatus
-metadata:
-  name: security-scan
-spec:
-  promotionStrategyRef:
-    name: demo
-  key: security-scan
-  reportOn: proposed
-  template:
-    apiVersion: tekton.dev/v1
-    kind: PipelineRun
-    spec:
-      pipelineRef:
-        name: security-scan
-      taskRunTemplate:
-        serviceAccountName: tekton-runner
-      params:
-        - name: gitUrl
-          value: "https://github.com/myorg/myrepo/commit/${ Sha }"
-        - name: branch
-          value: ${ Branch }
-        - name: endpoints
-          value: ["api/health", "api/users"]
-  lifecycle:
-    pruneOnSuccess: true
-    retryOnDelete: true
-  phase:
-    expression: |
-      cel.bind(conditions, Resource.?status.?conditions.orValue([]),
-        cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
-          conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
-            ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
-            : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
-            : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
-            : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
-            : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))
+{!internal/controller/testdata/KubernetesResourceCommitStatus-ArgoWorkflow.yaml!}
+```
+
+With Argo Workflows' default **minimal** CRD, almost nothing under `spec` is checked when the gate is applied (see
+[validation at admission time](#validation-at-admission-time)); install the full CRD to catch typos early.
+
+### Tekton
+
+Tekton `PipelineRun` and `TaskRun` are ordinary kinds, so gating on a Pipeline needs no Tekton-specific support:
+write the run you would write by hand, with the SHA and branch as parameters. Tekton results are a name/value list
+on `status.results`; `transformMapEntry` turns it into a map.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus-TektonPipelineRun.yaml!}
 ```
 
 `reportOn: proposed` runs the pipeline against the proposed commit and gates it; `reportOn: active` runs it against
 what is live and gates the environments after it. To run against the active commit while gating the proposed one,
 keep `reportOn: proposed` and pass `${ Environment.active.hydrated.sha }` as the parameter.
+
+### Argo Rollouts AnalysisRun
+
+An AnalysisRun against what is live in each environment, reusing Argo Rollouts' metric providers outside a Rollout.
+With `reportOn: active`, the key belongs in `activeCommitStatuses`, so a failed analysis blocks promotion to the
+environments after this one. `Inconclusive` is treated as a failure here; map it to `pending` instead to wait for a
+person to decide.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus-ArgoRolloutsAnalysisRun.yaml!}
+```
 
 ## Description and URL
 

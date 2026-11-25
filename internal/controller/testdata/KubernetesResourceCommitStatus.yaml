@@ -19,7 +19,8 @@ spec:
     spec:
       ttlSecondsAfterFinished: 3600
       backoffLimit: 0
-      suspend: ${ Branch == 'environment/production' }
+      # Hold the first production run until something is live there.
+      suspend: ${ Branch == 'environment/production' && !has(Environment.active) }
       template:
         spec:
           restartPolicy: Never
@@ -27,6 +28,9 @@ spec:
             - name: test
               image: ghcr.io/acme/smoke:latest
               args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
+              # A standalone expression can compute a whole list of objects. Quote an expression that
+              # contains ": " so YAML reads it as one string.
+              env: "${ PromotionStrategy.spec.environments.map(e, {'name': 'BRANCH_' + e.branch.replace('/', '_').upperAscii(), 'value': e.branch}) }"
   lifecycle:
     # PerSha (default) creates one resource per SHA; InPlace re-applies a single resource per environment.
     mode: PerSha

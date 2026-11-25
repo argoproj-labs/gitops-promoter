@@ -18,6 +18,8 @@ package webhook
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -271,7 +273,8 @@ spec:
 	}
 	typos := []string{"entrypoint:", "entrypont:", "container:", "cntainer:", "activeDeadlineSeconds: 600", "activeDeadlineSeconds: soon"}
 
-	// pipelineRun and tektonPhase are the PipelineRun gate from the gate's documentation.
+	// pipelineRun is the template of the documented Tekton example, which the "documented examples" spec admits
+	// as published; here it is the base for a typo.
 	const pipelineRun = `
 apiVersion: tekton.dev/v1
 kind: PipelineRun
@@ -283,19 +286,7 @@ spec:
   params:
     - name: gitUrl
       value: "https://github.com/myorg/myrepo/commit/${ Sha }"
-    - name: branch
-      value: ${ Branch }
-    - name: endpoints
-      value: ["api/health", "api/users"]
 `
-	const tektonPhase = `cel.bind(conditions, Resource.?status.?conditions.orValue([]),
-  cel.bind(results, Resource.?status.?results.orValue([]).transformMapEntry(i, r, {r.name: r.value}),
-    conditions.exists(c, c.type == 'Succeeded' && c.status == 'False')
-      ? {'phase': 'failure', 'description': conditions.filter(c, c.type == 'Succeeded')[0].?message.orValue('PipelineRun failed')}
-      : !conditions.exists(c, c.type == 'Succeeded' && c.status == 'True') ? {'phase': 'pending'}
-      : !('vulnerabilities' in results) ? {'phase': 'failure', 'description': 'Result vulnerabilities is missing'}
-      : string(results['vulnerabilities']) == '0' ? {'phase': 'success'}
-      : {'phase': 'failure', 'description': string(results['vulnerabilities']) + ' vulnerabilities found'}))`
 	const workflowPhase = "Resource.?status.?phase.orValue('') == 'Succeeded'"
 
 	create := func(name, template, phase string) error {
@@ -336,15 +327,36 @@ spec:
 	})
 
 	Context("Tekton PipelineRun", func() {
-		It("admits the PipelineRun and phase expression from the documentation", func() {
-			Expect(create("tekton", pipelineRun, tektonPhase)).To(Succeed())
-		})
-
 		It("rejects unknown fields where the CRD's schema declares the object", func() {
-			err := create("tekton-typo", strings.Replace(pipelineRun, "taskRunTemplate:", "taskRunTemplates:", 1), tektonPhase)
+			err := create("tekton-typo", strings.Replace(pipelineRun, "taskRunTemplate:", "taskRunTemplates:", 1), "true")
 			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
 			Expect(err.Error()).To(ContainSubstring(`spec.template.spec.taskRunTemplates: Invalid value: "taskRunTemplates": unknown field`))
 			Expect(err.Error()).To(ContainSubstring(`(did you mean "taskRunTemplate"?)`))
 		})
 	})
+})
+
+// The gate's documentation includes internal/controller/testdata/KubernetesResourceCommitStatus*.yaml verbatim; the
+// controller suite runs them, and this spec checks that the webhook admits them as published, against the real
+// third-party CRDs.
+var _ = Describe("KubernetesResourceCommitStatus validating webhook with the documented examples", func() {
+	examples, err := filepath.Glob(filepath.Join("..", "controller", "testdata", "KubernetesResourceCommitStatus*.yaml"))
+	if err != nil {
+		panic(err)
+	}
+	if len(examples) < 4 {
+		panic(fmt.Sprintf("expected the Job, Argo Workflows, Tekton, and Argo Rollouts examples, found %v", examples))
+	}
+	for _, path := range examples {
+		It("admits "+filepath.Base(path)+" without warnings", func() {
+			raw, err := os.ReadFile(path)
+			Expect(err).NotTo(HaveOccurred())
+			var gate promoterv1alpha1.KubernetesResourceCommitStatus
+			Expect(yaml.UnmarshalStrict(raw, &gate)).To(Succeed())
+			gate.Namespace = "default"
+			Expect(warnClient.Create(ctx, &gate)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, &gate) })
+			Expect(warnings.drain()).To(BeEmpty())
+		})
+	}
 })
