@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ktrysmt/go-bitbucket"
@@ -37,9 +38,10 @@ func domainFromScmProvider(scmProvider v1alpha1.GenericScmProvider) string {
 }
 
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
-// The Bitbucket client doesn't return HTTP response metadata, so we parse
-// the error message to determine status codes (e.g., "400 Bad Request").
-// Returns the provided defaultStatusCode if the error is not a Bitbucket error.
+// The Bitbucket client doesn't return HTTP response metadata, so we read the
+// status code from the client's UnexpectedResponseStatusError, falling back to
+// the leading code of its status line (e.g., "400 Bad Request").
+// Returns defaultStatusCode when err is nil and 500 when err is not a Bitbucket error.
 func parseErrorStatusCode(err error, defaultStatusCode int) int {
 	if err == nil {
 		return defaultStatusCode
@@ -50,21 +52,14 @@ func parseErrorStatusCode(err error, defaultStatusCode int) int {
 		return http.StatusInternalServerError
 	}
 
-	errMsg := bbErr.Error()
-	switch {
-	case strings.HasPrefix(errMsg, "400"):
-		return http.StatusBadRequest
-	case strings.HasPrefix(errMsg, "401"):
-		return http.StatusUnauthorized
-	case strings.HasPrefix(errMsg, "404"):
-		return http.StatusNotFound
-	case strings.HasPrefix(errMsg, "409"):
-		return http.StatusConflict
-	case strings.HasPrefix(errMsg, "555"):
-		return http.StatusInternalServerError
-	default:
-		return http.StatusInternalServerError
+	if bbErr.StatusCode >= 100 && bbErr.StatusCode <= 599 {
+		return bbErr.StatusCode
 	}
+	// Fall back to the leading status code of the status line (e.g. "429 Too Many Requests").
+	if code, convErr := strconv.Atoi(strings.SplitN(bbErr.Status, " ", 2)[0]); convErr == nil && code >= 100 && code <= 599 {
+		return code
+	}
+	return http.StatusInternalServerError
 }
 
 // phaseToBuildState converts a CommitStatusPhase to a Bitbucket Cloud build state.

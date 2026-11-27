@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -127,3 +129,19 @@ var _ = Describe("Bitbucket Cloud domain override", func() {
 		Expect(gotToken).To(Equal("Bearer bb-token"))
 	})
 })
+
+var _ = DescribeTable("parseErrorStatusCode",
+	func(err error, want int) {
+		Expect(parseErrorStatusCode(err, http.StatusOK)).To(Equal(want))
+	},
+	Entry("nil error returns the default", nil, http.StatusOK),
+	Entry("non-Bitbucket error is a 500", errors.New("dial tcp: timeout"), http.StatusInternalServerError),
+	Entry("400", &bitbucket.UnexpectedResponseStatusError{Status: "400 Bad Request", StatusCode: 400}, http.StatusBadRequest),
+	Entry("403", &bitbucket.UnexpectedResponseStatusError{Status: "403 Forbidden", StatusCode: 403}, http.StatusForbidden),
+	Entry("422", &bitbucket.UnexpectedResponseStatusError{Status: "422 Unprocessable Entity", StatusCode: 422}, http.StatusUnprocessableEntity),
+	Entry("429", &bitbucket.UnexpectedResponseStatusError{Status: "429 Too Many Requests", StatusCode: 429}, http.StatusTooManyRequests),
+	Entry("503", &bitbucket.UnexpectedResponseStatusError{Status: "503 Service Unavailable", StatusCode: 503}, http.StatusServiceUnavailable),
+	Entry("status text only", &bitbucket.UnexpectedResponseStatusError{Status: "429 Too Many Requests"}, http.StatusTooManyRequests),
+	Entry("wrapped", fmt.Errorf("create: %w", &bitbucket.UnexpectedResponseStatusError{Status: "403 Forbidden", StatusCode: 403}), http.StatusForbidden),
+	Entry("unparseable status", &bitbucket.UnexpectedResponseStatusError{Status: "weird"}, http.StatusInternalServerError),
+)
