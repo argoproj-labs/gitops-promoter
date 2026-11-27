@@ -410,7 +410,8 @@ watches `CommitStatus` resources and reconciles every policy whose active or pro
 CommitStatus's `spec.sha` when:
 
 - a CommitStatus is created (except during the controller's startup resync),
-- its `spec.phase` changes, in either direction,
+- its `spec.phase` moves into or out of `success` (a change between `pending` and `failure` does not change
+  any promotion decision, so it does not wake a policy),
 - its `spec.sha` changes (policies on both the previous and the new SHA are reconciled),
 - its `promoter.argoproj.io/commit-status` label changes, or
 - it is deleted.

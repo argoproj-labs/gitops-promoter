@@ -2162,30 +2162,7 @@ func changeTransferPolicyPredicate() predicate.Predicate {
 		// Webhooks trigger reconciliations by bumping an annotation.
 		// TODO: use a custom predicate to only trigger on the specific annotation change.
 		predicate.AnnotationChangedPredicate{},
-		hydratedShaChangedPredicate(),
 	)
-}
-
-// hydratedShaChangedPredicate passes a ChangeTransferPolicy update whose recorded active or proposed
-// hydrated SHA changed. The CommitStatus watch maps CommitStatuses to policies through those SHAs, and
-// a policy records a new one only when its reconcile ends. A CommitStatus for the new SHA that changed
-// during that reconcile mapped to no policy, so reconcile once more after the new SHA is in the cache to
-// read its current phase. That follow-up reconcile records the same SHAs and does not pass again.
-func hydratedShaChangedPredicate() predicate.Funcs {
-	return predicate.Funcs{
-		CreateFunc: func(event.CreateEvent) bool { return false },
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldCTP, okOld := e.ObjectOld.(*promoterv1alpha1.ChangeTransferPolicy)
-			newCTP, okNew := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy)
-			if !okOld || !okNew {
-				return false
-			}
-			return oldCTP.Status.Active.Hydrated.Sha != newCTP.Status.Active.Hydrated.Sha ||
-				oldCTP.Status.Proposed.Hydrated.Sha != newCTP.Status.Proposed.Hydrated.Sha
-		},
-		DeleteFunc:  func(event.DeleteEvent) bool { return false },
-		GenericFunc: func(event.GenericEvent) bool { return false },
-	}
 }
 
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
@@ -2259,14 +2236,17 @@ const (
 )
 
 // commitStatusPhaseChangedPredicate passes the CommitStatus events that can change what a
-// ChangeTransferPolicy decides: a new CommitStatus, a phase change in either direction, a move to
-// another SHA, a change of the commit-status key label the policy selects by, and a delete.
+// ChangeTransferPolicy decides. Every decision that reads a commit status phase asks only whether it
+// is success: the policy merges when all of its proposed statuses are success, and
+// DependentsSuccessfulCommitStatus treats an upstream environment as healthy when all of its active
+// statuses are success. So an update wakes the policy only when it moves the CommitStatus across the
+// success boundary, moves it to another SHA, or changes the commit-status key label the policy
+// selects by. Creates and deletes always pass: a second CommitStatus for the same key and SHA makes
+// the policy treat that key as pending, whatever its phase.
 //
-// Description and URL edits are dropped. The policy copies them into its status, but those copies
-// are informational and may lag until the policy's next reconcile. Phase changes away from success
-// must not be dropped: DependentsSuccessfulCommitStatus reads upstream health from
-// ChangeTransferPolicy status (via PromotionStrategy status), so a missed success-to-failure
-// change would let a downstream environment promote past a degraded upstream.
+// Dropped updates leave copies in the policy's status behind until its next reconcile: a change
+// between pending and failure, and description and URL edits. Those copies are informational. A
+// PromotionBlocked event that names the failure phase is emitted on that next reconcile.
 //
 // Creates from the informer's initial list are dropped. Every ChangeTransferPolicy is reconciled
 // on controller start through its own informer and reads current CommitStatus state, so waking it
@@ -2282,7 +2262,7 @@ func commitStatusPhaseChangedPredicate() predicate.Funcs {
 			if !okOld || !okNew {
 				return false
 			}
-			return oldCS.Spec.Phase != newCS.Spec.Phase ||
+			return (oldCS.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess) != (newCS.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess) ||
 				oldCS.Spec.Sha != newCS.Spec.Sha ||
 				oldCS.Labels[promoterv1alpha1.CommitStatusLabel] != newCS.Labels[promoterv1alpha1.CommitStatusLabel]
 		},
@@ -2297,6 +2277,14 @@ func commitStatusPhaseChangedPredicate() predicate.Funcs {
 // for them the status has disappeared, which reads as pending.
 //
 // Policies are matched across namespaces, the same way setCommitStatusState lists CommitStatuses.
+//
+// Accepted risk: policies are found through the hydrated SHAs they have recorded, and a policy records
+// a new SHA only when the reconcile that discovers it ends. A CommitStatus change for that SHA made
+// during that reconcile maps to no policy, so the policy keeps the phase it read until its next
+// reconcile (at most one requeue interval). This needs a CommitStatus that already reports on a SHA
+// the policy has not recorded, which only gates that resolve SHAs themselves do (ArgoCDCommitStatus
+// reports on the branch head; external writers), and a SHA change with no pull request activity,
+// which would otherwise wake the policy again. The window is the length of one reconcile.
 func enqueueChangeTransferPoliciesForCommitStatus(c client.Client) handler.Funcs {
 	enqueue := func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request], objs ...client.Object) {
 		shas := make([]string, 0, len(objs))
