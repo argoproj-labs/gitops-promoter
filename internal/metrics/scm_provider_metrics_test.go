@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -108,5 +109,19 @@ var _ = Describe("RecordSCMCall", func() {
 			Limit: 2000, Remaining: 1500, ResetRemaining: time.Minute,
 		})
 		Expect(testutil.ToFloat64(scmCallsRateLimitRemaining.WithLabelValues("scm-account-gitlab-test", "default", "ScmProvider", ""))).To(Equal(1500.0))
+	})
+})
+
+var _ = Describe("RecordWebhookCall", func() {
+	It("exports webhook_calls_total through the controller-runtime registry", func() {
+		RecordWebhookCall(true, 204, time.Millisecond)
+
+		families, err := ctrlmetrics.Registry.Gather()
+		Expect(err).NotTo(HaveOccurred())
+		names := make([]string, 0, len(families))
+		for _, mf := range families {
+			names = append(names, mf.GetName())
+		}
+		Expect(names).To(ContainElement("webhook_calls_total"))
 	})
 })

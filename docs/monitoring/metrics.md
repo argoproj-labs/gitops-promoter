@@ -154,6 +154,15 @@ Labels:
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `scm_account`: The account whose rate-limit bucket this sample belongs to, when that account is finer than the provider credential. For GitHub this is `spec.github.owner` (the org or user the App is installed on), lowercased because GitHub treats that login as case-insensitive. Other providers leave this empty because the credential is the whole bucket.
 
+## webhook_calls_total
+
+A counter of webhook calls.
+
+Labels:
+
+* `ctp_found`: Whether a ChangeTransferPolicy was found for the webhook (true, false). May be false for error conditions, so check the response code.
+* `response_code`: The HTTP response code of the webhook processing. 204 is the success code, which may be returned even if no ChangeTransferPolicy was found.
+
 ## webhook_processing_duration_seconds
 
 A histogram of the duration of webhook processing.

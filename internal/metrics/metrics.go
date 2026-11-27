@@ -267,6 +267,7 @@ func init() {
 		scmCallsRateLimitLimit,
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
+		webhookCallsTotal,
 		webhookProcessingDurationSeconds,
 		WebhookMissRetryPending,
 		webRequestCommitStatusHTTPRequestsTotal,
