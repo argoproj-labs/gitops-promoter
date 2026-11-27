@@ -63,6 +63,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	mr, resp, err := pr.client.MergeRequests.CreateMergeRequest(
 		repo.Spec.GitLab.ProjectID,
 		options,
+		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
@@ -248,7 +249,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	start := time.Now()
-	mrs, resp, err := pr.client.MergeRequests.ListProjectMergeRequests(repo.Spec.GitLab.ProjectID, options)
+	mrs, resp, err := pr.client.MergeRequests.ListProjectMergeRequests(repo.Spec.GitLab.ProjectID, options, gitlab.WithContext(ctx))
 	if resp == nil {
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
