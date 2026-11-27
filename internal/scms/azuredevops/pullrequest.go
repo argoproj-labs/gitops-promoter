@@ -12,7 +12,6 @@ import (
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -309,24 +308,12 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if len(*pullRequests) > 0 {
 		firstPR := (*pullRequests)[0]
 
-		// Generate URL directly since pullRequest.Status.ID is not set yet
-		url, err := pr.generatePullRequestUrl(ctx, pullRequest, *firstPR.PullRequestId)
-		if err != nil {
-			return scms.FindOpenResult{}, fmt.Errorf("failed to generate pull request URL: %w", err)
-		}
-
-		prStatus := v1alpha1.PullRequestCommonStatus{
-			ID:             strconv.Itoa(*firstPR.PullRequestId),
-			State:          mapAzureDevOpsPRStatusToState(*firstPR.Status),
-			PRCreationTime: metav1.Time{Time: firstPR.CreationDate.Time},
-			Url:            url,
-		}
 		// GetPullRequests list responses do not include pull request labels, so drift
 		// repair from FindOpen is not possible; label sync still uses AddLabels/RemoveLabels.
 		return scms.FindOpenResult{
 			Found:          true,
-			ID:             prStatus.ID,
-			CreationTime:   prStatus.PRCreationTime.Time,
+			ID:             strconv.Itoa(*firstPR.PullRequestId),
+			CreationTime:   firstPR.CreationDate.Time,
 			LabelsReported: false,
 		}, nil
 	}
