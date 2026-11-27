@@ -367,6 +367,7 @@ var _ = Describe("ExpressionEvaluator", func() {
 			var wg sync.WaitGroup
 			for g := range 8 {
 				wg.Go(func() {
+					defer GinkgoRecover()
 					for i := range 200 {
 						key := keys[(g+i)%len(keys)]
 						if i%10 == 0 {
