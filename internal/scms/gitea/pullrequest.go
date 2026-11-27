@@ -212,40 +212,50 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		return scms.FindOpenResult{}, fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
-	options := gitea.ListPullRequestsOptions{
-		State: gitea.StateOpen,
-	}
-
-	start := time.Now()
-	prs, resp, err := pr.giteaClient.ListRepoPullRequests(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, options)
-	if resp != nil {
-		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
-	}
-	if err != nil {
-		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
-	}
-	if resp != nil {
-		logger.V(4).Info("gitea response status", "status", resp.Status)
-	}
-
-	for _, prItem := range prs {
-		if prItem.Head.Name != pullRequest.Spec.SourceBranch ||
-			prItem.Base.Name != pullRequest.Spec.TargetBranch {
-			continue
+	// The pulls endpoint is paginated and has no head/base filter, so every page must be examined to avoid
+	// missing an existing pull request in repositories with many open pull requests.
+	for page := 1; ; page++ {
+		options := gitea.ListPullRequestsOptions{
+			ListOptions: gitea.ListOptions{Page: page, PageSize: pullRequestPageSize},
+			State:       gitea.StateOpen,
 		}
-		scmLabels := make([]string, 0, len(prItem.Labels))
-		for _, label := range prItem.Labels {
-			if label != nil {
-				scmLabels = append(scmLabels, label.Name)
+
+		start := time.Now()
+		prs, resp, err := pr.giteaClient.ListRepoPullRequests(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, options)
+		if resp != nil {
+			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
+		}
+		if err != nil {
+			return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
+		}
+		if resp != nil {
+			logger.V(4).Info("gitea response status", "status", resp.Status)
+		}
+
+		for _, prItem := range prs {
+			if prItem.Head.Name != pullRequest.Spec.SourceBranch ||
+				prItem.Base.Name != pullRequest.Spec.TargetBranch {
+				continue
 			}
+			scmLabels := make([]string, 0, len(prItem.Labels))
+			for _, label := range prItem.Labels {
+				if label != nil {
+					scmLabels = append(scmLabels, label.Name)
+				}
+			}
+			return scms.FindOpenResult{
+				Found:          true,
+				ID:             strconv.FormatInt(prItem.Index, 10),
+				CreationTime:   *prItem.Created,
+				SCMLabels:      scmLabels,
+				LabelsReported: true,
+			}, nil
 		}
-		return scms.FindOpenResult{
-			Found:          true,
-			ID:             strconv.FormatInt(prItem.Index, 10),
-			CreationTime:   *prItem.Created,
-			SCMLabels:      scmLabels,
-			LabelsReported: true,
-		}, nil
+
+		// A page shorter than the page size is the last one; a Link header, when sent, ends the loop too.
+		if len(prs) < pullRequestPageSize || (resp != nil && resp.LastPage > 0 && page >= resp.LastPage) {
+			break
+		}
 	}
 
 	return scms.FindOpenResult{}, nil
@@ -453,6 +463,9 @@ func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, 
 	}
 	return nameToID, nil
 }
+
+// pullRequestPageSize is the page size used when listing pull requests; servers cap it at 50 by default.
+const pullRequestPageSize = 50
 
 // labelPageSize is the largest page the labels endpoint serves.
 const labelPageSize = 50
