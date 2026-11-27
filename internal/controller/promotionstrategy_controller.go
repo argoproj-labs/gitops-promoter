@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -115,6 +116,10 @@ type PromotionStrategyReconciler struct {
 	// Presence means noteless sibling CTPs should be reconciled to fetch their notes.
 	noteBasedHydratorPromotionStrategies sync.Map
 	enqueueStateMutex                    sync.Mutex
+	// enqueueStatesOnce initializes enqueueStates and starts the cleanup timer exactly once.
+	enqueueStatesOnce sync.Once
+	// cleanupTimerStarts counts startCleanupTimer calls so tests can assert it runs once.
+	cleanupTimerStarts atomic.Int32
 
 	// enqueueThreshold is the minimum spacing between enqueues of the same CTP.
 	// The zero value means the production default (defaultEnqueueThreshold); tests
@@ -488,16 +493,14 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(
 	promotionStrategyUID types.UID,
 	ctps []*promoterv1alpha1.ChangeTransferPolicy,
 ) {
-	// Initialize state map lazily
-	if r.enqueueStates == nil {
+	// Initialize state map lazily, and start the self-rescheduling cleanup timer exactly once.
+	r.enqueueStatesOnce.Do(func() {
 		r.enqueueStateMutex.Lock()
-		if r.enqueueStates == nil {
-			r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
-		}
+		r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
 		r.enqueueStateMutex.Unlock()
 
 		r.startCleanupTimer()
-	}
+	})
 
 	// Get the effective proposed dry SHA for each CTP (Note.DrySha if set, else Proposed.Dry.Sha).
 	getEffectiveProposedDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
@@ -573,6 +576,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(
 // startCleanupTimer starts a self-rescheduling background timer to remove stale entries
 // from the enqueueStates map, preventing memory leaks from deleted CTPs.
 func (r *PromotionStrategyReconciler) startCleanupTimer() {
+	r.cleanupTimerStarts.Add(1)
 	// Memory footprint per entry (64-bit system, measured with unsafe.Sizeof):
 	//   - client.ObjectKey (2 strings): ~96 bytes
 	//       * Struct: 32 bytes (2 string headers, 16 bytes each)
