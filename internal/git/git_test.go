@@ -591,6 +591,50 @@ var _ = Describe("LsRemote", func() {
 			Expect(err.Error()).To(ContainSubstring("environment/staging"))
 		})
 	})
+
+	Context("When another branch name ends with a requested branch name", func() {
+		var repo *v1alpha1.GitRepository
+		var gap *fakeGitProvider
+		var mainSha string
+
+		BeforeEach(func() {
+			By("Creating main and x/main branches on the remote")
+			_, err := runGitCmd(workDir, "push", "origin", "HEAD:refs/heads/main")
+			Expect(err).NotTo(HaveOccurred())
+			err = os.WriteFile(filepath.Join(workDir, "x.txt"), []byte("x"), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "add", "x.txt")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "commit", "-m", "x commit")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "push", "origin", "HEAD:refs/heads/x/main")
+			Expect(err).NotTo(HaveOccurred())
+			mainSha, err = runGitCmd(tempRepoDir, "rev-parse", "refs/heads/main")
+			Expect(err).NotTo(HaveOccurred())
+			mainSha = strings.TrimSpace(mainSha)
+
+			repo = &v1alpha1.GitRepository{
+				Spec: v1alpha1.GitRepositorySpec{
+					GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				},
+				Name:      "testrepo",
+				Namespace: "default",
+			}
+			gap = &fakeGitProvider{tempDirPath: tempRepoDir}
+		})
+
+		It("should return only the exact branch match", func() {
+			shas, err := git.LsRemote(context.Background(), gap, repo, "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shas).To(Equal(map[string]string{"main": mainSha}))
+		})
+
+		It("should report a missing branch even when a suffix match keeps the line count equal", func() {
+			_, err := git.LsRemote(context.Background(), gap, repo, "main", "prod")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("missing branches: [prod]"))
+		})
+	})
 })
 
 var _ = Describe("HasConflict", func() {

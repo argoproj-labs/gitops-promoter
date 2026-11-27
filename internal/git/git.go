@@ -649,37 +649,34 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 		logger.Error(err, "could not git ls-remote", "gitError", stderr)
 		return nil, err
 	}
-	stdout = strings.TrimSpace(stdout)
-	lines := strings.Split(stdout, "\n")
-	if len(lines) != len(branches) {
-		// Determine which branches are missing
-		foundBranches := make(map[string]bool)
-		for _, line := range lines {
-			if line == "" {
-				continue
-			}
-			_, ref, found := strings.Cut(line, "\t")
-			if found {
-				branch := strings.TrimPrefix(ref, "refs/heads/")
-				foundBranches[branch] = true
-			}
-		}
-		missingBranches := make([]string, 0)
-		for _, branch := range branches {
-			if !foundBranches[branch] {
-				missingBranches = append(missingBranches, branch)
-			}
-		}
-		return nil, fmt.Errorf("missing branches: [%s] (these branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created)", strings.Join(missingBranches, ", "))
+	requested := make(map[string]bool, len(branches))
+	for _, branch := range branches {
+		requested[branch] = true
 	}
 	shas := make(map[string]string, len(branches))
-	for i := range lines {
-		sha, ref, found := strings.Cut(lines[i], "\t")
-		if !found {
-			return nil, fmt.Errorf("could not parse line %q from ls-remote output", lines[i])
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		if line == "" {
+			continue
 		}
-		branch := strings.TrimPrefix(ref, "refs/heads/")
-		shas[branch] = sha
+		sha, ref, found := strings.Cut(line, "\t")
+		if !found {
+			return nil, fmt.Errorf("could not parse line %q from ls-remote output", line)
+		}
+		// ls-remote patterns match on the ref name's tail (e.g. "main" also matches refs/heads/x/main), so keep
+		// exact matches only.
+		branch, isHead := strings.CutPrefix(ref, "refs/heads/")
+		if isHead && requested[branch] {
+			shas[branch] = sha
+		}
+	}
+	missingBranches := make([]string, 0)
+	for _, branch := range branches {
+		if _, ok := shas[branch]; !ok {
+			missingBranches = append(missingBranches, branch)
+		}
+	}
+	if len(missingBranches) > 0 {
+		return nil, fmt.Errorf("missing branches: [%s] (these branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created)", strings.Join(missingBranches, ", "))
 	}
 
 	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
