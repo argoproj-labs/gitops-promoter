@@ -36,6 +36,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 //go:embed testdata/DependentsSuccessfulCommitStatus.yaml
@@ -1076,5 +1077,67 @@ var _ = Describe("DAG graph logic", func() {
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "perf" to be promoted`))
 		})
+	})
+})
+
+var _ = Describe("dependentsSuccessfulCommitStatusPromotionStrategyPredicate", func() {
+	pred := dependentsSuccessfulCommitStatusPromotionStrategyPredicate()
+	base := func() *promoterv1alpha1.PromotionStrategy {
+		ps := &promoterv1alpha1.PromotionStrategy{}
+		ps.Generation = 1
+		ps.Status.Environments = []promoterv1alpha1.EnvironmentStatus{{
+			Branch:   "environment/development",
+			Active:   promoterv1alpha1.CommitBranchState{Dry: promoterv1alpha1.CommitShaState{Sha: "dry-a"}, Hydrated: promoterv1alpha1.CommitShaState{Sha: "hyd-a"}},
+			Proposed: promoterv1alpha1.CommitBranchState{Dry: promoterv1alpha1.CommitShaState{Sha: "dry-p"}, Hydrated: promoterv1alpha1.CommitShaState{Sha: "hyd-p"}},
+		}}
+		return ps
+	}
+	update := func(mutate func(ps *promoterv1alpha1.PromotionStrategy)) event.UpdateEvent {
+		oldPS, newPS := base(), base()
+		mutate(newPS)
+		return event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS}
+	}
+	mutations := map[string]func(ps *promoterv1alpha1.PromotionStrategy){
+		"active hydrated":   func(ps *promoterv1alpha1.PromotionStrategy) { ps.Status.Environments[0].Active.Hydrated.Sha = "x" },
+		"proposed hydrated": func(ps *promoterv1alpha1.PromotionStrategy) { ps.Status.Environments[0].Proposed.Hydrated.Sha = "x" },
+		"active dry":        func(ps *promoterv1alpha1.PromotionStrategy) { ps.Status.Environments[0].Active.Dry.Sha = "x" },
+		"pull request": func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Status.Environments[0].PullRequest = &promoterv1alpha1.PullRequestCommonStatus{ID: "7"}
+		},
+		"conditions": func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Status.Conditions = []metav1.Condition{{Type: "Ready", Status: metav1.ConditionTrue}}
+		},
+	}
+
+	It("passes creates, deletes and generic events", func() {
+		Expect(pred.Create(event.CreateEvent{Object: base()})).To(BeTrue())
+		Expect(pred.Delete(event.DeleteEvent{Object: base()})).To(BeTrue())
+		Expect(pred.Generic(event.GenericEvent{Object: base()})).To(BeTrue())
+	})
+	It("drops an update that changes nothing", func() {
+		Expect(pred.Update(update(func(*promoterv1alpha1.PromotionStrategy) {}))).To(BeFalse())
+	})
+	It("reacts to a spec change", func() {
+		Expect(pred.Update(update(func(ps *promoterv1alpha1.PromotionStrategy) { ps.Generation++ }))).To(BeTrue())
+	})
+	It("reacts to an environment being added", func() {
+		Expect(pred.Update(update(func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Status.Environments = append(ps.Status.Environments, promoterv1alpha1.EnvironmentStatus{Branch: "environment/staging"})
+		}))).To(BeTrue())
+	})
+	It("reacts to a change to active hydrated", func() {
+		Expect(pred.Update(update(mutations["active hydrated"]))).To(BeTrue())
+	})
+	It("reacts to a change to proposed hydrated", func() {
+		Expect(pred.Update(update(mutations["proposed hydrated"]))).To(BeTrue())
+	})
+	It("reacts to a change to active dry", func() {
+		Expect(pred.Update(update(mutations["active dry"]))).To(BeTrue())
+	})
+	It("drops a change to pull request", func() {
+		Expect(pred.Update(update(mutations["pull request"]))).To(BeFalse())
+	})
+	It("drops a change to conditions", func() {
+		Expect(pred.Update(update(mutations["conditions"]))).To(BeFalse())
 	})
 })
