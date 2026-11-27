@@ -656,13 +656,13 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 
 	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha, ctp.Spec.ActivePath)
 	if err != nil {
-		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
+		return fmt.Errorf("failed to get active commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
 
 	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha, ctp.Spec.ActivePath)
 	if err != nil {
-		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
+		return fmt.Errorf("failed to get proposed commit metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
 	ctp.Status.Proposed.Dry = proposedCommitMetadata
 

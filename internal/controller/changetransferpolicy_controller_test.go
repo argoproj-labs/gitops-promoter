@@ -4165,6 +4165,66 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 	})
 })
 
+var _ = Describe("setCommitMetadata proposed metadata failure", func() {
+	var workDir string
+	var bareDir string
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("names the proposed hydrated SHA when reading its metadata fails", func() {
+		const activeBranch = "env-active"
+		var err error
+		bareDir, err = os.MkdirTemp("", "commit-metadata-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "commit-metadata-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+		mustRunGit(workDir, "checkout", "-B", activeBranch)
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"dry-sha"}`), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "active")
+		activeSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch)
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			Name: "commit-metadata-repo", Namespace: "default",
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "commit-metadata-repo"},
+			},
+		}
+		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/commit-metadata-"+activeSha)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, activeBranch)).To(Succeed())
+
+		// A proposed hydrated SHA that does not exist in the clone, so reading its metadata fails.
+		const proposedSha = "0123456789abcdef0123456789abcdef01234567"
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: activeBranch},
+		}
+
+		r := &ChangeTransferPolicyReconciler{Recorder: events.NewFakeRecorder(10)}
+		err = r.setCommitMetadata(ctx, ctp, gitOps, activeSha, proposedSha)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(HavePrefix(fmt.Sprintf("failed to get proposed commit metadata for hydrated SHA %q", proposedSha)))
+		Expect(err.Error()).NotTo(ContainSubstring(activeSha))
+	})
+})
+
 var _ = Describe("handlePRFinalizerRemoval early promotion history note", func() {
 	var workDir string
 	var bareDir string
