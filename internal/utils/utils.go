@@ -543,7 +543,7 @@ func HandleReconciliationResult(
 		if persistedReady.Status == metav1.ConditionFalse {
 			eventType = "Warning"
 		}
-		recorder.Eventf(obj, nil, eventType, persistedReady.Reason, "Reconciling", persistedReady.Message)
+		recorder.Eventf(obj, nil, eventType, persistedReady.Reason, "Reconciling", "%s", persistedReady.Message)
 	}()
 
 	// Stamp status.instanceID on every reconcile attempt so consumers can see which controller

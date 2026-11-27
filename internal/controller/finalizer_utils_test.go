@@ -23,6 +23,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -67,5 +69,26 @@ var _ = Describe("removeUnreferencedSecretFinalizers", func() {
 		Expect(finalizersOf("a-stuck")).To(ContainElement(finalizer))
 		Expect(finalizersOf("b-stale")).ToNot(ContainElement(finalizer))
 		Expect(finalizersOf("c-referenced")).To(ContainElement(finalizer))
+	})
+})
+
+var _ = Describe("handleResourceFinalizerWithDependencies", func() {
+	It("emits the DeletionBlocked message verbatim even when it contains printf verbs", func() {
+		ctx := context.Background()
+		const finalizer = "test.promoter.argoproj.io/finalizer"
+		obj := &v1.Secret{Name: "blocked", Namespace: "test-ns", Finalizers: []string{finalizer}}
+		now := metav1.Now()
+		obj.SetDeletionTimestamp(&now)
+		c := fake.NewClientBuilder().WithScheme(utils.GetScheme()).Build()
+		recorder := events.NewFakeRecorder(10)
+
+		deleted, err := handleResourceFinalizerWithDependencies(ctx, c, recorder, obj, finalizer, "Secret",
+			func() ([]string, error) { return []string{"dependent org%2Frepo"}, nil })
+		Expect(deleted).To(BeTrue())
+		Expect(err).To(MatchError("Secret test-ns/blocked still has dependent resource: dependent org%2Frepo"))
+
+		Expect(recorder.Events).To(HaveLen(1))
+		event := <-recorder.Events
+		Expect(event).To(Equal("Warning DeletionBlocked Secret test-ns/blocked still has dependent resource: dependent org%2Frepo"))
 	})
 })

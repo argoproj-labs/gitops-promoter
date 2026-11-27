@@ -227,7 +227,7 @@ func handleResourceFinalizerWithDependencies(
 		errMsg := formatDependentResourceError(obj, resourceType, dependents)
 
 		// Emit Kubernetes event for better UX
-		recorder.Eventf(obj, nil, "Warning", "DeletionBlocked", "Deletion", errMsg)
+		recorder.Eventf(obj, nil, "Warning", "DeletionBlocked", "Deletion", "%s", errMsg)
 
 		// Update gauge metric with current count of dependents
 		metrics.FinalizerDependentCount.WithLabelValues(

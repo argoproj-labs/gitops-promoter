@@ -483,6 +483,25 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 			Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationError)))
 		})
 
+		It("emits the Ready message verbatim even when it contains printf verbs", func() {
+			var err error
+			previousReady := &metav1.Condition{
+				Type:    string(conditions.Ready),
+				Status:  metav1.ConditionTrue,
+				Reason:  string(conditions.ReconciliationSuccess),
+				Message: "Reconciliation successful",
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				err = errors.New("GET https://scm.example.com/api/repos/org%2Frepo: 404")
+			}()
+
+			emitted := drainEvents()
+			Expect(emitted).To(HaveLen(1))
+			Expect(emitted[0]).To(ContainSubstring("Reconciliation failed: GET https://scm.example.com/api/repos/org%2Frepo: 404"))
+			Expect(emitted[0]).NotTo(ContainSubstring("%!"))
+		})
+
 		It("does not emit an event when reconciliation keeps failing with the same reason", func() {
 			var err error
 			// Message intentionally differs from what this reconcile will produce: message-only
