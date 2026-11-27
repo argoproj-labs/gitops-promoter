@@ -30,8 +30,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
@@ -178,6 +181,31 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
 				expectEventEmitted(g, hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success"))
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		// The controller does not watch its CommitStatuses, so the periodic requeue is what restores one
+		// that was deleted or edited out of band.
+		It("requeues after the configured requeue duration", func() {
+			By("Waiting for GitCommitStatus to process all environments")
+			Eventually(func(g Gomega) {
+				var gcs promoterv1alpha1.GitCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-simple", Namespace: "default"}, &gcs)).To(Succeed())
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			want, err := settings.GetRequeueDuration[promoterv1alpha1.GitCommitStatusConfiguration](ctx, settingsMgr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(want).To(BeNumerically(">", 0))
+
+			r := &GitCommitStatusReconciler{
+				Client:      managerClient,
+				Scheme:      managerClient.Scheme(),
+				Recorder:    events.NewFakeRecorder(100),
+				SettingsMgr: settingsMgr,
+			}
+			result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: name + "-simple", Namespace: "default"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(want))
 		})
 	})
 

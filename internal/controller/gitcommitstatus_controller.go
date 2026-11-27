@@ -131,7 +131,14 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies
 	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
-	return ctrl.Result{}, nil
+	// Requeue periodically like the other gates. This controller does not watch its CommitStatuses, so the
+	// requeue is what restores one that was deleted or edited out of band.
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.GitCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for GitCommitStatus %q: %w", gcs.Name, err)
+	}
+
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
