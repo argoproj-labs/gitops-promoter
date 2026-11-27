@@ -106,7 +106,6 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&TimedCommitStatusReconciler{
@@ -114,7 +113,6 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&GitCommitStatusReconciler{
@@ -122,7 +120,6 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&WebRequestCommitStatusReconciler{
@@ -130,7 +127,6 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&ScheduledCommitStatusReconciler{
@@ -138,7 +134,6 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("ScheduledCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&ArgoCDCommitStatusReconciler{

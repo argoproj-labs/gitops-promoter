@@ -60,7 +60,6 @@ type WebRequestCommitStatusReconciler struct {
 	Recorder    events.EventRecorder
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
-	EnqueueCTP  CTPEnqueueFunc
 	httpClient  *http.Client
 }
 
@@ -74,8 +73,8 @@ type WebRequestCommitStatusReconciler struct {
 
 // Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
 // environment (evaluating trigger and optionally making the HTTP request and validation), upserts
-// CommitStatus resources, cleans up orphaned CommitStatuses, and enqueues ChangeTransferPolicies when
-// an environment transitions to success. Result status and requeue time are updated via the deferred handler.
+// CommitStatus resources, and cleans up orphaned CommitStatuses. Result status and requeue time are updated
+// via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling WebRequestCommitStatus")
@@ -131,17 +130,16 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// 4. Dispatch based on context mode
 	wr := webrequest.NewReconciler(r, wrcsCommitUpserter{r: r})
 	var (
-		commitStatuses           []*promoterv1alpha1.CommitStatus
-		transitionedEnvironments []string
-		requeueAfter             time.Duration
+		commitStatuses []*promoterv1alpha1.CommitStatus
+		requeueAfter   time.Duration
 	)
 	// Snapshot the per-branch phases persisted by the previous reconcile before the webrequest
 	// reconcile overwrites wrcs.Status, so phase-change events stay transition-only.
 	previousPhases := wrcsPhasesByBranch(&wrcs.Status)
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
+		commitStatuses, requeueAfter, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
 	} else {
-		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, &wrcs, &ps, namespaceMeta)
+		commitStatuses, requeueAfter, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, &wrcs, &ps, namespaceMeta)
 	}
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process WebRequestCommitStatus: %w", err)
@@ -158,9 +156,6 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&wrcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// 7. If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies to trigger reconciliation
-	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }

@@ -50,7 +50,6 @@ type ScheduledCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
-	EnqueueCTP  CTPEnqueueFunc
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scheduledcommitstatuses,verbs=get;list;watch
@@ -102,7 +101,7 @@ func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", scs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	transitionedEnvironments, commitStatuses, err := r.processEnvironments(ctx, &scs, &ps)
+	commitStatuses, err := r.processEnvironments(ctx, &scs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
@@ -113,8 +112,6 @@ func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&scs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "scheduled window transition")
 
 	requeueDuration := r.calculateRequeueDuration(ctx, &scs)
 
@@ -154,10 +151,9 @@ func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, 
 	return nil
 }
 
-func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Context, scs *promoterv1alpha1.ScheduledCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, []*promoterv1alpha1.CommitStatus, error) {
+func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Context, scs *promoterv1alpha1.ScheduledCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
-	transitionedEnvironments := []string{}
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(scs.Spec.Environments))
 
 	previousPhases := make(map[string]string, len(scs.Status.Environments))
@@ -176,7 +172,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 		}
 	}
 	if len(mismatchedBranches) > 0 {
-		return nil, nil, fmt.Errorf("branches not found in PromotionStrategy %q: %s",
+		return nil, fmt.Errorf("branches not found in PromotionStrategy %q: %s",
 			ps.Name, strings.Join(mismatchedBranches, ", "))
 	}
 
@@ -206,19 +202,13 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 		exclude := mergeWindows(scs.Spec.Exclude, envConfig.Exclude)
 		result, err := evaluateWindows(now, allow, exclude, scs.Spec.Timezone)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to evaluate windows for environment %q: %w", envConfig.Branch, err)
+			return nil, fmt.Errorf("failed to evaluate windows for environment %q: %w", envConfig.Branch, err)
 		}
 
 		phase := result.Phase
 		message := result.Message
 
 		previousPhase := previousPhases[envConfig.Branch]
-		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == promoterv1alpha1.CommitPhaseSuccess {
-			transitionedEnvironments = append(transitionedEnvironments, envConfig.Branch)
-			logger.Info("Scheduled window transitioned to success",
-				"branch", envConfig.Branch,
-				"sha", proposedSha)
-		}
 
 		envWindowStatus := promoterv1alpha1.ScheduledEnvironmentStatus{
 			Branch: envConfig.Branch,
@@ -259,7 +249,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 			FieldOwner:  constants.ScheduledCommitStatusControllerFieldOwner,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
+			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
 
@@ -273,7 +263,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 			"next", result.Next)
 	}
 
-	return transitionedEnvironments, commitStatuses, nil
+	return commitStatuses, nil
 }
 
 func (r *ScheduledCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, scs *promoterv1alpha1.ScheduledCommitStatus) time.Duration {

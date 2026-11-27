@@ -361,13 +361,13 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 			}
 
 			By("making the HTTP request and succeeding")
-			_, _, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			_, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(emitter.emitted).To(HaveLen(1))
 			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
 
 			By("skipping the HTTP request on the next reconcile because the SHA already succeeded")
-			_, _, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			_, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(emitter.emitted).To(HaveLen(2))
 			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
@@ -403,14 +403,14 @@ var _ = Describe("Polling mode skip of an already successful SHA", func() {
 			}
 
 			By("making the HTTP request and succeeding")
-			_, _, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			_, _, err := reconcile(ctx, wrcs, ps, NamespaceMetadata{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(emitter.emitted).To(HaveLen(1))
 			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("tag", "v1.2.3"))
 			Expect(emitter.emitted[0].SuccessVariables).To(HaveKeyWithValue("runId", "42"))
 
 			By("skipping the HTTP request on the next reconcile because the SHA already succeeded")
-			_, _, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
+			_, _, err = reconcile(ctx, wrcs, ps, NamespaceMetadata{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(emitter.emitted).To(HaveLen(2))
 			Expect(emitter.emitted[1].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
@@ -494,19 +494,19 @@ var _ = Describe("A CommitStatus write failure", func() {
 		ps := newPromotionStrategy()
 
 		By("requesting once per environment")
-		_, _, _, err := r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		_, _, err := r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exec.requests).To(Equal(3))
 
 		By("failing the staging CommitStatus write on a reconcile that sends no requests")
 		emitter.failBranch = "environment/staging"
-		_, _, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		_, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
 		Expect(err).To(HaveOccurred())
 		Expect(wrcs.Status.Environments).To(HaveLen(3), "production's status must survive the failed reconcile")
 
 		By("not re-sending any request once the write succeeds")
 		emitter.failBranch = ""
-		_, _, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
+		_, _, err = r.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, NamespaceMetadata{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exec.requests).To(Equal(3))
 	})
@@ -536,13 +536,13 @@ var _ = Describe("A CommitStatus write failure", func() {
 		ps := newPromotionStrategy()
 
 		By("sending the request and then failing the staging CommitStatus write")
-		_, _, _, err := r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
+		_, _, err := r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
 		Expect(err).To(HaveOccurred())
 		Expect(exec.requests).To(Equal(1))
 
 		By("not re-sending the request once the write succeeds")
 		emitter.failBranch = ""
-		_, _, _, err = r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
+		_, _, err = r.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, NamespaceMetadata{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exec.requests).To(Equal(1))
 	})

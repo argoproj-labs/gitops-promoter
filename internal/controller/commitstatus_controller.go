@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -46,7 +45,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -58,9 +56,6 @@ type CommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
-
-	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
-	EnqueueCTP CTPEnqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch
@@ -116,9 +111,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	// We need the old sha to trigger the reconcile of the change transfer policy
-	oldSha := cs.Status.Sha
-
 	switch {
 	case alreadyPublished:
 		logger.V(4).Info("CommitStatus already published for this generation, not publishing again")
@@ -139,18 +131,9 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if alreadyPublished && publishedByThisInstance(&cs) {
-		// Nothing changed, so there is no new phase for a ChangeTransferPolicy to read: waking the policies on
-		// this SHA would only re-run their git work. On a controller start that is every policy, twice.
-		// The exception is a CommitStatus that just moved into this install (its status.instanceID still names
-		// the previous one): the policies here have never read it, so wake them without re-publishing.
-		return ctrl.Result{}, nil
-	}
-
-	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
-	}
+	// ChangeTransferPolicies are not woken from here: they watch CommitStatus spec changes directly
+	// (see changetransferpolicy_commitstatus_watch.go), so a policy sees a new phase without waiting
+	// for the SCM publish above.
 
 	if !alreadyPublished {
 		r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
@@ -252,60 +235,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	}
 }
 
-// triggerReconcileChangeTransferPolicy enqueues every ChangeTransferPolicy whose active or proposed hydrated
-// SHA is the CommitStatus's previous or current SHA, so the policy re-reads the gate's phase.
-//
-// An empty SHA is never looked up. The previous SHA is empty on a CommitStatus's first publish, and the
-// hydrated-SHA field indexes file every policy that has not recorded a hydrated SHA yet (new, or failing
-// early) under "", across all namespaces. Looking up "" would make each new CommitStatus enqueue all of those
-// policies, each reconcile with git network calls: thousands when many PromotionStrategies are created
-// together, and a policy stuck failing early would be reconciled again by every new CommitStatus.
-func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx context.Context, cs promoterv1alpha1.CommitStatus, oldSha, newSha string) error {
-	logger := log.FromContext(ctx)
-
-	var ctpList []promoterv1alpha1.ChangeTransferPolicy
-	for _, sha := range commitStatusShasToLookup(oldSha, newSha) {
-		for _, field := range []string{".status.active.hydrated.sha", ".status.proposed.hydrated.sha"} {
-			var matches promoterv1alpha1.ChangeTransferPolicyList
-			if err := r.List(ctx, &matches, client.MatchingFields{field: sha}); err != nil {
-				return fmt.Errorf("failed to list ChangeTransferPolicy with %s %q: %w", field, sha, err)
-			}
-			ctpList = utils.UpsertChangeTransferPolicyList(ctpList, matches.Items)
-		}
-	}
-
-	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
-	for _, ctp := range ctpList {
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ctp.Namespace, ctp.Name)
-		}
-		logger.Info("Reconcile of ChangeTransferPolicy triggered", "ChangeTransferPolicy", ctp.Name,
-			"sha", cs.Spec.Sha, "phase", cs.Spec.Phase, "proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha, "activeHydratedSha", ctp.Status.Active.Hydrated.Sha)
-	}
-
-	return nil
-}
-
-// commitStatusShasToLookup returns the distinct non-empty SHAs among a CommitStatus's previous and current SHA,
-// in that order. See triggerReconcileChangeTransferPolicy for why an empty SHA must not be looked up.
-func commitStatusShasToLookup(oldSha, newSha string) []string {
-	shas := make([]string, 0, 2)
-	for _, sha := range []string{oldSha, newSha} {
-		if sha != "" && !slices.Contains(shas, sha) {
-			shas = append(shas, sha)
-		}
-	}
-	return shas
-}
-
 // commitStatusAlreadyPublished reports whether the last successful reconcile already published exactly this
 // spec: the status was written from the current generation, it records the current SHA and phase, and the
 // reconcile ended Ready. Any spec edit bumps the generation, so description or URL changes are not missed.
 //
 // A CommitStatus is reconciled on create, on spec change, and on every controller start, because the
 // informer's initial list is a create event. Without this check a restart re-sent every CommitStatus to the
-// SCM, hundreds of write calls that changed nothing, and woke every ChangeTransferPolicy on its SHA into a
-// second round of git work. Skipping also means a status the SCM no longer has, because it was deleted there
+// SCM, hundreds of write calls that changed nothing. Skipping also means a status the SCM no longer has, because it was deleted there
 // or because the GitRepository was repointed at another repository, is not restored by a restart: the
 // controller never resynced on a timer either, and a spec edit republishes.
 func commitStatusAlreadyPublished(cs *promoterv1alpha1.CommitStatus) bool {
@@ -314,11 +250,4 @@ func commitStatusAlreadyPublished(cs *promoterv1alpha1.CommitStatus) bool {
 	}
 	ready := meta.FindStatusCondition(cs.Status.Conditions, string(promoterConditions.Ready))
 	return ready != nil && ready.Status == metav1.ConditionTrue
-}
-
-// publishedByThisInstance reports whether the CommitStatus's last status write came from this controller
-// instance (status.instanceID is stamped on every reconcile). A false answer means the object was migrated
-// from another install, see docs/multi-install.md, and this install's policies have not read it yet.
-func publishedByThisInstance(cs *promoterv1alpha1.CommitStatus) bool {
-	return ptr.Equal(cs.Status.InstanceID, settings.ControllerInstanceID())
 }

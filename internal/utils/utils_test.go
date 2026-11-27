@@ -853,60 +853,6 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 	})
 })
 
-var _ = Describe("EnqueueChangeTransferPolicies", func() {
-	var (
-		ctx      context.Context
-		ps       *promoterv1alpha1.PromotionStrategy
-		enqueued []string // collects "namespace/name" pairs passed to enqueueCTP
-	)
-
-	BeforeEach(func() {
-		ctx = context.Background()
-		ps = &promoterv1alpha1.PromotionStrategy{
-			Name:      "my-strategy",
-			Namespace: "my-namespace",
-		}
-		enqueued = nil
-	})
-
-	It("enqueues the expected CTP names for each transitioned branch", func() {
-		branches := []string{"main", "staging"}
-		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
-			enqueued = append(enqueued, namespace+"/"+name)
-		}, ps, branches, "validation transition")
-
-		expected := []string{
-			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main")),
-			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "staging")),
-		}
-		Expect(enqueued).To(Equal(expected))
-	})
-
-	It("does nothing when transitionedBranches is empty", func() {
-		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
-			enqueued = append(enqueued, namespace+"/"+name)
-		}, ps, nil, "validation transition")
-
-		Expect(enqueued).To(BeEmpty())
-	})
-
-	It("does not panic when enqueueCTP is nil", func() {
-		Expect(func() {
-			utils.EnqueueChangeTransferPolicies(ctx, nil, ps, []string{"main"}, "validation transition")
-		}).NotTo(Panic())
-	})
-
-	It("uses the CTP name derived from the promotion strategy name and branch", func() {
-		var capturedName string
-		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
-			capturedName = name
-		}, ps, []string{"main"}, "validation transition")
-
-		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
-		Expect(capturedName).To(Equal(expected))
-	})
-})
-
 var _ = Describe("GetChangeTransferPolicyHistoryName", func() {
 	It("appends -history to the CTP name without hashing", func() {
 		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "environment/dev"))

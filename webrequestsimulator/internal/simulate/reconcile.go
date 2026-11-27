@@ -67,14 +67,14 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
 		exec = newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses))
 		wr := webrequest.NewReconciler(exec, simulatedCommitEmitter{})
-		commitStatuses, _, _, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, args.NamespaceMetadata)
+		commitStatuses, _, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, args.NamespaceMetadata)
 		if err != nil {
 			return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
 		}
 	} else {
 		exec = newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses))
 		wr := webrequest.NewReconciler(exec, simulatedCommitEmitter{})
-		commitStatuses, _, _, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, args.NamespaceMetadata)
+		commitStatuses, _, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, args.NamespaceMetadata)
 		if err != nil {
 			return nil, fmt.Errorf("simulate environments reconcile: %w", err)
 		}

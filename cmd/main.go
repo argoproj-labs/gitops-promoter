@@ -394,7 +394,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
@@ -459,7 +458,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
@@ -468,7 +466,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
@@ -478,7 +475,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
@@ -497,7 +493,6 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ScheduledCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}

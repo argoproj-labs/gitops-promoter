@@ -50,9 +50,6 @@ type GitCommitStatusReconciler struct {
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
-	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
-	EnqueueCTP CTPEnqueueFunc
-
 	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
 	// Key: expression string, Value: compiled *vm.Program
 	expressionCache sync.Map
@@ -115,7 +112,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Process each environment and evaluate expressions
-	transitionedEnvironments, commitStatuses, err := r.processEnvironments(ctx, &gcs, &ps)
+	commitStatuses, err := r.processEnvironments(ctx, &gcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
@@ -127,9 +124,6 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies
-	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
 	return ctrl.Result{}, nil
 }
@@ -181,12 +175,11 @@ type CommitData struct {
 
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
 // evaluating expressions against the proposed hydrated commit for each environment.
-// Returns a list of environment branches that transitioned from non-success to success
-// and the CommitStatus objects created/updated.
-func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, []*promoterv1alpha1.CommitStatus, error) {
+// Returns the CommitStatus objects created/updated.
+func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
-	// Save the previous status before clearing it, so we can detect transitions
+	// Save the previous status before clearing it, so phase-change events stay transition-only
 	var previousStatus promoterv1alpha1.GitCommitStatusStatus
 	gcs.Status.DeepCopyInto(&previousStatus)
 
@@ -200,7 +193,6 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	applicableEnvs := utils.GetApplicableEnvironments(ps, gcs.Spec.Key, constants.CommitRefProposed)
 
 	// Initialize tracking variables
-	transitionedEnvironments := make([]string, 0)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	gcs.Status.Environments = make([]promoterv1alpha1.GitCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
 
@@ -210,7 +202,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Look up the environment status
 		envStatus, found := envStatusMap[branch]
 		if !found {
-			return nil, nil, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
+			return nil, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
 		}
 
 		// Get the proposed and active hydrated SHAs for this environment
@@ -227,34 +219,28 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Validate we have the SHA to work with - if PromotionStrategy hasn't fully reconciled,
 		// the SHA might be empty which would cause git operations to fail
 		if shaToValidate == "" {
-			return nil, nil, fmt.Errorf("commit SHA not yet available for branch %q (target=%s): PromotionStrategy may not be fully reconciled", branch, gcs.Spec.Target)
+			return nil, fmt.Errorf("commit SHA not yet available for branch %q (target=%s): PromotionStrategy may not be fully reconciled", branch, gcs.Spec.Target)
 		}
 
 		// Get commit details for validation using the selected SHA
 		commitData, err := r.getCommitData(ctx, gcs, envStatus, shaToValidate, branch)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get commit data for branch %q at SHA %q: %w", branch, shaToValidate, err)
+			return nil, fmt.Errorf("failed to get commit data for branch %q at SHA %q: %w", branch, shaToValidate, err)
 		}
 
 		// Evaluate the same expression for all environments
 		phase, expressionResult, err := r.evaluateExpression(gcs.Spec.Expression, commitData)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
+			return nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
 		}
 
-		// Check if this validation transitioned to success
+		// Find the previous phase for this environment
 		var previousPhase string
 		for _, prevEnv := range previousStatus.Environments {
 			if prevEnv.Branch == branch {
 				previousPhase = prevEnv.Phase
 				break
 			}
-		}
-		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == promoterv1alpha1.CommitPhaseSuccess {
-			transitionedEnvironments = append(transitionedEnvironments, branch)
-			logger.Info("Validation transitioned to success",
-				"branch", branch,
-				"sha", proposedSha)
 		}
 
 		// Update status for this environment
@@ -282,7 +268,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			FieldOwner:  constants.GitCommitStatusControllerFieldOwner,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
 
@@ -299,7 +285,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			"expression", gcs.Spec.Expression)
 	}
 
-	return transitionedEnvironments, commitStatuses, nil
+	return commitStatuses, nil
 }
 
 // getCommitData retrieves commit details from the environment's PromotionStrategy status.
