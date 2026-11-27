@@ -24,7 +24,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strings"
 	"time"
 
@@ -32,7 +31,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -42,7 +40,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -460,10 +457,6 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus]().Name()
-	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
-
-	// Render description template
 	var description string
 	if wrcs.Spec.DescriptionTemplate != "" {
 		rendered, err := utils.RenderStringTemplate(wrcs.Spec.DescriptionTemplate, templateData)
@@ -473,50 +466,31 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		description = rendered
 	}
 
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	// Build the spec
-	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(repositoryRefName)).
-		WithName(wrcs.Spec.Key + "/" + branch).
-		WithDescription(description).
-		WithPhase(phase).
-		WithSha(sha)
-	if wrcs.Spec.PublishTo != nil {
-		commitStatusSpec = commitStatusSpec.WithPublishTo(*wrcs.Spec.PublishTo)
-	}
-
-	// Render URL template if present
+	var renderedURL string
 	if wrcs.Spec.UrlTemplate != "" {
-		renderedURL, err := utils.RenderStringTemplate(wrcs.Spec.UrlTemplate, templateData)
+		rendered, err := utils.RenderStringTemplate(wrcs.Spec.UrlTemplate, templateData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render URL template: %w", err)
 		}
-		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
+		renderedURL = rendered
 	}
 
-	// Build the apply configuration
-	commitStatusLabels := utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
-		WithLabels(commitStatusLabels).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(wrcs.Name).
-			WithUID(wrcs.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(commitStatusSpec)
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = wrcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.WebRequestCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
+	cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+		Parent:      wrcs,
+		RepoRefName: repositoryRefName,
+		Branch:      branch,
+		Sha:         sha,
+		Key:         wrcs.Spec.Key,
+		Description: description,
+		Url:         renderedURL,
+		Phase:       phase,
+		PublishTo:   wrcs.Spec.PublishTo,
+		FieldOwner:  constants.WebRequestCommitStatusControllerFieldOwner,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 	}
-
-	return commitStatus, nil
+	return cs, nil
 }
 
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,

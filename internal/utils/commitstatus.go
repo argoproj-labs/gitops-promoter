@@ -33,8 +33,12 @@ type UpsertCommitStatusParams struct {
 	Sha         string
 	Key         string
 	Description string
-	Phase       promoterv1alpha1.CommitStatusPhase
-	FieldOwner  string
+	// Url is the optional link shown next to the status in the SCM. Left unset when empty.
+	Url   string
+	Phase promoterv1alpha1.CommitStatusPhase
+	// Name overrides the CommitStatus spec.name (the SCM status context). Defaults to Key + "/" + Branch.
+	Name       string
+	FieldOwner string
 }
 
 // UpsertCommitStatus creates or updates a CommitStatus resource using Server-Side Apply.
@@ -44,9 +48,13 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 	kind := commitStatusGateKind(p.Parent)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	name := p.Name
+	if name == "" {
+		name = p.Key + "/" + p.Branch
+	}
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
-		WithName(p.Key + "/" + p.Branch).
+		WithName(name).
 		WithDescription(p.Description).
 		WithPhase(p.Phase).
 		WithSha(p.Sha)
@@ -54,6 +62,9 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 		// A non-nil list, including an empty one, is explicit. Omitting the call leaves the field unset
 		// so the API server applies the [scm] default.
 		commitStatusSpec = commitStatusSpec.WithPublishTo(*p.PublishTo)
+	}
+	if p.Url != "" {
+		commitStatusSpec = commitStatusSpec.WithUrl(p.Url)
 	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, p.Parent.GetNamespace()).
 		WithLabels(CommitStatusStandardLabels(p.Parent, p.Branch, p.Key)).
