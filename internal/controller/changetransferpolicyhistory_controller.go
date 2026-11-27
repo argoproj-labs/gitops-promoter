@@ -685,6 +685,8 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]
 				keys = append(keys, csKey)
 			}
 		}
+		// Map iteration order is random; sort so history entries are stable across rebuilds.
+		slices.Sort(keys)
 		return keys
 	}
 

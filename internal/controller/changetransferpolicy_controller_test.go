@@ -4593,6 +4593,27 @@ var _ = Describe("commit status description trailers", func() {
 		Expect(proposedKeys).To(ConsistOf("no-deployments-allowed"))
 	})
 
+	It("returns commit status keys in sorted order so rebuilt history is stable", func() {
+		// Go randomizes map iteration order, so with many keys an unsorted result would differ
+		// between calls (and between history rebuilds).
+		const numKeys = 20
+		trailers := map[string][]string{}
+		want := make([]string, 0, numKeys)
+		for i := range numKeys {
+			key := fmt.Sprintf("key-%02d", i)
+			want = append(want, key)
+			trailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"] = []string{"success"}
+			trailers[constants.TrailerCommitStatusActivePrefix+key+"-url"] = []string{"https://example.com/" + key}
+			trailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"] = []string{"pending"}
+		}
+
+		for range 20 {
+			activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, trailers)
+			Expect(activeKeys).To(Equal(want))
+			Expect(proposedKeys).To(Equal(want))
+		}
+	})
+
 	It("populates history commit status descriptions from JSON-encoded trailers", func() {
 		description := "Waiting for hydrator\nsecond line"
 		encoded, err := encodeTrailerDescription(description)
