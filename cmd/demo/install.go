@@ -30,6 +30,9 @@ var appYAML []byte
 //go:embed config/requeue-duration.yaml
 var controllerConfigYAML []byte
 
+//go:embed config/argocd-extension.yaml
+var argoCDExtensionPatchYAML []byte
+
 //go:embed config/argocd_version
 var argocd_version string
 
@@ -170,15 +173,17 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 
 // PatchArgoCD patches the ArgoCD server deployment
 func (i *Installer) PatchArgoCD(ctx context.Context) error {
-	patchFile := "cmd/demo/config/argocd-extension.yaml"
-	args := []string{"patch", "deployment", "argocd-server", "-n", "argocd", "--patch-file", patchFile}
-
-	if err := i.runKubectl(ctx, args...); err != nil {
+	if err := i.runKubectl(ctx, argoCDPatchArgs()...); err != nil {
 		return fmt.Errorf("kubectl patch failed: %w", err)
 	}
 
 	color.Green("Argo CD patched successfully ✓")
 	return nil
+}
+
+// argoCDPatchArgs returns the kubectl arguments that patch the Argo CD server deployment.
+func argoCDPatchArgs() []string {
+	return []string{"patch", "deployment", "argocd-server", "-n", "argocd", "--patch", string(argoCDExtensionPatchYAML)}
 }
 
 // PatchControllerConfiguration patches the ControllerConfiguration resource in the cluster.
