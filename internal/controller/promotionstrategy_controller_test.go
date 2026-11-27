@@ -6636,6 +6636,32 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
+
+		It("should initialize enqueue state and start the cleanup timer once under concurrent calls", func() {
+			reconciler, _, _ := makeReconciler()
+
+			// Concurrent PromotionStrategy reconciles all hit a fresh reconciler at once. Run
+			// with -race to also catch unsynchronized access to the lazily initialized state.
+			const callers = 32
+			start := make(chan struct{})
+			var wg sync.WaitGroup
+			for i := range callers {
+				wg.Add(1)
+				go func() {
+					defer GinkgoRecover()
+					defer wg.Done()
+					<-start
+					reconciler.enqueueOutOfSyncCTPs(ctx, promotionStrategyUID, []*promoterv1alpha1.ChangeTransferPolicy{
+						makeLaggingCTP(fmt.Sprintf("concurrent-ctp-%d", i)),
+						makeTargetCTP(),
+					})
+				}()
+			}
+			close(start)
+			wg.Wait()
+
+			Expect(reconciler.cleanupTimerStarts.Load()).To(Equal(int32(1)), "the self-rescheduling cleanup timer must be started exactly once")
+		})
 	})
 })
 
