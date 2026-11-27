@@ -40,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -1312,6 +1313,68 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					// This MUST be "success" - proves we read from spec, not status
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			// The CommitStatus here cannot be published (its GitRepository does not exist), which stands in
+			// for an SCM outage. The policy must still see each phase change through its CommitStatus watch,
+			// with no manual enqueue, well before its periodic requeue (shipped default 5m) could fire.
+			It("sees CommitStatus phase changes in both directions without an SCM publish", func() {
+				By("Adding a pending commit and waiting for the policy to record the active hydrated SHA")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				var activeSha string
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					activeSha = strings.TrimSpace(sha)
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(activeSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				// Opening the promotion pull request wakes the policy a few times through its PullRequest
+				// watch. Wait for that to settle, so the phase changes below can only reach the policy
+				// through the CommitStatus watch.
+				By("Waiting for the policy to stop reconciling")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					rv := changeTransferPolicy.ResourceVersion
+					g.Consistently(func(g Gomega) {
+						current := &promoterv1alpha1.ChangeTransferPolicy{}
+						g.Expect(k8sClient.Get(ctx, typeNamespacedName, current)).To(Succeed())
+						g.Expect(current.ResourceVersion).To(Equal(rv))
+					}, 3*time.Second, 250*time.Millisecond).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				expectActivePhase := func(phase promoterv1alpha1.CommitStatusPhase) {
+					GinkgoHelper()
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal(string(phase)))
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+				setPhase := func(phase promoterv1alpha1.CommitStatusPhase) {
+					GinkgoHelper()
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(commitStatus), commitStatus)).To(Succeed())
+						commitStatus.Spec.Phase = phase
+						g.Expect(k8sClient.Update(ctx, commitStatus)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+
+				By("Creating the CommitStatus as pending")
+				commitStatus.Spec.Sha = activeSha
+				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+				expectActivePhase(promoterv1alpha1.CommitPhasePending)
+
+				By("Moving the CommitStatus to success")
+				setPhase(promoterv1alpha1.CommitPhaseSuccess)
+				expectActivePhase(promoterv1alpha1.CommitPhaseSuccess)
+
+				By("Moving the CommitStatus away from success")
+				setPhase(promoterv1alpha1.CommitPhaseFailure)
+				expectActivePhase(promoterv1alpha1.CommitPhaseFailure)
 			})
 		})
 
@@ -3088,6 +3151,129 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+})
+
+var _ = Describe("commitStatusPhaseChangedPredicate", func() {
+	p := commitStatusPhaseChangedPredicate()
+
+	commitStatus := func(sha string, phase promoterv1alpha1.CommitStatusPhase, key, description string) *promoterv1alpha1.CommitStatus {
+		return &promoterv1alpha1.CommitStatus{
+			Labels: map[string]string{promoterv1alpha1.CommitStatusLabel: key},
+			Spec: promoterv1alpha1.CommitStatusSpec{
+				Sha:         sha,
+				Phase:       phase,
+				Description: description,
+			},
+		}
+	}
+
+	It("passes creates except those from the informer's initial list", func() {
+		cs := commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", "")
+		Expect(p.Create(event.CreateEvent{Object: cs})).To(BeTrue())
+		Expect(p.Create(event.CreateEvent{Object: cs, IsInInitialList: true})).To(BeFalse())
+	})
+
+	DescribeTable("filters updates to the changes a ChangeTransferPolicy acts on",
+		func(oldCS, newCS *promoterv1alpha1.CommitStatus, want bool) {
+			Expect(p.Update(event.UpdateEvent{ObjectOld: oldCS, ObjectNew: newCS})).To(Equal(want))
+		},
+		Entry("pending to success",
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""), true),
+		Entry("success to failure",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseFailure, "k", ""), true),
+		Entry("success to pending",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", ""), true),
+		Entry("pending to failure, which does not cross the success boundary",
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseFailure, "k", ""), false),
+		Entry("failure to pending, which does not cross the success boundary",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseFailure, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", ""), false),
+		Entry("failure to success",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseFailure, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""), true),
+		Entry("same phase on a new SHA",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""),
+			commitStatus("def", promoterv1alpha1.CommitPhaseSuccess, "k", ""), true),
+		Entry("commit-status key label change",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "other", ""), true),
+		Entry("description-only change",
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", "1/3 healthy"),
+			commitStatus("abc", promoterv1alpha1.CommitPhasePending, "k", "2/3 healthy"), false),
+		Entry("no change (for example a status-only write)",
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""),
+			commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", ""), false),
+	)
+
+	It("passes deletes and drops generic events", func() {
+		cs := commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", "")
+		Expect(p.Delete(event.DeleteEvent{Object: cs})).To(BeTrue())
+		Expect(p.Generic(event.GenericEvent{Object: cs})).To(BeFalse())
+	})
+})
+
+var _ = Describe("changeTransferPoliciesForShas", func() {
+	var (
+		ctx context.Context
+		c   ctrlclient.Client
+	)
+
+	ctp := func(namespace, name, activeSha, proposedSha string) *promoterv1alpha1.ChangeTransferPolicy {
+		policy := &promoterv1alpha1.ChangeTransferPolicy{}
+		policy.Namespace = namespace
+		policy.Name = name
+		policy.Status.Active.Hydrated.Sha = activeSha
+		policy.Status.Proposed.Hydrated.Sha = proposedSha
+		return policy
+	}
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		scheme := runtime.NewScheme()
+		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+		c = ctrlfake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ctpActiveHydratedShaIndex, func(o ctrlclient.Object) []string {
+				return []string{o.(*promoterv1alpha1.ChangeTransferPolicy).Status.Active.Hydrated.Sha} //nolint:forcetypeassert // test index
+			}).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ctpProposedHydratedShaIndex, func(o ctrlclient.Object) []string {
+				return []string{o.(*promoterv1alpha1.ChangeTransferPolicy).Status.Proposed.Hydrated.Sha} //nolint:forcetypeassert // test index
+			}).
+			WithObjects(
+				ctp("ns1", "active-abc", "abc", "zzz"),
+				ctp("ns2", "proposed-abc", "yyy", "abc"),
+				ctp("ns1", "both-abc", "abc", "abc"),
+				ctp("ns1", "on-def", "def", "xxx"),
+				ctp("ns1", "unstarted", "", ""),
+			).Build()
+	})
+
+	It("returns each policy whose active or proposed SHA matches, once, across namespaces", func() {
+		Expect(changeTransferPoliciesForShas(ctx, c, "abc")).To(ConsistOf(
+			types.NamespacedName{Namespace: "ns1", Name: "active-abc"},
+			types.NamespacedName{Namespace: "ns2", Name: "proposed-abc"},
+			types.NamespacedName{Namespace: "ns1", Name: "both-abc"},
+		))
+	})
+
+	It("covers both the previous and the current SHA of a moved CommitStatus", func() {
+		Expect(changeTransferPoliciesForShas(ctx, c, "abc", "def")).To(ConsistOf(
+			types.NamespacedName{Namespace: "ns1", Name: "active-abc"},
+			types.NamespacedName{Namespace: "ns2", Name: "proposed-abc"},
+			types.NamespacedName{Namespace: "ns1", Name: "both-abc"},
+			types.NamespacedName{Namespace: "ns1", Name: "on-def"},
+		))
+	})
+
+	It("never looks up an empty SHA", func() {
+		Expect(changeTransferPoliciesForShas(ctx, c, "")).To(BeEmpty())
+		Expect(changeTransferPoliciesForShas(ctx, c, "", "def")).To(ConsistOf(
+			types.NamespacedName{Namespace: "ns1", Name: "on-def"},
+		))
 	})
 })
 

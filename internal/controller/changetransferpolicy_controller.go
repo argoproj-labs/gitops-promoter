@@ -39,8 +39,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -339,8 +341,9 @@ func removeKnownTrailers(input string) string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+	// The hydrated-SHA indexes map a CommitStatus (by its SHA) to the policies that read it, for the
+	// CommitStatus watch below. The webhook server uses them too.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ctpProposedHydratedShaIndex, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
@@ -348,8 +351,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
 	}
 
-	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ctpActiveHydratedShaIndex, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
@@ -396,15 +398,13 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
-			builder.WithPredicates(predicate.Or(
-				predicate.GenerationChangedPredicate{},
-				// Webhooks trigger reconciliations by bumping an annotation.
-				// TODO: use a custom predicate to only trigger on the specific annotation change.
-				predicate.AnnotationChangedPredicate{},
-			))).
-		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
-		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
-		// here avoids duplicate reconciliations.
+			builder.WithPredicates(changeTransferPolicyPredicate())).
+		// CommitStatuses are not owned by ChangeTransferPolicies; they are matched by SHA. Waking on the
+		// CommitStatus spec (which this controller reads) rather than on its SCM publish means a gate's
+		// result reaches the policy even while the SCM is slow or unavailable.
+		Watches(&promoterv1alpha1.CommitStatus{},
+			enqueueChangeTransferPoliciesForCommitStatus(mgr.GetClient()),
+			builder.WithPredicates(commitStatusPhaseChangedPredicate())).
 		Owns(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestUpdateEnqueuesChangeTransferPolicyPredicate())).
 		// Only deletes are interesting here: the owned ChangeTransferPolicyHistory is re-applied on
 		// every reconcile, so recreating it after an out-of-band delete would otherwise wait for the
@@ -2155,6 +2155,16 @@ func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) str
 	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
 }
 
+// changeTransferPolicyPredicate filters the events on ChangeTransferPolicies themselves that start a reconcile.
+func changeTransferPolicyPredicate() predicate.Predicate {
+	return predicate.Or(
+		predicate.GenerationChangedPredicate{},
+		// Webhooks trigger reconciliations by bumping an annotation.
+		// TODO: use a custom predicate to only trigger on the specific annotation change.
+		predicate.AnnotationChangedPredicate{},
+	)
+}
+
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
 // PullRequests. Without it, bare Owns(PullRequest) re-enqueues CTP on every PR status write and can
 // drive a CTP→PR→CTP feedback loop (PR SCM sync → status churn → CTP SSA → PR generation bump → repeat).
@@ -2217,6 +2227,126 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			return false
 		},
 	}
+}
+
+// Field indexes on ChangeTransferPolicy used to find the policies that read a CommitStatus.
+const (
+	ctpProposedHydratedShaIndex = ".status.proposed.hydrated.sha"
+	ctpActiveHydratedShaIndex   = ".status.active.hydrated.sha"
+)
+
+// commitStatusPhaseChangedPredicate passes the CommitStatus events that can change what a
+// ChangeTransferPolicy decides. Every decision that reads a commit status phase asks only whether it
+// is success: the policy merges when all of its proposed statuses are success, and
+// DependentsSuccessfulCommitStatus treats an upstream environment as healthy when all of its active
+// statuses are success. So an update wakes the policy only when it moves the CommitStatus across the
+// success boundary, moves it to another SHA, or changes the commit-status key label the policy
+// selects by. Creates and deletes always pass: a second CommitStatus for the same key and SHA makes
+// the policy treat that key as pending, whatever its phase.
+//
+// Dropped updates leave copies in the policy's status behind until its next reconcile: a change
+// between pending and failure, and description and URL edits. Those copies are informational. A
+// PromotionBlocked event that names the failure phase is emitted on that next reconcile.
+//
+// Creates from the informer's initial list are dropped. Every ChangeTransferPolicy is reconciled
+// on controller start through its own informer and reads current CommitStatus state, so waking it
+// again for each existing CommitStatus would only repeat its git work.
+func commitStatusPhaseChangedPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return !e.IsInInitialList
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCS, okOld := e.ObjectOld.(*promoterv1alpha1.CommitStatus)
+			newCS, okNew := e.ObjectNew.(*promoterv1alpha1.CommitStatus)
+			if !okOld || !okNew {
+				return false
+			}
+			return (oldCS.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess) != (newCS.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess) ||
+				oldCS.Spec.Sha != newCS.Spec.Sha ||
+				oldCS.Labels[promoterv1alpha1.CommitStatusLabel] != newCS.Labels[promoterv1alpha1.CommitStatusLabel]
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
+// enqueueChangeTransferPoliciesForCommitStatus maps a CommitStatus event to every
+// ChangeTransferPolicy whose active or proposed hydrated SHA is the CommitStatus's SHA. On an
+// update that moves the CommitStatus to another SHA, policies on the previous SHA are enqueued too:
+// for them the status has disappeared, which reads as pending.
+//
+// Policies are matched across namespaces, the same way setCommitStatusState lists CommitStatuses.
+//
+// Accepted risk: policies are found through the hydrated SHAs they have recorded, and a policy records
+// a new SHA only when the reconcile that discovers it ends. A CommitStatus change for that SHA made
+// during that reconcile maps to no policy, so the policy keeps the phase it read until its next
+// reconcile (at most one requeue interval). This needs a CommitStatus that already reports on a SHA
+// the policy has not recorded, which only gates that resolve SHAs themselves do (ArgoCDCommitStatus
+// reports on the branch head; external writers), and a SHA change with no pull request activity,
+// which would otherwise wake the policy again. The window is the length of one reconcile.
+func enqueueChangeTransferPoliciesForCommitStatus(c client.Client) handler.Funcs {
+	enqueue := func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request], objs ...client.Object) {
+		shas := make([]string, 0, len(objs))
+		for _, obj := range objs {
+			cs, ok := obj.(*promoterv1alpha1.CommitStatus)
+			if !ok {
+				continue
+			}
+			shas = append(shas, cs.Spec.Sha)
+		}
+		for _, key := range changeTransferPoliciesForShas(ctx, c, shas...) {
+			q.Add(reconcile.Request{NamespacedName: key})
+		}
+	}
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.Object)
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.ObjectOld, e.ObjectNew)
+		},
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.Object)
+		},
+	}
+}
+
+// changeTransferPoliciesForShas returns the distinct ChangeTransferPolicies whose active or proposed
+// hydrated SHA is one of shas.
+//
+// An empty SHA is never looked up: the hydrated-SHA indexes file every policy that has not recorded a
+// hydrated SHA yet (new, or failing early) under "", across all namespaces, and enqueueing all of them
+// for each new CommitStatus would cost each one a reconcile with git network calls.
+func changeTransferPoliciesForShas(ctx context.Context, c client.Client, shas ...string) []types.NamespacedName {
+	logger := log.FromContext(ctx)
+
+	seen := make(map[types.NamespacedName]struct{})
+	keys := make([]types.NamespacedName, 0, 2)
+	for _, sha := range shas {
+		if sha == "" {
+			continue
+		}
+		for _, field := range []string{ctpActiveHydratedShaIndex, ctpProposedHydratedShaIndex} {
+			var ctps promoterv1alpha1.ChangeTransferPolicyList
+			if err := c.List(ctx, &ctps,
+				client.MatchingFields{field: sha},
+				client.UnsafeDisableDeepCopy,
+			); err != nil {
+				logger.Error(err, "failed to list ChangeTransferPolicies for CommitStatus SHA", "field", field, "sha", sha)
+				continue
+			}
+			for i := range ctps.Items {
+				key := client.ObjectKeyFromObject(&ctps.Items[i])
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				keys = append(keys, key)
+			}
+		}
+	}
+	return keys
 }
 
 // readyConditionStatus returns the status of pr's Ready condition, or "" when it has none.

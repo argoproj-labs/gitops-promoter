@@ -405,67 +405,22 @@ Built-in gate managers are included in the aggregated `PromotionStrategyDetails`
 
 ## Triggering Reconciliation of ChangeTransferPolicies
 
-When your commit status controller detects important state transitions (e.g., a gate transitioning from pending to success), you may want to trigger immediate reconciliation of the affected ChangeTransferPolicy to minimize promotion latency.
+A commit status controller does not need to wake ChangeTransferPolicies. The ChangeTransferPolicy controller
+watches `CommitStatus` resources and reconciles every policy whose active or proposed hydrated SHA matches the
+CommitStatus's `spec.sha` when:
 
-### The Pattern
+- a CommitStatus is created (except during the controller's startup resync),
+- its `spec.phase` moves into or out of `success` (a change between `pending` and `failure` does not change
+  any promotion decision, so it does not wake a policy),
+- its `spec.sha` changes (policies on both the previous and the new SHA are reconciled),
+- its `promoter.argoproj.io/commit-status` label changes, or
+- it is deleted.
 
-Use the `EnqueueCTP` function to trigger reconciliation of the **specific ChangeTransferPolicy** for the environment that changed. This approach directly enqueues a reconcile request without modifying the CTP object.
+Changes to `spec.description` or `spec.url` alone do not wake a policy.
 
-#### Controller Setup
-
-Add the `EnqueueCTP` field to your reconciler struct:
-
-```go
-type MyCommitStatusReconciler struct {
-    client.Client
-    Scheme      *runtime.Scheme
-    Recorder    record.EventRecorder
-    SettingsMgr *settings.Manager
-
-    // EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
-    EnqueueCTP CTPEnqueueFunc
-}
-```
-
-#### Triggering Reconciliation
-
-Create a method to trigger CTP reconciliation when state transitions:
-
-```go
-func (r *MyCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-    logger := log.FromContext(ctx)
-
-    for _, envBranch := range transitionedEnvironments {
-        // Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-        ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-        logger.Info("Triggering ChangeTransferPolicy reconciliation",
-            "changeTransferPolicy", ctpName,
-            "branch", envBranch)
-
-        // Use the enqueue function to trigger reconciliation
-        if r.EnqueueCTP != nil {
-            r.EnqueueCTP(ps.Namespace, ctpName)
-        }
-    }
-}
-```
-
-#### Wiring in main.go
-
-Pass the enqueue function when creating your controller:
-
-```go
-if err := (&controller.MyCommitStatusReconciler{
-    Client:      localManager.GetClient(),
-    Scheme:      localManager.GetScheme(),
-    Recorder:    localManager.GetEventRecorderFor("MyCommitStatus"),
-    SettingsMgr: settingsMgr,
-    EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-    panic(fmt.Errorf("unable to create MyCommitStatus controller: %w", err))
-}
-```
+Policies read `spec.phase`, not the published `status.phase`, and are woken as soon as the spec change reaches
+the cache. A gate's result therefore reaches the policy even while the SCM is slow or unavailable. Writing the
+CommitStatus (for example with `utils.UpsertCommitStatus`) is all a controller has to do.
 
 ## Standard Events
 

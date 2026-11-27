@@ -29,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -468,18 +467,6 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 	return scmSecret, scmProvider, gitRepo, commitStatus
 }
 
-var _ = DescribeTable("commitStatusShasToLookup",
-	func(oldSha, newSha string, expected []string) {
-		Expect(commitStatusShasToLookup(oldSha, newSha)).To(Equal(expected))
-	},
-	// A CommitStatus reconciled for the first time has no previous SHA. Looking up "" would match every
-	// ChangeTransferPolicy whose hydrated SHAs are not computed yet, which on a fresh install is all of them.
-	Entry("skips the empty previous sha of a first reconcile", "", "abc", []string{"abc"}),
-	Entry("looks up both shas when the sha moved", "abc", "def", []string{"abc", "def"}),
-	Entry("looks up an unchanged sha once", "abc", "abc", []string{"abc"}),
-	Entry("looks up nothing when both are empty", "", "", []string{}),
-)
-
 var _ = Describe("commitStatusAlreadyPublished", func() {
 	published := func() *promoterv1alpha1.CommitStatus {
 		cs := &promoterv1alpha1.CommitStatus{}
@@ -521,22 +508,5 @@ var _ = Describe("commitStatusAlreadyPublished", func() {
 		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
 		cs.Status.Conditions = nil
 		Expect(commitStatusAlreadyPublished(cs)).To(BeFalse())
-	})
-})
-
-var _ = Describe("publishedByThisInstance", func() {
-	It("is true only when status.instanceID matches the running instance", func() {
-		restore := settings.SetControllerInstanceIDForTest(nil)
-		defer restore()
-		cs := &promoterv1alpha1.CommitStatus{}
-		Expect(publishedByThisInstance(cs)).To(BeTrue())
-		cs.Status.InstanceID = new("wave-0")
-		Expect(publishedByThisInstance(cs)).To(BeFalse(), "status stamped by another install")
-
-		restoreWave := settings.SetControllerInstanceIDForTest(new("wave-0"))
-		defer restoreWave()
-		Expect(publishedByThisInstance(cs)).To(BeTrue())
-		cs.Status.InstanceID = nil
-		Expect(publishedByThisInstance(cs)).To(BeFalse(), "status stamped by the default install")
 	})
 })

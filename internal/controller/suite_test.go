@@ -251,7 +251,6 @@ var _ = SynchronizedBeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -260,7 +259,6 @@ var _ = SynchronizedBeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -327,7 +325,6 @@ var _ = SynchronizedBeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -336,7 +333,6 @@ var _ = SynchronizedBeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -345,7 +341,6 @@ var _ = SynchronizedBeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ScheduledCommitStatus"),
 		SettingsMgr: settingsMgr,
-		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
