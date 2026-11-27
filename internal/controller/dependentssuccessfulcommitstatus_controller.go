@@ -504,7 +504,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
 	description := utils.GateEnvironmentCommitStatusDescription(branch, phase, pendingReason)
 
-	renderedURL, err := renderGateURL(dcs.Spec.URL, DAGURLTemplateData{
+	renderedURL, err := utils.RenderGateURL(dcs.Spec.URL, DAGURLTemplateData{
 		Environment:                      branch,
 		DependentsSuccessfulCommitStatus: *dcs,
 		PromotionStrategy:                ps,
@@ -512,7 +512,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 		DependsOnQuery:                   buildDependsOnQuery(dependsOn),
 	})
 	if err != nil {
-		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, err
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL for environment %q: %w", branch, err)
 	}
 	if renderedURL != "" {
 		logf.FromContext(ctx).V(4).Info("Rendered URL template",

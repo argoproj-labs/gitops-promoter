@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -173,4 +174,24 @@ func GateEnvironmentCommitStatusDescription(branch string, phase promoterv1alpha
 		return branch + " - waiting for upstream environments"
 	}
 	return branch + " - all dependent environments promoted and successful"
+}
+
+// RenderGateURL renders a gate's spec.url template with data and checks that the result is an
+// absolute http or https URL. It returns "" when no template is configured.
+func RenderGateURL(cfg promoterv1alpha1.URLConfig, data any) (string, error) {
+	if cfg.Template == "" {
+		return "", nil
+	}
+	rendered, err := RenderStringTemplate(cfg.Template, data, cfg.Options...)
+	if err != nil {
+		return "", fmt.Errorf("failed to render URL template: %w", err)
+	}
+	parsed, err := url.Parse(rendered)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("URL scheme is not http or https: %s", parsed.Scheme)
+	}
+	return rendered, nil
 }

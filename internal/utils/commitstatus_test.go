@@ -254,3 +254,29 @@ var _ = Describe("UpsertCommitStatus", func() {
 		Expect(cs.Spec.Url).To(Equal("https://example.com/details"))
 	})
 })
+
+var _ = Describe("RenderGateURL", func() {
+	data := struct{ Environment string }{Environment: "env/dev"}
+
+	DescribeTable("renders and validates a gate's URL template",
+		func(cfg promoterv1alpha1.URLConfig, want string, wantErr string) {
+			got, err := utils.RenderGateURL(cfg, data)
+			if wantErr != "" {
+				Expect(err).To(MatchError(ContainSubstring(wantErr)))
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+		},
+		Entry("returns empty when no template is configured",
+			promoterv1alpha1.URLConfig{}, "", ""),
+		Entry("renders an https URL",
+			promoterv1alpha1.URLConfig{Template: "https://example.com/{{ .Environment }}"}, "https://example.com/env/dev", ""),
+		Entry("rejects a non-http scheme",
+			promoterv1alpha1.URLConfig{Template: "javascript:alert(1)"}, "", "URL scheme is not http or https"),
+		Entry("rejects a relative URL",
+			promoterv1alpha1.URLConfig{Template: "/{{ .Environment }}"}, "", "URL scheme is not http or https"),
+		Entry("surfaces a template error",
+			promoterv1alpha1.URLConfig{Template: "https://example.com/{{ .Missing }}"}, "", "failed to render URL template"),
+	)
+})

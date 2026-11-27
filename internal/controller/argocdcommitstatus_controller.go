@@ -701,12 +701,12 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
 
-	renderedURL, err := renderGateURL(argoCDCommitStatus.Spec.URL, URLTemplateData{
+	renderedURL, err := utils.RenderGateURL(argoCDCommitStatus.Spec.URL, URLTemplateData{
 		Environment:        targetBranch,
 		ArgoCDCommitStatus: argoCDCommitStatus,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to render URL for environment %q: %w", targetBranch, err)
 	}
 	if renderedURL != "" {
 		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
