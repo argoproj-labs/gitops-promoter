@@ -1377,3 +1377,16 @@ var _ = Describe("Application watch handler", func() {
 		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 	})
 })
+
+var _ = Describe("headShaForBranch", func() {
+	It("returns the resolved SHA for a branch", func() {
+		sha, err := headShaForBranch(map[string]string{"env/dev": "abc123"}, "env/dev")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sha).To(Equal("abc123"))
+	})
+
+	It("returns a readable error when the branch has no resolved head SHA", func() {
+		_, err := headShaForBranch(map[string]string{"env/dev": "abc123"}, "env/prod")
+		Expect(err).To(MatchError(`failed to resolve target branch "env/prod": no head SHA was resolved for it`))
+	})
+})

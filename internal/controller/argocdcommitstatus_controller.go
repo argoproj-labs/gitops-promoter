@@ -206,9 +206,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, len(groupedArgoCDApps))
 	var i int
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		resolvedSha, ok := resolvedShas[targetBranch]
-		if !ok {
-			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
+		resolvedSha, err := headShaForBranch(resolvedShas, targetBranch)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
 		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
@@ -291,6 +291,15 @@ func getRequeueTimeAndPhase(appsInEnvironment []*argocd.Application, resolvedPha
 	}
 
 	return resolvedPhase, maxTimeUntilThreshold
+}
+
+// headShaForBranch returns the resolved head SHA for targetBranch from the map built by getHeadShasForBranches.
+func headShaForBranch(resolvedShas map[string]string, targetBranch string) (string, error) {
+	resolvedSha, ok := resolvedShas[targetBranch]
+	if !ok {
+		return "", fmt.Errorf("failed to resolve target branch %q: no head SHA was resolved for it", targetBranch)
+	}
+	return resolvedSha, nil
 }
 
 // getHeadShasForBranches returns a map. The key is a branch name. The value is the resolved head sha for that branch.
