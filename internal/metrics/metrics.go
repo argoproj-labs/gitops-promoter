@@ -139,7 +139,7 @@ var (
 	gitOperationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "git_operations_total",
-			Help: "A counter of git clone operations.",
+			Help: "A counter of git operations.",
 		},
 		gitOperationLabels,
 	)
@@ -147,7 +147,7 @@ var (
 	gitOperationsDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "git_operations_duration_seconds",
-			Help:    "A histogram of the duration of git clone operations.",
+			Help:    "A histogram of the duration of git operations.",
 			Buckets: prometheus.DefBuckets,
 		},
 		gitOperationLabels,

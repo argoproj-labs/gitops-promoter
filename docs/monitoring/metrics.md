@@ -31,7 +31,7 @@ Changing the setting resets the metrics whose labels change.
 
 ## git_operations_total
 
-A counter of git clone operations.
+A counter of git operations.
 
 Labels:
 
@@ -40,12 +40,12 @@ Labels:
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. A namespaced provider is in the same namespace as the GitRepository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` (namespaced) or `ClusterScmProvider` (cluster-scoped).
-* `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
+* `operation`: The type of git operation (clone, fetch, fetch-notes, push-notes, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
 ## git_operations_duration_seconds
 
-A histogram of the duration of git clone operations.
+A histogram of the duration of git operations.
 
 Labels:
 
@@ -54,7 +54,7 @@ Labels:
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_namespace`: Namespace of that SCM provider. Empty when `scm_provider_kind` is `ClusterScmProvider`. A namespaced provider is in the same namespace as the GitRepository.
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
-* `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
+* `operation`: The type of git operation (clone, fetch, fetch-notes, push-notes, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
 ## scm_calls_total
