@@ -1313,6 +1313,68 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			// The CommitStatus here cannot be published (its GitRepository does not exist), which stands in
+			// for an SCM outage. The policy must still see each phase change through its CommitStatus watch,
+			// with no manual enqueue, well before its periodic requeue (shipped default 5m) could fire.
+			It("sees CommitStatus phase changes in both directions without an SCM publish", func() {
+				By("Adding a pending commit and waiting for the policy to record the active hydrated SHA")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				var activeSha string
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					activeSha = strings.TrimSpace(sha)
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(activeSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				// Opening the promotion pull request wakes the policy a few times through its PullRequest
+				// watch. Wait for that to settle, so the phase changes below can only reach the policy
+				// through the CommitStatus watch.
+				By("Waiting for the policy to stop reconciling")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					rv := changeTransferPolicy.ResourceVersion
+					g.Consistently(func(g Gomega) {
+						current := &promoterv1alpha1.ChangeTransferPolicy{}
+						g.Expect(k8sClient.Get(ctx, typeNamespacedName, current)).To(Succeed())
+						g.Expect(current.ResourceVersion).To(Equal(rv))
+					}, 3*time.Second, 250*time.Millisecond).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				expectActivePhase := func(phase promoterv1alpha1.CommitStatusPhase) {
+					GinkgoHelper()
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal(string(phase)))
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+				setPhase := func(phase promoterv1alpha1.CommitStatusPhase) {
+					GinkgoHelper()
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(commitStatus), commitStatus)).To(Succeed())
+						commitStatus.Spec.Phase = phase
+						g.Expect(k8sClient.Update(ctx, commitStatus)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+
+				By("Creating the CommitStatus as pending")
+				commitStatus.Spec.Sha = activeSha
+				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+				expectActivePhase(promoterv1alpha1.CommitPhasePending)
+
+				By("Moving the CommitStatus to success")
+				setPhase(promoterv1alpha1.CommitPhaseSuccess)
+				expectActivePhase(promoterv1alpha1.CommitPhaseSuccess)
+
+				By("Moving the CommitStatus away from success")
+				setPhase(promoterv1alpha1.CommitPhaseFailure)
+				expectActivePhase(promoterv1alpha1.CommitPhaseFailure)
+			})
 		})
 
 		Context("When handling PR lifecycle and finalizers", func() {

@@ -339,8 +339,9 @@ func removeKnownTrailers(input string) string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+	// The hydrated-SHA indexes map a CommitStatus (by its SHA) to the policies that read it, for the
+	// CommitStatus watch below. The webhook server uses them too.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ctpProposedHydratedShaIndex, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
@@ -348,8 +349,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
 	}
 
-	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ctpActiveHydratedShaIndex, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
@@ -402,9 +402,12 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 				// TODO: use a custom predicate to only trigger on the specific annotation change.
 				predicate.AnnotationChangedPredicate{},
 			))).
-		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
-		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
-		// here avoids duplicate reconciliations.
+		// CommitStatuses are not owned by ChangeTransferPolicies; they are matched by SHA. Waking on the
+		// CommitStatus spec (which this controller reads) rather than on its SCM publish means a gate's
+		// result reaches the policy even while the SCM is slow or unavailable.
+		Watches(&promoterv1alpha1.CommitStatus{},
+			enqueueChangeTransferPoliciesForCommitStatus(mgr.GetClient()),
+			builder.WithPredicates(commitStatusPhaseChangedPredicate())).
 		Owns(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestUpdateEnqueuesChangeTransferPolicyPredicate())).
 		// Only deletes are interesting here: the owned ChangeTransferPolicyHistory is re-applied on
 		// every reconcile, so recreating it after an out-of-band delete would otherwise wait for the
