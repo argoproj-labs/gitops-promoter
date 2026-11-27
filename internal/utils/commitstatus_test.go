@@ -192,3 +192,91 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs", "unlabeled-cs"))
 	})
 })
+
+var _ = Describe("UpsertCommitStatus", func() {
+	var (
+		ctx    context.Context
+		cl     client.Client
+		parent *promoterv1alpha1.TimedCommitStatus
+		params utils.UpsertCommitStatusParams
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		scheme := runtime.NewScheme()
+		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+		cl = fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		parent = &promoterv1alpha1.TimedCommitStatus{
+			Name:      "my-timed",
+			Namespace: "default",
+			UID:       "owner-uid",
+		}
+		params = utils.UpsertCommitStatusParams{
+			Parent:      parent,
+			RepoRefName: "repo",
+			Branch:      "env/dev",
+			Sha:         "abc123",
+			Key:         "timer",
+			Description: "desc",
+			Phase:       promoterv1alpha1.CommitPhasePending,
+			FieldOwner:  "test",
+		}
+	})
+
+	get := func() *promoterv1alpha1.CommitStatus {
+		cs := &promoterv1alpha1.CommitStatus{}
+		name := utils.CommitStatusResourceName(ctx, parent, params.Branch)
+		Expect(cl.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, cs)).To(Succeed())
+		return cs
+	}
+
+	It("defaults spec.name to key/branch and leaves url unset", func() {
+		_, err := utils.UpsertCommitStatus(ctx, cl, params)
+		Expect(err).NotTo(HaveOccurred())
+
+		cs := get()
+		Expect(cs.Spec.Name).To(Equal("timer/env/dev"))
+		Expect(cs.Spec.Url).To(BeEmpty())
+		Expect(cs.Spec.Sha).To(Equal("abc123"))
+		Expect(cs.Spec.Description).To(Equal("desc"))
+		Expect(metav1.IsControlledBy(cs, parent)).To(BeTrue())
+	})
+
+	It("applies the Name override and Url when set", func() {
+		params.Name = "timer"
+		params.Url = "https://example.com/details"
+		_, err := utils.UpsertCommitStatus(ctx, cl, params)
+		Expect(err).NotTo(HaveOccurred())
+
+		cs := get()
+		Expect(cs.Spec.Name).To(Equal("timer"))
+		Expect(cs.Spec.Url).To(Equal("https://example.com/details"))
+	})
+})
+
+var _ = Describe("RenderGateURL", func() {
+	data := struct{ Environment string }{Environment: "env/dev"}
+
+	DescribeTable("renders and validates a gate's URL template",
+		func(cfg promoterv1alpha1.URLConfig, want string, wantErr string) {
+			got, err := utils.RenderGateURL(cfg, data)
+			if wantErr != "" {
+				Expect(err).To(MatchError(ContainSubstring(wantErr)))
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+		},
+		Entry("returns empty when no template is configured",
+			promoterv1alpha1.URLConfig{}, "", ""),
+		Entry("renders an https URL",
+			promoterv1alpha1.URLConfig{Template: "https://example.com/{{ .Environment }}"}, "https://example.com/env/dev", ""),
+		Entry("rejects a non-http scheme",
+			promoterv1alpha1.URLConfig{Template: "javascript:alert(1)"}, "", "URL scheme is not http or https"),
+		Entry("rejects a relative URL",
+			promoterv1alpha1.URLConfig{Template: "/{{ .Environment }}"}, "", "URL scheme is not http or https"),
+		Entry("surfaces a template error",
+			promoterv1alpha1.URLConfig{Template: "https://example.com/{{ .Missing }}"}, "", "failed to render URL template"),
+	)
+})

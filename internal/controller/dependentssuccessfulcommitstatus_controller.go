@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -29,7 +28,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -39,7 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -505,70 +502,25 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 ) (*promoterv1alpha1.CommitStatus, promoterv1alpha1.GateEnvironmentCommitStatus, error) {
 	key := dcs.Spec.Key
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
-
-	kind := reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	labels := utils.CommitStatusStandardLabels(dcs, branch, key)
 	description := utils.GateEnvironmentCommitStatusDescription(branch, phase, pendingReason)
 
-	var renderedURL string
-	if dcs.Spec.URL.Template != "" {
-		data := DAGURLTemplateData{
-			Environment:                      branch,
-			DependentsSuccessfulCommitStatus: *dcs,
-			PromotionStrategy:                ps,
-			DependsOn:                        dependsOn,
-			DependsOnQuery:                   buildDependsOnQuery(dependsOn),
-		}
-		var err error
-		renderedURL, err = utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
-		if err != nil {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL template: %w", err)
-		}
-		parsedURL, err := url.Parse(renderedURL)
-		if err != nil {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to parse URL: %w", err)
-		}
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
-		}
+	renderedURL, err := utils.RenderGateURL(dcs.Spec.URL, DAGURLTemplateData{
+		Environment:                      branch,
+		DependentsSuccessfulCommitStatus: *dcs,
+		PromotionStrategy:                ps,
+		DependsOn:                        dependsOn,
+		DependsOnQuery:                   buildDependsOnQuery(dependsOn),
+	})
+	if err != nil {
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL for environment %q: %w", branch, err)
+	}
+	if renderedURL != "" {
 		logf.FromContext(ctx).V(4).Info("Rendered URL template",
 			"url", renderedURL,
 			"environment", branch,
 			"commitStatus", commitStatusName,
 			"namespace", dcs.Namespace)
 	}
-
-	// Use the stable gate key as the SCM commit status context (spec.Name) so users can
-	// reference a single predictable name in branch protection rules, regardless of which
-	// environment or phase produced the status. The human-readable, per-environment detail
-	// goes in the description instead.
-	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().
-			WithName(ps.Spec.RepositoryReference.Name)).
-		WithSha(reportedSha).
-		WithName(key).
-		WithDescription(description).
-		WithPhase(phase)
-	if dcs.Spec.PublishTo != nil {
-		commitStatusSpec = commitStatusSpec.WithPublishTo(*dcs.Spec.PublishTo)
-	}
-
-	if renderedURL != "" {
-		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
-	}
-
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, dcs.Namespace).
-		WithLabels(labels).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(dcs.Name).
-			WithUID(dcs.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(commitStatusSpec)
 
 	// Read the previously persisted phase from the child CommitStatus (NotFound means this branch
 	// is being gated for the first time) so the phase-change event below stays transition-only.
@@ -580,11 +532,25 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to get existing DAG CommitStatus %q: %w", commitStatusName, err)
 	}
 
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = dcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
+	commitStatus, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+		Parent:      dcs,
+		RepoRefName: ps.Spec.RepositoryReference.Name,
+		Branch:      branch,
+		Sha:         reportedSha,
+		Key:         key,
+		// Use the stable gate key as the SCM commit status context (spec.Name) so users can
+		// reference a single predictable name in branch protection rules, regardless of which
+		// environment or phase produced the status. The human-readable, per-environment detail
+		// goes in the description instead.
+		Name:        key,
+		Description: description,
+		Url:         renderedURL,
+		Phase:       phase,
+		PublishTo:   dcs.Spec.PublishTo,
+		FieldOwner:  constants.DependentsSuccessfulCommitStatusControllerFieldOwner,
+	})
+	if err != nil {
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to upsert DAG CommitStatus: %w", err)
 	}
 
 	emitCommitStatusPhaseChangedEvent(r.Recorder, dcs, key, branch, previousPhase, string(phase))

@@ -21,8 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -54,12 +52,10 @@ import (
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
@@ -703,63 +699,18 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
-	commitStatusName := key + "/" + targetBranch
-
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
-	kind := reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus]().Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Build the spec
-	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(promotionStrategy.Spec.RepositoryReference.Name)).
-		WithSha(sha).
-		WithName(commitStatusName).
-		WithDescription(desc).
-		WithPhase(phase)
-	if argoCDCommitStatus.Spec.PublishTo != nil {
-		commitStatusSpec = commitStatusSpec.WithPublishTo(*argoCDCommitStatus.Spec.PublishTo)
+	renderedURL, err := utils.RenderGateURL(argoCDCommitStatus.Spec.URL, URLTemplateData{
+		Environment:        targetBranch,
+		ArgoCDCommitStatus: argoCDCommitStatus,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to render URL for environment %q: %w", targetBranch, err)
 	}
-
-	// Render URL from template if it exists
-	if argoCDCommitStatus.Spec.URL.Template != "" {
-		data := URLTemplateData{
-			Environment:        targetBranch,
-			ArgoCDCommitStatus: argoCDCommitStatus,
-		}
-
-		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render URL template: %w", err)
-		}
-
-		// Parse the URL to check that it's valid
-		parsedURL, err := url.Parse(renderedURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse URL: %w", err)
-		}
-
-		// Check that the URL scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
-		}
-
-		// Set the URL in the CommitStatus
+	if renderedURL != "" {
 		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
-		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
-
-	// Build the apply configuration
-	commitStatusLabels := utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)
-	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(commitStatusLabels).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(argoCDCommitStatus.Name).
-			WithUID(argoCDCommitStatus.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(commitStatusSpec)
 
 	// Read the previously persisted phase from the child CommitStatus (cache read; NotFound means
 	// the gate is reporting for this branch for the first time) so the phase-change event below
@@ -774,12 +725,20 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		return nil, fmt.Errorf("failed to get existing CommitStatus %q: %w", resourceName, err)
 	}
 
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = resourceName
-	commitStatus.Namespace = argoCDCommitStatus.Namespace
-	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
+	commitStatus, err := utils.UpsertCommitStatus(ctx, r.localClient, utils.UpsertCommitStatusParams{
+		Parent:      &argoCDCommitStatus,
+		RepoRefName: promotionStrategy.Spec.RepositoryReference.Name,
+		Branch:      targetBranch,
+		Sha:         sha,
+		Key:         key,
+		Description: desc,
+		Url:         renderedURL,
+		Phase:       phase,
+		PublishTo:   argoCDCommitStatus.Spec.PublishTo,
+		FieldOwner:  constants.ArgoCDCommitStatusControllerFieldOwner,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", targetBranch, err)
 	}
 
 	emitCommitStatusPhaseChangedEvent(r.Recorder, &argoCDCommitStatus, key, targetBranch, previousPhase, string(phase))

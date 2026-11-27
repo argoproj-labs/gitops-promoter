@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -33,8 +34,12 @@ type UpsertCommitStatusParams struct {
 	Sha         string
 	Key         string
 	Description string
-	Phase       promoterv1alpha1.CommitStatusPhase
-	FieldOwner  string
+	// Url is the optional link shown next to the status in the SCM. Left unset when empty.
+	Url   string
+	Phase promoterv1alpha1.CommitStatusPhase
+	// Name overrides the CommitStatus spec.name (the SCM status context). Defaults to Key + "/" + Branch.
+	Name       string
+	FieldOwner string
 }
 
 // UpsertCommitStatus creates or updates a CommitStatus resource using Server-Side Apply.
@@ -44,9 +49,13 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 	kind := commitStatusGateKind(p.Parent)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	name := p.Name
+	if name == "" {
+		name = p.Key + "/" + p.Branch
+	}
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(p.RepoRefName)).
-		WithName(p.Key + "/" + p.Branch).
+		WithName(name).
 		WithDescription(p.Description).
 		WithPhase(p.Phase).
 		WithSha(p.Sha)
@@ -54,6 +63,9 @@ func UpsertCommitStatus(ctx context.Context, c client.Client, p UpsertCommitStat
 		// A non-nil list, including an empty one, is explicit. Omitting the call leaves the field unset
 		// so the API server applies the [scm] default.
 		commitStatusSpec = commitStatusSpec.WithPublishTo(*p.PublishTo)
+	}
+	if p.Url != "" {
+		commitStatusSpec = commitStatusSpec.WithUrl(p.Url)
 	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, p.Parent.GetNamespace()).
 		WithLabels(CommitStatusStandardLabels(p.Parent, p.Branch, p.Key)).
@@ -162,4 +174,24 @@ func GateEnvironmentCommitStatusDescription(branch string, phase promoterv1alpha
 		return branch + " - waiting for upstream environments"
 	}
 	return branch + " - all dependent environments promoted and successful"
+}
+
+// RenderGateURL renders a gate's spec.url template with data and checks that the result is an
+// absolute http or https URL. It returns "" when no template is configured.
+func RenderGateURL(cfg promoterv1alpha1.URLConfig, data any) (string, error) {
+	if cfg.Template == "" {
+		return "", nil
+	}
+	rendered, err := RenderStringTemplate(cfg.Template, data, cfg.Options...)
+	if err != nil {
+		return "", fmt.Errorf("failed to render URL template: %w", err)
+	}
+	parsed, err := url.Parse(rendered)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("URL scheme is not http or https: %s", parsed.Scheme)
+	}
+	return rendered, nil
 }
