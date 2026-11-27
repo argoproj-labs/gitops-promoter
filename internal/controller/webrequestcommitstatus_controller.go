@@ -174,10 +174,9 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		return fmt.Errorf("WebRequestCommitStatus controller: %w", err)
 	}
 
-	// Initialize the HTTP client
-	r.httpClient = &http.Client{
-		Timeout: 60 * time.Second, // Default timeout, can be overridden per-request
-	}
+	// Initialize the HTTP client. It has no client-level Timeout: each request is bounded by
+	// spec.httpRequest.timeout (see makeHTTPRequest), which a client Timeout would otherwise cap.
+	r.httpClient = &http.Client{}
 
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
@@ -297,6 +296,12 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
+
+	// The spec timeout governs the request. A client-level Timeout shorter than it would silently cap
+	// it (a context deadline cannot extend http.Client.Timeout), so use a copy with the spec timeout.
+	timeoutClient := *clientToUse
+	timeoutClient.Timeout = timeout
+	clientToUse = &timeoutClient
 
 	// Create a context with timeout
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)

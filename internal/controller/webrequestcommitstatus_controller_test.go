@@ -2193,6 +2193,51 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 	})
 })
 
+// makeHTTPRequest must let spec.httpRequest.timeout govern the request, even when it is longer than
+// the shared client's own Timeout. Runs against a plain httptest server, without the envtest cluster.
+var _ = Describe("WebRequestCommitStatus Controller - HTTP request timeout", func() {
+	newWRCS := func(timeout time.Duration) *promoterv1alpha1.WebRequestCommitStatus {
+		return &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "timeout-test", Namespace: "default"},
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					Timeout: metav1.Duration{Duration: timeout},
+				},
+			},
+		}
+	}
+
+	It("uses the spec timeout when it is longer than the shared client's timeout", func() {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(300 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+		}))
+		DeferCleanup(server.Close)
+
+		// The shared client's Timeout stands in for the 60s default; the spec asks for longer.
+		r := &WebRequestCommitStatusReconciler{httpClient: &http.Client{Timeout: 50 * time.Millisecond}}
+		resp, err := r.makeHTTPRequest(context.Background(), newWRCS(5*time.Second),
+			webrequest.RenderedHTTPRequest{Method: http.MethodGet, URL: server.URL})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	})
+
+	It("still enforces the spec timeout when it is shorter than the request", func() {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(2 * time.Second):
+			}
+		}))
+		DeferCleanup(server.Close)
+
+		r := &WebRequestCommitStatusReconciler{httpClient: &http.Client{}}
+		_, err := r.makeHTTPRequest(context.Background(), newWRCS(100*time.Millisecond),
+			webrequest.RenderedHTTPRequest{Method: http.MethodGet, URL: server.URL})
+		Expect(err).To(HaveOccurred())
+	})
+})
+
 // Separate Describe block for the test that doesn't need infrastructure
 var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy", func() {
 	Context("When PromotionStrategy is not found", func() {
