@@ -163,7 +163,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
-		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", req.Name, err)
 	}
 
 	// If the resource is being deleted, stop reconciling immediately without requeuing
