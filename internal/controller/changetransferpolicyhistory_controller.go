@@ -115,7 +115,7 @@ func (r *ChangeTransferPolicyHistoryReconciler) Reconcile(ctx context.Context, r
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyHistoryConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration: %w", err)
 	}
 
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr, ctph.Spec.RepositoryReference, &ctph)

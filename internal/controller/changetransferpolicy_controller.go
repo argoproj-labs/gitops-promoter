@@ -239,7 +239,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	pr, err := r.createOrUpdatePullRequest(ctx, &ctp, gitOperations, gate)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to create or update pull request: %w", err)
 	}
 
 	if pr != nil {
@@ -257,7 +257,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration: %w", err)
 	}
 
 	return ctrl.Result{
