@@ -108,6 +108,9 @@ var (
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
+	// managerClient is the suite manager's cache-backed client, with the field indexes the reconcilers
+	// register. Use it to call a reconciler directly from a spec.
+	managerClient client.Client
 	// faultsInjected is true when K8S_FAULT_PROBABILITY or PROMOTER_TEST_SCM_FAULT_PROBABILITY is
 	// enabled. Specs then stop asserting best-effort side effects (see expectEventEmitted).
 	faultsInjected bool
@@ -200,6 +203,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sManager := multiClusterManager.GetLocalManager()
+	managerClient = k8sManager.GetClient()
 
 	if _, ok := scmFaultProbabilityFromEnv(); ok {
 		faultsInjected = true
