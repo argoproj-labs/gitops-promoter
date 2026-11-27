@@ -37,8 +37,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -1375,5 +1377,48 @@ var _ = Describe("Application watch handler", func() {
 		Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+	})
+})
+
+var _ = Describe("updateAggregatedCommitStatuses", func() {
+	It("returns CommitStatuses in sorted target branch order", func() {
+		ctx := context.Background()
+		name := "argocd-cs-order-" + strings.ToLower(randomString(8))
+		sha := strings.Repeat("a", 40)
+		// A fake client keeps the running CommitStatus controller from reconciling these test objects.
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+		r := &ArgoCDCommitStatusReconciler{localClient: c, Recorder: events.NewFakeRecorder(100)}
+		ps := &promoterv1alpha1.PromotionStrategy{Spec: promoterv1alpha1.PromotionStrategySpec{
+			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
+		}}
+		acs := promoterv1alpha1.ArgoCDCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", UID: types.UID(name)},
+			Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  "argocd-health",
+			},
+		}
+
+		branches := []string{"env/a", "env/b", "env/c", "env/d", "env/e", "env/f", "env/g", "env/h"}
+		grouped := map[string][]*argocd.Application{}
+		shas := map[string]string{}
+		for _, branch := range branches {
+			grouped[branch] = []*argocd.Application{{Status: argocd.ApplicationStatus{
+				Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+				Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+			}}}
+			shas[branch] = sha
+		}
+
+		// Map iteration order is randomized, so repeat to make an unordered implementation fail reliably.
+		for range 10 {
+			commitStatuses, _, err := r.updateAggregatedCommitStatuses(ctx, ps, acs, grouped, shas)
+			Expect(err).NotTo(HaveOccurred())
+			got := make([]string, 0, len(commitStatuses))
+			for _, cs := range commitStatuses {
+				got = append(got, strings.TrimPrefix(cs.Spec.Name, "argocd-health/"))
+			}
+			Expect(got).To(Equal(branches))
+		}
 	})
 })

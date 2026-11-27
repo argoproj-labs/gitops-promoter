@@ -202,23 +202,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
 
-	maxTimeUntilThreshold := time.Duration(0)
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, len(groupedArgoCDApps))
-	var i int
-	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		resolvedSha, ok := resolvedShas[targetBranch]
-		if !ok {
-			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
-		}
-		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
-		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
-
-		cs, err := r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		commitStatuses[i] = cs
-		i++
+	commitStatuses, maxTimeUntilThreshold, err := r.updateAggregatedCommitStatuses(ctx, &promotionStrategy, argoCDCommitStatus, groupedArgoCDApps, resolvedShas)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// TODO(v1.0, #1460): remove this method and rely on CleanupOrphanedCommitStatuses instead.
@@ -696,6 +682,32 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 	}
 
 	return nil
+}
+
+// updateAggregatedCommitStatuses creates or updates one aggregated CommitStatus per target branch in
+// groupedArgoCDApps, in sorted branch order. It returns the CommitStatuses and the longest time until any branch's last-transition
+// threshold is met (zero when none is pending on it).
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatuses(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, groupedArgoCDApps map[string][]*argocd.Application, resolvedShas map[string]string) ([]*promoterv1alpha1.CommitStatus, time.Duration, error) {
+	maxTimeUntilThreshold := time.Duration(0)
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(groupedArgoCDApps))
+	// Iterate in sorted branch order so the returned slice (and anything derived from it, such as inherited
+	// condition messages) is stable across reconciles; map iteration order is random.
+	for _, targetBranch := range slices.Sorted(maps.Keys(groupedArgoCDApps)) {
+		appsInEnvironment := groupedArgoCDApps[targetBranch]
+		resolvedSha, ok := resolvedShas[targetBranch]
+		if !ok {
+			return nil, 0, fmt.Errorf("failed to resolve target branch %q: no head SHA was resolved for it", targetBranch)
+		}
+		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
+		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
+
+		cs, err := r.updateAggregatedCommitStatus(ctx, promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		if err != nil {
+			return nil, 0, err
+		}
+		commitStatuses = append(commitStatuses, cs)
+	}
+	return commitStatuses, maxTimeUntilThreshold, nil
 }
 
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
