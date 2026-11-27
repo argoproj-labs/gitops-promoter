@@ -1377,3 +1377,38 @@ var _ = Describe("Application watch handler", func() {
 		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 	})
 })
+
+var _ = Describe("calculatePhaseAndDescription", func() {
+	const sha = "abc123"
+	makeApps := func(health argocd.HealthStatusCode, lastTransition time.Time) []*argocd.Application {
+		apps := make([]*argocd.Application, 3)
+		for i := range apps {
+			apps[i] = &argocd.Application{Status: argocd.ApplicationStatus{
+				Health: argocd.HealthStatus{Status: health, LastTransitionTime: &metav1.Time{Time: lastTransition}},
+				Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+			}}
+		}
+		return apps
+	}
+	r := &ArgoCDCommitStatusReconciler{}
+
+	It("describes a recently healthy environment as waiting, not healthy, while the phase is held at pending", func() {
+		phase, desc, requeue := r.calculatePhaseAndDescription(makeApps(argocd.HealthStatusHealthy, time.Now()), sha, 0)
+		Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		Expect(desc).To(Equal("Waiting for apps to stay healthy (3/3 healthy)"))
+		Expect(requeue).To(BeNumerically(">", 0))
+	})
+
+	It("describes a recently degraded environment as settling while the phase is held at pending", func() {
+		phase, desc, _ := r.calculatePhaseAndDescription(makeApps(argocd.HealthStatusDegraded, time.Now()), sha, 0)
+		Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		Expect(desc).To(Equal("Waiting for app health to settle (3/3 degraded)"))
+	})
+
+	It("keeps the aggregated phase and description once the last transition is past the threshold", func() {
+		phase, desc, requeue := r.calculatePhaseAndDescription(makeApps(argocd.HealthStatusHealthy, time.Now().Add(-time.Minute)), sha, 0)
+		Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		Expect(desc).To(Equal("3/3 apps are healthy"))
+		Expect(requeue).To(BeZero())
+	})
+})

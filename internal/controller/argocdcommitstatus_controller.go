@@ -210,8 +210,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if !ok {
 			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
-		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
-		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
+		var resolvedPhase promoterv1alpha1.CommitStatusPhase
+		var desc string
+		resolvedPhase, desc, maxTimeUntilThreshold = r.calculatePhaseAndDescription(appsInEnvironment, resolvedSha, maxTimeUntilThreshold)
 
 		cs, err := r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
@@ -247,6 +248,26 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
+}
+
+// calculatePhaseAndDescription returns the phase and description to report for one environment's apps, and the
+// updated maxTimeUntilThreshold. It aggregates the apps' phases, then applies the last-transition hysteresis of
+// getRequeueTimeAndPhase. When the hysteresis holds the phase at pending, the description says so instead of
+// reporting the aggregate (e.g. "3/3 apps are healthy") under a pending phase.
+func (r *ArgoCDCommitStatusReconciler) calculatePhaseAndDescription(appsInEnvironment []*argocd.Application, resolvedSha string, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, string, time.Duration) {
+	aggregatedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
+	resolvedPhase, maxTimeUntilThreshold := getRequeueTimeAndPhase(appsInEnvironment, aggregatedPhase, maxTimeUntilThreshold)
+	if resolvedPhase != aggregatedPhase {
+		total := len(appsInEnvironment)
+		switch aggregatedPhase {
+		case promoterv1alpha1.CommitPhaseSuccess:
+			desc = fmt.Sprintf("Waiting for apps to stay healthy (%d/%d healthy)", total, total)
+		case promoterv1alpha1.CommitPhaseFailure:
+			desc = fmt.Sprintf("Waiting for app health to settle (%d/%d degraded)", total, total)
+		default:
+		}
+	}
+	return resolvedPhase, desc, maxTimeUntilThreshold
 }
 
 // getRequeueTimeAndPhase determines the phase and requeue time based on the most recent last transition time of the
