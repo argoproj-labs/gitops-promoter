@@ -74,21 +74,24 @@ func CreateOrUpdateSecret(
 
 	// Try to get existing secret
 	existing, err := clientset.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
+	switch {
+	case errors.IsNotFound(err):
 		// Doesn't exist, create it
 		_, err = clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create secret: %w", err)
 		}
-		setupLog.Info("Secret %s/%s created ✓\n", namespace, name)
-	} else {
+		setupLog.Info("Secret created ✓", "namespace", namespace, "name", name)
+	case err != nil:
+		return fmt.Errorf("failed to get secret: %w", err)
+	default:
 		// Exists, update it
 		secret.ResourceVersion = existing.ResourceVersion
 		_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to update secret: %w", err)
 		}
-		setupLog.Info("Secret %s/%s updated ✓\n", namespace, name)
+		setupLog.Info("Secret updated ✓", "namespace", namespace, "name", name)
 	}
 
 	return nil
