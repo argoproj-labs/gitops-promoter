@@ -32,3 +32,8 @@ func SetWorkloadIdentityTokenFunc(f func(context.Context, *v1alpha1.AzureWorkloa
 	workloadIdentityTokenFunc = f
 	return func() { workloadIdentityTokenFunc = original }
 }
+
+// CreateCommitURL exposes createCommitURL to package azuredevops_test.
+func CreateCommitURL(repo *v1alpha1.GitRepository, domain, org, sha string) string {
+	return createCommitURL(repo, domain, org, sha)
+}

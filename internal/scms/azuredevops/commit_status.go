@@ -84,7 +84,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	genre := "promoter"
 
 	if commitStatus.Spec.Url == "" {
-		commitStatus.Spec.Url = createCommitURL(gitRepo, scmProvider.GetSpec().AzureDevOps.Organization, commitStatus.Spec.Sha)
+		commitStatus.Spec.Url = createCommitURL(gitRepo, scmProvider.GetSpec().AzureDevOps.Domain, scmProvider.GetSpec().AzureDevOps.Organization, commitStatus.Spec.Sha)
 	}
 	gitCommitStatus := git.GitStatus{
 		Context: &git.GitStatusContext{
@@ -336,9 +336,13 @@ func mapAzureDevOpsStateToPhase(state git.GitStatusState) v1alpha1.CommitStatusP
 	}
 }
 
-func createCommitURL(repo *v1alpha1.GitRepository, org string, sha string) string {
+// createCommitURL builds the web URL of a commit on the given domain, defaulting to dev.azure.com when it is empty.
+func createCommitURL(repo *v1alpha1.GitRepository, domain, org, sha string) string {
+	if domain == "" {
+		domain = azureDevopsDomain
+	}
 	return fmt.Sprintf("https://%s/%s/%s/_git/%s/commit/%s",
-		azureDevopsDomain,
+		domain,
 		org,
 		repo.Spec.AzureDevOps.Project,
 		repo.Spec.AzureDevOps.Name,

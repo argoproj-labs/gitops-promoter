@@ -95,6 +95,22 @@ func mirrorPullRequestStatus(gitClient azuredevops.AzdoGitClient, commitStatus *
 }
 
 var _ = Describe("CommitStatus", func() {
+	Describe("CreateCommitURL", func() {
+		repo := &v1alpha1.GitRepository{Spec: v1alpha1.GitRepositorySpec{
+			AzureDevOps: &v1alpha1.AzureDevOpsRepo{Project: "project", Name: "repo"},
+		}}
+
+		It("defaults to dev.azure.com", func() {
+			Expect(azuredevops.CreateCommitURL(repo, "", "org", "abc123")).
+				To(Equal("https://dev.azure.com/org/project/_git/repo/commit/abc123"))
+		})
+
+		It("uses the ScmProvider's custom domain", func() {
+			Expect(azuredevops.CreateCommitURL(repo, "azdo.example.com", "org", "abc123")).
+				To(Equal("https://azdo.example.com/org/project/_git/repo/commit/abc123"))
+		})
+	})
+
 	Describe("SetPullRequestStatusBestEffort", func() {
 		It("mirrors the status onto the latest matching pull request iteration", func() {
 			iterationID := 7
