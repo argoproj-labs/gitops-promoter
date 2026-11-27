@@ -48,14 +48,32 @@ func (gap GitAuthenticationProvider) GetGitHttpsRepoUrl(repo promoterv1alpha1.Gi
 	return repoUrl
 }
 
-// GetToken returns the authentication token from the secret.
+// GetToken returns the password used for git HTTPS authentication.
+// If the secret has a "token" key it is returned; otherwise the basic auth password is returned.
+// Returns an error when neither credential is present.
 func (gap GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
-	return string(gap.secret.Data["token"]), nil
+	if token := string(gap.secret.Data["token"]); token != "" {
+		return token, nil
+	}
+	password := string(gap.secret.Data["password"])
+	if password == "" {
+		return "", fmt.Errorf("secret %q must contain either 'token' or both 'username' and 'password'", gap.secret.Name)
+	}
+	return password, nil
 }
 
-// GetUser returns a fixed user name for Forgejo authentication.
+// GetUser returns the user name used for git HTTPS authentication.
+// Forgejo accepts any user name alongside a token, so "oauth2" is returned when the secret has a token;
+// otherwise the basic auth username is returned. Returns an error when neither credential is present.
 func (gap GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
-	return "oauth2", nil
+	if string(gap.secret.Data["token"]) != "" {
+		return "oauth2", nil
+	}
+	username := string(gap.secret.Data["username"])
+	if username == "" {
+		return "", fmt.Errorf("secret %q must contain either 'token' or both 'username' and 'password'", gap.secret.Name)
+	}
+	return username, nil
 }
 
 // GetClient creates a new Forgejo client using the provided domain and secret.
