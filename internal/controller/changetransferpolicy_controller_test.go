@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path"
 	"slices"
@@ -1377,6 +1378,68 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Moving the CommitStatus away from success")
 				setPhase(promoterv1alpha1.CommitPhaseFailure)
 				expectActivePhase(promoterv1alpha1.CommitPhaseFailure)
+			})
+
+			// A policy records a new hydrated SHA only when its reconcile ends, and the CommitStatus watch
+			// finds policies through an index of those SHAs. A CommitStatus change for the new SHA made
+			// during that reconcile can map to no policy. This races that window on purpose, the way a gate
+			// that reports on the branch head (ArgoCD) does: move the CommitStatus to a new active SHA the
+			// policy has not seen, which wakes the policy through its previous SHA, then flip the phase at a
+			// varying point while the policy adopts the new SHA. The active branch is pushed directly, so no
+			// pull request activity wakes the policy again and hides a missed change. Timing-dependent: a
+			// regression fails some runs, not every run.
+			It("sees a phase change made while it adopts a new active SHA", func() {
+				const rounds = 10
+
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				activeBranch := changeTransferPolicy.Spec.ActiveBranch
+				var activeSha string
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					activeSha = strings.TrimSpace(sha)
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(activeSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				commitStatus.Spec.Sha = activeSha
+				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+				updateCommitStatus := func(mutate func(*promoterv1alpha1.CommitStatus)) {
+					GinkgoHelper()
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(commitStatus), commitStatus)).To(Succeed())
+						mutate(commitStatus)
+						g.Expect(k8sClient.Update(ctx, commitStatus)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+
+				for round := range rounds {
+					By(fmt.Sprintf("Round %d: pushing a new active commit the policy has not seen", round+1))
+					_, newActiveSha, err := pushHydratedBranch(ctx, gitPath, activeBranch, drySha, fmt.Sprintf("direct push %d", round+1))
+					Expect(err).NotTo(HaveOccurred())
+
+					// Reporting success on the new SHA wakes the policy through the previous SHA, and the
+					// policy adopts the new one. The failure lands at a varying point in that reconcile.
+					updateCommitStatus(func(cs *promoterv1alpha1.CommitStatus) {
+						cs.Spec.Sha = newActiveSha
+						cs.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					})
+					time.Sleep(time.Duration(rand.Int64N(int64(300 * time.Millisecond))))
+					updateCommitStatus(func(cs *promoterv1alpha1.CommitStatus) {
+						cs.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
+					})
+
+					// Far below the policy's periodic requeue (shipped default 5m), so only an event can
+					// deliver the failure in time.
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+						g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(newActiveSha))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+						g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+					}, 20*time.Second).Should(Succeed(), "round %d: the policy kept a stale phase for the new active SHA", round+1)
+				}
 			})
 		})
 
