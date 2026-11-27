@@ -116,6 +116,10 @@ func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Conte
 	// Start fresh on the Ready condition each reconcile.
 	previousReady = utils.RemoveReadyCondition(&dcs)
 
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// 2. Fetch the referenced PromotionStrategy.
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{Namespace: dcs.Namespace, Name: dcs.Spec.PromotionStrategyRef.Name}
