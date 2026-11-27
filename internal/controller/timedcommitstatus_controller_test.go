@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,11 +28,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -724,6 +728,49 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(skipCtx, scmProvider)
 			_ = k8sClient.Delete(skipCtx, scmSecret)
 		})
+	})
+})
+
+// processEnvironments with a fake client: the phase-change event must name the same key the CommitStatus is
+// written with, including the default key when spec.key is empty.
+var _ = Describe("TimedCommitStatus Controller - phase change event key", func() {
+	It("names the default key in the event when spec.key is empty", func() {
+		ctx := context.Background()
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+		recorder := events.NewFakeRecorder(10)
+		r := &TimedCommitStatusReconciler{Client: c, Recorder: recorder}
+
+		tcs := &promoterv1alpha1.TimedCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "timed-event-key", Namespace: "default", UID: "timed-event-key-uid"},
+			Spec: promoterv1alpha1.TimedCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "timed-event-key"},
+				Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+					{Branch: testBranchDevelopment, Duration: metav1.Duration{Duration: time.Hour}},
+				},
+			},
+		}
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "timed-event-key"},
+			},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{{
+					Branch: testBranchDevelopment,
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{
+						Sha:        strings.Repeat("a", 40),
+						CommitTime: metav1.Now(),
+					}},
+				}},
+			},
+		}
+
+		_, commitStatuses, err := r.processEnvironments(ctx, tcs, ps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(commitStatuses).To(HaveLen(1))
+		Expect(commitStatuses[0].Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.TimedCommitStatusDefaultKey))
+
+		Expect(recorder.Events).To(Receive(ContainSubstring(
+			fmt.Sprintf("Commit status %q for environment branch %s", promoterv1alpha1.TimedCommitStatusDefaultKey, testBranchDevelopment))))
 	})
 })
 
