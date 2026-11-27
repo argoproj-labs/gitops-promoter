@@ -54,7 +54,7 @@ type RestoreActiveCommitReconciler struct {
 	SettingsMgr *settings.Manager
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=restoreactivecommits/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch
