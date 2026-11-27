@@ -149,10 +149,11 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.CreateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunOpts)
+	recordCheckRunCall(ctx, metrics.SCMOperationCreate, start, gitRepo, response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create check run: %w", err)
 	}
-	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationCreate, start, commitStatus, gitRepo, checkRun, response)
+	return cs.handleCheckRunResponse(commitStatus, checkRun)
 }
 
 // updateCheckRun updates an existing GitHub check run
@@ -189,6 +190,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.UpdateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunID, updateOpts)
+	recordCheckRunCall(ctx, metrics.SCMOperationUpdate, start, gitRepo, response)
 	if err != nil {
 		// Check if the error is a 404 (check run not found)
 		// This can happen when a CommitStatus was created using the legacy Commit Status API
@@ -201,36 +203,39 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 		}
 		return nil, fmt.Errorf("failed to update check run: %w", err)
 	}
-	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationUpdate, start, commitStatus, gitRepo, checkRun, response)
+	return cs.handleCheckRunResponse(commitStatus, checkRun)
 }
 
-// handleCheckRunResponse handles the response from GitHub check run API calls
-// It records metrics, logs rate limit information, and updates the commit status
-func (cs *CommitStatus) handleCheckRunResponse(
+// recordCheckRunCall records metrics and logs rate limit info for a GitHub check run API call.
+// It is called before the error check so failed calls (403/422/429, ...) are counted too.
+func recordCheckRunCall(
 	ctx context.Context,
 	operation metrics.SCMOperation,
 	startTime time.Time,
-	commitStatus *promoterv1alpha1.CommitStatus,
 	gitRepo *promoterv1alpha1.GitRepository,
-	checkRun *github.CheckRun,
 	response *github.Response,
-) (*promoterv1alpha1.CommitStatus, error) {
-	logger := log.FromContext(ctx)
-
-	// Record metrics and log rate limit info if response is available
-	if response != nil {
-		duration := time.Since(startTime)
-		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
-
-		logger.Info("github rate limit",
-			"limit", response.Rate.Limit,
-			"remaining", response.Rate.Remaining,
-			"reset", response.Rate.Reset,
-			"url", response.Request.URL)
-
-		logger.V(4).Info("github response status", "status", response.Status)
+) {
+	if response == nil {
+		return
 	}
+	logger := log.FromContext(ctx)
+	duration := time.Since(startTime)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+
+	logger.V(4).Info("github response status", "status", response.Status)
+}
+
+// handleCheckRunResponse updates the commit status with the check run information.
+func (cs *CommitStatus) handleCheckRunResponse(
+	commitStatus *promoterv1alpha1.CommitStatus,
+	checkRun *github.CheckRun,
+) (*promoterv1alpha1.CommitStatus, error) {
 	// Update commit status with check run information
 	if checkRun != nil && checkRun.ID != nil {
 		commitStatus.Status.Id = strconv.FormatInt(*checkRun.ID, 10)

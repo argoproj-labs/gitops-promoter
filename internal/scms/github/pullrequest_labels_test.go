@@ -13,6 +13,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	dto "github.com/prometheus/client_model/go"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -97,6 +99,85 @@ var _ = Describe("repository label listing", func() {
 		Expect(pr.ensureRepositoryLabels(context.Background(), gitRepo, []string{"ship"})).NotTo(Succeed())
 		Expect(scmCallCount(repoName, providerName, "503") - before).To(Equal(1.0))
 		Expect(scmRateLimitGauge("scm_calls_rate_limit_remaining", providerName)).To(Equal(10.0))
+	})
+})
+
+var _ = Describe("check run metrics", func() {
+	newCheckRunCommitStatus := func(repoName, providerName string, status int, remaining string) *CommitStatus {
+		GinkgoHelper()
+		mux := http.NewServeMux()
+		handler := func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(github.HeaderRateLimit, "5000")
+			w.Header().Set(github.HeaderRateRemaining, remaining)
+			w.Header().Set(github.HeaderRateReset, strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10))
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"message":"denied"}`))
+		}
+		mux.HandleFunc("/api/v3/repos/acme/widgets/check-runs", handler)
+		mux.HandleFunc("/api/v3/repos/acme/widgets/check-runs/{id}", handler)
+		srv := httptest.NewTLSServer(mux)
+		DeferCleanup(srv.Close)
+
+		ghClient, err := github.NewClient(github.WithEnterpriseURLs(srv.URL, srv.URL))
+		Expect(err).NotTo(HaveOccurred())
+		scheme := runtime.NewScheme()
+		Expect(v1alpha1.AddToScheme(scheme)).To(Succeed())
+		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(labelListGitRepo(repoName, providerName)).Build()
+		return &CommitStatus{client: ghClient, k8sClient: k8sClient}
+	}
+
+	checkRunCallCount := func(repoName, providerName string, operation metrics.SCMOperation, responseCode string) float64 {
+		GinkgoHelper()
+		return prometheusSample("scm_calls_total", map[string]string{
+			"git_repository":    repoName,
+			"scm_provider":      providerName,
+			"scm_provider_kind": v1alpha1.ScmProviderKind,
+			"api":               string(metrics.SCMAPICommitStatus),
+			"operation":         string(operation),
+			"response_code":     responseCode,
+		})
+	}
+
+	commitStatusFor := func(repoName, id string) *v1alpha1.CommitStatus {
+		cs := &v1alpha1.CommitStatus{}
+		cs.Namespace = "default"
+		cs.Spec.RepositoryReference.Name = repoName
+		cs.Spec.Name = "check"
+		cs.Spec.Sha = "abc123"
+		cs.Spec.Phase = v1alpha1.CommitPhasePending
+		if id != "" {
+			cs.Status.Id = id
+			cs.Status.Sha = "abc123"
+			cs.Status.Phase = v1alpha1.CommitPhasePending
+		}
+		return cs
+	}
+
+	It("records a failed CreateCheckRun call", func() {
+		const (
+			repoName     = "check-run-create-error-gr"
+			providerName = "check-run-create-error-scm"
+		)
+		cs := newCheckRunCommitStatus(repoName, providerName, http.StatusForbidden, "7")
+		before := checkRunCallCount(repoName, providerName, metrics.SCMOperationCreate, "403")
+		_, err := cs.Set(context.Background(), commitStatusFor(repoName, ""))
+		Expect(err).To(HaveOccurred())
+		Expect(checkRunCallCount(repoName, providerName, metrics.SCMOperationCreate, "403") - before).To(Equal(1.0))
+		Expect(scmRateLimitGauge("scm_calls_rate_limit_remaining", providerName)).To(Equal(7.0))
+	})
+
+	It("records a failed UpdateCheckRun call", func() {
+		const (
+			repoName     = "check-run-update-error-gr"
+			providerName = "check-run-update-error-scm"
+		)
+		cs := newCheckRunCommitStatus(repoName, providerName, http.StatusUnprocessableEntity, "8")
+		before := checkRunCallCount(repoName, providerName, metrics.SCMOperationUpdate, "422")
+		_, err := cs.Set(context.Background(), commitStatusFor(repoName, "42"))
+		Expect(err).To(HaveOccurred())
+		Expect(checkRunCallCount(repoName, providerName, metrics.SCMOperationUpdate, "422") - before).To(Equal(1.0))
+		Expect(scmRateLimitGauge("scm_calls_rate_limit_remaining", providerName)).To(Equal(8.0))
 	})
 })
 
