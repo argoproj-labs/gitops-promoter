@@ -132,7 +132,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// ChangeTransferPolicies are not woken from here: they watch CommitStatus spec changes directly
-	// (see changetransferpolicy_commitstatus_watch.go), so a policy sees a new phase without waiting
+	// (see commitStatusPhaseChangedPredicate), so a policy sees a new phase without waiting
 	// for the SCM publish above.
 
 	if !alreadyPublished {
